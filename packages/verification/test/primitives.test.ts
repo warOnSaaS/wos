@@ -1,48 +1,19 @@
-import { createHash } from "node:crypto";
-import { canonicalSha256 } from "@waronsaas/context-engine";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { parse as parseYaml } from "yaml";
-import { canonicalJson, lintProductWorkflow, scanForSecrets } from "../src/index.js";
-import { implemented, pendingReason } from "./support/pending.js";
+import { lintProductWorkflow, scanForSecrets } from "../src/index.js";
 
-describe("JCS (RFC 8785) used for the diff hash and signatures", () => {
-  it("sorts members by UTF-16 code units (RFC 8785 section 3.2.3 example)", () => {
-    const input = {
-      "€": "Euro Sign",
-      "\r": "Carriage Return",
-      דּ: "Hebrew Letter Dalet With Dagesh",
-      "1": "One",
-      "😀": "Emoji",
-      "\u0080": "Control",
-      ö: "Latin Small Letter O With Diaeresis",
-    };
-    const keys = Object.keys(JSON.parse(canonicalJson(input)) as object);
-    // JSON.parse re-orders integer-like keys first, so compare the raw text order instead.
-    expect(keys).toContain("1");
-    const order = ["\r", "1", "\u0080", "ö", "€", "😀", "דּ"].map((k) => JSON.stringify(k));
-    const text = canonicalJson(input);
-    const positions = order.map((k) => text.indexOf(`${k}:`));
-    expect([...positions].sort((a, b) => a - b)).toEqual(positions);
+describe("one canonical implementation (B-0001: @waronsaas/contracts/canonical)", () => {
+  it("packages/verification has no hashing, signing or JCS code of its own", () => {
+    const dir = fileURLToPath(new URL("../src/", import.meta.url));
+    for (const f of readdirSync(dir).filter((x) => x.endsWith(".ts"))) {
+      const text = readFileSync(join(dir, f), "utf8");
+      expect(text, f).not.toMatch(/import \{[^}]*\b(sign|verify|createHash|createHmac)\b[^}]*\} from "node:crypto"|createHash\(/);
+    }
+    expect(existsSync(join(dir, "jcs.ts"))).toBe(false);
   });
-
-  it("serialises numbers as ECMAScript does and drops undefined", () => {
-    expect(canonicalJson([1e21, -0, 0.000001, 1e-7, 10.0, 333333333.3333333])).toBe("[1e+21,0,0.000001,1e-7,10,333333333.3333333]");
-    expect(canonicalJson({ b: 1, a: undefined, c: [undefined] })).toBe('{"b":1,"c":[null]}');
-    expect(() => canonicalJson({ x: Number.NaN })).toThrow();
-    expect(() => canonicalJson({ x: 1n })).toThrow();
-  });
-
-  const ready = implemented(() => canonicalSha256({}));
-  it.skipIf(!ready)(
-    `is byte-identical to context-engine canonicalSha256 (one JCS for the whole system)${pendingReason(ready, "context-engine canonicalSha256")}`,
-    () => {
-      const samples = [{}, { b: [1, "x", null, true], a: { ö: 1, z: 0.5 } }, { parentCommit: "a".repeat(40), files: [] }];
-      for (const s of samples) {
-        const mine = `sha256:${createHash("sha256").update(canonicalJson(s)).digest("hex")}`;
-        expect(canonicalSha256(s)).toBe(mine);
-      }
-    },
-  );
 });
 
 describe("secret patterns (S-8, SECRET_DETECTED)", () => {

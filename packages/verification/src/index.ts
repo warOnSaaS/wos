@@ -1,22 +1,23 @@
 /**
  * @waronsaas/verification — deterministic scope/diff validation shared by client, server and CI
- * (owner: verification workstream). Pure functions only (node:crypto for hashing and Ed25519).
+ * (owner: verification workstream). Pure functions only; every hash and signature comes from
+ * @waronsaas/contracts/canonical (C-1..C-7), the one implementation shared by client, server and CI.
  */
-import { createHash, createPublicKey, verify as verifySignature } from "node:crypto";
-import type {
-  AbuSpec,
-  Changeset,
-  ChangesetErrorCode,
-  ChangesetFile,
-  ChangesetValidation,
-  RepoManifest,
-  WriteScope,
+import {
+  type AbuSpec,
+  type Changeset,
+  type ChangesetErrorCode,
+  type ChangesetFile,
+  Changeset as ChangesetSchema,
+  type ChangesetValidation,
+  type RepoManifest,
+  type WriteScope,
 } from "@waronsaas/contracts";
-import { canonicalJson } from "./jcs.js";
+import { sha256Of, submissionSha256, verifyChangesetSignature } from "@waronsaas/contracts/canonical";
+import picomatch from "picomatch";
 import { fold, inScope, matchesDeny, parentDirs, pathProblem } from "./paths.js";
 import { scanForSecrets } from "./secrets.js";
 
-export { canonicalJson } from "./jcs.js";
 export { fold, inScope, matchesDeny, pathProblem } from "./paths.js";
 export { SECRET_PATTERNS, scanForSecrets, type SecretHit, type SecretPattern } from "./secrets.js";
 export { lintProductWorkflow, type WorkflowLintIssue } from "./workflow-lint.js";
@@ -57,30 +58,6 @@ const WORKFLOWS = ".github/workflows/**";
 /** Lockfile names treated as lockfiles even when `wos.json` does not list them (nested workspaces). */
 const LOCKFILE_BASENAMES = new Set(["package-lock.json", "npm-shrinkwrap.json", "yarn.lock", "pnpm-lock.yaml", "bun.lockb", "bun.lock"]);
 
-export const sha256Hex = (data: Uint8Array | string) => `sha256:${createHash("sha256").update(data).digest("hex")}`;
-
-type FileEntry = { path: string; op: "delete" } | { path: string; op: "upsert"; mode: string; sha256: string };
-
-/** The diff hash: sha256 of JCS {parentCommit, files: [{path, op, mode, sha256}] sorted by path}. Deletes carry path and op only. */
-export function computeSubmissionSha256(parentCommit: string, files: readonly ChangesetFile[]): string {
-  const entries: FileEntry[] = files
-    .map(
-      (f): FileEntry =>
-        f.op === "upsert" ? { path: f.path, op: "upsert", mode: f.mode, sha256: f.sha256 } : { path: f.path, op: "delete" },
-    )
-    .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-  return sha256Hex(canonicalJson({ parentCommit, files: entries }));
-}
-
-/** Bytes the device key signs: JCS of the changeset without `signature`, each upsert's content replaced by its sha256. */
-export function changesetSigningPayload(changeset: Changeset): string {
-  const { signature: _omit, ...rest } = changeset;
-  return canonicalJson({
-    ...rest,
-    files: changeset.files.map((f) => (f.op === "upsert" ? { ...f, contentBase64: f.sha256 } : f)),
-  });
-}
-
 function decodeStrictBase64(b64: unknown): Buffer | null {
   if (typeof b64 !== "string" || b64.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(b64)) return null;
   const buf = Buffer.from(b64, "base64");
@@ -113,6 +90,8 @@ export function validateChangeset(changeset: Changeset, ctx: ScopeContext): Chan
   const allowed: WriteScope[] = isDocument ? ctx.documentPaths : (ctx.abu?.scope.write ?? []);
   const lockfiles = manifest.lockfiles ?? [];
   const migrationsDir = manifest.migrationsDir;
+  // Deny direction: case-insensitive, dotfiles included (".npmrc", "**/.eslintrc*").
+  const toolchain = picomatch(manifest.toolchainPaths ?? [], { dot: true, nocase: true });
 
   const seen = new Set<string>();
   const valid: ChangesetFile[] = [];
@@ -163,6 +142,9 @@ export function validateChangeset(changeset: Changeset, ctx: ScopeContext): Chan
     if (migrationsDir && matchesDeny(path, `${migrationsDir}/**`) && (isDocument || !hasResource(ctx.abu, "db:migrations"))) {
       add("MIGRATION_WITHOUT_RESOURCE", path, "needs an exclusive db:migrations resource");
     }
+    if (toolchain(path) && (isDocument || !hasResource(ctx.abu, `toolchain:${path}`))) {
+      add("TOOLCHAIN_WITHOUT_RESOURCE", path, `defines how verification runs; needs an exclusive toolchain:${path} resource`);
+    }
     if (!isDocument && !ctx.abu) add("OUT_OF_SCOPE", path, "no ABU in scope context");
     else if (!allowed.some((s) => inScope(path, s))) add("OUT_OF_SCOPE", path, "outside every write scope");
 
@@ -178,7 +160,7 @@ export function validateChangeset(changeset: Changeset, ctx: ScopeContext): Chan
       continue;
     }
     totalBytes += content.length;
-    if (sha256Hex(content) !== f.sha256 || content.length !== f.bytes) {
+    if (sha256Of(content) !== f.sha256 || content.length !== f.bytes) {
       add("HASH_MISMATCH", path, "sha256 or byte count does not match the content");
     }
     for (const hit of scanForSecrets(content.toString("utf8"))) add("SECRET_DETECTED", path, `${hit.id} at line ${hit.line}`);
@@ -192,7 +174,7 @@ export function validateChangeset(changeset: Changeset, ctx: ScopeContext): Chan
 
   // Only recomputable when every entry parsed; otherwise the changeset already failed on those entries.
   if (valid.length === files.length) {
-    const recomputed = computeSubmissionSha256(String(changeset.parentCommit), valid);
+    const recomputed = submissionSha256(String(changeset.parentCommit), valid);
     if (recomputed !== changeset.submissionSha256) add("SUBMISSION_HASH_MISMATCH", null, `recomputed ${recomputed}`);
   }
 
@@ -257,7 +239,7 @@ export interface SubmissionContext {
   expectedParentCommit: string;
   /** manifest_sha256 of the context manifest accepted for this lease. */
   acceptedManifestSha256: string;
-  /** The registered device's Ed25519 public key: base64 of the raw 32 bytes, base64 SPKI DER, or PEM. */
+  /** The registered device's Ed25519 public key: base64 of the raw 32 bytes (canonical C-5; PEM/SPKI are invalid). */
   devicePublicKey: string;
 }
 
@@ -274,29 +256,11 @@ export function validateSubmission(changeset: Changeset, ctx: ScopeContext, serv
   if (changeset.manifestSha256 !== server.acceptedManifestSha256) {
     errors.push({ code: "MANIFEST_MISMATCH", path: null, message: "not the manifest accepted for this lease" });
   }
-  if (!verifyChangesetSignature(changeset, server.devicePublicKey)) {
-    errors.push({ code: "SIGNATURE_INVALID", path: null, message: "signature does not verify with the device key" });
+  // C-4 signs the PARSED changeset. One the schema refuses cannot be verified; it already carries the
+  // validator's errors, and if somehow it carries none it is still refused here (fail closed).
+  const parsed = ChangesetSchema.safeParse(changeset);
+  if (parsed.success ? !verifyChangesetSignature(parsed.data, server.devicePublicKey) : errors.length === 0) {
+    errors.push({ code: "SIGNATURE_INVALID", path: null, message: "signature does not verify with the device key (canonical C-4/C-5)" });
   }
   return { ok: errors.length === 0, errors };
-}
-
-const ED25519_SPKI_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
-
-function ed25519Key(encoded: string) {
-  const text = encoded.trim();
-  if (text.startsWith("-----BEGIN")) return createPublicKey(text);
-  const der = Buffer.from(text, "base64");
-  return createPublicKey({ key: der.length === 32 ? Buffer.concat([ED25519_SPKI_PREFIX, der]) : der, format: "der", type: "spki" });
-}
-
-export function verifyChangesetSignature(changeset: Changeset, devicePublicKey: string): boolean {
-  try {
-    const key = ed25519Key(devicePublicKey);
-    if (key.asymmetricKeyType !== "ed25519") return false;
-    const sig = decodeStrictBase64(changeset.signature);
-    if (sig?.length !== 64) return false;
-    return verifySignature(null, Buffer.from(changesetSigningPayload(changeset), "utf8"), key, sig);
-  } catch {
-    return false;
-  }
 }

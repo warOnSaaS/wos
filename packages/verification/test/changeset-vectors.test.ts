@@ -1,6 +1,7 @@
 import { Changeset, ChangesetErrorCode, ChangesetValidation } from "@waronsaas/contracts";
 import { describe, expect, it } from "vitest";
-import { computeSubmissionSha256, scopesOverlap, validateChangeset, validateSubmission, verifyChangesetSignature } from "../src/index.js";
+import { submissionSha256 as computeSubmissionSha256, verifyChangesetSignature } from "@waronsaas/contracts/canonical";
+import { scopesOverlap, validateChangeset, validateSubmission } from "../src/index.js";
 import { changesetVectors, signedChangeset, upsert, VECTOR_DEVICE_PUBLIC_KEY } from "../src/vectors.js";
 
 const vectors = changesetVectors();
@@ -57,14 +58,14 @@ describe("scope-verification: hashing and signatures", () => {
     expect(computeSubmissionSha256(parent, [a])).not.toBe(computeSubmissionSha256(parent, [{ op: "delete", path: a.path }]));
   });
 
-  it("accepts raw, SPKI-DER and PEM encodings of the same device key and nothing else", () => {
+  it("accepts only the C-5 raw-key encoding: SPKI-DER and PEM of the same key are refused", () => {
     const c = signedChangeset([upsert("modules/contacts/a.ts", "a")]);
     const raw = Buffer.from(VECTOR_DEVICE_PUBLIC_KEY, "base64");
     const der = Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), raw]);
     const pem = `-----BEGIN PUBLIC KEY-----\n${der.toString("base64")}\n-----END PUBLIC KEY-----\n`;
     expect(verifyChangesetSignature(c, VECTOR_DEVICE_PUBLIC_KEY)).toBe(true);
-    expect(verifyChangesetSignature(c, der.toString("base64"))).toBe(true);
-    expect(verifyChangesetSignature(c, pem)).toBe(true);
+    expect(verifyChangesetSignature(c, der.toString("base64"))).toBe(false);
+    expect(verifyChangesetSignature(c, pem)).toBe(false);
     expect(verifyChangesetSignature(c, "")).toBe(false);
     expect(verifyChangesetSignature(c, "pkA")).toBe(false);
   });
