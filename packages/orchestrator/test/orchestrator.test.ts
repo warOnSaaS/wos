@@ -2,9 +2,8 @@ import { createPublicKey, verify } from "node:crypto";
 import { existsSync, readdirSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import type { OrchestratorEvent } from "@waronsaas/contracts";
-import { canonicalJson } from "@waronsaas/github";
+import { canonicalJson, submissionSha256 } from "@waronsaas/contracts/canonical";
 import { afterEach, describe, expect, it } from "vitest";
-import { submissionSha256 } from "../src/orchestrator.js";
 import { DEVICE_KEY } from "../src/session.js";
 import { ABU_KEY, git, TARGET } from "./support/fake-control-plane.js";
 import { type Harness, harness } from "./support/harness.js";
@@ -29,7 +28,7 @@ describe("orchestrator build (fake control plane, fake claude)", () => {
     h = harness();
     const events: OrchestratorEvent[] = [];
     const res = await h.make("cli").build({ abu: ABU_REF }, (e) => events.push(e));
-    expect(res).toMatchObject({ ok: true });
+    expect(res, JSON.stringify(res)).toMatchObject({ ok: true });
     expect(steps(events)).toEqual([
       "LEASE:started",
       "LEASE:passed",

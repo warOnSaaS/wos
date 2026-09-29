@@ -1,6 +1,17 @@
-/** Session and device key, both kept only in the injected SecretStore (OS keychain in real clients). */
-import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, sign } from "node:crypto";
-import { canonicalJson } from "@waronsaas/github";
+/**
+ * Session and device key, both kept only in the injected SecretStore (OS keychain in real clients).
+ * All hashing and signing goes through @waronsaas/contracts/canonical (contracts 2.0.0, C-1..C-7).
+ */
+import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, type KeyObject } from "node:crypto";
+import type { AgentRunRecord, Changeset } from "@waronsaas/contracts";
+import {
+  agentRunSigningPayload,
+  encodeDevicePublicKey,
+  signChangeset,
+  signEd25519,
+  type UnsignedAgentRun,
+  type UnsignedChangeset,
+} from "@waronsaas/contracts/canonical";
 import type { SecretStore } from "./index.js";
 
 export const SESSION_KEY = "wos.session.v1";
@@ -28,20 +39,26 @@ export async function writeSession(secrets: SecretStore, s: StoredSession): Prom
   await secrets.set(SESSION_KEY, JSON.stringify(s));
 }
 
-/** Ed25519 device key: created on first use; the public key (raw 32 bytes, base64) is registered at sign-in. */
-export async function deviceKey(secrets: SecretStore): Promise<{ privateKeyPem: string; publicKeyBase64: string }> {
+/** Ed25519 device key (PKCS#8 PEM in the keychain), created on first use. Public key in the C-5 wire format. */
+export async function deviceKey(secrets: SecretStore): Promise<{ privateKey: KeyObject; publicKeyBase64: string }> {
   let pem = await secrets.get(DEVICE_KEY);
   if (!pem) {
     pem = generateKeyPairSync("ed25519").privateKey.export({ type: "pkcs8", format: "pem" }).toString();
     await secrets.set(DEVICE_KEY, pem);
   }
-  const jwk = createPublicKey(createPrivateKey(pem)).export({ format: "jwk" }) as { x: string };
-  return { privateKeyPem: pem, publicKeyBase64: Buffer.from(jwk.x, "base64url").toString("base64") };
+  const privateKey = createPrivateKey(pem);
+  return { privateKey, publicKeyBase64: encodeDevicePublicKey(createPublicKey(privateKey)) };
 }
 
-/** Ed25519 signature (base64) over the RFC 8785 canonical JSON of `value`. */
-export function signCanonical(privateKeyPem: string, value: unknown): string {
-  return sign(null, Buffer.from(canonicalJson(value), "utf8"), createPrivateKey(privateKeyPem)).toString("base64");
+/** Signs a changeset with this device's key (C-4). */
+export async function signChangesetWithDevice(secrets: SecretStore, unsigned: UnsignedChangeset): Promise<Changeset> {
+  return signChangeset(unsigned, (await deviceKey(secrets)).privateKey);
+}
+
+/** Signs an agent-run record with this device's key (C-4). */
+export async function signAgentRunWithDevice(secrets: SecretStore, unsigned: UnsignedAgentRun): Promise<AgentRunRecord> {
+  const { privateKey } = await deviceKey(secrets);
+  return { ...(unsigned as AgentRunRecord), signature: signEd25519(privateKey, agentRunSigningPayload(unsigned)) };
 }
 
 /** Deterministic idempotency key (UUID layout, version 8) so a retried request replays instead of duplicating. */

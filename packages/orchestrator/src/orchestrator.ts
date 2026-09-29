@@ -13,12 +13,12 @@ import {
   type AuthorSummary,
   BuildSummary,
   type Changeset,
-  type ChangesetFile,
   type ChangesetValidation,
   type ClaimResponse,
   type ContextPlan,
   type LocalStatus,
   type Me,
+  type SignInPrompt,
   type OrchestratorObserver,
   type PipelineStep,
   type ProviderStatus,
@@ -27,13 +27,22 @@ import {
   type RunResult,
   type TaskView,
 } from "@waronsaas/contracts";
-import { canonicalJson, canonicalSha256, sha256Prefixed } from "@waronsaas/github";
+import { canonicalJson, canonicalSha256, sha256Of, submissionSha256 } from "@waronsaas/contracts/canonical";
 import { captureChanges, createWorktree, isBlockingRejection, removeWorktree, type WorktreeHandle } from "@waronsaas/github/local";
 import { parseBuildGraphYaml } from "@waronsaas/planning";
 import { validateChangeset } from "@waronsaas/verification";
 import { ApiCallError, createApiClient } from "./api-client.js";
 import type { ApiClient, Engines, OrchestratorDeps } from "./index.js";
-import { deviceKey, idempotencyKey, readSession, SESSION_KEY, signCanonical, type StoredSession, writeSession } from "./session.js";
+import {
+  deviceKey,
+  idempotencyKey,
+  readSession,
+  SESSION_KEY,
+  type StoredSession,
+  signAgentRunWithDevice,
+  signChangesetWithDevice,
+  writeSession,
+} from "./session.js";
 
 const TERMINAL = new Set(["merged", "expired", "abandoned", "failed", "closed_unmerged", "superseded"]);
 const OUTPUT_TAIL = 2000;
@@ -119,23 +128,101 @@ export class OrchestratorImpl {
   }
 
   /**
-   * Links GitHub (brokered device flow) for an account that already has a session. Email sign-in
-   * (D8) has no place in this frozen signature: blockers/B-0003-github-build.md.
+   * D8 email sign-in. The poll secret lives only in this call's memory. Completes with whichever
+   * arrives first: a code the user types, or a `wos://auth?r=<requestId>&t=<token>` deep link whose
+   * request id matches (links for other requests are ignored).
    */
-  async login(observer: OrchestratorObserver, openUrl: (url: string, userCode: string) => void): Promise<Me> {
+  async signIn(input: { email: string; deviceName: string }, prompt: SignInPrompt, observer: OrchestratorObserver): Promise<Me> {
+    const { publicKeyBase64 } = await deviceKey(this.deps.secrets);
+    const start = await this.api.call("startEmailSignIn", {
+      body: { email: input.email, clientKind: this.deps.clientKind, deviceName: input.deviceName, devicePublicKey: publicKeyBase64 },
+    });
+    const pollSecret = start.pollSecret;
+    if (!pollSecret) throw new StepError("INTERNAL", "the server returned no poll secret to a desktop/CLI client");
+    observer({ type: "sign_in", status: "email_sent", detail: `sign-in email sent to ${input.email}` });
+    observer({ type: "sign_in", status: "waiting_for_code", detail: "type the 8-character code from the email, or open the link" });
+
+    const never = new Promise<never>(() => undefined);
+    const aborted = prompt.signal
+      ? new Promise<never>((_r, rej) =>
+          prompt.signal!.addEventListener("abort", () => rej(new StepError("ABORTED", "sign-in cancelled", true)), { once: true }),
+        )
+      : never;
+    const fromLinks = (async (): Promise<{ linkToken: string }> => {
+      if (!prompt.deepLinks) return never;
+      for await (const link of prompt.deepLinks) {
+        const token = parseAuthDeepLink(link, start.requestId);
+        if (token) return { linkToken: token };
+        observer({ type: "warning", code: "DEEP_LINK_IGNORED", message: "ignored a wos:// link that does not belong to this sign-in" });
+      }
+      return never;
+    })();
+
+    const maxCodeTries = 5;
+    for (let tries = 0; ; tries++) {
+      const fromCode = prompt.code().then((code) => ({ code: code.trim().toUpperCase() }));
+      const got = await Promise.race([fromCode, fromLinks, aborted]);
+      try {
+        const r = await this.api.call("redeemEmailSignIn", {
+          body: {
+            requestId: start.requestId,
+            pollSecret,
+            linkToken: "linkToken" in got ? got.linkToken : null,
+            code: "code" in got ? got.code : null,
+          },
+        });
+        if (!r.deviceId) throw new StepError("INTERNAL", "the server registered no device for this client");
+        await writeSession(this.deps.secrets, {
+          accessToken: r.accessToken,
+          accessExpiresAt: r.accessExpiresAt,
+          refreshToken: r.refreshToken,
+          refreshExpiresAt: r.refreshExpiresAt,
+          deviceId: r.deviceId,
+        });
+        observer({ type: "sign_in", status: "redeemed", detail: `signed in as ${r.me.email}` });
+        return r.me;
+      } catch (e) {
+        const retry = e instanceof ApiCallError && e.code === "UNAUTHENTICATED" && "code" in got && tries + 1 < maxCodeTries;
+        observer({ type: "sign_in", status: retry ? "waiting_for_code" : "failed", detail: e instanceof Error ? e.message : String(e) });
+        if (!retry) throw e;
+      }
+    }
+  }
+
+  /** D8: link GitHub (brokered device flow) for a signed-in account. */
+  async linkGithub(observer: OrchestratorObserver, openUrl: (url: string, userCode: string) => void): Promise<Me> {
     await this.session();
     const me = await this.api.call("getMe", {});
-    if (me.github) return me;
+    if (me.github) {
+      observer({ type: "github_link", status: "linked", detail: `already linked to ${me.github.login}` });
+      return me;
+    }
     const start = await this.api.call("startGithubLink", { body: { flow: "device" } });
     if (start.flow !== "device") throw new StepError("INTERNAL", "server did not start a device flow");
     openUrl(start.verificationUri, start.userCode);
+    observer({ type: "github_link", status: "waiting_for_user", detail: `enter ${start.userCode} at ${start.verificationUri}` });
     for (;;) {
-      await this.sleep(Math.max(this.pollMs, 5000));
-      const r = await this.api.call("pollGithubLink", { body: { linkId: start.linkId } });
-      if (r.status === "linked") return r.me;
+      await this.sleep(Math.max(this.pollMs, start.intervalSeconds * 1000));
+      let r: Awaited<ReturnType<typeof this.api.call<"pollGithubLink">>>;
+      try {
+        r = await this.api.call("pollGithubLink", { body: { linkId: start.linkId } });
+      } catch (e) {
+        if (e instanceof ApiCallError && (e.code === "GITHUB_LINKED_ELSEWHERE" || e.code === "GITHUB_RESERVED")) {
+          observer({ type: "github_link", status: "refused", detail: e.message });
+        }
+        throw e;
+      }
+      if (r.status === "linked") {
+        observer({ type: "github_link", status: "linked", detail: `linked ${r.me.github?.login ?? ""}`.trim() });
+        return r.me;
+      }
       if (r.status === "denied" || r.status === "expired") {
-        observer({ type: "error", code: `GITHUB_LINK_${r.status.toUpperCase()}`, message: `GitHub link ${r.status}`, recoverable: true });
-        throw new StepError(`GITHUB_LINK_${r.status.toUpperCase()}`, `GitHub link ${r.status}`);
+        observer({
+          type: "github_link",
+          status: r.status === "denied" ? "refused" : "expired",
+          detail: `GitHub authorization ${r.status}`,
+        });
+        throw new StepError(`GITHUB_LINK_${r.status.toUpperCase()}`, `GitHub authorization ${r.status}`, true);
       }
     }
   }
@@ -373,20 +460,23 @@ export class OrchestratorImpl {
       emit({ type: "worktree", path: wt.path, baseSha: wt.baseSha });
 
       const limit = this.engines.policy.limits.maxLocalRepairLoops;
-      let manifestPosted = false;
+      let localOutput: string | null = null;
       for (let loop = 0; ; loop++) {
         check();
         this.step(emit, "BUILD", "started", loop === 0 ? `building ${state.abu}` : `local repair ${loop} of ${limit}`);
-        const ctx = await this.engines.buildContext(plan, this.snapshotReader(wt), this.engines.policy);
+        const failing = localOutput;
+        const ctx = await this.engines.buildContext(
+          plan,
+          this.snapshotReader(wt, plan, lease.id, () => failing),
+          this.engines.policy,
+        );
         emit({ type: "context", manifest: ctx.manifest });
-        if (!manifestPosted) {
-          await this.api.call("postManifest", {
-            params: { id: lease.id },
-            body: ctx.manifest,
-            idempotencyKey: idempotencyKey("postManifest", lease.id, ctx.manifest.manifestSha256),
-          });
-          manifestPosted = true;
-        }
+        // One manifest per agent run (contracts 2.0.0): a repair run's manifest includes local:verification-output.
+        await this.api.call("postManifest", {
+          params: { id: lease.id },
+          body: ctx.manifest,
+          idempotencyKey: idempotencyKey("postManifest", lease.id, ctx.manifest.manifestSha256),
+        });
         const run = await this.runAgent(plan, ctx.prompt, ctx.manifest.manifestSha256, wt.path, lease.id, emit, signal);
         const summary = BuildSummary.safeParse(run.output);
         if (!summary.success) throw new StepError("AGENT_OUTPUT_INVALID", "the agent's output does not match build-summary.v1", true);
@@ -422,6 +512,7 @@ export class OrchestratorImpl {
           }
         }
         this.step(emit, "VERIFY", "failed", verification.ok ? "scope validation failed" : `check ${verification.failedId} failed`);
+        localOutput = renderVerificationOutput(verification, validation);
         if (loop + 1 > limit) throw new StepError("LIMIT_REACHED", `local verification still failing after ${limit} repair loops`);
         phase.value = "building";
         const back = await this.api.call("setAttemptPhase", {
@@ -436,7 +527,8 @@ export class OrchestratorImpl {
     }
   }
 
-  private snapshotReader(wt: WorktreeHandle): SnapshotReader {
+  private snapshotReader(wt: WorktreeHandle, plan: ContextPlan, leaseId: string, localOutput: () => string | null): SnapshotReader {
+    const api = this.api;
     return {
       async readFile(path) {
         const oid = (await gitOut(wt.path, ["rev-parse", "--verify", "-q", `${wt.baseSha}:${path}`]).catch(() => null))?.toString().trim();
@@ -453,8 +545,20 @@ export class OrchestratorImpl {
           .sort();
       },
       async readServerDocument(ref) {
-        // No route serves server documents yet (blockers/B-0004-github-build.md).
-        throw new StepError("NOT_IMPLEMENTED", `server document ${ref}: no control-plane route exists`);
+        if (ref === LOCAL_VERIFICATION_REF) {
+          // local_document: produced here, never fetched (see blockers/B-0005-github-build.md for the reader contract).
+          const text = localOutput();
+          if (text === null) throw new StepError("NOT_FOUND", `${ref}: no failing local verification in this lease yet`);
+          return new TextEncoder().encode(text);
+        }
+        const selector = plan.artifacts.find((a) => a.kind === "server_document" && a.ref === ref);
+        if (selector?.kind !== "server_document") throw new StepError("FORBIDDEN", `server document ${ref} is not in this lease's plan`);
+        const doc = await api.call("getLeaseDocument", { params: { id: leaseId }, query: { ref } });
+        const bytes = Buffer.from(doc.contentBase64, "base64");
+        if (doc.ref !== ref || doc.sha256 !== selector.sha256 || sha256Of(bytes) !== selector.sha256) {
+          throw new StepError("DOCUMENT_MISMATCH", `server document ${ref} does not match the plan's sha256`);
+        }
+        return new Uint8Array(bytes);
       },
     };
   }
@@ -513,7 +617,6 @@ export class OrchestratorImpl {
     emit({ type: "agent_exited", exitCode: res.exitCode, durationMs: res.durationMs });
     if (res.exitCode !== 0) throw new StepError("AGENT_FAILED", `${inv.binary} exited ${res.exitCode}: ${tail(stderr)}`, true);
     const parsed = await parseAgentOutput(plan.provider, stdout, paths.lastMessagePath);
-    const key = await deviceKey(this.deps.secrets);
     const unsigned: Omit<AgentRunRecord, "signature"> = {
       schema: "wos-agent-run.v1",
       leaseId,
@@ -525,15 +628,15 @@ export class OrchestratorImpl {
       modelIdRequested: plan.modelId,
       modelIdReported: parsed.model,
       reasoningRequested: plan.reasoning,
-      argvSha256: sha256Prefixed(canonicalJson(inv.argv)),
+      argvSha256: sha256Of(canonicalJson(inv.argv)),
       startedAt,
       endedAt: this.now().toISOString(),
       exitCode: res.exitCode,
-      transcriptSha256: sha256Prefixed(stdout),
+      transcriptSha256: sha256Of(stdout),
       outputSha256: canonicalSha256(parsed.output ?? null),
       usage: parsed.usage,
     };
-    const record: AgentRunRecord = { ...unsigned, signature: signCanonical(key.privateKeyPem, unsigned) };
+    const record = await signAgentRunWithDevice(this.deps.secrets, unsigned);
     const posted = await this.api.call("postAgentRun", {
       params: { id: leaseId },
       body: record,
@@ -551,7 +654,7 @@ export class OrchestratorImpl {
     plan: ContextPlan,
     emit: OrchestratorObserver,
     signal?: AbortSignal,
-  ): Promise<{ ok: boolean; failedId: string | null; results: Changeset["localVerification"] }> {
+  ): Promise<{ ok: boolean; failedId: string | null; failureOutput: string; results: Changeset["localVerification"] }> {
     const manifest = await this.repoManifest(wt);
     const spec = await this.abuSpec(wt, plan);
     const steps: Array<{ id: string; run: string[]; timeoutSeconds: number }> = [
@@ -582,13 +685,13 @@ export class OrchestratorImpl {
         id: s.id,
         exitCode: r.exitCode,
         durationMs: Math.max(0, Math.round(r.durationMs)),
-        outputSha256: sha256Prefixed(out),
+        outputSha256: sha256Of(out),
       });
       const ok = r.exitCode === 0;
       emit({ type: "verify", checkId: s.id, status: ok ? "passed" : "failed", exitCode: r.exitCode, outputTail: tail(out) });
-      if (!ok) return { ok: false, failedId: s.id, results };
+      if (!ok) return { ok: false, failedId: s.id, failureOutput: tail(out), results };
     }
-    return { ok: true, failedId: null, results };
+    return { ok: true, failedId: null, failureOutput: "", results };
   }
 
   private async repoManifest(wt: WorktreeHandle): Promise<RepoManifest> {
@@ -628,7 +731,7 @@ export class OrchestratorImpl {
     }));
     if (cap.files.length === 0) errors.push({ code: "EMPTY_DIFF", path: null, message: "the agent changed nothing" });
     if (errors.length > 0) return { changeset: null, validation: { ok: false, errors } };
-    const changeset = await this.signChangeset({
+    const changeset = await signChangesetWithDevice(this.deps.secrets, {
       schema: "wos-changeset.v1",
       taskId: plan.taskId,
       leaseId,
@@ -652,12 +755,6 @@ export class OrchestratorImpl {
       existingPaths: new Set(existing),
     });
     return { changeset, validation };
-  }
-
-  private async signChangeset(c: Omit<Changeset, "signature">): Promise<Changeset> {
-    const key = await deviceKey(this.deps.secrets);
-    const signed = { ...c, files: c.files.map((f) => (f.op === "upsert" ? { ...f, contentBase64: f.sha256 } : f)) };
-    return { ...c, signature: signCanonical(key.privateKeyPem, signed) };
   }
 
   // ------------------------------------------------------------------------------ wait, revise
@@ -838,7 +935,11 @@ export class OrchestratorImpl {
           "started",
           `reviewing ${plan.abu ?? plan.feature ?? plan.target} at ${plan.source.commit.slice(0, 12)}`,
         );
-        const ctx = await this.engines.buildContext(plan, this.snapshotReader(wt), this.engines.policy);
+        const ctx = await this.engines.buildContext(
+          plan,
+          this.snapshotReader(wt, plan, claim.lease.id, () => null),
+          this.engines.policy,
+        );
         observer({ type: "context", manifest: ctx.manifest });
         await this.api.call("postManifest", {
           params: { id: claim.lease.id },
@@ -876,7 +977,7 @@ export class OrchestratorImpl {
       });
       task = claim.task;
       observer({ type: "lease", lease: claim.lease });
-      if (claim.task.kind === "abu_revision" && claim.attempt) {
+      if (claim.contextPlan.taskKind === "abu_revision" && claim.attempt) {
         const prior = (await this.listStates()).find((x) => x.attemptId === claim.attempt!.id);
         const state: AttemptState = prior ?? {
           attemptId: claim.attempt.id,
@@ -895,7 +996,7 @@ export class OrchestratorImpl {
         body: { reason: "this client cannot run this task kind yet" },
         idempotencyKey: idempotencyKey("release", claim.lease.id),
       });
-      throw new StepError("NOT_IMPLEMENTED", `task kind ${claim.task.kind} is not supported by this orchestrator build yet`);
+      throw new StepError("NOT_IMPLEMENTED", `task kind ${claim.contextPlan.taskKind} is not supported by this orchestrator build yet`);
     } catch (e) {
       return this.failure(e, task, observer);
     }
@@ -916,12 +1017,42 @@ function stripAttempt(a: AttemptView & { reviews?: unknown; openFindings?: unkno
   return view;
 }
 
-/** BUILD-PROTOCOL.md section 6: sha256 of JCS {parentCommit, files: [{path, op, mode, sha256}] sorted by path}; deletes carry path and op only. */
-export function submissionSha256(parentCommit: string, files: ChangesetFile[]): string {
-  const entries = files
-    .map((f) => (f.op === "upsert" ? { path: f.path, op: f.op, mode: f.mode, sha256: f.sha256 } : { path: f.path, op: f.op }))
-    .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-  return canonicalSha256({ parentCommit, files: entries });
+const LOCAL_VERIFICATION_REF = "local:verification-output";
+
+/** The local_document a repair run sees: the failing check's output tail and any scope errors. */
+function renderVerificationOutput(
+  verification: { ok: boolean; failedId: string | null; failureOutput: string },
+  validation: ChangesetValidation,
+): string {
+  const lines = ["# Local verification failed (wOS)", ""];
+  if (!verification.ok)
+    lines.push(
+      `Check \`${verification.failedId}\` failed. Output (last ${OUTPUT_TAIL} characters):`,
+      "",
+      "```",
+      verification.failureOutput,
+      "```",
+      "",
+    );
+  if (!validation.ok) {
+    lines.push("Scope validation errors:", "");
+    for (const e of validation.errors) lines.push(`- ${e.code}${e.path ? ` ${e.path}` : ""}: ${e.message}`);
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+/** Parses `wos://auth?r=<requestId>&t=<token>`; returns the token only when `r` matches this sign-in. */
+export function parseAuthDeepLink(link: string, requestId: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(link);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "wos:" || url.hostname !== "auth") return null;
+  const r = url.searchParams.get("r");
+  const t = url.searchParams.get("t");
+  return r === requestId && t ? t : null;
 }
 
 /** Agent output: claude stream-json `result` event (structured_output or JSON text), codex `-o` last message. UNVERIFIED shapes. */

@@ -8,7 +8,9 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { sha256Of } from "@waronsaas/contracts/canonical";
 import {
+  DEFAULT_TOOLCHAIN_PATHS,
   type AttemptView,
   type Changeset,
   type ContextPlan,
@@ -40,6 +42,7 @@ export const REPO = "waronsaas/suite";
 export const TARGET = "salesforce";
 export const FEATURE = "contacts";
 export const ABU_KEY = "contacts#04";
+export const SIGNIN_REQUEST_ID = "0192ab3c-0000-7000-8000-00000000beef";
 
 export const WOS_JSON = {
   schema: "wos-repo.v1",
@@ -54,6 +57,7 @@ export const WOS_JSON = {
   generatedPaths: [],
   migrationsDir: null,
   maxChangesetBytes: 4000000,
+  toolchainPaths: [...DEFAULT_TOOLCHAIN_PATHS],
 };
 
 export function makeUpstream(): { dir: string; base: string } {
@@ -93,6 +97,16 @@ export class FakeControlPlane {
   readonly agentRuns: unknown[] = [];
   readonly abuId: string;
   outcomes: Outcome = { ci: [], review: [], merge: [] };
+  readonly documentRequests: string[] = [];
+  readonly manifestBodies: Array<{ artifacts: unknown[]; manifestSha256: string }> = [];
+  readonly signInStarts: Array<Record<string, unknown>> = [];
+  readonly redeems: Array<Record<string, unknown>> = [];
+  githubLinkScript: Array<"pending" | "linked" | "denied" | "expired" | "elsewhere"> = [];
+  meOverride: Partial<Me> | null = null;
+
+  taskSpec(taskId: string): string {
+    return `# Task ${taskId}\n\nBuild ${ABU_KEY}: contact list endpoint.\n`;
+  }
 
   constructor(
     private readonly upstream: { dir: string; base: string },
@@ -112,6 +126,13 @@ export class FakeControlPlane {
 
   me(): Me {
     return {
+      ...this.baseMe(),
+      ...this.meOverride,
+    };
+  }
+
+  private baseMe(): Me {
+    return {
       id: "0192ab3c-0000-7000-8000-00000000aaaa",
       email: "dev@example.com",
       handle: "octo-dev",
@@ -128,10 +149,11 @@ export class FakeControlPlane {
     };
   }
 
-  private plan(taskId: string, leaseId: string, attemptId: string, commit: string): ContextPlan {
+  private plan(taskId: string, taskKind: "abu_build" | "abu_revision", leaseId: string, attemptId: string, commit: string): ContextPlan {
     return {
       schema: "wos-context-plan.v1",
       taskId,
+      taskKind,
       leaseId,
       role: "builder",
       model: "opus",
@@ -146,7 +168,10 @@ export class FakeControlPlane {
       attemptId,
       roundId: null,
       source: { repo: REPO, commit },
-      artifacts: [],
+      artifacts: [
+        { kind: "server_document", ref: `wos:task/${taskId}`, sha256: sha256Of(this.taskSpec(taskId)), required: true },
+        { kind: "local_document", ref: "local:verification-output", required: false },
+      ],
       excludeGlobs: [],
       promptTemplateId: "builder.v1",
       budgetTokens: 100000,
@@ -187,8 +212,10 @@ export class FakeControlPlane {
       state,
       role: "builder",
       reviewerSlot: null,
-      target: TARGET,
+      target: null,
       feature: FEATURE,
+      relevantTo: [TARGET],
+      repo: REPO,
       abu: ABU_KEY,
       attemptId,
       documentId: null,
@@ -288,6 +315,7 @@ export class FakeControlPlane {
               requirements: ["R-001"],
               relevantTo: [TARGET],
               claimable: true,
+              repo: REPO,
               pr: null,
             },
           ],
@@ -298,7 +326,9 @@ export class FakeControlPlane {
         const a: Attempt = {
           id: this.id(),
           abu: ABU_KEY,
-          target: TARGET,
+          feature: FEATURE,
+          relevantTo: [TARGET],
+          repo: REPO,
           state: "leased",
           builderHandle: "octo-dev",
           baseSha: this.upstream.base,
@@ -315,7 +345,51 @@ export class FakeControlPlane {
         this.attempts.set(a.id, a);
         task.attemptId = a.id;
         const lease = this.lease(task.id, a.id);
-        return { task, lease: this.leaseView(lease), contextPlan: this.plan(task.id, lease.id, a.id, a.baseSha), attempt: this.view(a) };
+        return {
+          task,
+          lease: this.leaseView(lease),
+          contextPlan: this.plan(task.id, "abu_build", lease.id, a.id, a.baseSha),
+          attempt: this.view(a),
+        };
+      }
+      case "getLeaseDocument": {
+        const l = this.activeLease(params.id!);
+        this.documentRequests.push(query.ref!);
+        if (query.ref !== `wos:task/${l.taskId}`) throw new HttpErr(403, "FORBIDDEN", "ref not in this lease's plan");
+        const text = this.taskSpec(l.taskId);
+        return { ref: query.ref, sha256: sha256Of(text), contentBase64: Buffer.from(text).toString("base64") };
+      }
+      case "startEmailSignIn":
+        this.signInStarts.push(body as never);
+        return { requestId: SIGNIN_REQUEST_ID, pollSecret: "poll-secret-xyz", expiresAt: this.ts(15) };
+      case "redeemEmailSignIn": {
+        this.redeems.push(body as never);
+        const ok = body?.pollSecret === "poll-secret-xyz" && (body?.code === "ABCD-EFGH" || body?.linkToken === "good-token");
+        if (!ok) throw new HttpErr(401, "UNAUTHENTICATED", "wrong code");
+        return {
+          accessToken: "test-access",
+          accessExpiresAt: "2026-09-29T13:00:00Z",
+          refreshToken: "test-refresh",
+          refreshExpiresAt: "2026-10-29T12:00:00Z",
+          deviceId: "0192ab3c-0000-7000-8000-0000000000dd",
+          created: false,
+          me: this.me(),
+        };
+      }
+      case "startGithubLink":
+        return {
+          flow: "device",
+          linkId: "0192ab3c-0000-7000-8000-00000000c1c1",
+          userCode: "WOS1-2345",
+          verificationUri: "https://github.com/login/device",
+          intervalSeconds: 5,
+          expiresAt: this.ts(15),
+        };
+      case "pollGithubLink": {
+        const next = this.githubLinkScript.shift() ?? "pending";
+        if (next === "elsewhere") throw new HttpErr(409, "GITHUB_LINKED_ELSEWHERE", "this GitHub account is linked to another wOS account");
+        if (next === "linked") return { status: "linked", me: this.me() };
+        return { status: next };
       }
       case "heartbeat":
         return this.leaseView(this.leases.get(params.id!)!);
@@ -323,6 +397,7 @@ export class FakeControlPlane {
         const l = this.activeLease(params.id!);
         const a = this.attempts.get(l.attemptId!)!;
         this.manifests.push(String(body?.manifestSha256));
+        this.manifestBodies.push(body as never);
         if (a.state === "leased") this.move(a, "building");
         return { accepted: true, manifestId: this.id() };
       }
@@ -370,7 +445,12 @@ export class FakeControlPlane {
           a.baseSha = git(this.upstream.dir, "rev-parse", "main");
           commit = a.baseSha;
         }
-        return { task: t, lease: this.leaseView(lease), contextPlan: this.plan(t.id, lease.id, a.id, commit), attempt: this.view(a) };
+        return {
+          task: t,
+          lease: this.leaseView(lease),
+          contextPlan: this.plan(t.id, "abu_revision", lease.id, a.id, commit),
+          attempt: this.view(a),
+        };
       }
       case "releaseLease": {
         const l = this.leases.get(params.id!)!;

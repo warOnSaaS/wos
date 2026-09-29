@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { computeManifestSha256, sha256Of } from "@waronsaas/contracts/canonical";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -92,14 +92,33 @@ const ABU_SPEC: AbuSpec = {
 export const fakeEngines: Partial<Engines> = {
   policy: AGENT_POLICY_V1,
   async buildContext(plan: ContextPlan, reader) {
+    const artifacts: ContextManifest["artifacts"] = [];
+    const excluded: ContextManifest["excluded"] = [];
     const file = await reader.readFile("modules/contacts/list.ts");
-    const digest = createHash("sha256")
-      .update(`${plan.taskId}:${plan.source.commit}:${file?.gitBlobOid ?? ""}`)
-      .digest("hex");
-    const manifest: ContextManifest = {
+    if (file) {
+      artifacts.push({
+        kind: "repo_file",
+        ref: "modules/contacts/list.ts",
+        gitBlobOid: file.gitBlobOid,
+        sha256: sha256Of(file.bytes),
+        bytes: file.bytes.byteLength,
+        estTokens: 10,
+      });
+    }
+    for (const a of plan.artifacts) {
+      if (a.kind === "repo_file" || a.kind === "repo_glob") continue;
+      try {
+        const bytes = await reader.readServerDocument(a.ref);
+        artifacts.push({ kind: a.kind, ref: a.ref, gitBlobOid: null, sha256: sha256Of(bytes), bytes: bytes.byteLength, estTokens: 10 });
+      } catch (e) {
+        if (a.required) throw e;
+        excluded.push({ ref: a.ref, reason: "missing_optional" });
+      }
+    }
+    const unhashed: Omit<ContextManifest, "manifestSha256"> = {
       schema: "wos-context-manifest.v1",
       contextFormatVersion: plan.contextFormatVersion,
-      contractsVersion: "1.0.0",
+      contractsVersion: "3.0.0",
       policyVersion: plan.policyVersion,
       role: plan.role,
       provider: plan.provider,
@@ -107,19 +126,19 @@ export const fakeEngines: Partial<Engines> = {
       reasoning: plan.reasoning,
       target: plan.target,
       feature: plan.feature,
-      task: { id: plan.taskId, kind: "abu_build" },
+      task: { id: plan.taskId, kind: plan.taskKind },
       abu: plan.abu,
       attemptId: plan.attemptId,
       roundId: plan.roundId,
       source: plan.source,
       promptTemplate: { id: plan.promptTemplateId, sha256: `sha256:${"1".repeat(64)}` },
-      artifacts: [],
-      excluded: [],
+      artifacts,
+      excluded,
       budget: { limitTokens: plan.budgetTokens, estimatedTokens: 100 },
       outputSchema: plan.outputSchema,
       renderedPromptSha256: `sha256:${"2".repeat(64)}`,
-      manifestSha256: `sha256:${digest}`,
     };
+    const manifest: ContextManifest = { ...unhashed, manifestSha256: computeManifestSha256(unhashed) };
     return { manifest, prompt: `Build ${plan.abu} at ${plan.source.commit}` };
   },
   buildInvocation(plan) {
