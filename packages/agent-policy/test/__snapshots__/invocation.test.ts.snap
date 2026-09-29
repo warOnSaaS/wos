@@ -1,0 +1,328 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`agent-policy buildInvocation: argv snapshots for all ten roles > agent-policy builder matches the provider template 1`] = `
+{
+  "argv": [
+    "-p",
+    "--model",
+    "claude-opus-5-5",
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--restricted",
+    "--safe-mode",
+    "--strict-mcp-config",
+    "--no-session-persistence",
+    "--session-id",
+    "0190f000-0000-7000-8000-00000000abcd",
+    "--tools",
+    "Read,Grep,Glob,Edit,Write,Bash",
+    "--permission-prompts",
+    "none",
+    "--permission-mode",
+    "acceptEdits",
+    "--allowedTools",
+    "Bash(npm run typecheck)",
+    "Bash(npx vitest run modules/contacts/test/contacts.test.ts)",
+    "--effort",
+    "high",
+    "--json-schema",
+    "<schemaJson build-summary.v1 41464c20bd858be2>",
+  ],
+  "binary": "claude",
+  "env": {
+    "CLAUDE_CODE_SAFE_MODE": "1",
+  },
+}
+`;
+
+exports[`agent-policy buildInvocation: argv snapshots for all ten roles > agent-policy conflict_resolver matches the provider template 1`] = `
+{
+  "argv": [
+    "-p",
+    "--model",
+    "claude-fable-5-1",
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--restricted",
+    "--safe-mode",
+    "--strict-mcp-config",
+    "--no-session-persistence",
+    "--session-id",
+    "0190f000-0000-7000-8000-00000000abcd",
+    "--tools",
+    "Read,Grep,Glob",
+    "--permission-prompts",
+    "none",
+    "--permission-mode",
+    "dontAsk",
+    "--effort",
+    "max",
+    "--json-schema",
+    "<schemaJson ruling.v1 bf2c3bf8aeb00ee3>",
+  ],
+  "binary": "claude",
+  "env": {
+    "CLAUDE_CODE_SAFE_MODE": "1",
+  },
+}
+`;
+
+exports[`agent-policy buildInvocation: argv snapshots for all ten roles > agent-policy feature_author matches the provider template 1`] = `
+{
+  "argv": [
+    "-p",
+    "--model",
+    "claude-fable-5-1",
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--restricted",
+    "--safe-mode",
+    "--strict-mcp-config",
+    "--no-session-persistence",
+    "--session-id",
+    "0190f000-0000-7000-8000-00000000abcd",
+    "--tools",
+    "Read,Grep,Glob,Edit,Write",
+    "--permission-prompts",
+    "none",
+    "--permission-mode",
+    "acceptEdits",
+    "--effort",
+    "max",
+    "--json-schema",
+    "<schemaJson author-summary.v1 c95cad5205770670>",
+  ],
+  "binary": "claude",
+  "env": {
+    "CLAUDE_CODE_SAFE_MODE": "1",
+  },
+}
+`;
+
+exports[`agent-policy buildInvocation: argv snapshots for all ten roles > agent-policy feature_reviewer_astra matches the provider template 1`] = `
+{
+  "argv": [
+    "exec",
+    "--model",
+    "gpt-6-astra",
+    "--ephemeral",
+    "--ignore-user-config",
+    "--ignore-rules",
+    "-c",
+    "project_doc_max_bytes=0",
+    "-c",
+    "approval_policy="never"",
+    "--json",
+    "-o",
+    "/tmp/wos/last-message.json",
+    "-C",
+    "/work/wos/attempt-3",
+    "--sandbox",
+    "read-only",
+    "-c",
+    "model_reasoning_effort="max"",
+    "--output-schema",
+    "/tmp/wos/schema.json",
+    "-",
+  ],
+  "binary": "codex",
+  "env": {},
+}
+`;
+
+exports[`agent-policy buildInvocation: argv snapshots for all ten roles > agent-policy feature_reviewer_fable matches the provider template 1`] = `
+{
+  "argv": [
+    "-p",
+    "--model",
+    "claude-fable-5-1",
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--restricted",
+    "--safe-mode",
+    "--strict-mcp-config",
+    "--no-session-persistence",
+    "--session-id",
+    "0190f000-0000-7000-8000-00000000abcd",
+    "--tools",
+    "Read,Grep,Glob",
+    "--permission-prompts",
+    "none",
+    "--permission-mode",
+    "dontAsk",
+    "--effort",
+    "max",
+    "--json-schema",
+    "<schemaJson review-verdict.v1 75cf5d8c9de7c85b>",
+  ],
+  "binary": "claude",
+  "env": {
+    "CLAUDE_CODE_SAFE_MODE": "1",
+  },
+}
+`;
+
+exports[`agent-policy buildInvocation: argv snapshots for all ten roles > agent-policy implementation_reviewer_astra matches the provider template 1`] = `
+{
+  "argv": [
+    "exec",
+    "--model",
+    "gpt-6-astra",
+    "--ephemeral",
+    "--ignore-user-config",
+    "--ignore-rules",
+    "-c",
+    "project_doc_max_bytes=0",
+    "-c",
+    "approval_policy="never"",
+    "--json",
+    "-o",
+    "/tmp/wos/last-message.json",
+    "-C",
+    "/work/wos/attempt-3",
+    "--sandbox",
+    "read-only",
+    "-c",
+    "model_reasoning_effort="max"",
+    "--output-schema",
+    "/tmp/wos/schema.json",
+    "-",
+  ],
+  "binary": "codex",
+  "env": {},
+}
+`;
+
+exports[`agent-policy buildInvocation: argv snapshots for all ten roles > agent-policy implementation_reviewer_fable matches the provider template 1`] = `
+{
+  "argv": [
+    "-p",
+    "--model",
+    "claude-fable-5-1",
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--restricted",
+    "--safe-mode",
+    "--strict-mcp-config",
+    "--no-session-persistence",
+    "--session-id",
+    "0190f000-0000-7000-8000-00000000abcd",
+    "--tools",
+    "Read,Grep,Glob",
+    "--permission-prompts",
+    "none",
+    "--permission-mode",
+    "dontAsk",
+    "--effort",
+    "max",
+    "--json-schema",
+    "<schemaJson review-verdict.v1 75cf5d8c9de7c85b>",
+  ],
+  "binary": "claude",
+  "env": {
+    "CLAUDE_CODE_SAFE_MODE": "1",
+  },
+}
+`;
+
+exports[`agent-policy buildInvocation: argv snapshots for all ten roles > agent-policy roadmap_author matches the provider template 1`] = `
+{
+  "argv": [
+    "-p",
+    "--model",
+    "claude-fable-5-1",
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--restricted",
+    "--safe-mode",
+    "--strict-mcp-config",
+    "--no-session-persistence",
+    "--session-id",
+    "0190f000-0000-7000-8000-00000000abcd",
+    "--tools",
+    "Read,Grep,Glob,Edit,Write",
+    "--permission-prompts",
+    "none",
+    "--permission-mode",
+    "acceptEdits",
+    "--effort",
+    "max",
+    "--json-schema",
+    "<schemaJson author-summary.v1 c95cad5205770670>",
+  ],
+  "binary": "claude",
+  "env": {
+    "CLAUDE_CODE_SAFE_MODE": "1",
+  },
+}
+`;
+
+exports[`agent-policy buildInvocation: argv snapshots for all ten roles > agent-policy roadmap_reviewer_astra matches the provider template 1`] = `
+{
+  "argv": [
+    "exec",
+    "--model",
+    "gpt-6-astra",
+    "--ephemeral",
+    "--ignore-user-config",
+    "--ignore-rules",
+    "-c",
+    "project_doc_max_bytes=0",
+    "-c",
+    "approval_policy="never"",
+    "--json",
+    "-o",
+    "/tmp/wos/last-message.json",
+    "-C",
+    "/work/wos/attempt-3",
+    "--sandbox",
+    "read-only",
+    "-c",
+    "model_reasoning_effort="max"",
+    "--output-schema",
+    "/tmp/wos/schema.json",
+    "-",
+  ],
+  "binary": "codex",
+  "env": {},
+}
+`;
+
+exports[`agent-policy buildInvocation: argv snapshots for all ten roles > agent-policy roadmap_reviewer_fable matches the provider template 1`] = `
+{
+  "argv": [
+    "-p",
+    "--model",
+    "claude-fable-5-1",
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--restricted",
+    "--safe-mode",
+    "--strict-mcp-config",
+    "--no-session-persistence",
+    "--session-id",
+    "0190f000-0000-7000-8000-00000000abcd",
+    "--tools",
+    "Read,Grep,Glob",
+    "--permission-prompts",
+    "none",
+    "--permission-mode",
+    "dontAsk",
+    "--effort",
+    "max",
+    "--json-schema",
+    "<schemaJson review-verdict.v1 75cf5d8c9de7c85b>",
+  ],
+  "binary": "claude",
+  "env": {
+    "CLAUDE_CODE_SAFE_MODE": "1",
+  },
+}
+`;
