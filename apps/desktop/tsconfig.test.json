@@ -1,0 +1,17 @@
+{
+  "//": "Desktop tests, dev entries and build scripts. Not part of the root `tsc -b` graph (blocker B-0001-desktop asks the architect to add apps/desktop/test to the root tsconfig.test.json and vitest.config.ts); run with `npm run typecheck:test -w apps/desktop`.",
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "incremental": false,
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "types": ["node"],
+    "allowJs": true,
+    "checkJs": false
+  },
+  "include": ["test/**/*.ts", "test/**/*.tsx", "dev/**/*.ts", "vitest.config.ts"]
+}

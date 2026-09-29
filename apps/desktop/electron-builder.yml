@@ -1,0 +1,60 @@
+# wOS Desktop packaging (owner: desktop workstream). Builds ONLY in GitHub Actions for releases (D7):
+# the macOS dmg is signed with the Developer ID certificate and notarised there, from the protected
+# `release` environment's secrets (CSC_LINK, CSC_KEY_PASSWORD, APPLE_API_KEY, APPLE_API_KEY_ID,
+# APPLE_API_ISSUER; FOUNDER-CHECKLIST section 7). Never sign or notarise from a laptop.
+# The app is dist/app (written by scripts/build.mjs --no-fake): bundled main, preload and renderer,
+# with a dependency-free package.json. The development fake control plane is never packaged.
+appId: com.waronsaas.wos
+productName: wOS
+executableName: wos
+copyright: Copyright warOnSaaS
+electronVersion: 44.4.5
+npmRebuild: false
+nodeGypRebuild: false
+buildDependenciesFromSource: false
+asar: true
+directories:
+  app: dist/app
+  output: release
+  buildResources: build
+files:
+  - main.mjs
+  - preload.cjs
+  - chunks/**
+  - renderer/**
+  - package.json
+  - "!main-fake.mjs"
+  - "!**/*.map"
+  # Everything the main process needs is inlined by scripts/build.mjs; no node_modules ship.
+  - "!node_modules/**"
+  - "!**/node_modules/**"
+protocols:
+  - name: wOS sign-in
+    schemes: [wos]
+mac:
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+  category: public.app-category.developer-tools
+  icon: build/icon.png
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  # Notarisation runs only when APPLE_API_KEY / APPLE_API_KEY_ID / APPLE_API_ISSUER are present (the release job).
+  notarize: true
+  artifactName: wOS-${version}-mac-${arch}.${ext}
+dmg:
+  title: wOS ${version}
+  sign: false
+linux:
+  target:
+    - target: AppImage
+      arch: [x64]
+  category: Development
+  icon: build/icon.png
+  executableName: wos
+  synopsis: wOS Desktop, the warOnSaaS contributor build environment
+  mimeTypes: [x-scheme-handler/wos]
+  artifactName: wOS-${version}-linux-${arch}.${ext}
+publish: null

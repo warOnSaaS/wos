@@ -1,12 +1,15 @@
-/** Renderer entry (owner: desktop workstream). React UI; talks only to window.wos. Phase 0 stub. */
-import type { WosBridge } from "../shared/ipc.js";
+/** Renderer entry (owner: desktop workstream). React UI; talks only to window.wos. */
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import { App } from "./App.js";
 
-declare global {
-  interface Window {
-    wos: WosBridge;
-  }
+const root = document.getElementById("root");
+if (root) {
+  createRoot(root).render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  );
 }
 
-export function App() {
-  return <main>wOS</main>;
-}
+export { App };

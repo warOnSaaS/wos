@@ -1,0 +1,157 @@
+# wOS Desktop release (owner: desktop workstream). Destination: .github/workflows/desktop-release.yml
+# (outside apps/desktop, so it is installed by the architect: blocker B-0004-desktop). Until then it is
+# kept here and asserted by apps/desktop/test/packaging.test.ts.
+#
+# D7 / S-30: signing and notarisation happen ONLY here, never on a laptop. The macOS job runs in the
+# protected `release` environment (required reviewer: the founder) and is the only place the Developer
+# ID certificate and the App Store Connect API key exist. The Linux AppImage needs no secret.
+# A macOS artefact that is not signed, notarised and stapled is never uploaded.
+name: desktop-release
+
+on:
+  push:
+    tags: ["desktop-v*"]
+  workflow_dispatch:
+  pull_request:
+    paths: ["apps/desktop/**", "packages/**", ".github/workflows/desktop-release.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # Unsigned build + the Electron security smoke test on every PR touching the Desktop (no secrets).
+  check:
+    name: bundle and smoke (unsigned)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci --ignore-scripts
+      # --ignore-scripts skips Electron's postinstall; fetch the binary explicitly (pinned by the lockfile).
+      - run: node node_modules/electron/install.js
+      - run: npm run build
+      - run: npm run typecheck:test -w apps/desktop
+      - run: npm run bundle -w apps/desktop
+      - name: security smoke in the real renderer (S-29)
+        run: xvfb-run --auto-servernum npm test -w apps/desktop
+      - name: AppImage (unsigned, not uploaded)
+        run: npx electron-builder --projectDir apps/desktop --config electron-builder.yml --linux AppImage --publish never
+        env:
+          WOS_DESKTOP_VERSION: 0.0.0-pr
+
+  linux:
+    name: Linux AppImage
+    if: startsWith(github.ref, 'refs/tags/desktop-v')
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - run: npm run bundle:release -w apps/desktop
+        env:
+          WOS_DESKTOP_VERSION: ${{ github.ref_name }}
+      - run: npx electron-builder --projectDir apps/desktop --config electron-builder.yml --linux AppImage --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wos-desktop-linux
+          path: apps/desktop/release/*.AppImage
+          if-no-files-found: error
+
+  mac:
+    name: macOS dmg (signed and notarised)
+    if: startsWith(github.ref, 'refs/tags/desktop-v')
+    needs: check
+    runs-on: macos-15
+    timeout-minutes: 60
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - run: npm run bundle:release -w apps/desktop
+        env:
+          WOS_DESKTOP_VERSION: ${{ github.ref_name }}
+      - name: refuse to run without signing credentials
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+        run: |
+          test -n "$CSC_LINK" || { echo "CSC_LINK missing: refusing an unsigned macOS build"; exit 1; }
+          test -n "$APPLE_API_KEY" || { echo "APPLE_API_KEY missing: refusing an un-notarised macOS build"; exit 1; }
+      - name: write the App Store Connect API key
+        env:
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+        run: |
+          printf '%s' "$APPLE_API_KEY" > "$RUNNER_TEMP/AuthKey.p8"
+          echo "APPLE_API_KEY_PATH=$RUNNER_TEMP/AuthKey.p8" >> "$GITHUB_ENV"
+      - name: build, sign and notarise
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: APPLE_API_KEY="$APPLE_API_KEY_PATH" npx electron-builder --projectDir apps/desktop --config electron-builder.yml --mac dmg --publish never
+      - name: refuse an unsigned or un-notarised artefact (S-30)
+        run: |
+          set -euo pipefail
+          for app in apps/desktop/release/mac*/wOS.app; do
+            codesign --verify --deep --strict --verbose=2 "$app"
+            spctl --assess --type execute --verbose "$app"
+            xcrun stapler validate "$app"
+          done
+          for dmg in apps/desktop/release/*.dmg; do
+            xcrun stapler validate "$dmg" || { echo "$dmg is not notarised"; exit 1; }
+          done
+      - name: remove the key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/AuthKey.p8"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wos-desktop-mac
+          path: apps/desktop/release/*.dmg
+          if-no-files-found: error
+
+  release:
+    name: GitHub Release
+    if: startsWith(github.ref, 'refs/tags/desktop-v')
+    needs: [linux, mac]
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+      - name: publish to github.com/waronsaas/wos/releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" out/**/*.dmg out/**/*.AppImage --repo "${{ github.repository }}" --title "wOS Desktop ${{ github.ref_name }}" --generate-notes
