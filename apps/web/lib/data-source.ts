@@ -84,15 +84,16 @@ const isDetail = (b: unknown): b is TargetDetail =>
   isSummary(b) && Array.isArray((b as TargetDetail).surfaces) && Array.isArray((b as TargetDetail).capabilities) &&
   (b as TargetDetail).surfaces.every((s) => isBp(s.specifiedBp) && isBp(s.builtBp));
 
-/** D14: the suite is one web app and one phone app (iPhone and Android). These are the surfaces
- *  every replacement target is tracked on until its roadmap inventories the vendor's surfaces. */
-export const SUITE_SURFACES: Surface[] = ["web", "ios", "android"];
+/** Amendment 01 (contracts 5.0.0): the one wOS product ships on web, desktop, iPhone, Android and an API.
+ *  Every replacement target is tracked on these until its roadmap inventories the vendor's surfaces. */
+export const SUITE_SURFACES: Surface[] = ["web", "desktop", "ios", "android", "api"];
 
 export const SURFACE_LABEL: Record<Surface, string> = {
   web: "Web",
   ios: "iPhone",
   android: "Android",
   desktop: "Desktop",
+  api: "API",
   cli: "CLI",
   browser_extension: "Browser extension",
   email_addin: "Email add-in",
