@@ -119,7 +119,7 @@ function scenario(role: (typeof PLANNING_ROLES)[number]) {
     artifacts,
     excludeGlobs: [],
     promptTemplateId: PROMPT_TEMPLATE_BY_ROLE[role],
-    budgetTokens: rp.contextBudgetTokens,
+    budgetTokens: rp.budgetOverrides.find((o) => o.model === model.ref)?.contextBudgetTokens ?? rp.contextBudgetTokens,
     outputSchema: rp.outputSchema,
     allowedCommands: [],
   };

@@ -260,7 +260,7 @@ const planFor = (role: AgentRole): ContextPlan => {
     excludeGlobs: [],
     // Integration glue: reviewer slots share one template per family (CONTEXT-PROTOCOL.md section 3).
     promptTemplateId: `tpl.${role.replace(/_(astra|fable)$/, "")}.v1`,
-    budgetTokens: rp.contextBudgetTokens,
+    budgetTokens: rp.budgetOverrides.find((o) => o.model === model.ref)?.contextBudgetTokens ?? rp.contextBudgetTokens,
     outputSchema: rp.outputSchema,
     allowedCommands: role === "builder" ? [["npm", "test"]] : [],
   };

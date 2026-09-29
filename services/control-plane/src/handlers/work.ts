@@ -104,7 +104,20 @@ async function attemptOfTask(tx: Tx, task: TaskRow, accountId: string): Promise<
 async function claimResponse(tx: Tx, deps: Deps, taskId: string, lease: LeaseRow, plan: ContextPlan, attemptId: string | null) {
   const task = (await loadTask(tx, taskId))!;
   const attempt = attemptId ? await loadAttempt(tx, attemptId) : null;
-  return { task: taskView(task), lease: leaseView(lease, deps.policy), contextPlan: plan, attempt: attempt ? attemptView(attempt) : null };
+  // contracts 4.2.0 (B-0008-github-build), integration glue: review claims carry the round a verdict must bind to.
+  let round = null;
+  if (task.round_id) {
+    const [r] = await tx<{ id: string; round_number: number; head_sha: string; submission_sha256: string }[]>`
+      select id, round_number, head_sha, submission_sha256 from wos.rounds where id = ${task.round_id}`;
+    if (r) round = { id: r.id, number: r.round_number, headSha: r.head_sha, submissionSha256: r.submission_sha256 };
+  }
+  return {
+    task: taskView(task),
+    lease: leaseView(lease, deps.policy),
+    contextPlan: plan,
+    attempt: attempt ? attemptView(attempt) : null,
+    round,
+  };
 }
 
 async function withGithubRetries<T>(deps: Deps, what: string, fn: () => Promise<T>): Promise<T> {

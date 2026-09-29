@@ -13,6 +13,7 @@ import {
   type ModelSpec,
   type ReasoningLevel,
   type RepoManifest,
+  PROMPT_TEMPLATE_BY_ROLE,
 } from "@waronsaas/contracts";
 import type { Tx } from "@waronsaas/db";
 import type { Deps } from "../deps.js";
@@ -21,18 +22,8 @@ import type { TaskRow } from "../views.js";
 
 export const SECRET_EXCLUDE_GLOBS = ["**/.env*", "**/*.pem", "**/*.key", "**/id_*"];
 
-const TEMPLATE_BY_ROLE: Record<AgentRole, string> = {
-  builder: "tpl.builder.v1",
-  roadmap_author: "tpl.roadmap_author.v1",
-  roadmap_reviewer_astra: "tpl.roadmap_reviewer.v1",
-  roadmap_reviewer_fable: "tpl.roadmap_reviewer.v1",
-  feature_author: "tpl.feature_author.v1",
-  feature_reviewer_astra: "tpl.feature_reviewer.v1",
-  feature_reviewer_fable: "tpl.feature_reviewer.v1",
-  implementation_reviewer_astra: "tpl.implementation_reviewer.v1",
-  implementation_reviewer_fable: "tpl.implementation_reviewer.v1",
-  conflict_resolver: "tpl.conflict_resolver.v1",
-};
+// contracts 4.2.0: the one role-to-template map lives in contracts (integration glue).
+const TEMPLATE_BY_ROLE = PROMPT_TEMPLATE_BY_ROLE;
 
 /** Renders a server document by ref, or null when the ref is unknown. Deterministic for fixed database state. */
 export async function renderServerDocument(tx: Tx, deps: Deps, ref: string): Promise<string | null> {
@@ -264,6 +255,8 @@ export async function buildPlan(tx: Tx, deps: Deps, input: PlanInput): Promise<C
     for (const t of abu.acceptance.tests) push(repoGlob(repo, t, true));
     if (input.priorRound > 0 && input.subjectId) push(serverDoc(tx, deps, `wos:findings/${input.subjectId}@${input.priorRound}`, true));
     if (input.ciFailed && input.headSha && input.subjectId) push(serverDoc(tx, deps, `wos:ci/${input.subjectId}@${input.headSha}`, true));
+    // B-0007-github-build (integration glue): repair runs see why their local checks failed.
+    push({ kind: "local_document", ref: "local:verification-output", required: false });
     for (const r of abu.scope.read) push(repoGlob(repo, r, false));
     push(repoFile(repo, ARTIFACT_PATHS.buildGraph(feature!), false));
     for (const step of input.repoManifest?.verify ?? []) allowedCommands.push(step.run);
@@ -320,11 +313,15 @@ export async function buildPlan(tx: Tx, deps: Deps, input: PlanInput): Promise<C
     abu: task.abu_key,
     attemptId: input.attemptId ?? task.attempt_id,
     roundId: task.round_id,
+    // contracts 3.1.0 roundNumber for review plans (the current round = prior + 1), integration glue.
+    ...(role.includes("_reviewer_") && task.round_id ? { roundNumber: input.priorRound + 1 } : {}),
     source,
     artifacts,
     excludeGlobs: SECRET_EXCLUDE_GLOBS,
     promptTemplateId: TEMPLATE_BY_ROLE[role],
-    budgetTokens: policyRole.contextBudgetTokens,
+    // D15 (contracts 4.1.0), integration glue: the per-model override when the policy has one.
+    budgetTokens:
+      policyRole.budgetOverrides.find((o) => o.model === input.model.ref)?.contextBudgetTokens ?? policyRole.contextBudgetTokens,
     outputSchema: policyRole.outputSchema,
     allowedCommands,
   };

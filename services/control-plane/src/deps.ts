@@ -26,6 +26,7 @@ import {
   parseInventoryYaml,
   parseRoadmapYaml,
   validateBuildGraph,
+  validateFeatureContract,
   validateRoadmap,
 } from "@waronsaas/planning";
 import { computeLedgerDrafts } from "@waronsaas/rewards";
@@ -125,6 +126,8 @@ export interface Logic {
   parseBuildGraphYaml: typeof parseBuildGraphYaml;
   validateRoadmap: typeof validateRoadmap;
   validateBuildGraph: typeof validateBuildGraph;
+  /** contracts 4.2.0 (B-0002-planning), integration glue. */
+  validateFeatureContract: typeof validateFeatureContract;
 }
 
 export const DEFAULT_LOGIC: Logic = {
@@ -140,6 +143,7 @@ export const DEFAULT_LOGIC: Logic = {
   parseBuildGraphYaml,
   validateRoadmap,
   validateBuildGraph,
+  validateFeatureContract,
 };
 
 export interface Config {

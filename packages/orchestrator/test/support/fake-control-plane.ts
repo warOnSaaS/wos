@@ -244,7 +244,7 @@ export class FakeControlPlane {
       ],
       excludeGlobs: [...SECRET_PATTERNS],
       promptTemplateId: PROMPT_TEMPLATE_BY_ROLE[roleName],
-      budgetTokens: role.contextBudgetTokens,
+      budgetTokens: role.budgetOverrides.find((o) => o.model === model.ref)?.contextBudgetTokens ?? role.contextBudgetTokens,
       outputSchema: role.outputSchema,
       allowedCommands: [],
     };
@@ -303,7 +303,7 @@ export class FakeControlPlane {
       artifacts,
       excludeGlobs: [...SECRET_PATTERNS],
       promptTemplateId: PROMPT_TEMPLATE_BY_ROLE[roleName],
-      budgetTokens: role.contextBudgetTokens,
+      budgetTokens: role.budgetOverrides.find((o) => o.model === model.ref)?.contextBudgetTokens ?? role.contextBudgetTokens,
       outputSchema: role.outputSchema,
       allowedCommands: [],
     };
@@ -349,7 +349,7 @@ export class FakeControlPlane {
       }),
       excludeGlobs: [...SECRET_PATTERNS],
       promptTemplateId: PROMPT_TEMPLATE_BY_ROLE.builder,
-      budgetTokens: role.contextBudgetTokens,
+      budgetTokens: role.budgetOverrides.find((o) => o.model === model.ref)?.contextBudgetTokens ?? role.contextBudgetTokens,
       outputSchema: role.outputSchema,
       allowedCommands: [...WOS_JSON.verify.map((v) => v.run), ...ABU_SPEC.acceptance.checks.map((c) => c.run)],
     };

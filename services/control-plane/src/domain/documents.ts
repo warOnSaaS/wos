@@ -280,6 +280,15 @@ export async function validateDocumentRevision(
     const a = graph.value.abus.find((x) => x.key === abuKey);
     return a ? Math.ceil((ct.length + JSON.stringify(a).length) / deps.policy.tokenEstimator.charsPerToken) : 0;
   };
+  // contracts 4.2.0 (B-0002-planning), integration glue: contract-level rules against the latest merged version.
+  const [prevDoc] = await tx<{ merged_sha: string }[]>`
+    select merged_sha from wos.documents where kind = 'feature_contract' and catalog_feature_id = ${doc.catalog_feature_id}
+       and state = 'merged' order by version desc limit 1`;
+  const prevText = prevDoc ? await deps.github.readFileAt(doc.repo, prevDoc.merged_sha, ARTIFACT_PATHS.featureContract(key)) : null;
+  const prevParsed = prevText ? deps.logic.parseFeatureContractYaml(new TextDecoder().decode(prevText)) : null;
+  for (const i of deps.logic.validateFeatureContract(contract.value, prevParsed?.ok ? prevParsed.value : null)) {
+    errors.push({ path: ARTIFACT_PATHS.featureContract(key), code: i.code, message: i.message });
+  }
   for (const i of deps.logic.validateBuildGraph(graph.value, contract.value, manifest, estimate, deps.policy)) {
     errors.push({ path: `${ARTIFACT_PATHS.buildGraph(key)}${i.abu ? `:${i.abu}` : ""}`, code: i.code, message: i.message });
   }

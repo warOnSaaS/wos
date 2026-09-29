@@ -103,6 +103,13 @@ export function validateBuildGraph(
   // --- keys ---
   if (graph.feature !== feature)
     add("KEY_NOT_IN_FEATURE", null, `BUILD-GRAPH.yaml is for ${graph.feature} but CONTRACT.yaml is for ${feature}`);
+  // contracts 4.2.0 (B-0001-planning reading 7), integration glue.
+  if (graph.contractVersion !== contract.version)
+    add(
+      "CONTRACT_VERSION_MISMATCH",
+      null,
+      `BUILD-GRAPH.yaml is for contract version ${graph.contractVersion} but CONTRACT.yaml is version ${contract.version}`,
+    );
   const byKey = new Map<string, AbuSpec>();
   for (const a of abus) {
     if (byKey.has(a.key)) add("DUPLICATE_KEY", a.key, `ABU key ${a.key} is used more than once`);

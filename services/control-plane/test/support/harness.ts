@@ -290,13 +290,24 @@ export const FAKE_LOGIC: Logic = {
   parseBuildGraphYaml: parseWith(BuildGraph),
   validateRoadmap: () => [],
   validateBuildGraph: () => [],
+  validateFeatureContract: () => [],
 };
 
-/** The real Wave 1 implementations (context-policy, verification), exactly as in DEFAULT_LOGIC. */
+/** The real implementations (context-policy, verification, planning), exactly as in DEFAULT_LOGIC; rewards stays fake until its loader exists. */
 export const REAL_WAVE1_LOGIC: Partial<Logic> = {
   checkEligibility: DEFAULT_LOGIC.checkEligibility,
   checkManifestAgainstPlan: DEFAULT_LOGIC.checkManifestAgainstPlan,
   validateChangeset: DEFAULT_LOGIC.validateChangeset,
+  // Wave 2a integration glue: the real planning package (parsers, validators, round outcome).
+  computeRoundOutcome: DEFAULT_LOGIC.computeRoundOutcome,
+  parseRoadmapYaml: DEFAULT_LOGIC.parseRoadmapYaml,
+  parseInventoryYaml: DEFAULT_LOGIC.parseInventoryYaml,
+  parseCatalogEntryYaml: DEFAULT_LOGIC.parseCatalogEntryYaml,
+  parseFeatureContractYaml: DEFAULT_LOGIC.parseFeatureContractYaml,
+  parseBuildGraphYaml: DEFAULT_LOGIC.parseBuildGraphYaml,
+  validateRoadmap: DEFAULT_LOGIC.validateRoadmap,
+  validateBuildGraph: DEFAULT_LOGIC.validateBuildGraph,
+  validateFeatureContract: DEFAULT_LOGIC.validateFeatureContract,
 };
 
 // biome-ignore lint/suspicious/noExplicitAny: test responses are asserted field by field

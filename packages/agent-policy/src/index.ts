@@ -160,8 +160,10 @@ export function checkPlanAgainstPolicy(plan: ContextPlan, policy: AgentPolicyDoc
     reasons.push(`PROVIDER_MISMATCH: ${model.ref} runs on ${model.provider}, plan says ${plan.provider}`);
   if (!policy.providers.some((p) => p.id === plan.provider)) reasons.push(`UNKNOWN_PROVIDER: ${plan.provider}`);
   reasons.push(...reasoningLevelProblems(role, model, plan.reasoning));
-  if (plan.budgetTokens !== role.contextBudgetTokens) {
-    reasons.push(`BUDGET_MISMATCH: ${role.role} budget is ${role.contextBudgetTokens}, plan says ${plan.budgetTokens}`);
+  // D15 (contracts 4.1.0), integration glue: a per-model override replaces the role default.
+  const budget = role.budgetOverrides.find((o) => o.model === plan.model)?.contextBudgetTokens ?? role.contextBudgetTokens;
+  if (plan.budgetTokens !== budget) {
+    reasons.push(`BUDGET_MISMATCH: ${role.role} budget for ${plan.model} is ${budget}, plan says ${plan.budgetTokens}`);
   }
   if (plan.outputSchema !== role.outputSchema) {
     reasons.push(`OUTPUT_SCHEMA_MISMATCH: ${role.role} outputs ${role.outputSchema}, plan says ${plan.outputSchema}`);

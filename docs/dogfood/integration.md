@@ -45,3 +45,22 @@ Adaptations made in other workstreams' paths so `main` stays green; owners revie
 | repo-wide | `waronsaas/suite` and later `waronsaas/replacements` → `waronsaas/product`; `waronsaas/waronsaas` → `waronsaas/wos` (not in apps/web, not in historical records) |
 
 | 2026-09-29 | coordinator | packages/context-engine/test/determinism.test.ts | First GitHub CI run (Linux) failed: the leak test compared the prompt against the real $USER, which is "runner" on GitHub runners, an ordinary word the feature_author template contains. Replaced with sentinel USER/HOSTNAME values, restored afterwards. |
+
+## Wave 2a gate (integration-2a, contracts 4.2.0)
+
+Merged ws/rewards (e5c4843), ws/planning (13e4e9d) and ws/github-build (07e5ae2) onto architect 4.2.0. The only conflicts were blocker files, resolved to the architect's ruled copies.
+
+| # | File (owner) | Edit | Why |
+|---|---|---|---|
+| 1 | `services/control-plane/src/domain/review.ts` (control-plane) | prior findings filtered to `severity = 'material'` | B-0002-planning: a minor finding blocked consensus forever |
+| 2 | `services/control-plane/src/handlers/work.ts` (control-plane) | `ClaimResponse.round` for review claims | B-0008-github-build |
+| 3 | `services/control-plane/src/domain/plans.ts` (control-plane) | builder plans select `local:verification-output`; `roundNumber` on review plans; per-model budget override; template map from contracts | B-0007, 3.1.0, D15, B-0002-planning |
+| 4 | `services/control-plane/src/domain/documents.ts`, `deps.ts` (control-plane) | `validateFeatureContract` against the latest merged contract | B-0002-planning |
+| 5 | `services/control-plane/test/support/harness.ts` (control-plane) | real planning parsers, validators and round outcome in tests (rewards stays fake until its loader exists) | real packages where both sides exist |
+| 6 | `packages/orchestrator/src/orchestrator.ts` (github-build) | `LocalStatus.toolchain`; `ToolName` probes; `review()` binds to `claim.round`; `listClaimableAbus`, `listOpenTasks`, `myWork`, `events` | B-0006, B-0008, B-0009 |
+| 7 | `packages/orchestrator/test/control-plane.e2e.test.ts` (github-build) | the two reviews now run through two reviewer orchestrators' `review()` against the real control plane | B-0008 fixed; gate criterion |
+| 8 | `packages/orchestrator/test/support/fake-control-plane.ts`, snapshots (github-build) | override-aware budgets; status snapshot includes the toolchain | D15, B-0006 |
+| 9 | `packages/context-engine/src/index.ts` (context-policy) | template map re-exported from contracts; manifest check reads `plan.roundNumber` | B-0002-planning, 3.1.0 |
+| 10 | `packages/agent-policy/src/index.ts` (context-policy) | the plan budget check honours `budgetOverrides` | D15 |
+| 11 | `packages/planning/src/build-graph.ts` + test (planning) | `CONTRACT_VERSION_MISMATCH` | B-0001-planning reading 7 |
+| 12 | fixtures in context-engine, agent-policy, planning and adversarial tests; golden hashes; CI bundle | override-aware budgets; version bump | D15, 4.2.0 |

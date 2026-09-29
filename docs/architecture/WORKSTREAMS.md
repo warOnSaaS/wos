@@ -282,3 +282,52 @@ TGT-00 mapping for the new capability `surfaces` (weight 700): multi-repo-produc
 | web (building now) | show "built with Opus/Astra" on ABU and PR drilldown from `builtWith` / provenance |
 | planning, rewards (building now) | nothing required; rewards stay per unit regardless of provider |
 | cli, desktop | model choice in `wos build` and the BUILD flow |
+
+## 11. Wave 2b briefs (after the Wave 2a gate, contracts 4.2.0)
+
+Start from the merged `integration-2a` (contracts 4.2.0). Use the REAL packages, never fakes, for anything that now exists (Wave 1 lesson 4).
+
+### 11.1 cli (apps/cli)
+
+- **Contracts:** `Orchestrator` (4.2.0), `OrchestratorEvent`, `LocalStatus` (with `toolchain`), `SignInPrompt`; the public routes for read-only listings; `packages/orchestrator/README.md`.
+- **Must:**
+  - `wos login`: `signIn`, prompting for the 8-character code on stdin.
+  - `wos link-github`: `linkGithub`, printing the verification URL and code.
+  - `wos logout`.
+  - `wos status`: git, the claude and codex CLIs, sign-in, the toolchain attestation, active leases, via `myWork`.
+  - `wos build <abu|target/abu-key> [--model opus|astra|sol]` (D15: the claim names the model).
+  - `wos review [--slot astra|fable]`.
+  - `wos roadmap [task]` and `wos resolve [task]`: `listOpenTasks`, then `author`.
+  - `wos propose`.
+  - `--json` streams `OrchestratorEvent` lines.
+  - Exit codes 0/1/2/3 (section 3). The session lives in `@napi-rs/keyring`.
+  - No workflow logic in the CLI.
+- **DONE:**
+  - A golden test of every command against the orchestrator's fake control plane.
+  - One run of `wos build` and `wos review` against the real control plane harness (as in `packages/orchestrator/test/control-plane.e2e.test.ts`).
+  - `npm pack` contains the `wos` binary.
+
+### 11.2 desktop (apps/desktop)
+
+- **Contracts:** the same as the CLI, plus `WosBridge` in `src/shared/ipc.ts` (desktop-owned; extend it for the four read operations and model choice).
+- **Must:**
+  - Sign in by code or by the `wos://auth?r=&t=` deep link, forwarded to `SignInPrompt.deepLinks`; link GitHub.
+  - The flow Salesforce → capability → feature → claimable ABU (`listClaimableAbus`) → model picker (Opus, Astra, Sol per the policy and the attested CLIs) → BUILD.
+  - An activity pane over `OrchestratorEvent` and `events()`.
+  - Contribution history and profile from the API; settings.
+  - Show the toolchain attestation.
+  - Security posture from SECURITY.md S-29/S-30: sandboxed renderer, IPC allowlist, openExternal allowlist.
+  - electron-builder targets macOS (dmg, signed and notarised in CI only) and Linux (AppImage).
+- **DONE:** the section 3 desktop DONE list, plus the BUILD flow against the real control plane harness through the main process.
+
+### 11.3 Remaining items per workstream (not done by glue at the Wave 2a gate)
+
+| Workstream | Remaining |
+|---|---|
+| control-plane | Rewards loader per B-0001-rewards: typed `RewardFacts`, pools created before the rules, `app_feature.state_changed` and `progress.recomputed` added to the consumer, `computeReleaseDrafts` from the sweep. The harness still fakes `computeLedgerDrafts`; switch it to real once the loader exists. `validateBuildGraph` sixth argument (repositories, contract repo, per-app surfaces in scope). D13 materialisation (`target_surfaces`, `app_feature_surfaces`, journeys, `requirement_surfaces`) and the toolchain-requirement check at claim (section 8). D15: the claim may name the model; per-provider build-lease count; `AttemptView.builtWith`; `ProvenanceRecord.agentRuns[].provider`. |
+| context-policy | D15: `checkEligibility` per-provider build-lease limit and a claimed model; `buildInvocation` snapshots for Astra/Sol builders and Astra authors. D13 toolchain eligibility step (section 8). Already done as glue: the budget override in the plan check, and `plan.roundNumber` in the manifest check. |
+| planning | Implement the `validateBuildGraph` context argument (B-0001 reading 1 with `contractRepo`; the platform-family reading 6); replace the local glob matcher with `picomatch` (now a dependency). Already done as glue: the `CONTRACT_VERSION_MISMATCH` code. |
+| verification | Section 8 items: the Playwright browser-matrix runner, the Maestro runners, the EAS release workflow and toolchain requirements in `templates/product/wos.json`. The adversarial `@waronsaas/control-plane/test-harness` export needs the control plane (18 API attacks still PENDING). S-34/S-35 tests. |
+| github-build | D15: model choice in `build()` (and the claim body), `provider` in agent-run provenance. Review glue items in `docs/dogfood/integration.md`. |
+| rewards | Nothing blocking; support the control-plane loader with fixtures. |
+| web | Integrate `ws/web` at the Wave 2b gate; sections 8 to 10 (per-surface pages, "built with", D14 copy and URLs). |

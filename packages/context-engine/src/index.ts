@@ -14,6 +14,7 @@ import {
   type ArtifactSelector,
   type ManifestArtifact,
   type RolePolicy,
+  PROMPT_TEMPLATE_BY_ROLE as CONTRACTS_PROMPT_TEMPLATE_BY_ROLE,
 } from "@waronsaas/contracts";
 import { computeManifestSha256, sha256Of } from "@waronsaas/contracts/canonical";
 import picomatch from "picomatch";
@@ -83,18 +84,8 @@ export function estimateTokens(text: string, policy: AgentPolicyDocument): numbe
 // Templates, task kinds, policy documents
 // ---------------------------------------------------------------------------------------------
 
-export const PROMPT_TEMPLATE_BY_ROLE: Readonly<Record<AgentRole, string>> = {
-  roadmap_author: "tpl.roadmap_author.v1",
-  roadmap_reviewer_astra: "tpl.roadmap_reviewer.v1",
-  roadmap_reviewer_fable: "tpl.roadmap_reviewer.v1",
-  feature_author: "tpl.feature_author.v1",
-  feature_reviewer_astra: "tpl.feature_reviewer.v1",
-  feature_reviewer_fable: "tpl.feature_reviewer.v1",
-  builder: "tpl.builder.v1",
-  implementation_reviewer_astra: "tpl.implementation_reviewer.v1",
-  implementation_reviewer_fable: "tpl.implementation_reviewer.v1",
-  conflict_resolver: "tpl.conflict_resolver.v1",
-};
+// contracts 4.2.0 (B-0002-planning), integration glue: the one map lives in contracts.
+export const PROMPT_TEMPLATE_BY_ROLE: Readonly<Record<AgentRole, string>> = CONTRACTS_PROMPT_TEMPLATE_BY_ROLE;
 
 /** The source text of a prompt template (templates/<id>.md, embedded at build time). */
 export function templateSource(id: string): string {
@@ -639,9 +630,10 @@ export function checkManifestAgainstPlan(
     const findingsRefs = new Set([...servers.keys(), ...m.artifacts.map((a) => a.ref)].filter((r) => findingsRound(r) !== null));
     for (const ref of findingsRefs) {
       const k = findingsRound(ref) as number;
-      if (options.roundNumber === undefined) reasons.push(`ROUND_NUMBER_REQUIRED: cannot check ${ref} without the current round number`);
-      else if (k > options.roundNumber - 1)
-        reasons.push(`CURRENT_ROUND_FINDINGS: ${ref} is not a revealed round (current round ${options.roundNumber})`);
+      // contracts 3.1.0 / 4.2.0 (integration glue): the plan carries the round number; the argument stays a fallback.
+      const roundNumber = options.roundNumber ?? plan.roundNumber ?? undefined;
+      if (roundNumber === undefined) reasons.push(`ROUND_NUMBER_REQUIRED: cannot check ${ref} without the current round number`);
+      else if (k > roundNumber - 1) reasons.push(`CURRENT_ROUND_FINDINGS: ${ref} is not a revealed round (current round ${roundNumber})`);
     }
   }
   if (templateEntries !== 1) reasons.push(`TEMPLATE_ARTIFACT_COUNT: expected 1, got ${templateEntries}`);

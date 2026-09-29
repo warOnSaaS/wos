@@ -33,6 +33,15 @@ const CASES: Record<BuildGraphErrorCode, { why: string; mut: Parameters<typeof r
     },
     abu: "people#05",
   },
+  CONTRACT_VERSION_MISMATCH: {
+    why: "the graph names another contract version (integration glue, contracts 4.2.0)",
+    mut: {
+      g: (g) => {
+        g.contractVersion += 1;
+      },
+    },
+    abu: null,
+  },
   UNKNOWN_DEPENDENCY: { why: "depends on a missing ABU", mut: { g: (g) => g.abus[4]!.dependsOn.push("contacts#99") }, abu: "contacts#05" },
   CYCLE: { why: "01 depends on 05 which depends on 01", mut: { g: (g) => g.abus[0]!.dependsOn.push("contacts#05") }, abu: "contacts#01" },
   UNKNOWN_REQUIREMENT: { why: "an ABU implements R-009", mut: { g: (g) => g.abus[1]!.requirements.push("R-009") }, abu: "contacts#02" },

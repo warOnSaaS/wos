@@ -5565,6 +5565,11 @@ const Browser = _enum([
 	"mobile_safari",
 	"mobile_chrome"
 ]);
+const ToolName = _enum([
+	"node",
+	"xcode",
+	"android-sdk"
+]);
 const MINIMUM_BROWSERS = [
 	"chromium",
 	"edge",
@@ -6587,7 +6592,7 @@ const RepoManifest = object({
 			"windows"
 		])).min(1),
 		tools: array(object({
-			name: string().min(1),
+			name: ToolName,
 			minVersion: string().min(1)
 		})).default([])
 	})).default([]),
@@ -6880,7 +6885,8 @@ const BuildGraphErrorCode = _enum([
 	"SHARED_API_MISSING",
 	"JOURNEY_UNCOVERED",
 	"REQUIREMENT_SURFACE_NOT_IN_SCOPE",
-	"NATIVE_CAPABILITY_UNPLANNED"
+	"NATIVE_CAPABILITY_UNPLANNED",
+	"CONTRACT_VERSION_MISMATCH"
 ]);
 const RoadmapBundle = object({
 	schema: literal("wos-roadmap-bundle.v1"),
@@ -6895,6 +6901,15 @@ const RoadmapBundle = object({
 		requirements: array(Requirement).min(1)
 	}))
 });
+const FeatureContractErrorCode = _enum([
+	"VERSION_NOT_NEXT",
+	"FEATURE_MISMATCH",
+	"REQUIREMENT_DUPLICATE",
+	"JOURNEY_DUPLICATE",
+	"PROFILE_DUPLICATE",
+	"IMPACTED_TARGETS_MISSING",
+	"PROFILE_CHANGED_UNLISTED"
+]);
 
 //#endregion
 //#region packages/contracts/dist/agent-io.js
@@ -7194,7 +7209,7 @@ const ToolchainAttestation = object({
 	]),
 	osVersion: string().min(1),
 	tools: array(object({
-		name: string().min(1),
+		name: ToolName,
 		version: string().min(1)
 	})),
 	checkedAt: Timestamp
@@ -7949,7 +7964,13 @@ const ClaimResponse = object({
 	task: TaskView,
 	lease: LeaseView,
 	contextPlan: ContextPlan,
-	attempt: AttemptView.nullable()
+	attempt: AttemptView.nullable(),
+	round: object({
+		id: Uuid,
+		number: number$1().int().positive(),
+		headSha: GitSha,
+		submissionSha256: Sha256.nullable()
+	}).nullable().optional()
 });
 const Routes = {
 	getPlatformStatus: route({
@@ -8851,7 +8872,7 @@ const ArchitectureBlocker = object({
 //#region packages/contracts/dist/data/agent-policy.v1.json
 var agent_policy_v1_default = {
 	policyVersion: "agent-policy.v1",
-	contractsVersion: "4.1.0",
+	contractsVersion: "4.2.0",
 	effectiveFrom: "2026-09-29",
 	providers: [{
 		"id": "claude_cli",

@@ -100,8 +100,10 @@ export async function revealRound(tx: Tx, deps: Deps, roundId: string): Promise<
   const subjectCol = round.attempt_id ? tx`attempt_id = ${subjectId}` : tx`document_id = ${subjectId}`;
 
   // Prior findings: every reviewer re-checks them; resolved only when every re-checker says resolved.
+  // B-0002-planning (integration glue): only MATERIAL prior findings gate the round; minor ones never block.
   const prior = await tx<{ id: string }[]>`
-    select id from wos.findings where ${subjectCol} and state in ('open', 'disputed') and round_id <> ${roundId}`;
+    select id from wos.findings where ${subjectCol} and state in ('open', 'disputed') and round_id <> ${roundId}
+       and severity = 'material'`;
   const priorIds = new Set(prior.map((p) => p.id));
   const verdictsOn = new Map<string, Array<"resolved" | "still_open">>();
   for (const r of [astra, fable]) {

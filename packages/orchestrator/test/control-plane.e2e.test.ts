@@ -5,9 +5,9 @@
  * control-plane suite); GitHub is the control plane's FakeGithub, glued so candidate commits are real git
  * commits in a local upstream the orchestrator's worktrees fetch from.
  *
- * Reviews: the other contributors' review runs use control-plane's flow helper (reviewAs), not
- * orchestrator.review(), because a reviewer client cannot learn the round's submissionSha256 from any
- * contract field (blockers/B-0008-github-build.md). CI and merge arrive as signed webhooks.
+ * Reviews: since contracts 4.2.0 (B-0008-github-build) the two other contributors review with their own
+ * orchestrator.review() (Astra via codex, Fable via claude), bound to ClaimResponse.round. Integration glue
+ * at the Wave 2a gate replaced the earlier reviewAs() stand-in. CI and merge arrive as signed webhooks.
  */
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -16,7 +16,6 @@ import { dirname, join } from "node:path";
 import type { Changeset, OrchestratorEvent } from "@waronsaas/contracts";
 import { configureLocalGit } from "@waronsaas/github/local";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { reviewAs } from "../../../services/control-plane/test/support/flow.js";
 import {
   CRON_SECRET,
   createHarness,
@@ -108,6 +107,40 @@ describe.skipIf(!HAS_DB)("orchestrator against the real control plane (Postgres)
     const secrets = new MemorySecrets();
     const processes = new FakeProcesses();
     const idle: Array<() => Promise<void>> = [];
+    const makeOrchestrator = (workspaceRoot: string, s: MemorySecrets, p: FakeProcesses, busy: Array<() => Promise<void>>) =>
+      createOrchestrator({
+        apiBaseUrl: "https://api.waronsaas.com",
+        workspaceRoot,
+        secrets: s,
+        processes: p,
+        fetch: ((input: string | URL | Request, init?: RequestInit) => {
+          const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
+          const headers = new Headers(init?.headers);
+          headers.set("x-forwarded-for", "10.9.9.9");
+          return h.app.request(`${url.pathname}${url.search}`, { ...init, headers });
+        }) as typeof fetch,
+        clientKind: "cli",
+        clientVersion: "0.0.0-e2e",
+        engines: testEngines,
+        platform: "linux",
+        pollIntervalMs: 0,
+        sleep: async () => {
+          for (const f of busy) await f();
+        },
+        baseEnv: { PATH: "/usr/bin:/bin" },
+      });
+    // Two reviewers on their own machines (D2): each signs in with its own email and attests its CLIs.
+    const reviewer = async (who: string) => {
+      const o = makeOrchestrator(mkdtempSync(join(tmpdir(), `wos-e2e-${who}-`)), new MemorySecrets(), new FakeProcesses(), []);
+      const mail = `${who}@example.com`;
+      await o.signIn({ email: mail, deviceName: who }, { code: async () => h.mailer.lastTo(mail).code }, () => undefined);
+      await o.status();
+      return o;
+    };
+    const astraOrch = await reviewer("rev-astra");
+    const fableOrch = await reviewer("rev-fable");
+    void astra;
+    void fable;
     const orchestrator = createOrchestrator({
       apiBaseUrl: "https://api.waronsaas.com",
       workspaceRoot: root,
@@ -164,6 +197,7 @@ describe.skipIf(!HAS_DB)("orchestrator against the real control plane (Postgres)
 
     // Server-side progress while the builder's orchestrator waits: CI, the two reviews, PR dispatch, merge.
     let prNumber: number | null = null;
+    let reviewsViaOrchestrator = 0;
     idle.push(async () => {
       const [a] = await h.owner<{ id: string; state: string; head_sha: string | null }[]>`
         select id, state, head_sha from wos.attempts where abu_id = ${seeded.abus.get("04")!}`;
@@ -176,8 +210,11 @@ describe.skipIf(!HAS_DB)("orchestrator against the real control plane (Postgres)
         };
         await h.call("POST", "/v1/github/webhook", { body: suite, headers: webhookHeaders("check_suite", suite) });
       } else if (a.state === "in_review") {
-        await reviewAs(h, astra, "astra", "implementation_review", verdict("NO_MATERIAL_GAPS"));
-        await reviewAs(h, fable, "fable", "implementation_review", verdict("NO_MATERIAL_GAPS"));
+        const ra = await astraOrch.review({ slot: "astra", kinds: ["implementation_review"] }, () => undefined);
+        const rf = await fableOrch.review({ slot: "fable", kinds: ["implementation_review"] }, () => undefined);
+        expect(ra, JSON.stringify(ra)).toMatchObject({ ok: true });
+        expect(rf, JSON.stringify(rf)).toMatchObject({ ok: true });
+        reviewsViaOrchestrator += 2;
       } else if (a.state === "qualified") {
         await h.call("GET", "/v1/cron/dispatch", { headers: { authorization: `Bearer ${CRON_SECRET}` } });
       } else if (a.state === "pr_open") {
@@ -209,6 +246,14 @@ describe.skipIf(!HAS_DB)("orchestrator against the real control plane (Postgres)
       select signature_valid from wos.agent_runs r join wos.leases l on l.id = r.lease_id join wos.tasks t on t.id = l.task_id
        where t.abu_id = ${seeded.abus.get("04")!} and t.kind = 'abu_build'`;
     expect(run!.signature_valid).toBe(true);
+    expect(reviewsViaOrchestrator).toBe(2);
+    const reviews = await h.owner<{ slot: string; provider: string }[]>`
+      select r.slot, r.provider from wos.reviews r join wos.rounds o on o.id = r.round_id join wos.attempts a on a.id = o.attempt_id
+       where a.abu_id = ${seeded.abus.get("04")!} order by r.slot`;
+    expect(reviews).toEqual([
+      { slot: "astra", provider: "codex_cli" },
+      { slot: "fable", provider: "claude_cli" },
+    ]);
     expect(h.violations).toEqual([]);
-  }, 60_000);
+  }, 120_000);
 });

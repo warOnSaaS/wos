@@ -55,7 +55,7 @@ export function planFor(role: AgentRole, overrides: Partial<ContextPlan> = {}): 
     artifacts: [],
     excludeGlobs: [],
     promptTemplateId: TEMPLATE_BY_ROLE[role],
-    budgetTokens: rp.contextBudgetTokens,
+    budgetTokens: rp.budgetOverrides.find((o) => o.model === model.ref)?.contextBudgetTokens ?? rp.contextBudgetTokens,
     outputSchema: rp.outputSchema,
     allowedCommands:
       role === "builder"

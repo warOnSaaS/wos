@@ -283,6 +283,8 @@ export class OrchestratorImpl {
       eligibleRoles,
       activeLeases: work?.leases.filter((l) => l.state === "active") ?? [],
       workspaceRoot: this.deps.workspaceRoot,
+      // contracts 4.2.0 (B-0006-github-build), integration glue: status shows what was attested.
+      toolchain,
     };
   }
 
@@ -304,7 +306,7 @@ export class OrchestratorImpl {
     const rawOs = osProbe.ok ? osProbe.out.trim().split("\n")[0]!.trim() : "";
     const osVersion = (os === "windows" ? firstVersion(rawOs) : rawOs) || "unknown";
     const tools: ToolchainAttestation["tools"] = [];
-    const probe = async (name: string, binary: string, argv: string[]) => {
+    const probe = async (name: ToolchainAttestation["tools"][number]["name"], binary: string, argv: string[]) => {
       const r = await this.capture(binary, argv);
       const version = r.ok ? firstVersion(r.out) : null;
       if (version) tools.push({ name, version });
@@ -347,6 +349,24 @@ export class OrchestratorImpl {
       if (v !== undefined) env[k] = v;
     }
     return env;
+  }
+
+  // Read operations for the CLI and Desktop (contracts 4.2.0, B-0009-github-build), integration glue:
+  // thin ApiClient calls with no workflow logic.
+  async listClaimableAbus(target: string, feature: string) {
+    return (await this.api.call("listClaimableAbus", { params: { slug: target, feature } })).items;
+  }
+
+  async listOpenTasks(filter: { kind?: TaskView["kind"]; target?: string; feature?: string }) {
+    return (await this.api.call("listOpenTasks", { query: filter })).items;
+  }
+
+  async myWork() {
+    return this.api.call("getMyWork", {});
+  }
+
+  async events(after?: number) {
+    return this.api.call("listMyEvents", { query: after === undefined ? {} : { after } });
   }
 
   describeInvocation(plan: ContextPlan): { binary: string; argv: string[]; env: Record<string, string> } {
@@ -995,7 +1015,13 @@ export class OrchestratorImpl {
         const attempt = claim.attempt;
         await this.api.call("submitVerdict", {
           params: { id: claim.lease.id },
-          body: { verdict: verdict.data, headSha: plan.source.commit, submissionSha256: null, agentRunId: run.agentRunId },
+          // contracts 4.2.0 (B-0008-github-build), integration glue: bind the verdict to the claimed round.
+          body: {
+            verdict: verdict.data,
+            headSha: claim.round?.headSha ?? plan.source.commit,
+            submissionSha256: claim.round?.submissionSha256 ?? null,
+            agentRunId: run.agentRunId,
+          },
           idempotencyKey: idempotencyKey("submitVerdict", claim.lease.id, run.agentRunId),
         });
         this.step(observer, "REVIEW", "passed", `${verdict.data.verdict} (sealed until the other slot is in)`);
