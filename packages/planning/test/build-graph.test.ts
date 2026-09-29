@@ -1,19 +1,21 @@
 import { BuildGraph, BuildGraphErrorCode, FeatureContract, type RepoManifest } from "@waronsaas/contracts";
 import { describe, expect, it } from "vitest";
-import { validateBuildGraph } from "../src/index.js";
+import { type BuildGraphContext, scopeCanTouchGlob, validateBuildGraph } from "../src/index.js";
 import { clone, contract, estimate, graph, policy, repoManifest } from "./fixtures.js";
 
 type G = ReturnType<typeof graph>;
 type C = ReturnType<typeof contract>;
 
-function run(mut: { g?: (g: G) => void; c?: (c: C) => void; r?: (r: RepoManifest) => void; est?: (k: string) => number } = {}) {
+function run(
+  mut: { g?: (g: G) => void; c?: (c: C) => void; r?: (r: RepoManifest) => void; est?: (k: string) => number; ctx?: BuildGraphContext } = {},
+) {
   const g = clone(graph());
   const c = clone(contract());
   const r = clone(repoManifest());
   mut.g?.(g);
   mut.c?.(c);
   mut.r?.(r);
-  return validateBuildGraph(g, c, r, mut.est ?? estimate, policy);
+  return validateBuildGraph(g, c, r, mut.est ?? estimate, policy, mut.ctx);
 }
 const codes = (issues: ReturnType<typeof run>) => [...new Set(issues.map((i) => i.code))].sort();
 
@@ -241,4 +243,88 @@ describe("validateBuildGraph", () => {
     const mut = CASES.PARALLEL_WRITE_OVERLAP.mut;
     expect(run(mut)).toEqual(run(mut));
   });
+});
+
+const REGISTRY = new Map<string, "platform" | "product">([
+  ["waronsaas/wos", "platform"],
+  ["waronsaas/product", "product"],
+  ["waronsaas/product-native", "product"],
+]);
+const ctx = (over: Partial<BuildGraphContext> = {}): BuildGraphContext => ({
+  repositories: REGISTRY,
+  contractRepo: "waronsaas/product",
+  ...over,
+});
+
+describe("validateBuildGraph with the context argument (contracts 4.2.0, B-0001-planning)", () => {
+  it("the valid baseline passes with a context", () => {
+    expect(run({ ctx: ctx() })).toEqual([]);
+  });
+
+  it("multi-repo-products R-001 the graph's family is the contract repository's, from the passed registry", () => {
+    // A third registered product-family repo is accepted (the fallback registry does not know it).
+    expect(run({ g: (g) => (g.abus[3]!.repo = "waronsaas/product-native"), ctx: ctx() })).toEqual([]);
+    expect(codes(run({ g: (g) => (g.abus[3]!.repo = "waronsaas/product-native") }))).toEqual(["ABU_REPO_UNKNOWN"]);
+    // Every ABU in the platform repo while the contract lives in the product repo: all flagged. Without the
+    // context the graph is merely consistent, so the fallback cannot see it.
+    const allWos = (g: G) => {
+      for (const a of g.abus) a.repo = "waronsaas/wos";
+    };
+    const issues = run({ g: allWos, ctx: ctx() });
+    expect(issues.filter((i) => i.code === "ABU_REPO_UNKNOWN").map((i) => i.abu)).toEqual(graph().abus.map((a) => a.key));
+    expect(run({ g: allWos }).filter((i) => i.code === "ABU_REPO_UNKNOWN")).toEqual([]);
+  });
+
+  it("an unregistered contract repository is ABU_REPO_UNKNOWN on the graph", () => {
+    const issues = run({ ctx: ctx({ contractRepo: "someone/fork" }) });
+    expect(issues).toEqual([{ code: "ABU_REPO_UNKNOWN", abu: null, message: expect.stringContaining("someone/fork") }]);
+  });
+
+  it("reading 6: a platform-family graph may write any non-protected path; protected paths still fail", () => {
+    const platform = (extra: string) => (g: G) => {
+      for (const a of g.abus) a.repo = "waronsaas/wos";
+      g.abus[1]!.scope.write = [extra];
+    };
+    expect(run({ g: platform("packages/contacts/**"), ctx: ctx({ contractRepo: "waronsaas/wos" }) })).toEqual([]);
+    expect(codes(run({ g: platform(".github/workflows/x.yml"), ctx: ctx({ contractRepo: "waronsaas/wos" }) }))).toEqual([
+      "WRITE_SCOPE_PROTECTED",
+    ]);
+    // The same scope in a product-family graph is outside the module.
+    expect(codes(run({ g: (g) => (g.abus[1]!.scope.write = ["packages/contacts/**"]), ctx: ctx() }))).toEqual([
+      "WRITE_OUTSIDE_MODULE_OR_PRODUCT",
+    ]);
+  });
+
+  it("REQUIREMENT_SURFACE_NOT_IN_SCOPE uses each app's roadmap surfaces when given", () => {
+    // acme-crm's roadmap does not have android in scope, even though its profile has an android suite.
+    const surfacesInScope = new Map([
+      ["acme-crm", ["web", "ios"] as const],
+      ["other-crm", ["web"] as const],
+    ]);
+    const issues = run({ ctx: ctx({ surfacesInScope }) });
+    expect(codes(issues)).toEqual(["REQUIREMENT_SURFACE_NOT_IN_SCOPE"]);
+    expect(issues.map((i) => i.message.split(" ")[0])).toEqual(["R-001", "R-003"]);
+    expect(issues.every((i) => i.message.includes("android") && i.message.includes("in its roadmap"))).toBe(true);
+    // The fallback (acceptance suites) accepts the same contract.
+    expect(run({ ctx: ctx() })).toEqual([]);
+  });
+});
+
+describe("scopeCanTouchGlob (picomatch)", () => {
+  const rows: Array<[string, string, boolean]> = [
+    ["modules/contacts/native/package.json", "**/package.json", true],
+    ["modules/contacts/**", "modules/*/native/ios/**", true],
+    ["modules/contacts/native/ios/**", "modules/*/native/ios/**", true],
+    ["modules/contacts/web/**", "modules/*/native/ios/**", false],
+    ["apps/mobile/**", "apps/mobile/{ios,android}/**", true],
+    ["apps/web/**", "apps/mobile/{ios,android}/**", false],
+    ["modules/contacts/tsconfig.build.json", "**/tsconfig*.json", true],
+    ["modules/contacts/.eslintrc.json", "**/.eslintrc*", true],
+    ["Modules/Contacts/Package.json", "**/package.json", true],
+    ["modules/contacts/api/**", "biome.json", false],
+  ];
+  for (const [scope, glob, want] of rows)
+    it(`${scope} vs ${glob} -> ${want}`, () => {
+      expect(scopeCanTouchGlob(scope, glob)).toBe(want);
+    });
 });

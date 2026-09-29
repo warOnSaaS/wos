@@ -8,6 +8,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   AGENT_POLICY_V1,
+  PROMPT_TEMPLATE_BY_ROLE,
   type AgentRole,
   type ArtifactSelector,
   type ContextPlan,
@@ -16,13 +17,7 @@ import {
   type TaskKind,
 } from "@waronsaas/contracts";
 import { gitBlobOid, sha256Of } from "@waronsaas/contracts/canonical";
-import {
-  buildContext,
-  PROMPT_TEMPLATE_BY_ROLE,
-  renderPolicyDocument,
-  type SnapshotReader,
-  templateSource,
-} from "@waronsaas/context-engine";
+import { buildContext, renderPolicyDocument, type SnapshotReader, templateSource } from "@waronsaas/context-engine";
 import { describe, expect, it } from "vitest";
 import { stringify } from "yaml";
 import { globMatches, roadmapBundleToFiles } from "../src/index.js";

@@ -18,7 +18,13 @@ import {
 } from "@waronsaas/contracts";
 import { type ParseResult, parseYamlWith } from "./yaml.js";
 
-export { type BuildGraphIssue, REPOSITORY_FAMILIES, validateBuildGraph } from "./build-graph.js";
+export {
+  type BuildGraphContext,
+  type BuildGraphIssue,
+  REPOSITORY_FAMILIES,
+  type RepositoryFamily,
+  validateBuildGraph,
+} from "./build-graph.js";
 export { type ArtifactFile, roadmapBundleToFiles } from "./bundle.js";
 export { CONTRACT_ERROR_CODES, type ContractErrorCode, type ContractIssue, validateFeatureContract } from "./contract.js";
 export { globMatches, scopeCanTouchGlob } from "./globs.js";
