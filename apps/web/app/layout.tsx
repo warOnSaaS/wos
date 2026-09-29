@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { JetBrains_Mono } from "next/font/google";
+import { Geist_Mono, JetBrains_Mono } from "next/font/google";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { JsonLd } from "@/components/JsonLd";
@@ -12,6 +12,14 @@ const mono = JetBrains_Mono({
   subsets: ["latin"],
   weight: ["400", "700"],
   variable: "--font-mono",
+  display: "swap",
+});
+
+// Headings, the warOnSaaS wordmark and the wOS mark: Geist Mono Bold (SIL OFL), self-hosted by next/font.
+const head = Geist_Mono({
+  subsets: ["latin"],
+  weight: ["700"],
+  variable: "--font-head",
   display: "swap",
 });
 
@@ -33,7 +41,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={mono.variable}>
+    <html lang="en" className={`${mono.variable} ${head.variable}`}>
       <body>
         <div className="sheet">
           <Header />

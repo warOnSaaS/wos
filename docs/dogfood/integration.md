@@ -91,3 +91,5 @@ Merged onto main 4cd94c1 (4.3.0) plus the architect's 4.4.0 commit 3aca13f, in d
 | Date | Context at start | Scope | Merge conflicts | Glue edits | Repair loops | Result |
 |---|---|---|---|---|---|---|
 | 2026-09-29 | carried architect session | 11 rulings (4.4.0), 8 merges, gate run | blocker files only | 16 (above) | 10 (mirror lock, pack test, events test, goldens, three API-attack causes, omitted-model drift, route-error wiring, toolchain matcher, surfaces fixtures) | gate PASS; see WAVE-2-REPORT.md |
+
+Note (web workstream, 2026-09-29, ws/web2): replaced `apps/desktop/build/icon.png` (1024x1024) with the founder-approved wOS mark (Geist Mono Bold, off-white on near-black), rendered by `apps/web/scripts/render-mark.mjs`. No other file under `apps/desktop` was touched.
