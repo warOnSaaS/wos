@@ -7,5 +7,5 @@
     "declarationMap": false,
     "incremental": false
   },
-  "include": ["packages/*/test/**/*.ts", "services/*/test/**/*.ts", "apps/cli/test/**/*.ts", "vitest.config.ts"]
+  "include": ["packages/*/test/**/*.ts", "services/*/test/**/*.ts", "apps/cli/test/**/*.ts", "tests/**/*.ts", "vitest.config.ts"]
 }

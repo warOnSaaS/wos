@@ -101,7 +101,7 @@ export const TaskMachine = machine<TaskState, TaskEvent>({
       event: "reject_output",
       actor: ["system"],
       guard:
-        "document author tasks only: post-submission processing failed for a reason not attributable to the author (e.g. GitHub outage after retries); a new lease may be taken. Never used for abu_build/abu_revision: their attempt stays `submitted` while the github_sync consumer retries the App commit with backoff for up to 1 hour, then the attempt is failed with reason upstream_github",
+        "document author tasks only: processing AFTER the App commit failed (e.g. the pushed document could not be re-read for validation); a new lease may be taken. Never used for abu_build/abu_revision. Submissions are committed INSIDE the submit request (contracts 3.0.0): changeset content is never stored, so there is nothing to retry later; if the App commit fails nothing is recorded, the client gets 502 UPSTREAM_GITHUB with its lease still active and retries with the same Idempotency-Key",
     },
     {
       from: "blocked",
@@ -482,14 +482,15 @@ export const AttemptMachine = machine<AttemptState, AttemptEvent>({
       event: "submit_changeset",
       actor: ["contributor"],
       guard:
-        "caller holds active lease; changeset passes server-side scope validation against the ABU scope at the attempt's base commit; lease completed in same txn",
+        "caller holds active lease; changeset passes server-side scope validation against the ABU scope at the plan's source commit; the App commit (candidate_committed) already succeeded in this request; both transitions, both events and the lease completion are written in ONE transaction",
     },
     {
       from: "submitted",
       to: "candidate_pushed",
       event: "candidate_committed",
       actor: ["system"],
-      guard: "GitHub App created commit on wos/candidate/<attemptId> with parent = base commit (or previous candidate head)",
+      guard:
+        "in the same request and transaction as submit_changeset: the GitHub App created the commit on wos/candidate/<attemptId> with parent = the plan's source commit before anything was recorded. A retry after a failed transaction force-moves the candidate ref to the new commit; only the recorded head is ever reviewed",
     },
     {
       from: "candidate_pushed",

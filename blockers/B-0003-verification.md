@@ -1,7 +1,7 @@
 ```json
 {
   "id": "B-0003-verification",
-  "status": "open",
+  "status": "accepted",
   "raisedBy": "verification",
   "raisedAt": "2026-09-29T18:18:19Z",
   "affectedContract": "packages/db/migrations/0001_init.sql check_review_independence, reviews, events RLS, platform_settings",
@@ -13,7 +13,12 @@
     "control-plane"
   ],
   "suggestedResolution": "Migration 0002_backstops.sql. The it.fails tests turn red when it lands, which is the signal to drop the marker.",
-  "decision": null
+  "decision": {
+    "outcome": "accepted",
+    "contractsVersion": "2.0.0",
+    "note": "accepted. Migration 0002_backstops.sql: review bound to its task (round and slot), the task's active lease held by the reviewer, and a manifest of that lease; bootstrap_self and bootstrap_maintainer only while bootstrap mode is on and only from a maintainer; bootstrap mode one-way (trigger on platform_settings, also no delete); private events readable only by privileged actors and the account concerned. Equivalent assertions are in packages/db/test/db-assertions.sql and pass on postgres:17 and supabase/postgres. Remove the it.fails markers and give fixtures valid bindings.",
+    "decidedAt": "2026-09-29T19:30:00Z"
+  }
 }
 ```
 

@@ -1,7 +1,7 @@
 ```json
 {
   "id": "B-0004-verification",
-  "status": "open",
+  "status": "accepted",
   "raisedBy": "verification",
   "raisedAt": "2026-09-29T18:18:19Z",
   "affectedContract": "docs/architecture/SECURITY.md S-16 SECRET_DETECTED; CONTEXT-PROTOCOL.md 'another slot's current verdict'",
@@ -14,7 +14,12 @@
     "verification"
   ],
   "suggestedResolution": null,
-  "decision": null
+  "decision": {
+    "outcome": "accepted",
+    "contractsVersion": "2.0.0",
+    "note": "accepted. (1) packages/verification/src/secrets.ts is the normative SECRET_DETECTED list (SECURITY.md S-16), changes reviewed by the architect (GAPS G-53). (2) The verdict rule is stated in CONTEXT-PROTOCOL.md: wos:verdict/<roundId>/<slot> is reserved and never planned; the server rejects any server_document ref not in the plan; reviewer plans may include wos:findings only up to the previous round.",
+    "decidedAt": "2026-09-29T19:30:00Z"
+  }
 }
 ```
 

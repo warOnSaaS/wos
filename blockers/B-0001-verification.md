@@ -1,7 +1,7 @@
 ```json
 {
   "id": "B-0001-verification",
-  "status": "open",
+  "status": "accepted",
   "raisedBy": "verification",
   "raisedAt": "2026-09-29T18:18:19Z",
   "affectedContract": "packages/contracts/src/agent-io.ts Changeset.signature / submissionSha256; packages/context-engine canonicalSha256; wos.devices.public_key",
@@ -15,7 +15,12 @@
     "verification"
   ],
   "suggestedResolution": "Move canonicalJson + sha256 helpers into packages/contracts (MINOR: additive export). Adopt the readings implemented in packages/verification/src/index.ts, which github-build can import today as computeSubmissionSha256 and changesetSigningPayload.",
-  "decision": null
+  "decision": {
+    "outcome": "accepted",
+    "contractsVersion": "2.0.0",
+    "note": "accepted. canonical.ts C-1..C-7 are normative with pinned vectors; device keys are base64 of the raw 32-byte Ed25519 key only (PEM/SPKI rejected, DB check in 0002); the signed object is post-parse. Delete src/jcs.ts and the local hash/sign helpers; import @waronsaas/contracts/canonical.",
+    "decidedAt": "2026-09-29T19:30:00Z"
+  }
 }
 ```
 

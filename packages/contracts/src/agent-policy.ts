@@ -75,7 +75,12 @@ export const ProviderSpec = z.object({
   versionCommand: z.array(z.string()),
   /** How to detect the user is signed in without reading credentials. */
   authCheckCommand: z.array(z.string()).nullable(),
-  /** Base argv for a non-interactive run; mode-specific args are appended. The prompt is written to stdin. */
+  /**
+   * Base argv for a non-interactive run; mode-specific args are appended. The prompt is written to stdin.
+   * Expansion rules: a scalar placeholder fills one element; `{allowedCommandRules}` expands to ONE element
+   * per rule (the flag is variadic); a flag whose list placeholder expands to nothing is dropped together
+   * with the placeholder (B-0002-context-policy).
+   */
   baseArgs: z.array(ArgTemplate),
   /** Args for read-only roles (reviewers, resolver). */
   readOnlyArgs: z.array(ArgTemplate),
@@ -172,6 +177,8 @@ export const WorkflowLimits = z.object({
   revisionWindowHours: z.number().int().positive(),
   maxConcurrentBuildLeasesPerContributor: z.number().int().positive(),
   maxConcurrentReviewLeasesPerContributor: z.number().int().positive(),
+  /** roadmap_author, feature_author and conflict_resolution leases together (B-0001-context-policy note). */
+  maxConcurrentAuthorLeasesPerContributor: z.number().int().positive(),
   /** A finding disputed by the author in this many consecutive rounds escalates. */
   disputeEscalationRounds: z.number().int().positive(),
 });
@@ -190,6 +197,8 @@ export const BootstrapPolicy = z.object({
   holdSelfReviewedAwards: z.literal(true),
   /** While bootstrap is on, minAcceptedContributions is not enforced for anyone (seed reviewers start at zero). */
   waiveMinAcceptedContributions: z.boolean(),
+  /** bootstrap_self reviews do not count toward maxReviewsOfSameAuthorPer7d (a solo founder reviews only themself). */
+  exemptSelfReviewFromSameAuthorCap: z.boolean(),
 });
 export type BootstrapPolicy = z.infer<typeof BootstrapPolicy>;
 

@@ -1,7 +1,7 @@
 ```json
 {
   "id": "B-0002-verification",
-  "status": "open",
+  "status": "accepted",
   "raisedBy": "verification",
   "raisedAt": "2026-09-29T18:18:19Z",
   "affectedContract": "vitest.config.ts include; tsconfig.test.json include",
@@ -12,7 +12,12 @@
     "verification"
   ],
   "suggestedResolution": "Either is fine; the suites can move to tests/ at the Wave 2 gate.",
-  "decision": null
+  "decision": {
+    "outcome": "accepted",
+    "contractsVersion": "2.0.0",
+    "note": "accepted. tests/**/*.test.ts added to vitest.config.ts and tests/**/*.ts to tsconfig.test.json.",
+    "decidedAt": "2026-09-29T19:30:00Z"
+  }
 }
 ```
 
