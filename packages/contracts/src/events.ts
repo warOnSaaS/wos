@@ -28,8 +28,11 @@ export const DomainEventBody = z.discriminatedUnion("type", [
   e("document.opened", "public", {
     documentId: Uuid,
     kind: DocumentKind,
-    target: TargetSlug,
+    /** Roadmaps: the app. Feature contracts: null (contracts 3.1.0, B-0005-control-plane). */
+    target: TargetSlug.nullable(),
     feature: FeatureKey.nullable(),
+    /** Apps the document serves: [target] for a roadmap, every referencing app for a contract. */
+    relevantTo: z.array(TargetSlug).default([]),
     version: z.number().int(),
   }),
   e("document.revision_submitted", "public", { documentId: Uuid, taskId: Uuid, headSha: GitSha }),

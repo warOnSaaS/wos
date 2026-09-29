@@ -65,6 +65,12 @@ export const ContextPlan = z.object({
   attemptId: Uuid.nullable(),
   roundId: Uuid.nullable(),
   /**
+   * The round number when roundId is set (contracts 3.1.0, B-0003-context-policy). Reviewer plans must
+   * carry it; checkManifestAgainstPlan fails closed (ROUND_NUMBER_REQUIRED) when a reviewer plan
+   * references wos:findings and it is absent.
+   */
+  roundNumber: z.number().int().positive().nullable().optional(),
+  /**
    * The snapshot the agent works on. For abu_build and abu_revision plans this commit IS the submission's
    * parentCommit: the attempt base for the first build, the current candidate head for a revision, or the
    * new default-branch head after a rebase (B-0004-github-build).

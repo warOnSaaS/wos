@@ -46,7 +46,7 @@ Selectors:
 | `repo_file` | one path at `source.commit`; `required` decides failure if missing |
 | `repo_glob` | every path matching the picomatch glob at `source.commit`, sorted by bytewise path order, each file its own artifact |
 | `server_document` | a document the control plane renders (task spec, finding ledger, catalog index, diff, CI summary, policy obligations); fetched with `GET /v1/leases/:id/documents/:ref` (route `getLeaseDocument`, contracts 2.0.0), must match `sha256` |
-| `local_document` | produced on the contributor's machine; V1 has only `local:verification-output` (the failing local checks' output for a builder repair run); hashed into the manifest, unverifiable by the server, evidence only |
+| `local_document` | produced on the contributor's machine and read ONLY through `SnapshotReader.readLocalDocument(ref): Promise<Uint8Array \| null>` (null = absent, excluded as `missing_optional`; never `readServerDocument`, never the network; contracts 3.1.0, B-0005-github-build); V1 has only `local:verification-output` (the failing local checks' output for a builder repair run); hashed into the manifest, unverifiable by the server, evidence only |
 
 The plan also carries `taskKind` (contracts 2.0.0), copied into `ContextManifest.task.kind`; nothing is
 inferred. For `abu_build` and `abu_revision` plans, `source.commit` is exactly the submission's
@@ -72,7 +72,9 @@ Sealed verdicts have the reserved form `wos:verdict/<roundId>/<slot>`. It is NEV
 can never be fetched: `getLeaseDocument` returns 403 for any ref not in the caller's lease plan, and
 `checkManifestAgainstPlan` rejects any `server_document` artifact whose ref is not in the plan and any
 `wos:verdict/` ref (B-0001-context-policy, B-0004-verification). A reviewer's plan may contain
-`wos:findings/<subject>@<k>` only for k <= current round - 1.
+`wos:findings/<subject>@<k>` only for k <= current round - 1; the round number comes from
+`ContextPlan.roundNumber` (contracts 3.1.0, B-0003-context-policy), and a reviewer plan that references
+findings without it fails closed (`ROUND_NUMBER_REQUIRED`).
 | `wos:ci/<attemptId>@<headSha>` | CI check names, conclusions and failure log tails (bounded to 200 lines per check) |
 | `wos:dispute/<taskId>` | for the resolver: the escalated findings, both sides' arguments, reviewer identities removed |
 

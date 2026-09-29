@@ -203,8 +203,11 @@ validator from the build graph at the base commit using the commit trailers. Wor
 control-plane. Test: one test per `ChangesetErrorCode`.
 
 **S-17 Protected, generated, lockfile and migration paths.** Regardless of ABU scope: `protectedPaths`
-(always `.github/**` and `wos.json`, plus the catalog/roadmaps/features directories for builders) are
-rejected (`PROTECTED_PATH`, `WORKFLOW_FILE`); `generatedPaths` are rejected (`GENERATED_PATH`); files in
+(always `.github/**` and `wos.json`, plus `catalog/**` and `roadmaps/**` for builders) are
+rejected; inside `features/`, a builder may write ONLY under `features/<feature>/acceptance/**` — every
+other file there (`CONTRACT.yaml`, `BUILD-GRAPH.yaml`) is rejected by a built-in `validateChangeset` rule
+with `PROTECTED_PATH`, and the suite template no longer lists `features/**` in `protectedPaths`
+(contracts 3.1.0, B-0006-verification); document author tasks keep their own `documentPaths`; (`PROTECTED_PATH`, `WORKFLOW_FILE`); `generatedPaths` are rejected (`GENERATED_PATH`); files in
 `lockfiles` need a `lockfile:<path>` resource and files under `migrationsDir` need `db:migrations`
 (`LOCKFILE_WITHOUT_RESOURCE`, `MIGRATION_WITHOUT_RESOURCE`). The build-graph validator refuses graphs
 whose ABUs write protected paths. Workstream: verification, planning. Tests: per code.
