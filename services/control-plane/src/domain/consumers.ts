@@ -5,6 +5,7 @@
  */
 import {
   CONTRACTS_VERSION,
+  DEFAULT_TOOLCHAIN_PATHS,
   DomainEvent,
   type EventConsumer,
   NotImplementedError,
@@ -15,8 +16,10 @@ import { inTransaction, type Tx } from "@waronsaas/db";
 import { CONSENSUS_STATUS_CONTEXT, officialBranch, QUALIFIED_STATUS_CONTEXT } from "@waronsaas/github";
 import type { Deps } from "../deps.js";
 import { eventWire } from "../handlers/account.js";
-import { canonicalJson, sha256Prefixed, uuidv7 } from "../util/crypto.js";
+import { uuidv7 } from "../util/crypto.js";
+import { provenanceSha256 } from "@waronsaas/contracts/canonical";
 import { loadAttempt } from "../views.js";
+import { repoManifestAt } from "./documents.js";
 import { insertEvent } from "../db/events.js";
 import { createContribution, insertLedgerEntry } from "./ledger.js";
 import { recomputeTarget } from "./progress.js";
@@ -46,7 +49,7 @@ async function openOrUpdatePr(deps: Deps, e: EventRow, attemptId: string): Promi
     await inTransaction(deps.sql, SYS, (tx) => markConsumed(tx, e.id, "github_sync"));
     return;
   }
-  const repo = deps.config.productRepo;
+  const repo = attempt.repo;
   const facts = await inTransaction(deps.sql, SYS, async (tx) => {
     const [round] = await tx<{ id: string; head_sha: string; submission_sha256: string; round_number: number; independence: string }[]>`
       select id, head_sha, submission_sha256, round_number, independence from wos.rounds
@@ -58,9 +61,13 @@ async function openOrUpdatePr(deps: Deps, e: EventRow, attemptId: string): Promi
     const [builder] = await tx<{ github_login: string }[]>`select github_login from wos.accounts where id = ${attempt.account_id}`;
     const runs = await tx<{ id: string; role: string; model_id: string; reasoning: ReasoningLevel; manifest_sha256: string }[]>`
       select r.id, m.role, m.model_id, m.reasoning, m.manifest_sha256 from wos.agent_runs r join wos.context_manifests m on m.id = r.manifest_id
-       where r.lease_id in (select c.lease_id from wos.candidate_commits cc join wos.changesets c on c.id = cc.changeset_id where cc.commit_sha = ${attempt.head_sha})
-          or r.lease_id in (select lease_id from wos.reviews where round_id = ${round!.id})
+       where r.id in (select agent_run_id from wos.reviews where round_id = ${round!.id})
+          or r.id = (select r2.id from wos.candidate_commits cc join wos.changesets c on c.id = cc.changeset_id
+                       join wos.context_manifests m2 on m2.lease_id = c.lease_id and m2.manifest_sha256 = c.manifest_sha256
+                       join wos.agent_runs r2 on r2.manifest_id = m2.id and r2.signature_valid
+                      where cc.commit_sha = ${attempt.head_sha} order by r2.created_at desc limit 1)
        order by r.created_at, r.id`;
+    const toolchain = await touchesToolchain(tx, deps, attempt.id, repo, attempt.head_sha!);
     const reviews = await tx<
       {
         slot: "astra" | "fable";
@@ -76,7 +83,7 @@ async function openOrUpdatePr(deps: Deps, e: EventRow, attemptId: string): Promi
     const ci = await tx<{ github_check_suite_id: string; conclusion: string }[]>`
       select github_check_suite_id, conclusion from wos.verification_runs where attempt_id = ${attempt.id} and source = 'ci' and head_sha = ${attempt.head_sha}
        order by created_at`;
-    return { round: round!, q, spec: spec!, builderLogin: builder?.github_login ?? attempt.builder_handle, runs, reviews, ci };
+    return { round: round!, q, spec: spec!, builderLogin: builder?.github_login ?? attempt.builder_handle, runs, reviews, ci, toolchain };
   });
   if (!facts.q.ok) {
     deps.log("warn", "qualified attempt no longer qualifies; not opening a PR", { attemptId, failed: facts.q.failed });
@@ -84,7 +91,8 @@ async function openOrUpdatePr(deps: Deps, e: EventRow, attemptId: string): Promi
     return;
   }
   const branch = officialBranch(attempt.abu_key, attempt.id);
-  await deps.github.setBranch(repo, branch, attempt.head_sha);
+  if (attempt.pr_number === null) await deps.github.createBranchAt(repo, branch, attempt.head_sha);
+  else await deps.github.moveBranch(repo, branch, attempt.head_sha, { force: true });
   const body = [
     `## ${attempt.abu_key}: ${facts.spec.title}`,
     "",
@@ -101,6 +109,14 @@ async function openOrUpdatePr(deps: Deps, e: EventRow, attemptId: string): Promi
     ...facts.reviews.map(
       (r) => `- ${r.slot === "astra" ? "Astra" : "Fable"} ${r.reasoning.toUpperCase()} (attested) by @${r.login}: ${r.verdict}`,
     ),
+    ...(facts.toolchain.length > 0
+      ? [
+          "",
+          "### Toolchain change",
+          "",
+          `This PR changes toolchain paths (${facts.toolchain.join(", ")}): @waronsaas/maintainers review is required before merge.`,
+        ]
+      : []),
   ].join("\n");
   let prNumber = attempt.pr_number;
   let prUrl = attempt.pr_url;
@@ -111,7 +127,7 @@ async function openOrUpdatePr(deps: Deps, e: EventRow, attemptId: string): Promi
       title: `${attempt.abu_key}: ${facts.spec.title}`,
       body,
       draft: false,
-      labels: ["wos:implementation", `feature:${facts.spec.feature}`],
+      labels: ["wos:implementation", `feature:${facts.spec.feature}`, ...(facts.toolchain.length > 0 ? ["wos:toolchain"] : [])],
       provenance: null,
     });
     prNumber = pr.number;
@@ -164,7 +180,7 @@ async function openOrUpdatePr(deps: Deps, e: EventRow, attemptId: string): Promi
                values (${prId}, ${repo}, ${prNumber}, 'implementation', ${a.id}, ${prUrl}, ${a.head_sha}, 'open')`;
     }
     await tx`insert into wos.provenance_records (id, pull_request_id, record, record_sha256)
-             values (${uuidv7()}, ${prId}, ${tx.json(record as never)}, ${sha256Prefixed(canonicalJson(record))}) on conflict (record_sha256) do nothing`;
+             values (${uuidv7()}, ${prId}, ${tx.json(record as never)}, ${provenanceSha256(record)}) on conflict (record_sha256) do nothing`;
     await attemptTransition(tx, a, "pr_opened", SYSTEM, { pr_number: prNumber, pr_url: prUrl });
     await insertEvent(
       tx,
@@ -190,6 +206,14 @@ async function openOrUpdatePr(deps: Deps, e: EventRow, attemptId: string): Promi
     });
     await markConsumed(tx, e.id, "github_sync");
   });
+  // The candidate ref is App-only and is deleted once the PR is open (BUILD-PROTOCOL.md section 9 step 4).
+  if (attempt.candidate_branch) {
+    await deps.github
+      .deleteBranch(repo, attempt.candidate_branch)
+      .catch((err: unknown) =>
+        deps.log("warn", "candidate branch not deleted", { attemptId, error: err instanceof Error ? err.message : String(err) }),
+      );
+  }
   await deps.github
     .enableAutoMerge(repo, prNumber!)
     .catch((err: unknown) =>
@@ -206,7 +230,8 @@ const githubSync: Consumer = {
       if (p.to === "qualified") return openOrUpdatePr(deps, e, p.attemptId);
       if ((p.to === "abandoned" || p.to === "failed") && p.from === "pr_open") {
         const a = await inTransaction(deps.sql, SYS, (tx) => loadAttempt(tx, p.attemptId));
-        if (a?.pr_number) await deps.github.closePullRequest(deps.config.productRepo, a.pr_number, `This attempt was ${p.to} in wOS.`);
+        if (a?.pr_number)
+          await deps.github.closePullRequest(a.repo, a.pr_number, { comment: `This attempt was ${p.to} in wOS.`, lock: false });
       }
       return inTransaction(deps.sql, SYS, (tx) => markConsumed(tx, e.id, "github_sync"));
     }
@@ -229,7 +254,7 @@ const githubSync: Consumer = {
               key: string | null;
             }[]
           >`
-          select d.id, d.kind, d.branch, d.pr_number, d.head_sha, coalesce(t.repo_full_name, ${deps.config.productRepo}) as repo, t.product_name,
+          select d.id, d.kind, d.branch, d.pr_number, d.head_sha, d.repo_full_name as repo, t.product_name,
                  t.slug, f.key from wos.documents d left join wos.targets t on t.id = d.target_id left join wos.catalog_features f on f.id = d.catalog_feature_id
            where d.id = ${p.documentId}`,
       );
@@ -261,7 +286,7 @@ const githubSync: Consumer = {
         deps.sql,
         SYS,
         (tx) =>
-          tx<{ repo: string }[]>`select coalesce(t.repo_full_name, ${deps.config.productRepo}) as repo from wos.documents d
+          tx<{ repo: string }[]>`select d.repo_full_name as repo from wos.documents d
                                 left join wos.targets t on t.id = d.target_id where d.id = ${p.documentId}`,
       );
       if (doc) {
@@ -317,7 +342,14 @@ export async function unlockDependents(tx: Tx, abuId: string): Promise<void> {
 
 const progressConsumer: Consumer = {
   name: "progress",
-  types: ["document.merged", "attempt.merged", "abu.state_changed", "app_feature.state_changed", "attempt.state_changed"],
+  types: [
+    "document.merged",
+    "attempt.merged",
+    "abu.state_changed",
+    "app_feature.state_changed",
+    "attempt.created",
+    "verification.recorded",
+  ],
   async handle(deps, e) {
     await inTransaction(deps.sql, SYS, async (tx) => {
       const p = payload<{ to?: string; from?: string }>(e);
@@ -326,7 +358,8 @@ const progressConsumer: Consumer = {
         e.type === "attempt.merged" ||
         (e.type === "abu.state_changed" && (p.to === "superseded" || p.to === "merged")) ||
         e.type === "app_feature.state_changed" ||
-        (e.type === "attempt.state_changed" && p.from === "none");
+        e.type === "attempt.created" ||
+        (e.type === "verification.recorded" && (e.payload as { subject?: string }).subject === "profile_acceptance");
       if (relevant) {
         const targets = await tx<{ target_id: string }[]>`select distinct target_id from wos.capabilities order by target_id`;
         for (const t of targets) await recomputeTarget(tx, deps, t.target_id, Number(e.id));
@@ -405,4 +438,39 @@ export async function runDispatch(deps: Deps, limitPerConsumer = 200): Promise<n
     }
   }
   return processed;
+}
+
+/** Toolchain paths (wos.json toolchainPaths, at least DEFAULT_TOOLCHAIN_PATHS) the attempt's changesets touched. */
+async function touchesToolchain(tx: Tx, deps: Deps, attemptId: string, repo: string, head: string): Promise<string[]> {
+  const manifest = await repoManifestAt(deps, repo, head).catch(() => null);
+  const patterns = [...new Set([...DEFAULT_TOOLCHAIN_PATHS, ...(manifest?.toolchainPaths ?? [])])];
+  const rows = await tx<{ path: string }[]>`
+    select distinct f->>'path' as path from wos.changesets c join wos.tasks t on t.id = c.task_id
+      cross join lateral jsonb_array_elements(c.file_manifest) f
+     where c.ok and (t.attempt_id = ${attemptId} or (t.kind = 'abu_build' and t.abu_id = (select abu_id from wos.attempts where id = ${attemptId})))
+       and c.account_id = (select account_id from wos.attempts where id = ${attemptId})`;
+  return rows
+    .map((r) => r.path)
+    .filter((p) => patterns.some((g) => globMatch(g, p)))
+    .sort();
+}
+
+/** Minimal glob: `**` spans directories, `*` stays within one segment, everything else literal. */
+export function globMatch(glob: string, path: string): boolean {
+  let re = "^";
+  for (let i = 0; i < glob.length; i++) {
+    const c = glob[i]!;
+    if (c === "*" && glob[i + 1] === "*") {
+      if (glob[i + 2] === "/") {
+        re += "(?:.*/)?";
+        i += 2;
+      } else {
+        re += ".*";
+        i += 1;
+      }
+    } else if (c === "*") re += "[^/]*";
+    else if (c === "?") re += "[^/]";
+    else re += c.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  }
+  return new RegExp(`${re}$`).test(path);
 }

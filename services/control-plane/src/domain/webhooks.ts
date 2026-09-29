@@ -2,7 +2,8 @@
  * GitHub webhook processing (actor `github`). Deliveries are stored first (dedupe by X-GitHub-Delivery),
  * then processed; processing is idempotent because every effect is a guarded transition.
  */
-import { inTransaction } from "@waronsaas/db";
+import { profileAcceptanceCheckName } from "@waronsaas/contracts";
+import { inTransaction, type Tx } from "@waronsaas/db";
 import type { Deps } from "../deps.js";
 import { ApiFailure } from "../errors.js";
 import { insertEvent } from "../db/events.js";
@@ -29,6 +30,7 @@ interface Payload {
     status?: string;
     app?: { slug?: string };
   };
+  check_run?: { id?: number; name?: string; head_sha?: string; conclusion?: string | null; check_suite?: { id?: number } };
   pull_request?: { number?: number; merged?: boolean; merge_commit_sha?: string | null; user?: { login?: string; type?: string } };
 }
 
@@ -66,6 +68,7 @@ export async function processDelivery(deps: Deps, deliveryId: string): Promise<v
   if (!row || row.processed_at) return;
   try {
     if (row.event === "check_suite") await onCheckSuite(deps, row.payload);
+    else if (row.event === "check_run") await onCheckRun(deps, row.payload);
     else if (row.event === "pull_request") await onPullRequest(deps, row.payload);
     await inTransaction(
       deps.sql,
@@ -91,14 +94,17 @@ async function onCheckSuite(deps: Deps, p: Payload): Promise<void> {
   const conclusion = cs.conclusion && CONCLUSIONS.has(cs.conclusion) ? cs.conclusion : "neutral";
   await inTransaction(deps.sql, GH_TX, async (tx) => {
     const [a] = await tx<{ id: string }[]>`
-      select id from wos.attempts where head_sha = ${cs.head_sha!} and state not in ('merged', 'expired', 'abandoned', 'failed', 'closed_unmerged', 'superseded')
-       order by updated_at desc limit 1`;
+      select at.id from wos.attempts at join wos.abus ab on ab.id = at.abu_id
+       where at.head_sha = ${cs.head_sha!} and ab.repo_full_name = ${p.repository?.full_name ?? ""}
+         and at.state not in ('merged', 'expired', 'abandoned', 'failed', 'closed_unmerged', 'superseded')
+       order by at.updated_at desc limit 1`;
     if (!a) return;
     const [dupe] =
       await tx`select 1 as x from wos.verification_runs where attempt_id = ${a.id} and github_check_suite_id = ${cs.id!} and conclusion = ${conclusion}`;
     if (!dupe) {
       await tx`insert into wos.verification_runs (id, subject, attempt_id, source, head_sha, conclusion, github_check_suite_id, details)
                values (${uuidv7()}, 'attempt', ${a.id}, 'ci', ${cs.head_sha!}, ${conclusion}, ${cs.id!}, ${tx.json({ headBranch: cs.head_branch ?? null } as never)})`;
+      await verificationRecorded(tx, "attempt", a.id, cs.head_sha!, conclusion);
     }
     const attempt = (await loadAttempt(tx, a.id))!;
     // Only a result for exactly the candidate head moves the attempt (BUILD-PROTOCOL.md section 8).
@@ -122,17 +128,61 @@ async function onCheckSuite(deps: Deps, p: Payload): Promise<void> {
   });
 }
 
+/** Emits verification.recorded for a stored verification_runs row (contracts 3.0.0, B-0007-architect). */
+async function verificationRecorded(
+  tx: Tx,
+  subject: "attempt" | "document" | "profile_acceptance",
+  subjectId: string,
+  headSha: string,
+  conclusion: string,
+): Promise<void> {
+  await insertEvent(
+    tx,
+    { type: "verification.recorded", v: 1, visibility: "public", payload: { subject, subjectId, headSha, conclusion } },
+    { aggregateKind: "verification", aggregateId: subjectId, actor: "github", actorAccountId: null },
+  );
+}
+
+/**
+ * Profile acceptance (ROADMAP-PROTOCOL.md section 6): a concluded check run named
+ * profileAcceptanceCheckName(feature, target) on the default branch is recorded; the progress consumer follows.
+ */
+async function onCheckRun(deps: Deps, p: Payload): Promise<void> {
+  const run = p.check_run;
+  const repo = p.repository?.full_name;
+  if (p.action !== "completed" || !run?.name || !run.head_sha || !repo) return;
+  const m = /^wos-acceptance\/([a-z][a-z0-9-]*)\/([a-z][a-z0-9-]*)$/.exec(run.name);
+  if (!m || profileAcceptanceCheckName(m[1]!, m[2]!) !== run.name) return;
+  const conclusion = run.conclusion && CONCLUSIONS.has(run.conclusion) ? run.conclusion : "neutral";
+  const suiteId = run.check_suite?.id ?? run.id;
+  if (suiteId === undefined) return;
+  await inTransaction(deps.sql, GH_TX, async (tx) => {
+    const [ids] = await tx<{ feature_id: string; target_id: string }[]>`
+      select f.id as feature_id, t.id as target_id from wos.catalog_features f, wos.targets t
+       where f.key = ${m[1]!} and f.repo_full_name = ${repo} and t.slug = ${m[2]!}`;
+    if (!ids) return;
+    const [dupe] = await tx`
+      select 1 as x from wos.verification_runs where subject = 'profile_acceptance' and catalog_feature_id = ${ids.feature_id}
+         and profile_target_id = ${ids.target_id} and head_sha = ${run.head_sha!} and github_check_suite_id = ${suiteId} and conclusion = ${conclusion}`;
+    if (dupe) return;
+    await tx`insert into wos.verification_runs (id, subject, catalog_feature_id, profile_target_id, source, head_sha, conclusion, github_check_suite_id, details)
+             values (${uuidv7()}, 'profile_acceptance', ${ids.feature_id}, ${ids.target_id}, 'ci', ${run.head_sha!}, ${conclusion}, ${suiteId},
+                     ${tx.json({ checkRunId: run.id ?? null, name: run.name } as never)})`;
+    await verificationRecorded(tx, "profile_acceptance", `${m[1]}/${m[2]}`, run.head_sha!, conclusion);
+  });
+}
+
 async function onPullRequest(deps: Deps, p: Payload): Promise<void> {
   const pr = p.pull_request;
   const repo = p.repository?.full_name;
   if (!pr?.number || !repo) return;
   // S-18 fallback: any PR not opened by the App is closed and locked.
   if ((p.action === "opened" || p.action === "reopened") && pr.user?.login !== deps.config.appBotLogin) {
-    await deps.github.closePullRequest(
-      repo,
-      pr.number,
-      "warOnSaaS pull requests are opened only by the wOS GitHub App after qualification. Contribute with wOS: https://waronsaas.com",
-    );
+    await deps.github.closePullRequest(repo, pr.number, {
+      comment:
+        "warOnSaaS pull requests are opened only by the wOS GitHub App after qualification. Contribute with wOS: https://waronsaas.com",
+      lock: true,
+    });
     return;
   }
   if (p.action !== "closed") return;
@@ -184,13 +234,13 @@ async function onPullRequest(deps: Deps, p: Payload): Promise<void> {
       );
       return;
     }
-    const doc = await inTransaction(deps.sql, GH_TX, (tx) => loadDocument(tx, row.document_id!, deps.config.productRepo));
+    const doc = await inTransaction(deps.sql, GH_TX, (tx) => loadDocument(tx, row.document_id!));
     if (doc?.state !== "consensus") return;
     // Parse at the merge commit before the transaction (network), then ingest all-or-nothing.
     const files = doc.kind === "roadmap" ? await readMergedRoadmap(deps, doc, mergeSha) : await readMergedContract(deps, doc, mergeSha);
     await inTransaction(deps.sql, GH_TX, async (tx) => {
       await tx`update wos.pull_requests set state = 'merged', merged_sha = ${mergeSha}, merged_at = now(), updated_at = now() where id = ${row.id}`;
-      const fresh = await loadDocument(tx, doc.id, deps.config.productRepo);
+      const fresh = await loadDocument(tx, doc.id);
       if (fresh?.state !== "consensus") throw new ApiFailure("CONFLICT", "document left consensus");
       if (fresh.kind === "roadmap")
         await materialiseRoadmap(

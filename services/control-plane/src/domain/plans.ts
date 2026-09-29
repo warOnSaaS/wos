@@ -16,7 +16,7 @@ import {
 } from "@waronsaas/contracts";
 import type { Tx } from "@waronsaas/db";
 import type { Deps } from "../deps.js";
-import { canonicalJson, sha256Prefixed } from "../util/crypto.js";
+import { canonicalJson, sha256Of } from "@waronsaas/contracts/canonical";
 import type { TaskRow } from "../views.js";
 
 export const SECRET_EXCLUDE_GLOBS = ["**/.env*", "**/*.pem", "**/*.key", "**/id_*"];
@@ -236,7 +236,7 @@ export interface PlanInput {
 async function serverDoc(tx: Tx, deps: Deps, ref: string, required: boolean): Promise<ArtifactSelector | null> {
   const text = await renderServerDocument(tx, deps, ref);
   if (text === null) return null;
-  return { kind: "server_document", ref, sha256: sha256Prefixed(text), required };
+  return { kind: "server_document", ref, sha256: sha256Of(text), required };
 }
 
 const repoFile = (repo: string, path: string, required: boolean): ArtifactSelector => ({ kind: "repo_file", repo, path, required });
@@ -270,6 +270,7 @@ export async function buildPlan(tx: Tx, deps: Deps, input: PlanInput): Promise<C
     for (const check of abu.acceptance.checks) allowedCommands.push(check.run);
   } else if (role === "roadmap_author" || role === "roadmap_reviewer_astra" || role === "roadmap_reviewer_fable") {
     const author = role === "roadmap_author";
+    if (!target) throw new Error(`roadmap task ${task.id} has no target`);
     push(repoFile(repo, ARTIFACT_PATHS.inventory(target), !author));
     push(repoFile(repo, ARTIFACT_PATHS.roadmap(target), !author));
     push(serverDoc(tx, deps, `wos:catalog-index@${source.commit}`, true));
@@ -305,6 +306,7 @@ export async function buildPlan(tx: Tx, deps: Deps, input: PlanInput): Promise<C
   return {
     schema: "wos-context-plan.v1",
     taskId: task.id,
+    taskKind: task.kind,
     leaseId: input.leaseId,
     role,
     model: input.model.ref,

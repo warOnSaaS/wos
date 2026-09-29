@@ -261,6 +261,8 @@ describe.skipIf(!HAS_DB)("every route: existence, auth mode, input validation, r
       idem: true,
       body: { deviceId: builder.deviceId },
     });
+    const docRef = spare.body.contextPlan.artifacts.find((a: { kind: string }) => a.kind === "server_document").ref as string;
+    await call("GET", `/v1/leases/${spare.body.lease.id}/documents?ref=${encodeURIComponent(docRef)}`, { token: builder.token });
     await call("POST", `/v1/leases/${spare.body.lease.id}/heartbeat`, {
       token: builder.token,
       body: { deviceId: builder.deviceId, phase: "building" },

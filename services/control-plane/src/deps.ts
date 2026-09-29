@@ -36,9 +36,8 @@ export type GithubUserIdentity = githubApp.GithubUserIdentity;
 export type CommitIdentity = githubApp.CommitIdentity;
 
 /**
- * The GitHub operations the control plane needs. The first block wraps `@waronsaas/github/app`
- * (github-build workstream, frozen signatures). The second block is NOT in that package's frozen API:
- * see blockers/B-0001-control-plane.md. Until it is resolved the default adapter answers UPSTREAM_GITHUB.
+ * The GitHub operations the control plane needs, mapped 1:1 onto `@waronsaas/github/app` (github-build),
+ * with the App credentials bound.
  */
 export interface GithubPort {
   commitChangeset(
@@ -73,7 +72,7 @@ export interface GithubPort {
     input: { deviceCode: string } | { code: string; redirectUri: string },
   ): Promise<{ status: "pending" | "denied" | "expired" } | { status: "ok"; user: GithubUserIdentity }>;
 
-  // ---- B-0001: needed by the control plane, missing from @waronsaas/github/app ----
+  // ---- ratified in contracts 3.0.0 (B-0001-control-plane decision); github-build implements them ----
   startDeviceAuthorization(): Promise<{
     deviceCode: string;
     userCode: string;
@@ -81,17 +80,21 @@ export interface GithubPort {
     intervalSeconds: number;
     expiresInSeconds: number;
   }>;
-  webAuthorizeUrl(state: string, redirectUri: string): string;
+  webAuthorizeUrl(input: { state: string; redirectUri: string }): string;
   /** Current head commit of a branch (pins an attempt's base, BUILD-PROTOCOL.md section 3 step 6). */
   getBranchHead(repo: string, branch: string): Promise<string>;
-  /** File bytes at a commit, or null when absent (wos.json, roadmap/contract YAML at a merge commit). */
-  readFile(repo: string, commit: string, path: string): Promise<Uint8Array | null>;
-  /** Every blob path at a commit (validateChangeset's existingPaths: deletes and case collisions). */
-  listPaths(repo: string, commit: string): Promise<string[]>;
-  /** Creates or force-moves a branch to a commit (the official PR branch after qualification). */
-  setBranch(repo: string, branch: string, sha: string): Promise<void>;
-  /** Closes (and locks) a PR with a comment: S-18 fallback and abandoned attempts. */
-  closePullRequest(repo: string, prNumber: number, comment: string): Promise<void>;
+  /** File bytes at a commit, or null when absent. */
+  readFileAt(repo: string, commit: string, path: string): Promise<Uint8Array | null>;
+  /** Every blob path at a commit. */
+  listTreePaths(repo: string, commit: string): Promise<string[]>;
+  /** Creates a branch at a commit (the official PR branch). */
+  createBranchAt(repo: string, branch: string, sha: string): Promise<void>;
+  /** Moves an existing branch (expected-head check, or force). */
+  moveBranch(repo: string, branch: string, sha: string, mode: { expectedHeadSha: string } | { force: true }): Promise<void>;
+  deleteBranch(repo: string, branch: string): Promise<void>;
+  closePullRequest(repo: string, prNumber: number, options: { comment: string; lock: boolean }): Promise<void>;
+  /** Unified diff base..head. */
+  compareDiff(repo: string, base: string, head: string): Promise<string>;
 }
 
 export interface OutboundMail {
@@ -200,9 +203,21 @@ export function configFromEnv(env: Readonly<Record<string, string | undefined>>)
   };
 }
 
-const missing = (what: string) => async (): Promise<never> => {
-  throw new ApiFailure("UPSTREAM_GITHUB", `GitHub operation ${what} is not available yet (blockers/B-0001-control-plane.md)`);
-};
+/**
+ * Calls a github/app operation ratified in contracts 3.0.0 by its exact name. Until github-build's Wave 1
+ * branch is merged the stub package lacks it, and the call answers UPSTREAM_GITHUB (never silently).
+ */
+async function ratified<T>(name: string, ...args: unknown[]): Promise<T> {
+  const fn = (githubApp as unknown as Record<string, unknown>)[name];
+  if (typeof fn !== "function")
+    throw new ApiFailure("UPSTREAM_GITHUB", `GitHub operation ${name} is not available in this build of @waronsaas/github/app`);
+  try {
+    return (await (fn as (...a: unknown[]) => Promise<T>)(...args)) as T;
+  } catch (err) {
+    if (err instanceof NotImplementedError) throw new ApiFailure("UPSTREAM_GITHUB", err.message);
+    throw err;
+  }
+}
 
 /** Production adapter over @waronsaas/github/app. Operations missing from that package fail with UPSTREAM_GITHUB. */
 export function githubFromEnv(env: Readonly<Record<string, string | undefined>>): GithubPort {
@@ -237,14 +252,21 @@ export function githubFromEnv(env: Readonly<Record<string, string | undefined>>)
       }
     },
     exchangeUserAuthorization: (input) => upstream(() => githubApp.exchangeUserAuthorization(creds, input)),
-    startDeviceAuthorization: missing("startDeviceAuthorization"),
-    webAuthorizeUrl: (state, redirectUri) =>
-      `https://github.com/login/oauth/authorize?${new URLSearchParams({ client_id: creds.clientId, state, redirect_uri: redirectUri })}`,
-    getBranchHead: missing("getBranchHead"),
-    readFile: missing("readFile"),
-    listPaths: missing("listPaths"),
-    setBranch: missing("setBranch"),
-    closePullRequest: missing("closePullRequest"),
+    startDeviceAuthorization: () => ratified("startDeviceAuthorization", creds),
+    webAuthorizeUrl: ({ state, redirectUri }) => {
+      const fn = (githubApp as unknown as Record<string, unknown>).webAuthorizeUrl;
+      if (typeof fn === "function")
+        return (fn as (c: githubApp.AppCredentials, i: { state: string; redirectUri: string }) => string)(creds, { state, redirectUri });
+      return `https://github.com/login/oauth/authorize?${new URLSearchParams({ client_id: creds.clientId, state, redirect_uri: redirectUri })}`;
+    },
+    getBranchHead: (repo, branch) => ratified("getBranchHead", creds, repo, branch),
+    readFileAt: (repo, commit, path) => ratified("readFileAt", creds, repo, commit, path),
+    listTreePaths: (repo, commit) => ratified("listTreePaths", creds, repo, commit),
+    createBranchAt: (repo, branch, sha) => ratified("createBranchAt", creds, repo, branch, sha),
+    moveBranch: (repo, branch, sha, mode) => ratified("moveBranch", creds, repo, branch, sha, mode),
+    deleteBranch: (repo, branch) => ratified("deleteBranch", creds, repo, branch),
+    closePullRequest: (repo, n, options) => ratified("closePullRequest", creds, repo, n, options),
+    compareDiff: (repo, base, head) => ratified("compareDiff", creds, repo, base, head),
   };
 }
 

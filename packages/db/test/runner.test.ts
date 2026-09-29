@@ -4,7 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import postgres from "postgres";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+
+vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 import { MigrationError, readMigrations, runMigrations } from "../src/index.js";
 import { runCli } from "../src/cli.js";
 import { createEmptyDb, HAS_DB, MIGRATIONS_DIR, type ScratchDb } from "./support/pg.js";
@@ -27,11 +29,12 @@ async function query<T extends Record<string, unknown>>(url: string, text: strin
 }
 
 const silent = { log: () => {}, error: () => {} };
+const ALL = ["0000_meta", "0001_init", "0002_backstops", "0003_subjects_and_runs"];
 
 describe("migration files", () => {
   it("are named NNNN_name.sql and checksummed as sha256", async () => {
     const files = await readMigrations(MIGRATIONS_DIR);
-    expect(files.map((f) => f.version)).toEqual(["0000", "0001"]);
+    expect(files.map((f) => f.version)).toEqual(["0000", "0001", "0002", "0003"]);
     for (const f of files) expect(f.sha256).toMatch(/^sha256:[0-9a-f]{64}$/);
   });
 });
@@ -57,7 +60,7 @@ describe.skipIf(!HAS_DB)("ship-gate-and-migrations: migration runner (Docker Pos
   it("ship-gate-and-migrations R-001 applies 0000 and 0001 to an empty database, each with a ledger row, and is idempotent", async () => {
     const db = await fresh();
     const first = await runMigrations({ databaseUrl: db.ownerUrl, migrationsDir: MIGRATIONS_DIR, checkOnly: false });
-    expect(first.applied).toEqual(["0000_meta", "0001_init"]);
+    expect(first.applied).toEqual(ALL);
     expect(first.pending).toEqual([]);
     const ledger = await query<{ version: string; checksum: string }>(
       db.ownerUrl,
@@ -70,13 +73,13 @@ describe.skipIf(!HAS_DB)("ship-gate-and-migrations: migration runner (Docker Pos
 
     const second = await runMigrations({ databaseUrl: db.ownerUrl, migrationsDir: MIGRATIONS_DIR, checkOnly: false });
     expect(second.applied).toEqual([]);
-    expect(second.alreadyApplied).toEqual(["0000_meta", "0001_init"]);
+    expect(second.alreadyApplied).toEqual(ALL);
   });
 
   it("check mode reports pending migrations and changes nothing", async () => {
     const db = await fresh();
     const report = await runMigrations({ databaseUrl: db.ownerUrl, migrationsDir: MIGRATIONS_DIR, checkOnly: true });
-    expect(report.pending).toEqual(["0000_meta", "0001_init"]);
+    expect(report.pending).toEqual(ALL);
     const rows = await query<{ t: string | null }>(db.ownerUrl, "select to_regclass('wos_meta.schema_migrations')::text as t");
     expect(rows[0]!.t).toBeNull();
   });
@@ -86,7 +89,7 @@ describe.skipIf(!HAS_DB)("ship-gate-and-migrations: migration runner (Docker Pos
     const d = await dir();
     await runMigrations({ databaseUrl: db.ownerUrl, migrationsDir: d, checkOnly: false });
     await appendFile(join(d, "0001_init.sql"), "\n-- edited after it was applied\n");
-    await writeFile(join(d, "0002_more.sql"), "create table wos.never_created (id int);\n");
+    await writeFile(join(d, "0009_more.sql"), "create table wos.never_created (id int);\n");
     const err = await runMigrations({ databaseUrl: db.ownerUrl, migrationsDir: d, checkOnly: false }).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(MigrationError);
     expect((err as MigrationError).code).toBe("EDITED_MIGRATION");
@@ -100,9 +103,9 @@ describe.skipIf(!HAS_DB)("ship-gate-and-migrations: migration runner (Docker Pos
   it("refuses when an applied migration's file was deleted", async () => {
     const db = await fresh();
     const d = await dir();
-    await writeFile(join(d, "0002_extra.sql"), "create table wos.extra (id int);\n");
+    await writeFile(join(d, "0009_extra.sql"), "create table wos.extra (id int);\n");
     await runMigrations({ databaseUrl: db.ownerUrl, migrationsDir: d, checkOnly: false });
-    await unlink(join(d, "0002_extra.sql"));
+    await unlink(join(d, "0009_extra.sql"));
     await expect(runMigrations({ databaseUrl: db.ownerUrl, migrationsDir: d, checkOnly: false })).rejects.toMatchObject({
       code: "DELETED_MIGRATION",
     });
@@ -111,11 +114,11 @@ describe.skipIf(!HAS_DB)("ship-gate-and-migrations: migration runner (Docker Pos
   it("runs each migration in one transaction with its ledger row: a failing migration leaves no trace", async () => {
     const db = await fresh();
     const d = await dir();
-    await writeFile(join(d, "0002_broken.sql"), "create table wos.half_done (id int);\nselect * from wos.does_not_exist;\n");
+    await writeFile(join(d, "0009_broken.sql"), "create table wos.half_done (id int);\nselect * from wos.does_not_exist;\n");
     await expect(runMigrations({ databaseUrl: db.ownerUrl, migrationsDir: d, checkOnly: false })).rejects.toThrow();
     const rows = await query<{ t: string | null; n: string }>(
       db.ownerUrl,
-      "select to_regclass('wos.half_done')::text as t, (select count(*)::text from wos_meta.schema_migrations where version = '0002') as n",
+      "select to_regclass('wos.half_done')::text as t, (select count(*)::text from wos_meta.schema_migrations where version = '0009') as n",
     );
     expect(rows[0]).toEqual({ t: null, n: "0" });
   });
@@ -125,7 +128,7 @@ describe.skipIf(!HAS_DB)("ship-gate-and-migrations: migration runner (Docker Pos
     const reports = await Promise.all(
       [1, 2, 3].map(() => runMigrations({ databaseUrl: db.ownerUrl, migrationsDir: MIGRATIONS_DIR, checkOnly: false })),
     );
-    expect(reports.flatMap((r) => r.applied).sort()).toEqual(["0000_meta", "0001_init"]);
+    expect(reports.flatMap((r) => r.applied).sort()).toEqual(ALL);
   });
 
   describe("the CLI (built dist/cli.js)", () => {

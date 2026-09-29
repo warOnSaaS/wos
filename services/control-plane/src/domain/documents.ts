@@ -49,9 +49,9 @@ export interface DocumentRow {
   repo: string;
 }
 
-export async function loadDocument(tx: Tx, id: string, productRepo: string): Promise<DocumentRow | null> {
+export async function loadDocument(tx: Tx, id: string): Promise<DocumentRow | null> {
   const [d] = await tx<DocumentRow[]>`
-    select d.*, t.slug as target_slug, f.key as feature_key, coalesce(t.repo_full_name, ${productRepo}) as repo
+    select d.*, t.slug as target_slug, f.key as feature_key, d.repo_full_name as repo
       from wos.documents d left join wos.targets t on t.id = d.target_id left join wos.catalog_features f on f.id = d.catalog_feature_id
      where d.id = ${id}`;
   return d ?? null;
@@ -80,7 +80,7 @@ export async function documentTransition(
     emit: emit ?? {
       type: "document.state_changed",
       v: 1,
-      visibility: "private",
+      visibility: "public",
       payload: { documentId: doc.id, event, from: doc.state, to: t.to },
     },
   });
@@ -88,7 +88,10 @@ export async function documentTransition(
 
 async function openDocument(
   tx: Tx,
-  input: { kind: "roadmap"; targetId: string; slug: string } | { kind: "feature_contract"; featureId: string; key: string },
+  input:
+    | { kind: "roadmap"; targetId: string; slug: string }
+    /** `openedFor`: the app whose merged roadmap opened this contract version (document.opened.target). */
+    | { kind: "feature_contract"; featureId: string; key: string; openedFor: string },
   by: ActorRef,
   openedBy: string | null,
   carry: unknown,
@@ -104,10 +107,16 @@ async function openDocument(
   const version = v!.n;
   const id = uuidv7();
   const branch = input.kind === "roadmap" ? roadmapBranch(input.slug, version) : featureBranch(input.key, version);
+  // repo_full_name: a roadmap lives in its target's repo, a contract in its catalog feature's (migration 0003).
   await tx`
-    insert into wos.documents (id, kind, target_id, catalog_feature_id, version, state, branch, opened_by)
+    insert into wos.documents (id, kind, target_id, catalog_feature_id, version, state, branch, opened_by, repo_full_name)
     values (${id}, ${input.kind}, ${input.kind === "roadmap" ? input.targetId : null}, ${input.kind === "roadmap" ? null : input.featureId},
-            ${version}, 'drafting', ${branch}, ${openedBy})`;
+            ${version}, 'drafting', ${branch}, ${openedBy},
+            ${
+              input.kind === "roadmap"
+                ? tx`(select repo_full_name from wos.targets where id = ${input.targetId})`
+                : tx`(select repo_full_name from wos.catalog_features where id = ${input.featureId})`
+            })`;
   await insertEvent(
     tx,
     {
@@ -117,7 +126,7 @@ async function openDocument(
       payload: {
         documentId: id,
         kind: input.kind,
-        target: input.kind === "roadmap" ? input.slug : await referencingTarget(tx, input.featureId),
+        target: input.kind === "roadmap" ? input.slug : input.openedFor,
         feature: input.kind === "roadmap" ? null : input.key,
         version,
       },
@@ -132,12 +141,6 @@ async function openDocument(
     by,
   );
   return { documentId: id, taskId, version };
-}
-
-async function referencingTarget(tx: Tx, featureId: string): Promise<string> {
-  const [t] = await tx<{ slug: string }[]>`
-    select t.slug from wos.app_features af join wos.targets t on t.id = af.target_id where af.catalog_feature_id = ${featureId} order by t.rank limit 1`;
-  return t?.slug ?? "waronsaas";
 }
 
 /** Maintainer `openRoadmap`: 409 if an open roadmap exists (documents_one_open_roadmap). */
@@ -159,7 +162,7 @@ const decode = (f: Changeset["files"][number]) => (f.op === "upsert" ? Buffer.fr
 async function revisionFile(deps: Deps, repo: string, commit: string, changeset: Changeset, path: string): Promise<string | null> {
   const f = changeset.files.find((x) => x.path === path);
   if (f) return decode(f);
-  const bytes = await deps.github.readFile(repo, commit, path);
+  const bytes = await deps.github.readFileAt(repo, commit, path);
   return bytes ? Buffer.from(bytes).toString("utf8") : null;
 }
 
@@ -192,7 +195,7 @@ export async function documentScope(
 }
 
 export async function repoManifestAt(deps: Deps, repo: string, commit: string): Promise<RepoManifest | null> {
-  const bytes = await deps.github.readFile(repo, commit, ARTIFACT_PATHS.repoManifest);
+  const bytes = await deps.github.readFileAt(repo, commit, ARTIFACT_PATHS.repoManifest);
   if (!bytes) return null;
   try {
     const parsed = RepoManifestSchema.safeParse(JSON.parse(Buffer.from(bytes).toString("utf8")));
@@ -229,7 +232,8 @@ export async function validateDocumentRevision(
     if (!roadmap.ok || !inventory.ok) return errors;
     const catalog = new Map<string, CatalogEntry>();
     const rows = await tx<{ key: string; title: string; summary: string; alias_key: string | null }[]>`
-      select f.key, f.title, f.summary, a.key as alias_key from wos.catalog_features f left join wos.catalog_features a on a.id = f.alias_of`;
+      select f.key, f.title, f.summary, a.key as alias_key from wos.catalog_features f left join wos.catalog_features a on a.id = f.alias_of
+       where f.repo_full_name = ${doc.repo}`;
     for (const r of rows)
       catalog.set(r.key, { schema: "wos-catalog-entry.v1", key: r.key, title: r.title, summary: r.summary, aliasOf: r.alias_key });
     for (const k of roadmap.value.newCatalogFeatures) {
@@ -365,7 +369,7 @@ export async function documentAfterReveal(
   outcome: "consensus" | "gaps",
   reviewerIds: string[],
 ): Promise<void> {
-  const doc = await loadDocument(tx, documentId, deps.config.productRepo);
+  const doc = await loadDocument(tx, documentId);
   if (doc?.state !== "in_review") return;
   if (outcome === "consensus") {
     await documentTransition(tx, doc, "round_consensus", SYSTEM, {
@@ -446,7 +450,7 @@ export interface MergedRoadmapFiles {
 export async function readMergedRoadmap(deps: Deps, doc: DocumentRow, mergeSha: string): Promise<MergedRoadmapFiles> {
   const slug = doc.target_slug!;
   const text = async (p: string) => {
-    const b = await deps.github.readFile(doc.repo, mergeSha, p);
+    const b = await deps.github.readFileAt(doc.repo, mergeSha, p);
     if (!b) throw new Error(`${p} missing at ${mergeSha}`);
     return Buffer.from(b).toString("utf8");
   };
@@ -532,8 +536,8 @@ export async function materialiseRoadmap(
   for (const k of roadmap.newCatalogFeatures) {
     const entry = files.catalog.get(k)!;
     const created = await tx`
-      insert into wos.catalog_features (id, key, title, summary, state, created_by_document_id)
-      values (${uuidv7()}, ${k}, ${entry.title}, ${entry.summary}, 'active', ${doc.id}) on conflict (key) do nothing returning id`;
+      insert into wos.catalog_features (id, key, title, summary, state, created_by_document_id, repo_full_name)
+      values (${uuidv7()}, ${k}, ${entry.title}, ${entry.summary}, 'active', ${doc.id}, ${doc.repo}) on conflict (key) do nothing returning id`;
     if (created.length > 0) {
       await insertEvent(
         tx,
@@ -548,8 +552,8 @@ export async function materialiseRoadmap(
   for (const c of roadmap.capabilities) for (const f of c.features) referenced.set(f.feature, { capability: c.key, ref: f });
   const featureIds = new Map<string, string>();
   for (const [key, { capability, ref }] of referenced) {
-    const [f] = await tx<{ id: string }[]>`select id from wos.catalog_features where key = ${key}`;
-    if (!f) throw new Error(`roadmap references unknown catalog feature ${key}`);
+    const [f] = await tx<{ id: string }[]>`select id from wos.catalog_features where key = ${key} and repo_full_name = ${doc.repo}`;
+    if (!f) throw new Error(`roadmap references unknown catalog feature ${key} in ${doc.repo}`);
     featureIds.set(key, f.id);
     await tx`
       insert into wos.app_features (id, target_id, catalog_feature_id, capability_id, state, weight_bp, weight_rationale, app_notes, phase,
@@ -622,7 +626,7 @@ export async function materialiseRoadmap(
         continue;
       }
     }
-    await openDocument(tx, { kind: "feature_contract", featureId, key }, SYSTEM, null, {
+    await openDocument(tx, { kind: "feature_contract", featureId, key, openedFor: slug }, SYSTEM, null, {
       addProfilesFor: [slug],
       impactedTargets: merged?.id ? [slug] : [],
     });
@@ -645,7 +649,7 @@ export async function materialiseRoadmap(
         emit: {
           type: "proposal.state_changed",
           v: 1,
-          visibility: "private",
+          visibility: "public",
           payload: { proposalId: p.id, from: "accepted", to: "incorporated" },
         },
       });
@@ -662,7 +666,7 @@ export interface MergedContractFiles {
 export async function readMergedContract(deps: Deps, doc: DocumentRow, mergeSha: string): Promise<MergedContractFiles> {
   const key = doc.feature_key!;
   const text = async (p: string) => {
-    const b = await deps.github.readFile(doc.repo, mergeSha, p);
+    const b = await deps.github.readFileAt(doc.repo, mergeSha, p);
     if (!b) throw new Error(`${p} missing at ${mergeSha}`);
     return Buffer.from(b).toString("utf8");
   };
@@ -754,9 +758,9 @@ export async function ingestContract(
       1,
       Math.ceil((files.contractText.length + JSON.stringify(spec).length) / deps.policy.tokenEstimator.charsPerToken),
     );
-    await tx`insert into wos.abus (id, catalog_feature_id, document_id, key, title, size_points, state, spec, est_context_tokens)
+    await tx`insert into wos.abus (id, catalog_feature_id, document_id, key, title, size_points, state, spec, est_context_tokens, repo_full_name)
              values (${id}, ${featureId}, ${doc.id}, ${spec.key}, ${spec.title}, ${spec.sizePoints}, 'pending_dependencies',
-                     ${tx.json(spec as never)}, ${est})`;
+                     ${tx.json(spec as never)}, ${est}, ${doc.repo})`;
     for (const k of spec.requirements) {
       const rid = reqIds.get(k);
       if (rid) await tx`insert into wos.abu_requirements (abu_id, requirement_id) values (${id}, ${rid})`;
@@ -798,7 +802,7 @@ async function inventoryEvent(tx: Tx, id: string, from: string, to: string): Pro
   if (!t) throw new Error(`inventory ${from} -> ${to} is not a transition`);
   await insertEvent(
     tx,
-    { type: "inventory_version.state_changed", v: 1, visibility: "private", payload: { id, event: t.event, from, to } },
+    { type: "inventory_version.state_changed", v: 1, visibility: "public", payload: { id, event: t.event, from, to } },
     { aggregateKind: "inventory_version", aggregateId: id, actor: "github", actorAccountId: null },
   );
 }

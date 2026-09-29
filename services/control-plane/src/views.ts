@@ -6,10 +6,17 @@ export const iso = (d: Date | string | null | undefined): string | null => (d ==
 export const isoReq = (d: Date | string): string => new Date(d).toISOString();
 export const num = (v: string | number | bigint | null | undefined): number => (v == null ? 0 : Number(v));
 
-/** Target slug a shared-feature task or attempt is shown under: the lowest-rank app referencing the feature. */
-const TARGET_OF_FEATURE = (featureIdSql: string) => `(
-  select tt.slug from wos.app_features af join wos.targets tt on tt.id = af.target_id
-   where af.catalog_feature_id = ${featureIdSql} and af.state <> 'descoped' order by tt.rank limit 1)`;
+/** Apps an ABU is relevant to: targets whose profile includes one of its requirements (D10). */
+export const ABU_RELEVANCE = (abuIdSql: string) => `coalesce((
+  select array_agg(distinct rt.slug order by rt.slug) from wos.abu_requirements ar
+    join wos.requirement_profiles rp on rp.requirement_id = ar.requirement_id
+    join wos.targets rt on rt.id = rp.target_id
+   where ar.abu_id = ${abuIdSql}), '{}')`;
+
+/** Apps that reference a catalog feature (non-descoped app features), by rank. */
+export const FEATURE_APPS = (featureIdSql: string) => `coalesce((
+  select array_agg(ft.slug order by ft.rank) from wos.app_features af join wos.targets ft on ft.id = af.target_id
+   where af.catalog_feature_id = ${featureIdSql} and af.state <> 'descoped'), '{}')`;
 
 export interface TaskRow {
   id: string;
@@ -29,17 +36,28 @@ export interface TaskRow {
   carry: unknown;
   created_at: Date;
   row_version: number;
-  target_slug: string;
+  /** Set only for roadmap work (contracts 3.0.0 work subject model). */
+  target_slug: string | null;
   feature_key: string | null;
   abu_key: string | null;
   feature_id: string | null;
   resolved_abu_id: string | null;
+  relevant_to: string[];
+  repo: string;
 }
 
 /** `select` list + joins that resolve a task's target, feature and ABU keys. Append `where ...` on alias t. */
+/**
+ * `select` list + joins resolving a task's subject: roadmap work has one target; contract, build, review and
+ * ABU-blocker work has one catalog feature and serves `relevant_to`. Append `where ...` on alias t.
+ */
 export const TASK_SELECT = `
     select t.*, cf.key as feature_key, cf.id as feature_id, ab.key as abu_key, ab.id as resolved_abu_id,
-           coalesce(tg.slug, dtg.slug, blt.slug, ${TARGET_OF_FEATURE("cf.id")}, 'waronsaas') as target_slug
+           case when cf.id is null then coalesce(tg.slug, dtg.slug, blt.slug) end as target_slug,
+           coalesce(ab.repo_full_name, cf.repo_full_name, d.repo_full_name, tg.repo_full_name, blt.repo_full_name) as repo,
+           case when cf.id is null then array[coalesce(tg.slug, dtg.slug, blt.slug)]
+                when ab.id is not null then ${ABU_RELEVANCE("ab.id")}
+                else ${FEATURE_APPS("cf.id")} end as relevant_to
       from wos.tasks t
       left join wos.targets tg on tg.id = t.target_id
       left join wos.documents d on d.id = t.document_id
@@ -47,7 +65,7 @@ export const TASK_SELECT = `
       left join wos.blockers bl on bl.id = t.blocker_id
       left join wos.targets blt on blt.id = bl.target_id
       left join wos.attempts at on at.id = t.attempt_id
-      left join wos.abus ab on ab.id = coalesce(t.abu_id, at.abu_id)
+      left join wos.abus ab on ab.id = coalesce(t.abu_id, at.abu_id, bl.abu_id)
       left join wos.catalog_features cf on cf.id = coalesce(t.catalog_feature_id, ab.catalog_feature_id, d.catalog_feature_id)`;
 
 export async function queryTasks(tx: Tx, where: string, params: unknown[]): Promise<TaskRow[]> {
@@ -68,6 +86,8 @@ export function taskView(r: TaskRow): TaskView {
     reviewerSlot: r.reviewer_slot,
     target: r.target_slug,
     feature: r.feature_key,
+    relevantTo: r.relevant_to,
+    repo: r.repo,
     abu: r.abu_key,
     attemptId: r.attempt_id,
     documentId: r.document_id,
@@ -125,14 +145,15 @@ export interface AttemptRow {
   abu_row_version: number;
   feature_id: string;
   feature_key: string;
-  target_slug: string;
+  relevant_to: string[];
+  repo: string;
   builder_handle: string;
 }
 
 export async function loadAttempt(tx: Tx, id: string): Promise<AttemptRow | null> {
   const rows = await tx.unsafe<AttemptRow[]>(
     `select at.*, ab.key as abu_key, ab.state as abu_state, ab.row_version as abu_row_version, cf.id as feature_id, cf.key as feature_key,
-            coalesce(${TARGET_OF_FEATURE("cf.id")}, 'waronsaas') as target_slug, ac.handle as builder_handle
+            ${ABU_RELEVANCE("ab.id")} as relevant_to, ab.repo_full_name as repo, ac.handle as builder_handle
        from wos.attempts at
        join wos.abus ab on ab.id = at.abu_id
        join wos.catalog_features cf on cf.id = ab.catalog_feature_id
@@ -147,7 +168,9 @@ export function attemptView(r: AttemptRow): AttemptView {
   return {
     id: r.id,
     abu: r.abu_key,
-    target: r.target_slug,
+    feature: r.feature_key,
+    relevantTo: r.relevant_to,
+    repo: r.repo,
     state: r.state,
     builderHandle: r.builder_handle,
     baseSha: r.base_sha,

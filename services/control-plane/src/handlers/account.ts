@@ -4,6 +4,7 @@
  * system-only under RLS) and never log request bodies.
  */
 import { DomainEvent, type Me, TargetSlug } from "@waronsaas/contracts";
+import { devicePublicKeyFromBase64 } from "@waronsaas/contracts/canonical";
 import { inTransaction, type Tx } from "@waronsaas/db";
 import type { Deps, GithubUserIdentity } from "../deps.js";
 import { ApiFailure } from "../errors.js";
@@ -164,6 +165,14 @@ export const accountHandlers: Pick<
   async startEmailSignIn(ctx) {
     const { deps, body } = ctx;
     const email = normalizeEmail(body.email);
+    if (body.clientKind !== "web" && body.devicePublicKey !== null) {
+      // Device keys are base64 of the raw 32 Ed25519 bytes only (canonical.ts C-5).
+      try {
+        devicePublicKeyFromBase64(body.devicePublicKey);
+      } catch {
+        throw new ApiFailure("VALIDATION_FAILED", "devicePublicKey must be base64 of the raw 32-byte Ed25519 public key");
+      }
+    }
     const now = new Date();
     const perEmail = await bumpRateLimit(deps, `signin:email:${sha256Hex(email)}`, "hour");
     const perIp = await bumpRateLimit(deps, `signin:ip:${ipHash(deps.config.ipHashSecret, ctx.ip, now).toString("hex")}`, "hour");
@@ -418,7 +427,7 @@ export const accountHandlers: Pick<
         returning expires_at`;
       return isoReq(r!.expires_at);
     });
-    const authorizeUrl = deps.github.webAuthorizeUrl(state, `${deps.config.apiOrigin}/v1/github/oauth/callback`);
+    const authorizeUrl = deps.github.webAuthorizeUrl({ state, redirectUri: `${deps.config.apiOrigin}/v1/github/oauth/callback` });
     return { flow: "web" as const, linkId, authorizeUrl, expiresAt };
   },
 

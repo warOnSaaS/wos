@@ -7,7 +7,7 @@ import { type AppProgress, computeAppProgress, type ProgressCapabilityInput, typ
 import type { Tx } from "@waronsaas/db";
 import type { Deps } from "../deps.js";
 import { insertEvent } from "../db/events.js";
-import { canonicalJson, sha256Prefixed } from "../util/crypto.js";
+import { canonicalJson, sha256Of } from "@waronsaas/contracts/canonical";
 import { appFeatureTransition } from "./documents.js";
 
 export async function buildProgressInput(
@@ -51,13 +51,14 @@ export async function buildProgressInput(
                             where ar.abu_id = a.id), '{}') as requirements,
                  (select p.url from wos.pull_requests p join wos.attempts at on at.id = p.attempt_id where at.abu_id = a.id and p.state = 'merged' limit 1) as pr_url
             from wos.abus a where a.catalog_feature_id = ${f.catalog_feature_id} and a.state <> 'superseded' order by a.key`;
+        // The latest recorded acceptance run after the last merged relevant ABU concluded success (B-0007-architect).
         const [acc] = await tx<{ passed: boolean }[]>`
-          select exists (
-            select 1 from wos.verification_runs v
+          select coalesce((
+            select v.conclusion = 'success' from wos.verification_runs v
              where v.subject = 'profile_acceptance' and v.catalog_feature_id = ${f.catalog_feature_id} and v.profile_target_id = ${targetId}
-               and v.conclusion = 'success'
                and v.created_at >= coalesce((select max(p.merged_at) from wos.pull_requests p join wos.attempts at on at.id = p.attempt_id
-                                              join wos.abus a on a.id = at.abu_id where a.catalog_feature_id = ${f.catalog_feature_id}), '-infinity')) as passed`;
+                                              join wos.abus a on a.id = at.abu_id where a.catalog_feature_id = ${f.catalog_feature_id}), '-infinity')
+             order by v.created_at desc, v.id desc limit 1), false) as passed`;
         contract = {
           version: f.version ?? 1,
           profile: profile.map((p) => p.key),
@@ -106,7 +107,7 @@ export async function recomputeTarget(tx: Tx, deps: Deps, targetId: string, caus
     return false;
   }
   await deriveAppFeatureStates(tx, targetId, input.target, progress);
-  const inputSha = sha256Prefixed(canonicalJson(input));
+  const inputSha = sha256Of(canonicalJson(input));
   const [last] = await tx<{ input_sha256: string }[]>`
     select input_sha256 from wos.progress_snapshots where target_id = ${targetId} and scope = 'app' order by id desc limit 1`;
   if (last?.input_sha256 === inputSha) return false;

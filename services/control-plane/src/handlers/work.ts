@@ -5,10 +5,8 @@
 import {
   type AbuSpec,
   BlockerMachine,
-  type AgentRunRecord,
   type AuthorSummary,
   type BuildSummary,
-  type Changeset,
   type ChangesetValidation,
   COMMIT_TRAILERS,
   type ContextPlan,
@@ -21,7 +19,8 @@ import type { Deps } from "../deps.js";
 import { ApiFailure } from "../errors.js";
 import { insertEvent } from "../db/events.js";
 import type { Caller, Handlers } from "../http/router.js";
-import { canonicalJson, uuidv7, verifyEd25519 } from "../util/crypto.js";
+import { uuidv7 } from "../util/crypto.js";
+import { sha256Of, verifyAgentRunSignature, verifyChangesetSignature } from "@waronsaas/contracts/canonical";
 import {
   afterDocumentRevision,
   documentScope,
@@ -30,7 +29,7 @@ import {
   validateDocumentRevision,
   type DocumentRow,
 } from "../domain/documents.js";
-import { buildPlan } from "../domain/plans.js";
+import { buildPlan, renderServerDocument } from "../domain/plans.js";
 import { revealRound, subjectAuthors } from "../domain/review.js";
 import {
   abuTransition,
@@ -39,6 +38,7 @@ import {
   afterLeaseLost,
   assertDevice,
   attemptTransition,
+  AUTHOR_KINDS,
   BUILD_KINDS,
   endAttempt,
   endLease,
@@ -121,18 +121,6 @@ async function withGithubRetries<T>(deps: Deps, what: string, fn: () => Promise<
   throw new ApiFailure("UPSTREAM_GITHUB", `GitHub ${what} failed; retry with the same Idempotency-Key`);
 }
 
-/** JCS of the changeset without `signature`, each upsert's content replaced by its sha256 (BUILD-PROTOCOL.md section 6). */
-export function changesetSigningBytes(cs: Changeset): Buffer {
-  const { signature: _sig, ...rest } = cs;
-  const files = cs.files.map((f) => (f.op === "upsert" ? { ...f, contentBase64: f.sha256 } : f));
-  return Buffer.from(canonicalJson({ ...rest, files }), "utf8");
-}
-
-export function agentRunSigningBytes(r: AgentRunRecord): Buffer {
-  const { signature: _sig, ...rest } = r;
-  return Buffer.from(canonicalJson(rest), "utf8");
-}
-
 export const workHandlers: Pick<
   Handlers,
   | "listClaimableAbus"
@@ -143,6 +131,7 @@ export const workHandlers: Pick<
   | "heartbeat"
   | "releaseLease"
   | "postManifest"
+  | "getLeaseDocument"
   | "postAgentRun"
   | "setAttemptPhase"
   | "submitChangeset"
@@ -184,7 +173,8 @@ export const workHandlers: Pick<
           const [spec] = await tx<{ spec: AbuSpec }[]>`select spec from wos.abus where id = ${id}`;
           const wanted = requiredLocks(spec!.spec);
           const live = await tx<{ resource_key: string; mode: string; path_prefix: string | null; path_is_tree: boolean | null }[]>`
-            select resource_key, mode, path_prefix, path_is_tree from wos.resource_locks where repo_full_name = ${deps.config.productRepo} and released_at is null`;
+            select resource_key, mode, path_prefix, path_is_tree from wos.resource_locks
+             where repo_full_name = (select repo_full_name from wos.abus where id = ${id}) and released_at is null`;
           claimable = !wanted.some((w) =>
             live.some((l) =>
               w.pathPrefix !== null && l.path_prefix !== null
@@ -206,13 +196,13 @@ export const workHandlers: Pick<
   async claimBuild(ctx) {
     const { deps } = ctx;
     const caller = ctx.caller!;
-    const repo = deps.config.productRepo;
     const [pre] = await inTransaction(
       deps.sql,
       asContributor(caller),
-      (tx) => tx<{ state: string }[]>`select state from wos.abus where id = ${ctx.params.id}`,
+      (tx) => tx<{ state: string; repo_full_name: string }[]>`select state, repo_full_name from wos.abus where id = ${ctx.params.id}`,
     );
     if (!pre) throw new ApiFailure("NOT_FOUND", "ABU not found");
+    const repo = pre.repo_full_name;
     if (pre.state !== "ready") throw new ApiFailure("CONFLICT", `ABU is ${pre.state}`);
     const baseSha = await withGithubRetries(deps, "branch head", () => deps.github.getBranchHead(repo, "main"));
     const manifest = await repoManifestAt(deps, repo, baseSha).catch(() => null);
@@ -245,7 +235,7 @@ export const workHandlers: Pick<
                values (${attemptId}, ${abu.id}, ${caller.accountId}, ${caller.githubUserId!}, 'leased', ${baseSha})`;
       await insertEvent(
         tx,
-        { type: "attempt.state_changed", v: 1, visibility: "public", payload: { attemptId, abu: abu.key, from: "none", to: "leased" } },
+        { type: "attempt.created", v: 1, visibility: "public", payload: { attemptId, abu: abu.key, state: "leased" } },
         { aggregateKind: "attempt", aggregateId: attemptId, actor: "contributor", actorAccountId: caller.accountId },
       );
       await acquireLocks(tx, repo, attemptId, requiredLocks(abu.spec));
@@ -340,15 +330,13 @@ export const workHandlers: Pick<
         });
         if (!elig.eligible) continue;
         let spec: AbuSpec | null = null;
-        let repo = deps.config.productRepo;
+        const repo = task.repo;
         if (round.attempt_id) {
           const [a] = await tx<
             { spec: AbuSpec }[]
           >`select ab.spec from wos.attempts at join wos.abus ab on ab.id = at.abu_id where at.id = ${round.attempt_id}`;
           spec = a?.spec ?? null;
         } else {
-          const doc = await loadDocument(tx, round.document_id!, deps.config.productRepo);
-          repo = doc?.repo ?? repo;
         }
         const leaseId = uuidv7();
         const plan = await buildPlan(tx, deps, {
@@ -395,7 +383,12 @@ export const workHandlers: Pick<
          order by t.created_at limit 200`,
         [kinds, caller.accountId],
       );
-      return { items: rows.filter((r) => !ctx.query.target || r.target_slug === ctx.query.target).map(taskView) };
+      return {
+        items: rows
+          .filter((r) => !ctx.query.target || r.relevant_to.includes(ctx.query.target))
+          .filter((r) => !ctx.query.feature || r.feature_key === ctx.query.feature)
+          .map(taskView),
+      };
     });
   },
 
@@ -416,14 +409,11 @@ export const workHandlers: Pick<
     if (task0.kind === "abu_revision") {
       const a = await inTransaction(deps.sql, asContributor(caller), (tx) => loadAttempt(tx, task0.attempt_id!));
       if (!a) throw new ApiFailure("NOT_FOUND", "attempt not found");
-      if (a.pr_number !== null)
-        rebaseTo = await withGithubRetries(deps, "branch head", () => deps.github.getBranchHead(deps.config.productRepo, "main"));
-      source = { repo: deps.config.productRepo, commit: rebaseTo ?? a.head_sha ?? a.base_sha };
+      if (a.pr_number !== null) rebaseTo = await withGithubRetries(deps, "branch head", () => deps.github.getBranchHead(a.repo, "main"));
+      source = { repo: a.repo, commit: rebaseTo ?? a.head_sha ?? a.base_sha };
     } else {
-      doc = task0.document_id
-        ? await inTransaction(deps.sql, asContributor(caller), (tx) => loadDocument(tx, task0.document_id!, deps.config.productRepo))
-        : null;
-      const repo = doc?.repo ?? deps.config.productRepo;
+      doc = task0.document_id ? await inTransaction(deps.sql, asContributor(caller), (tx) => loadDocument(tx, task0.document_id!)) : null;
+      const repo = doc?.repo ?? task0.repo;
       source = {
         repo,
         commit: doc?.head_sha ?? (await withGithubRetries(deps, "branch head", () => deps.github.getBranchHead(repo, "main"))),
@@ -435,11 +425,13 @@ export const workHandlers: Pick<
       if (task?.state !== "open") throw new ApiFailure("CONFLICT", "task is no longer open");
       await assertDevice(tx, caller.accountId, ctx.body.deviceId);
       const role = roleForTask(task.kind, task.reviewer_slot);
-      const family = task.kind === "abu_revision" ? BUILD_KINDS : [task.kind];
+      const family = task.kind === "abu_revision" ? BUILD_KINDS : AUTHOR_KINDS;
+      const limit =
+        task.kind === "abu_revision"
+          ? deps.policy.limits.maxConcurrentBuildLeasesPerContributor
+          : deps.policy.limits.maxConcurrentAuthorLeasesPerContributor;
       const active = await activeLeaseCount(tx, caller.accountId, family);
-      if (task.kind === "abu_revision" && active >= deps.policy.limits.maxConcurrentBuildLeasesPerContributor) {
-        throw new ApiFailure("LIMIT_REACHED", `you already hold ${active} build leases`);
-      }
+      if (active >= limit) throw new ApiFailure("LIMIT_REACHED", `you already hold ${active} leases of this kind`);
       let authors: string[] = [];
       if (task.kind === "conflict_resolution" && task.document_id)
         authors = await subjectAuthors(tx, { attempt_id: null, document_id: task.document_id });
@@ -498,7 +490,7 @@ export const workHandlers: Pick<
             emit: {
               type: "blocker.state_changed",
               v: 1,
-              visibility: "private",
+              visibility: "public",
               payload: { blockerId: task.blocker_id, from: "open", to: "resolving" },
             },
           });
@@ -569,6 +561,26 @@ export const workHandlers: Pick<
     });
   },
 
+  // CONTEXT-PROTOCOL.md section 2: server documents of the caller's lease plan, rendered by the same code that hashed them.
+  async getLeaseDocument(ctx) {
+    const { deps } = ctx;
+    const caller = ctx.caller!;
+    return inTransaction(deps.sql, asContributor(caller), async (tx) => {
+      const l = await heldLeaseRow(tx, ctx.params.id, caller.accountId);
+      const plan = l.context_plan as unknown as ContextPlan;
+      const selector = plan.artifacts.find((a) => a.kind === "server_document" && a.ref === ctx.query.ref);
+      if (selector?.kind !== "server_document") throw new ApiFailure("FORBIDDEN", "that ref is not in this lease's context plan");
+      const text = await renderServerDocument(tx, deps, selector.ref);
+      if (text === null) throw new ApiFailure("NOT_FOUND", "document not found");
+      const sha256 = sha256Of(text);
+      if (sha256 !== selector.sha256) {
+        deps.log("error", "server document drifted from its plan hash", { ref: selector.ref, leaseId: l.id });
+        throw new ApiFailure("NOT_FOUND", "the document no longer renders as planned");
+      }
+      return { ref: selector.ref, sha256, contentBase64: Buffer.from(text, "utf8").toString("base64") };
+    });
+  },
+
   async postManifest(ctx) {
     const { deps } = ctx;
     const caller = ctx.caller!;
@@ -634,7 +646,7 @@ export const workHandlers: Pick<
       const [d] = await tx<
         { public_key: string; revoked_at: Date | null }[]
       >`select public_key, revoked_at from wos.devices where id = ${l.device_id}`;
-      const valid = !!d && !d.revoked_at && verifyEd25519(d.public_key, agentRunSigningBytes(record), record.signature);
+      const valid = !!d && !d.revoked_at && verifyAgentRunSignature(record, d.public_key);
       const id = uuidv7();
       await tx`insert into wos.agent_runs (id, lease_id, manifest_id, account_id, device_id, record, signature_valid)
                values (${id}, ${l.id}, ${m.id}, ${caller.accountId}, ${l.device_id}, ${tx.json(record as never)}, ${valid})`;
@@ -697,7 +709,7 @@ export const workHandlers: Pick<
           throw new ApiFailure("VALIDATION_FAILED", `attempt must be verifying (is ${attempt?.state ?? "missing"})`);
         spec = (await tx<{ spec: AbuSpec }[]>`select spec from wos.abus where id = ${attempt.abu_id}`)[0]!.spec;
       } else if (task.kind === "roadmap_author" || task.kind === "feature_author") {
-        doc = await loadDocument(tx, task.document_id!, deps.config.productRepo);
+        doc = await loadDocument(tx, task.document_id!);
         if (!doc || (doc.state !== "drafting" && doc.state !== "revising"))
           throw new ApiFailure("VALIDATION_FAILED", `document is ${doc?.state ?? "missing"}`);
       } else {
@@ -716,10 +728,10 @@ export const workHandlers: Pick<
       const expectedParent = attempt ? (attempt.head_sha ?? attempt.base_sha) : (doc!.head_sha ?? plan.source.commit);
       return { l, task, device, manifestOk: !!manifest, attempt, doc, spec, expectedParent };
     });
-    const repo = pre.doc?.repo ?? deps.config.productRepo;
+    const repo = pre.doc?.repo ?? pre.attempt!.repo;
     const repoManifest = await repoManifestAt(deps, repo, cs.parentCommit);
     if (!repoManifest) throw new ApiFailure("VALIDATION_FAILED", "wos.json is missing or invalid at the parent commit");
-    const existingPaths = new Set(await withGithubRetries(deps, "tree listing", () => deps.github.listPaths(repo, cs.parentCommit)));
+    const existingPaths = new Set(await withGithubRetries(deps, "tree listing", () => deps.github.listTreePaths(repo, cs.parentCommit)));
     const validation: ChangesetValidation = deps.logic.validateChangeset(cs, {
       kind: pre.doc ? pre.doc.kind : "abu",
       abu: pre.spec,
@@ -733,7 +745,7 @@ export const workHandlers: Pick<
     }
     if (!pre.manifestOk)
       errors.push({ code: "MANIFEST_MISMATCH", path: null, message: "manifestSha256 is not an accepted manifest of this lease" });
-    if (!pre.device || pre.device.revoked_at || !verifyEd25519(pre.device.public_key, changesetSigningBytes(cs), cs.signature)) {
+    if (!pre.device || pre.device.revoked_at || !verifyChangesetSignature(cs, pre.device.public_key)) {
       errors.push({ code: "SIGNATURE_INVALID", path: null, message: "signature does not verify with the device key" });
     }
     const result: ChangesetValidation = { ok: validation.ok && errors.length === validation.errors.length, errors };
@@ -869,10 +881,11 @@ export const workHandlers: Pick<
       if (b.headSha !== round.head_sha || b.submissionSha256 !== round.submission_sha256) {
         throw new ApiFailure("VALIDATION_FAILED", "verdict must be bound to the round's head sha and submission hash");
       }
-      const [run] = await tx<
-        { manifest_id: string }[]
-      >`select manifest_id from wos.agent_runs where id = ${b.agentRunId} and lease_id = ${l.id}`;
+      // The verdict is bound to exactly this signed run of this lease (migration 0003, B-0003-architect).
+      const [run] = await tx<{ manifest_id: string; signature_valid: boolean }[]>`
+        select manifest_id, signature_valid from wos.agent_runs where id = ${b.agentRunId} and lease_id = ${l.id} and account_id = ${caller.accountId}`;
       if (!run) throw new ApiFailure("VALIDATION_FAILED", "agentRunId is not a run recorded for this lease");
+      if (!run.signature_valid) throw new ApiFailure("VALIDATION_FAILED", "the agent run's device signature is not valid");
       const authors = await subjectAuthors(tx, round);
       const [other] = await tx<
         { account_id: string }[]
@@ -893,10 +906,10 @@ export const workHandlers: Pick<
       try {
         await tx`
           insert into wos.reviews (id, round_id, task_id, lease_id, account_id, github_user_id, slot, provider, model_id, reasoning, head_sha,
-                                   submission_sha256, verdict, body, manifest_id, independence)
+                                   submission_sha256, verdict, body, manifest_id, independence, agent_run_id)
           values (${reviewId}, ${round.id}, ${task.id}, ${l.id}, ${caller.accountId}, ${caller.githubUserId!}, ${task.reviewer_slot}, ${plan.provider},
                   ${plan.modelId}, ${plan.reasoning}, ${b.headSha}, ${b.submissionSha256}, ${b.verdict.verdict}, ${tx.json(b.verdict as never)},
-                  ${run.manifest_id}, ${elig.independence})`;
+                  ${run.manifest_id}, ${elig.independence}, ${b.agentRunId})`;
       } catch (err) {
         if ((err as { code?: string }).code === "23514")
           throw new ApiFailure("VALIDATION_FAILED", "the verdict violates reviewer independence or binding");

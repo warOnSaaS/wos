@@ -230,17 +230,22 @@ export async function qualify(
       independence: string;
       head_sha: string;
       submission_sha256: string;
+      run_signed: boolean;
     }[]
   >`
-    select id, account_id, verdict, lease_id, independence, head_sha, submission_sha256 from wos.reviews where round_id = ${round.id}`;
-  const signedLeases = cs ? [cs.lease_id, ...reviews.map((r) => r.lease_id)] : reviews.map((r) => r.lease_id);
-  const runs = await tx<{ lease_id: string }[]>`
-    select distinct lease_id from wos.agent_runs where lease_id in ${tx(signedLeases.length ? signedLeases : ["00000000-0000-0000-0000-000000000000"])}
-       and signature_valid`;
+    select v.id, v.account_id, v.verdict, v.lease_id, v.independence, v.head_sha, v.submission_sha256,
+           coalesce(r.signature_valid and r.lease_id = v.lease_id and r.manifest_id = v.manifest_id, false) as run_signed
+      from wos.reviews v left join wos.agent_runs r on r.id = v.agent_run_id where v.round_id = ${round.id}`;
+  // Check 7 uses exactly the runs named by the evidence: the run whose manifest the changeset cites, and each review's agent_run_id.
+  const [builderRun] = cs
+    ? await tx<{ id: string }[]>`
+        select r.id from wos.agent_runs r join wos.context_manifests m on m.id = r.manifest_id
+         where r.lease_id = ${cs.lease_id} and m.manifest_sha256 = ${cs.manifest_sha256} and r.signature_valid
+         order by r.created_at desc limit 1`
+    : [];
   const [ci] = await tx<{ id: string }[]>`
     select id from wos.verification_runs where attempt_id = ${attempt.id} and source = 'ci' and conclusion = 'success' and head_sha = ${attempt.head_sha}
      order by created_at desc limit 1`;
-  const signed = new Set(runs.map((r) => r.lease_id));
   const checks: Qualification["checks"] = [
     {
       n: 1,
@@ -275,8 +280,8 @@ export async function qualify(
     {
       n: 7,
       check: "signed agent runs for builder and both reviewers",
-      pass: signedLeases.length === 3 && signedLeases.every((l) => signed.has(l)),
-      evidence: null,
+      pass: !!builderRun && reviews.length === 2 && reviews.every((r) => r.run_signed),
+      evidence: builderRun?.id ?? null,
     },
     {
       n: 8,

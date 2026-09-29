@@ -9,6 +9,7 @@ import {
   type AbuSpec,
   BuildGraph,
   CatalogEntry,
+  DEFAULT_TOOLCHAIN_PATHS,
   type Changeset,
   type ContextManifest,
   type ContextPlan,
@@ -21,13 +22,23 @@ import {
 } from "@waronsaas/contracts";
 import type { EligibilityInput, EligibilityResult } from "@waronsaas/agent-policy";
 import postgres from "postgres";
+import { vi } from "vitest";
 import { createControlPlane } from "../../src/app.js";
 import type { Deps, GithubPort, GithubUserIdentity, Logic, OutboundMail } from "../../src/deps.js";
-import { agentRunSigningBytes, changesetSigningBytes } from "../../src/handlers/work.js";
-import { canonicalJson, sha256Prefixed } from "../../src/util/crypto.js";
+import {
+  agentRunSigningPayload,
+  computeManifestSha256,
+  encodeDevicePublicKey,
+  signChangeset,
+  submissionSha256 as diffHash,
+  sha256Of,
+} from "@waronsaas/contracts/canonical";
 import { createMigratedDb, type MigratedDb } from "../../../../packages/db/test/support/pg.js";
 
 export { HAS_DB } from "../../../../packages/db/test/support/pg.js";
+
+// Database scenarios run many requests; under a loaded full-suite run the 5 s default is too tight.
+vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 
 export const WEBHOOK_SECRET = "test-webhook-secret";
 export const CRON_SECRET = "test-cron-secret";
@@ -35,7 +46,7 @@ export const PRODUCT_REPO = "waronsaas/suite";
 export const BASE_SHA = "b".repeat(40);
 
 const sha1 = (s: string) => createHash("sha1").update(s).digest("hex");
-export const sha256 = (b: string | Buffer) => sha256Prefixed(b);
+export const sha256 = (b: string | Buffer) => sha256Of(b);
 
 export const REPO_MANIFEST = {
   schema: "wos-repo.v1",
@@ -47,6 +58,7 @@ export const REPO_MANIFEST = {
   verify: [{ id: "test", run: ["npm", "test"], timeoutSeconds: 600 }],
   protectedPaths: [".github/**", "wos.json"],
   lockfiles: ["package-lock.json"],
+  toolchainPaths: [...DEFAULT_TOOLCHAIN_PATHS],
   generatedPaths: [],
   migrationsDir: null,
   maxChangesetBytes: 4_000_000,
@@ -122,25 +134,38 @@ export class FakeGithub implements GithubPort {
       expiresInSeconds: 900,
     };
   }
-  webAuthorizeUrl(state: string, redirectUri: string) {
+  webAuthorizeUrl({ state, redirectUri }: { state: string; redirectUri: string }) {
     return `https://github.com/login/oauth/authorize?state=${encodeURIComponent(state)}&redirect_uri=${encodeURIComponent(redirectUri)}`;
   }
   async getBranchHead(repo: string) {
     return this.headOf(repo);
   }
-  async readFile(repo: string, commit: string, path: string) {
+  async readFileAt(repo: string, commit: string, path: string) {
     if (path === "wos.json" && !this.files.has(`${repo}@${commit}:${path}`)) return Buffer.from(JSON.stringify(REPO_MANIFEST));
     return this.files.get(`${repo}@${commit}:${path}`) ?? null;
   }
-  async listPaths(repo: string, commit: string) {
+  async listTreePaths(repo: string, commit: string) {
     const prefix = `${repo}@${commit}:`;
     return [...this.files.keys()].filter((k) => k.startsWith(prefix)).map((k) => k.slice(prefix.length));
   }
-  async setBranch(repo: string, branch: string, sha: string) {
+  async createBranchAt(repo: string, branch: string, sha: string) {
+    if (this.branches.has(`${repo}:${branch}`)) throw new Error(`branch ${branch} exists`);
     this.branches.set(`${repo}:${branch}`, sha);
   }
-  async closePullRequest(repo: string, number: number) {
+  async moveBranch(repo: string, branch: string, sha: string, mode: { expectedHeadSha: string } | { force: true }) {
+    const cur = this.branches.get(`${repo}:${branch}`);
+    if ("expectedHeadSha" in mode && cur !== mode.expectedHeadSha) throw new Error("expected head mismatch");
+    this.branches.set(`${repo}:${branch}`, sha);
+  }
+  deleted: string[] = [];
+  async deleteBranch(repo: string, branch: string) {
+    this.deleted.push(`${repo}:${branch}`);
+  }
+  async closePullRequest(repo: string, number: number, _options: { comment: string; lock: boolean }) {
     this.closed.push({ repo, number });
+  }
+  async compareDiff(_repo: string, base: string, head: string) {
+    return `diff ${base}..${head}`;
   }
 }
 
@@ -340,7 +365,7 @@ export async function createHarness(overrides: Partial<Logic> = {}): Promise<Har
 
   const signIn: Harness["signIn"] = async (email, clientKind = "cli") => {
     const { publicKey, privateKey } = generateKeyPairSync("ed25519");
-    const raw = publicKey.export({ format: "der", type: "spki" }).subarray(12).toString("base64");
+    const raw = encodeDevicePublicKey(publicKey);
     const start = await call("POST", "/v1/auth/email/start", {
       body: { email, clientKind, deviceName: "test machine", devicePublicKey: raw },
     });
@@ -450,10 +475,11 @@ export async function seedFeature(
 ): Promise<SeededFeature> {
   const feature = opts.feature ?? "contacts";
   const target = opts.target ?? "salesforce";
-  const [t] = await owner<{ id: string }[]>`select id from wos.targets where slug = ${target}`;
+  const [t] = await owner<{ id: string; repo: string }[]>`select id, repo_full_name as repo from wos.targets where slug = ${target}`;
+  const repo = t!.repo;
   const rid = randomUUID();
-  await owner`insert into wos.documents (id, kind, target_id, version, state, branch, merged_sha, merged_at)
-              values (${rid}, 'roadmap', ${t!.id}, 1, 'merged', ${`wos/roadmap/${target}/v1`}, ${"c".repeat(40)}, now())
+  await owner`insert into wos.documents (id, kind, target_id, version, state, branch, merged_sha, merged_at, repo_full_name)
+              values (${rid}, 'roadmap', ${t!.id}, 1, 'merged', ${`wos/roadmap/${target}/v1`}, ${"c".repeat(40)}, now(), ${repo})
               on conflict do nothing`;
   const [roadmapDoc] = await owner<
     { id: string }[]
@@ -463,14 +489,14 @@ export async function seedFeature(
     values (${t!.id}, 'crm', 'CRM', 'Customer records', 0, 10000, ${"The whole app for this test: one capability carries all of the weight."}, true, 1)
     on conflict (target_id, key) do update set mapped = true returning id`;
   const featureId = randomUUID();
-  await owner`insert into wos.catalog_features (id, key, title, summary, state, created_by_document_id)
-              values (${featureId}, ${feature}, ${feature}, 'A shared feature', 'active', ${roadmapDoc!.id})`;
+  await owner`insert into wos.catalog_features (id, key, title, summary, state, created_by_document_id, repo_full_name)
+              values (${featureId}, ${feature}, ${feature}, 'A shared feature', 'active', ${roadmapDoc!.id}, ${repo})`;
   const [afCount] = await owner<{ n: number }[]>`select count(*)::int as n from wos.app_features where capability_id = ${cap!.id}`;
   await owner`insert into wos.app_features (target_id, catalog_feature_id, capability_id, state, weight_bp, weight_rationale, phase, first_roadmap_version, roadmap_version)
               values (${t!.id}, ${featureId}, ${cap!.id}, 'specified', ${afCount!.n === 0 ? 10000 : 1}, ${"All of the capability for this test fixture, by construction."}, 'core', 1, 1)`;
   const contractDocId = randomUUID();
-  await owner`insert into wos.documents (id, kind, catalog_feature_id, version, state, branch, merged_sha, merged_at)
-              values (${contractDocId}, 'feature_contract', ${featureId}, 1, 'merged', ${`wos/feature/${feature}/v1`}, ${"d".repeat(40)}, now())`;
+  await owner`insert into wos.documents (id, kind, catalog_feature_id, version, state, branch, merged_sha, merged_at, repo_full_name)
+              values (${contractDocId}, 'feature_contract', ${featureId}, 1, 'merged', ${`wos/feature/${feature}/v1`}, ${"d".repeat(40)}, now(), ${repo})`;
   await owner`update wos.catalog_features set current_contract_document_id = ${contractDocId} where id = ${featureId}`;
   const reqId = randomUUID();
   await owner`insert into wos.requirements (id, document_id, catalog_feature_id, key, kind, statement) values (${reqId}, ${contractDocId}, ${featureId}, 'R-001', 'functional', 'It MUST work.')`;
@@ -492,9 +518,9 @@ export async function seedFeature(
     const id = randomUUID();
     abus.set(a.n, id);
     const pending = (a.dependsOn ?? []).length > 0;
-    await owner`insert into wos.abus (id, catalog_feature_id, document_id, key, title, size_points, state, spec, est_context_tokens)
+    await owner`insert into wos.abus (id, catalog_feature_id, document_id, key, title, size_points, state, spec, est_context_tokens, repo_full_name)
                 values (${id}, ${featureId}, ${contractDocId}, ${key}, ${spec.title}, ${spec.sizePoints}, ${pending ? "pending_dependencies" : "ready"},
-                        ${owner.json(spec as never)}, 1000)`;
+                        ${owner.json(spec as never)}, 1000, ${repo})`;
     await owner`insert into wos.abu_requirements (abu_id, requirement_id) values (${id}, ${reqId})`;
     await owner`insert into wos.tasks (kind, state, role, abu_id, catalog_feature_id) values ('abu_build', ${pending ? "blocked" : "open"}, 'builder', ${id}, ${featureId})`;
   }
@@ -530,7 +556,7 @@ export function manifestFor(plan: ContextPlan, kind: string): ContextManifest {
     outputSchema: plan.outputSchema,
     renderedPromptSha256: sha256(`prompt:${plan.leaseId}`),
   };
-  return { ...body, manifestSha256: sha256(canonicalJson(body)) };
+  return { ...body, manifestSha256: computeManifestSha256(body) };
 }
 
 export function signedRun(key: KeyObject, plan: ContextPlan, leaseId: string, deviceId: string, manifestSha256: string) {
@@ -555,7 +581,7 @@ export function signedRun(key: KeyObject, plan: ContextPlan, leaseId: string, de
     usage: { inputTokens: 1, outputTokens: 1 },
     signature: "",
   };
-  return { ...rec, signature: sign(null, agentRunSigningBytes(rec), key).toString("base64") };
+  return { ...rec, signature: sign(null, agentRunSigningPayload(rec), key).toString("base64") };
 }
 
 export function signedChangeset(
@@ -578,14 +604,9 @@ export function signedChangeset(
     sha256: sha256(f.content),
     bytes: Buffer.byteLength(f.content),
   }));
-  const submissionSha256 = sha256(
-    canonicalJson({
-      parentCommit: input.parentCommit,
-      files: files.map((f) => ({ path: f.path, op: f.op, mode: f.mode, sha256: f.sha256 })).sort((a, b) => (a.path < b.path ? -1 : 1)),
-    }),
-  );
-  const cs: Changeset = {
-    schema: "wos-changeset.v1",
+  const submissionSha256 = diffHash(input.parentCommit, files);
+  const cs = {
+    schema: "wos-changeset.v1" as const,
     taskId: input.taskId,
     leaseId: input.leaseId,
     deviceId: input.deviceId,
@@ -601,9 +622,8 @@ export function signedChangeset(
       abuConcerns: [],
     },
     localVerification: [],
-    signature: "",
   };
-  return { ...cs, signature: sign(null, changesetSigningBytes(cs), key).toString("base64") };
+  return signChangeset(cs, key);
 }
 
 export const verdict = (v: "NO_MATERIAL_GAPS" | "MATERIAL_GAPS", priorFindings: ReviewVerdict["priorFindings"] = []): ReviewVerdict => ({

@@ -174,11 +174,6 @@ describe.skipIf(!HAS_DB)("maintainer actions, sweeper and submission security", 
     );
     const after = await h.call("GET", "/v1/me", { token: reporter.token });
     expect(after.body.balance).toEqual({ held: 0, available: 7, score: 7 });
-
-    expect((await act({ action: "end_bootstrap", reason: "Enough reviewers joined" })).status).toBe(200);
-    expect((await h.call("GET", "/v1/public/status")).body.bootstrapMode).toBe(false);
-    expect((await act({ action: "end_bootstrap", reason: "Twice is refused" })).body.error.code).toBe("CONFLICT");
-    await h.owner`update wos.platform_settings set value = '{"enabled": true, "since": null}' where key = 'bootstrap_mode'`;
   });
 
   it("the sweeper releases awards past their hold, but not bootstrap_self ones", async () => {
@@ -223,22 +218,6 @@ describe.skipIf(!HAS_DB)("maintainer actions, sweeper and submission security", 
       { state: string }[]
     >`select state from wos.tasks where attempt_id = ${built.attemptId} and kind = 'abu_revision'`;
     expect(rev!.state).toBe("cancelled");
-  });
-
-  it("bootstrap ends automatically once each slot has 3 non-maintainer reviewers with recent completed leases", async () => {
-    const reviewers: Account[] = [];
-    for (let i = 0; i < 3; i++) reviewers.push(await h.contributor(`seed-reviewer-${i}`));
-    for (const r of reviewers) {
-      const [task] = await h.owner<
-        { id: string }[]
-      >`insert into wos.tasks (kind, state, role, target_id) select 'roadmap_author', 'completed', 'roadmap_author', id from wos.targets where slug = 'hubspot' returning id`;
-      await h.owner`insert into wos.leases (task_id, account_id, device_id, state, context_plan, expires_at, hard_deadline_at, ended_at)
-                    values (${task!.id}, ${r.id}, ${r.deviceId}, 'completed', '{}', now(), now(), now())`;
-    }
-    await sweep();
-    expect((await h.call("GET", "/v1/public/status")).body.bootstrapMode).toBe(false);
-    expect((await event("platform.bootstrap_ended"))[0]!.actor_kind).toBe("system");
-    await h.owner`update wos.platform_settings set value = '{"enabled": true, "since": null}' where key = 'bootstrap_mode'`;
   });
 
   it("a forged signature is refused before GitHub is called; repeated security rejections fail the attempt", async () => {
@@ -318,5 +297,48 @@ describe.skipIf(!HAS_DB)("maintainer actions, sweeper and submission security", 
 
   it("never violates the route contract", () => {
     expect(h.violations).toEqual([]);
+  });
+});
+
+// Bootstrap exit is one-way (migration 0002), so each exit path gets its own database.
+describe.skipIf(!HAS_DB)("bootstrap exit (one-way)", () => {
+  it("a maintainer ends bootstrap once; it can never be re-entered", async () => {
+    const h = await createHarness();
+    try {
+      const maint = await h.contributor("boot-maint", { maintainer: true });
+      const act = (body: Record<string, unknown>) => h.call("POST", "/v1/admin/actions", { token: maint.token, idem: true, body });
+      expect((await act({ action: "end_bootstrap", reason: "Enough reviewers joined" })).status).toBe(200);
+      expect((await h.call("GET", "/v1/public/status")).body.bootstrapMode).toBe(false);
+      expect((await act({ action: "end_bootstrap", reason: "Twice is refused" })).body.error.code).toBe("CONFLICT");
+      await expect(h.owner`update wos.platform_settings set value = '{"enabled": true}' where key = 'bootstrap_mode'`).rejects.toThrow(
+        /re-entered/,
+      );
+      expect(h.violations).toEqual([]);
+    } finally {
+      await h.close();
+    }
+  });
+
+  it("bootstrap ends automatically once each slot has 3 non-maintainer reviewers with recent completed leases", async () => {
+    const h = await createHarness();
+    const sweep = () => h.call("GET", "/v1/cron/sweep", { headers: { authorization: `Bearer ${CRON_SECRET}` } });
+    const event = async (type: string) =>
+      h.owner<{ actor_kind: string }[]>`select actor_kind from wos.events where type = ${type} order by id desc limit 1`;
+    try {
+      const reviewers: Account[] = [];
+      for (let i = 0; i < 3; i++) reviewers.push(await h.contributor(`seed-reviewer-${i}`));
+      for (const r of reviewers) {
+        const [task] = await h.owner<
+          { id: string }[]
+        >`insert into wos.tasks (kind, state, role, target_id) select 'roadmap_author', 'completed', 'roadmap_author', id from wos.targets where slug = 'hubspot' returning id`;
+        await h.owner`insert into wos.leases (task_id, account_id, device_id, state, context_plan, expires_at, hard_deadline_at, ended_at)
+                      values (${task!.id}, ${r.id}, ${r.deviceId}, 'completed', '{}', now(), now(), now())`;
+      }
+      await sweep();
+      expect((await h.call("GET", "/v1/public/status")).body.bootstrapMode).toBe(false);
+      expect((await event("platform.bootstrap_ended"))[0]!.actor_kind).toBe("system");
+    } finally {
+      await h.close();
+    }
   });
 });

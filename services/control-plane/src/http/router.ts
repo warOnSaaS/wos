@@ -21,7 +21,8 @@ import { generateCookie, getCookie } from "hono/cookie";
 import { cors } from "hono/cors";
 import type { Deps } from "../deps.js";
 import { ApiFailure, HTTP_STATUS, isConflictPgError } from "../errors.js";
-import { constantTimeEqual, sha256Prefixed, tokenHash, uuidv7 } from "../util/crypto.js";
+import { constantTimeEqual, tokenHash, uuidv7 } from "../util/crypto.js";
+import { sha256Of } from "@waronsaas/contracts/canonical";
 
 export interface Caller {
   accountId: string;
@@ -185,7 +186,7 @@ async function dispatch(c: Context, name: RouteName, route: RouteDef, handler: H
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key) || !caller) {
         return respondError("VALIDATION_FAILED", "Idempotency-Key: <uuid> header is required on this route");
       }
-      idem = { key: key.toLowerCase(), requestSha: sha256Prefixed(rawBody) };
+      idem = { key: key.toLowerCase(), requestSha: sha256Of(rawBody) };
       const stored = await inTransaction(
         deps.sql,
         { kind: "contributor", accountId: caller.accountId },

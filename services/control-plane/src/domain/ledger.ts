@@ -99,7 +99,7 @@ export async function contributionTransition(
           : {
               type: "contribution.state_changed",
               v: 1,
-              visibility: "private",
+              visibility: "public",
               payload: { contributionId: c.id, from: c.state, to: t.to, reason },
             },
   });

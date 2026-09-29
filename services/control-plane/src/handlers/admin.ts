@@ -8,7 +8,8 @@ import { ApiFailure } from "../errors.js";
 import { insertEvent } from "../db/events.js";
 import { transition } from "../db/transition.js";
 import type { Caller, Handlers } from "../http/router.js";
-import { sha256Prefixed, uuidv7 } from "../util/crypto.js";
+import { uuidv7 } from "../util/crypto.js";
+import { sha256Of } from "@waronsaas/contracts/canonical";
 import { loadAttempt, queryTasks } from "../views.js";
 import { revokeAllSessions } from "./account.js";
 import { runDispatch } from "../domain/consumers.js";
@@ -57,7 +58,7 @@ async function cancelSubjectWork(tx: Tx, where: { documentId?: string; attemptId
       actor: by.actor,
       actorAccountId: by.accountId,
       aggregateKind: "round",
-      emit: { type: "round.cancelled", v: 1, visibility: "private", payload: { roundId: r.id, reason } },
+      emit: { type: "round.cancelled", v: 1, visibility: "public", payload: { roundId: r.id, reason } },
     });
   }
 }
@@ -137,7 +138,7 @@ export const adminHandlers: Pick<
         );
       }
       if (task?.document_id) {
-        const doc = await loadDocument(tx, task.document_id, deps.config.productRepo);
+        const doc = await loadDocument(tx, task.document_id);
         if (doc?.state === "escalated") {
           const [open] = await tx<{ n: number }[]>`
             select count(*)::int as n from wos.findings where document_id = ${doc.id} and state in ('open', 'disputed')`;
@@ -202,7 +203,7 @@ export const adminHandlers: Pick<
     await inTransaction(deps.sql, asMaintainerTx(caller), async (tx) => {
       switch (a.action) {
         case "abandon_document": {
-          const doc = await loadDocument(tx, a.documentId, deps.config.productRepo);
+          const doc = await loadDocument(tx, a.documentId);
           if (!doc) throw new ApiFailure("NOT_FOUND", "document not found");
           await documentTransition(
             tx,
@@ -216,7 +217,7 @@ export const adminHandlers: Pick<
           return;
         }
         case "reopen_document": {
-          const doc = await loadDocument(tx, a.documentId, deps.config.productRepo);
+          const doc = await loadDocument(tx, a.documentId);
           if (!doc) throw new ApiFailure("NOT_FOUND", "document not found");
           await documentTransition(tx, doc, "maintainer_reopen", by, null);
           await newTask(
@@ -380,7 +381,7 @@ export const adminHandlers: Pick<
         case "award_security": {
           const acct = await accountByHandle(tx, a.handle);
           if (acct.github_user_id === null) throw new ApiFailure("VALIDATION_FAILED", "the reporter needs a linked GitHub account");
-          const key = `security:${sha256Prefixed(a.reference).slice(7, 31)}:${acct.id}`;
+          const key = `security:${sha256Of(a.reference).slice(7, 31)}:${acct.id}`;
           const cid = await createContribution(tx, {
             accountId: acct.id,
             githubUserId: acct.github_user_id,
@@ -509,7 +510,7 @@ export const adminHandlers: Pick<
     const event = ctx.header("x-github-event") ?? "";
     if (!deliveryId || !event) throw new ApiFailure("VALIDATION_FAILED", "X-GitHub-Delivery and X-GitHub-Event are required");
     const payload = (ctx.body ?? {}) as object;
-    const stored = await storeDelivery(deps, deliveryId, event, payload, sha256Prefixed(ctx.rawBody));
+    const stored = await storeDelivery(deps, deliveryId, event, payload, sha256Of(ctx.rawBody));
     if (stored) {
       await processDelivery(deps, deliveryId);
       await runDispatch(deps).catch((err: unknown) =>

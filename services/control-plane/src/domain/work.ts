@@ -28,6 +28,8 @@ import { type AttemptRow, type LeaseRow, latestAttestations, loadAttempt, loadTa
 
 export const BUILD_KINDS: readonly TaskKind[] = ["abu_build", "abu_revision"];
 export const REVIEW_KINDS: readonly TaskKind[] = ["roadmap_review", "feature_review", "implementation_review"];
+/** The author lease family (policy limits.maxConcurrentAuthorLeasesPerContributor). */
+export const AUTHOR_KINDS: readonly TaskKind[] = ["roadmap_author", "feature_author", "conflict_resolution"];
 export const LIVE_ATTEMPT_STATES: readonly AttemptState[] = [
   "leased",
   "building",
@@ -310,7 +312,12 @@ export async function evaluateEligibility(tx: Tx, deps: Deps, f: EligibilityFact
     const [h] = await tx<{ h: number }[]>`select extract(epoch from now() - ${f.task.created_at}::timestamptz)::float8 / 3600 as h`;
     taskOpenHours = h?.h ?? 0;
   }
-  const input: EligibilityInput = {
+  const [clock] = await tx<{ now: Date }[]>`select now() as now`;
+  // contracts 3.0.0 (section 7.2): the pure evaluator gets the server clock and the task's own exclusions.
+  const input: EligibilityInput & { now: string; excludedAccountIds: string[]; restrictedToAccountId: string | null } = {
+    now: clock!.now.toISOString(),
+    excludedAccountIds: f.task?.excluded_account_ids ?? [],
+    restrictedToAccountId: f.task?.restricted_to_account_id ?? null,
     role: f.role,
     account: {
       id: f.accountId,
@@ -490,7 +497,7 @@ export async function afterLeaseLost(
         actor: "system",
         actorAccountId: null,
         aggregateKind: "blocker",
-        emit: { type: "blocker.state_changed", v: 1, visibility: "private", payload: { blockerId: b.id, from: "resolving", to: "open" } },
+        emit: { type: "blocker.state_changed", v: 1, visibility: "public", payload: { blockerId: b.id, from: "resolving", to: "open" } },
       });
     }
   }

@@ -148,6 +148,7 @@ export async function abuSummaries(tx: Tx, abuIds: string[]): Promise<Map<string
       depends_on: string[];
       requirements: string[];
       relevant_to: string[];
+      repo: string;
       pr_number: number | null;
       pr_url: string | null;
       pr_state: "open" | "merged" | "closed" | null;
@@ -155,10 +156,11 @@ export async function abuSummaries(tx: Tx, abuIds: string[]): Promise<Map<string
   >`
     select a.id, a.key, a.title, a.state, a.size_points,
            coalesce((select array_agg(d.key order by d.key) from wos.abu_dependencies e join wos.abus d on d.id = e.depends_on_abu_id where e.abu_id = a.id), '{}') as depends_on,
-           coalesce((select array_agg(r.key order by r.key) from wos.abu_requirements ar join wos.requirements r on r.id = ar.requirement_id where ar.abu_id = a.id), '{}') as requirements,
-           coalesce((select array_agg(distinct t.slug order by t.slug) from wos.abu_requirements ar
-                       join wos.requirement_profiles rp on rp.requirement_id = ar.requirement_id and rp.document_id = a.document_id
-                       join wos.targets t on t.id = rp.target_id where ar.abu_id = a.id), '{}') as relevant_to,
+           coalesce((select array_agg(distinct r.key order by r.key) from wos.abu_requirements ar join wos.requirements r on r.id = ar.requirement_id where ar.abu_id = a.id), '{}') as requirements,
+           coalesce((select array_agg(distinct rt.slug order by rt.slug) from wos.abu_requirements ar
+                       join wos.requirement_profiles rp on rp.requirement_id = ar.requirement_id
+                       join wos.targets rt on rt.id = rp.target_id where ar.abu_id = a.id), '{}') as relevant_to,
+           a.repo_full_name as repo,
            pr.number as pr_number, pr.url as pr_url, pr.state as pr_state
       from wos.abus a
       left join lateral (select p.number, p.url, p.state from wos.pull_requests p join wos.attempts at on at.id = p.attempt_id
@@ -173,6 +175,7 @@ export async function abuSummaries(tx: Tx, abuIds: string[]): Promise<Map<string
       sizePoints: r.size_points,
       dependsOn: r.depends_on,
       requirements: r.requirements,
+      repo: r.repo,
       relevantTo: r.relevant_to,
       claimable: null,
       pr: r.pr_number !== null && r.pr_url && r.pr_state ? { number: r.pr_number, url: r.pr_url, state: r.pr_state } : null,
