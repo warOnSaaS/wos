@@ -14,7 +14,7 @@ import { loadAttempt, queryTasks } from "../views.js";
 import { revokeAllSessions } from "./account.js";
 import { runDispatch } from "../domain/consumers.js";
 import { documentTransition, loadDocument, openRoadmap } from "../domain/documents.js";
-import { contributionTransition, createContribution, insertLedgerEntry } from "../domain/ledger.js";
+import { contributionTransition, createContribution, insertLedgerEntry, settleKeyedContribution } from "../domain/ledger.js";
 import { openRound } from "../domain/review.js";
 import { endBootstrap, runSweep } from "../domain/sweep.js";
 import { processDelivery, retryDeliveries, storeDelivery } from "../domain/webhooks.js";
@@ -104,6 +104,14 @@ export const adminHandlers: Pick<
          where id = ${r.id} and state = 'awaiting_maintainer' and row_version = ${r.row_version} returning id`;
       if (decided.length === 0) throw new ApiFailure("CONFLICT", "ruling changed concurrently");
       const [task] = await queryTasks(tx, "where t.id = $1", [r.task_id]);
+      await settleKeyedContribution(
+        tx,
+        `architecture_resolution:${r.id}`,
+        ctx.body.accept ? "accept" : "reject",
+        "maintainer",
+        caller.accountId,
+        ctx.body.note,
+      );
       if (!ctx.body.accept) {
         // Rejected: a new resolver task opens (REVIEW-PROTOCOL.md section 8.3).
         await newTask(
@@ -124,6 +132,14 @@ export const adminHandlers: Pick<
       }
       for (const f of r.body.rulings) {
         await tx`update wos.findings set state = ${f.decision}, row_version = row_version + 1 where id = ${f.findingId} and state in ('open', 'disputed')`;
+        await settleKeyedContribution(
+          tx,
+          `review_finding:${f.findingId}`,
+          f.decision === "upheld" ? "accept" : "reject",
+          "system",
+          caller.accountId,
+          `finding ${f.decision} by a confirmed ruling`,
+        );
         await tx`insert into wos.finding_responses (id, finding_id, account_id, source, action, note)
                  values (${uuidv7()}, ${f.findingId}, ${caller.accountId}, 'maintainer', ${f.decision}, ${ctx.body.note})`;
         await insertEvent(
@@ -276,32 +292,7 @@ export const adminHandlers: Pick<
           if (!c) throw new ApiFailure("NOT_FOUND", "contribution not found");
           if (c.state !== "accepted") throw new ApiFailure("CONFLICT", `contribution is ${c.state}`);
           await contributionTransition(tx, c, "reverse", "maintainer", caller.accountId, a.reason);
-          const awards = await tx<{ id: string; amount: string; schedule_version: string; released: boolean }[]>`
-            select l.id, l.amount, l.schedule_version,
-                   exists (select 1 from wos.ledger_entries r where r.related_entry_id = l.id and r.kind = 'release') as released
-              from wos.ledger_entries l where l.contribution_id = ${c.id} and l.kind = 'award'
-               and not exists (select 1 from wos.ledger_entries x where x.related_entry_id = l.id and x.kind in ('void', 'clawback'))`;
-          for (const w of awards) {
-            await insertLedgerEntry(
-              tx,
-              {
-                accountId: c.account_id,
-                kind: w.released ? "clawback" : "void",
-                bucket: w.released ? "available" : "held",
-                amount: -Number(w.amount),
-                category: null,
-                contributionId: c.id,
-                poolId: null,
-                relatedEntryId: w.id,
-                pairId: null,
-                idempotencyKey: `${w.released ? "clawback" : "void"}:${w.id}`,
-                scheduleVersion: w.schedule_version,
-                memo: `reversed: ${a.reason}`.slice(0, 1000),
-                releaseAfter: null,
-              },
-              { kind: "maintainer", accountId: caller.accountId },
-            );
-          }
+          // The void/clawback drafts come from the rewards rules on contribution.reversed (REWARD-PROTOCOL.md section 8).
           return;
         }
         case "suspend_account": {
@@ -381,7 +372,11 @@ export const adminHandlers: Pick<
         case "award_security": {
           const acct = await accountByHandle(tx, a.handle);
           if (acct.github_user_id === null) throw new ApiFailure("VALIDATION_FAILED", "the reporter needs a linked GitHub account");
-          const key = `security:${sha256Of(a.reference).slice(7, 31)}:${acct.id}`;
+          // The key carries the severity the loader passes to the rules (facts.security).
+          const key = `security:${a.severity}:${sha256Of(a.reference).slice(7, 31)}:${acct.id}`;
+          const [dupe] =
+            await tx`select 1 as x from wos.contributions where idempotency_key like ${`security:%:${sha256Of(a.reference).slice(7, 31)}:${acct.id}`}`;
+          if (dupe) throw new ApiFailure("CONFLICT", "this report was already awarded");
           const cid = await createContribution(tx, {
             accountId: acct.id,
             githubUserId: acct.github_user_id,
@@ -398,30 +393,15 @@ export const adminHandlers: Pick<
             caller.accountId,
             a.reference,
           );
-          const [rel] = await tx<{ at: Date }[]>`select now() + make_interval(days => ${deps.schedule.holdDays}) as at`;
-          await insertLedgerEntry(
-            tx,
-            {
-              accountId: acct.id,
-              kind: "award",
-              bucket: "held",
-              amount: deps.schedule.security[a.severity],
-              category: "security",
-              contributionId: cid,
-              poolId: null,
-              relatedEntryId: null,
-              pairId: null,
-              idempotencyKey: `award:security:${cid}:${acct.id}`,
-              scheduleVersion: deps.schedule.scheduleVersion,
-              memo: `security report ${a.reference}`.slice(0, 1000),
-              releaseAfter: rel!.at.toISOString(),
-            },
-            { kind: "maintainer", accountId: caller.accountId },
-          );
+          // The award itself is drafted by the rewards rules on contribution.accepted.
           return;
         }
       }
     });
+    // Consumers run inline after commit when cheap (DOMAIN-MODEL.md section 3): rewards, progress, GitHub.
+    await runDispatch(deps).catch((err: unknown) =>
+      deps.log("error", "inline dispatch failed", { error: err instanceof Error ? err.message : String(err) }),
+    );
     return { ok: true as const };
   },
 

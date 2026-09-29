@@ -594,6 +594,12 @@ export const accountHandlers: Pick<
                  values (${uuidv7()}, ${caller.accountId}, ${ctx.body.deviceId}, ${p.provider}, ${p.installed}, ${p.cliVersion}, ${p.signedIn},
                          ${p.authMethod}, ${p.models as string[]}, ${p.checkedAt})`;
       }
+      const t = ctx.body.toolchain;
+      if (t) {
+        // D13: the device's toolchain, matched against path-based toolchainRequirements at claim time.
+        await tx`insert into wos.toolchain_attestations (id, account_id, device_id, os, os_version, tools, checked_at)
+                 values (${uuidv7()}, ${caller.accountId}, ${ctx.body.deviceId}, ${t.os}, ${t.osVersion}, ${tx.json(t.tools as never)}, ${t.checkedAt})`;
+      }
       return loadMe(tx, caller.accountId);
     });
   },

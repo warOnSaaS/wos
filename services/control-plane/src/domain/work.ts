@@ -3,7 +3,7 @@
  * (BUILD-PROTOCOL.md, DOMAIN-MODEL.md sections 4.1, 4.2, 4.5, 4.6). Every state change goes through
  * `transition` (guarded UPDATE + one event).
  */
-import type { EligibilityInput, EligibilityResult } from "@waronsaas/agent-policy";
+import { type EligibilityInput, type EligibilityResult, resolveReasoning } from "@waronsaas/agent-policy";
 import {
   type AbuSpec,
   AbuMachine,
@@ -16,6 +16,10 @@ import {
   TaskMachine,
   type TaskKind,
   type TaskState,
+  type ModelRef,
+  type ProviderId,
+  type RepoManifest,
+  type ToolchainAttestation,
 } from "@waronsaas/contracts";
 import type { Tx } from "@waronsaas/db";
 import { scopesOverlap } from "@waronsaas/verification";
@@ -296,6 +300,10 @@ export interface EligibilityFacts {
   otherSlotReviewerId: string | null;
   reviewsOfSameAuthorLast7d: number;
   activeLeasesOfKind: number;
+  /** D15 (contracts 4.3.0): the model the claim names, or null for the first attested allowed model. */
+  claimedModel?: ModelRef | null;
+  /** Builder claims (D13): the ABU's write scopes and the repository manifest at the source commit. */
+  builder?: { writeScopes: string[]; manifest: RepoManifest | null };
 }
 
 export async function evaluateEligibility(tx: Tx, deps: Deps, f: EligibilityFacts): Promise<EligibilityResult> {
@@ -313,11 +321,36 @@ export async function evaluateEligibility(tx: Tx, deps: Deps, f: EligibilityFact
     taskOpenHours = h?.h ?? 0;
   }
   const [clock] = await tx<{ now: Date }[]>`select now() as now`;
-  // contracts 3.0.0 (section 7.2): the pure evaluator gets the server clock and the task's own exclusions.
-  const input: EligibilityInput & { now: string; excludedAccountIds: string[]; restrictedToAccountId: string | null } = {
+  // Builder facts the evaluator requires (context-policy Wave 2b): active build leases per provider and the toolchain.
+  let builderFacts: {
+    activeBuildLeasesByProvider?: Partial<Record<ProviderId, number>>;
+    toolchain?: { writeScopes: string[]; requirements: RepoManifest["toolchainRequirements"]; attestation: ToolchainAttestation | null };
+  } = {};
+  if (f.role === "builder") {
+    const byProvider = await tx<{ provider: ProviderId; n: number }[]>`
+      select l.context_plan->>'provider' as provider, count(*)::int as n from wos.leases l join wos.tasks t on t.id = l.task_id
+       where l.account_id = ${f.accountId} and l.state = 'active' and t.kind in ('abu_build', 'abu_revision')
+       group by 1`;
+    const [att] = await tx<
+      { os: ToolchainAttestation["os"]; os_version: string; tools: ToolchainAttestation["tools"]; checked_at: Date }[]
+    >`
+      select os, os_version, tools, checked_at from wos.toolchain_attestations where account_id = ${f.accountId} and device_id = ${f.deviceId}
+       order by created_at desc limit 1`;
+    builderFacts = {
+      activeBuildLeasesByProvider: Object.fromEntries(byProvider.map((r) => [r.provider, r.n])),
+      toolchain: {
+        writeScopes: f.builder?.writeScopes ?? [],
+        requirements: f.builder?.manifest?.toolchainRequirements ?? [],
+        attestation: att ? { os: att.os, osVersion: att.os_version, tools: att.tools, checkedAt: att.checked_at.toISOString() } : null,
+      },
+    };
+  }
+  const input: EligibilityInput & typeof builderFacts & { claimedModel?: ModelRef | null } = {
     now: clock!.now.toISOString(),
     excludedAccountIds: f.task?.excluded_account_ids ?? [],
     restrictedToAccountId: f.task?.restricted_to_account_id ?? null,
+    claimedModel: f.claimedModel ?? null,
+    ...builderFacts,
     role: f.role,
     account: {
       id: f.accountId,
@@ -335,14 +368,19 @@ export async function evaluateEligibility(tx: Tx, deps: Deps, f: EligibilityFact
     taskOpenHours,
   };
   const result = deps.logic.checkEligibility(input, deps.policy);
-  if (result.eligible && f.task) {
-    const reasons: string[] = [];
-    if (f.task.excluded_account_ids.includes(f.accountId)) reasons.push("excluded from this task");
-    if (f.task.restricted_to_account_id && f.task.restricted_to_account_id !== f.accountId)
-      reasons.push("task is restricted to another account");
-    if (reasons.length > 0) return { eligible: false, reasons };
+  if (!result.eligible || !f.claimedModel || result.model.ref === f.claimedModel) return result;
+  // B-0010 (contracts 4.3.0): the claim named a model. It must be allowed for the role and attested by this device.
+  const role = deps.policy.roles.find((r) => r.role === f.role)!;
+  const spec = deps.policy.models.find((m) => m.ref === f.claimedModel);
+  const attested =
+    spec && attestations.some((a) => a.provider === spec.provider && a.installed && a.signedIn && a.models.includes(spec.ref));
+  if (!spec || !role.allowedModels.includes(spec.ref) || !attested) {
+    return {
+      eligible: false,
+      reasons: [`NO_ATTESTED_MODEL: ${f.claimedModel} is not allowed for ${f.role} or not attested by this device`],
+    };
   }
-  return result;
+  return { ...result, model: spec, reasoning: resolveReasoning(role, spec) };
 }
 
 export async function activeLeaseCount(tx: Tx, accountId: string, kinds: readonly TaskKind[]): Promise<number> {

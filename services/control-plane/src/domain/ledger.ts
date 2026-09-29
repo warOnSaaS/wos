@@ -124,3 +124,40 @@ export async function settleContributions(
          where c.state = 'pending' and (c.document_id = ${where.documentId!} or r.document_id = ${where.documentId!}) order by c.id`;
   for (const c of rows) await contributionTransition(tx, c, event, actor, null, reason);
 }
+
+/** Accepts or rejects the pending contribution whose idempotency key starts with `<prefix>:` (findings, rulings). */
+export async function settleKeyedContribution(
+  tx: Tx,
+  prefix: string,
+  event: "accept" | "reject",
+  actor: "system" | "github" | "maintainer",
+  actorAccountId: string | null,
+  reason: string,
+): Promise<void> {
+  const rows = await tx<{ id: string; state: "pending"; account_id: string; category: RewardCategory }[]>`
+    select id, state, account_id, category from wos.contributions where state = 'pending' and idempotency_key like ${`${prefix}:%`} order by id`;
+  // ContributionMachine: accept is a system/github step (the acceptance condition holds); a maintainer may reject.
+  const by = event === "accept" ? "system" : actor === "maintainer" ? "maintainer" : "system";
+  for (const c of rows) await contributionTransition(tx, c, event, by, actorAccountId, reason);
+}
+
+/** Authors of accepted revisions of a merged document: one work contribution each, weight = accepted revisions. */
+export async function createDocumentWorkContributions(tx: Tx, documentId: string, kind: "roadmap" | "feature_contract"): Promise<void> {
+  const authors = await tx<{ account_id: string; github_user_id: string; n: number }[]>`
+    select c.account_id, a.github_user_id, count(*)::int as n
+      from wos.changesets c join wos.tasks t on t.id = c.task_id join wos.accounts a on a.id = c.account_id
+     where t.document_id = ${documentId} and c.ok and a.github_user_id is not null
+     group by c.account_id, a.github_user_id order by c.account_id`;
+  const category = kind === "roadmap" ? "roadmap_work" : "feature_contract_work";
+  for (const a of authors) {
+    await createContribution(tx, {
+      accountId: a.account_id,
+      githubUserId: a.github_user_id,
+      category,
+      documentId,
+      independence: "independent",
+      weight: a.n,
+      idempotencyKey: `${category}:${documentId}:${a.account_id}`,
+    });
+  }
+}

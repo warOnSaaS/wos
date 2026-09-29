@@ -14,6 +14,7 @@ import {
   PRODUCT_REPO,
   type ProvenanceRecord,
   REWARD_SCHEDULE_V1,
+  type Surface,
   type RewardSchedule,
 } from "@waronsaas/contracts";
 import type { Sql } from "@waronsaas/db";
@@ -29,7 +30,7 @@ import {
   validateFeatureContract,
   validateRoadmap,
 } from "@waronsaas/planning";
-import { computeLedgerDrafts } from "@waronsaas/rewards";
+import { computeLedgerDrafts, computeReleaseDrafts } from "@waronsaas/rewards";
 import { validateChangeset } from "@waronsaas/verification";
 import { ApiFailure } from "./errors.js";
 
@@ -113,19 +114,30 @@ export interface Mailer {
 }
 
 /** Pure logic owned by other workstreams, injected so fakes can stand in until each lands. */
+/** The ratified sixth argument of validateBuildGraph (FEATURE-CONTRACT.md section 9, B-0001-planning). */
+export interface BuildGraphValidationContext {
+  repositories: ReadonlyMap<string, "platform" | "product">;
+  contractRepo: string;
+  surfacesInScope?: ReadonlyMap<string, Surface[]>;
+}
+
 export interface Logic {
   checkEligibility: typeof checkEligibility;
   checkManifestAgainstPlan: typeof checkManifestAgainstPlan;
   validateChangeset: typeof validateChangeset;
   computeRoundOutcome: typeof computeRoundOutcome;
   computeLedgerDrafts: typeof computeLedgerDrafts;
+  computeReleaseDrafts: typeof computeReleaseDrafts;
   parseRoadmapYaml: typeof parseRoadmapYaml;
   parseInventoryYaml: typeof parseInventoryYaml;
   parseCatalogEntryYaml: typeof parseCatalogEntryYaml;
   parseFeatureContractYaml: typeof parseFeatureContractYaml;
   parseBuildGraphYaml: typeof parseBuildGraphYaml;
   validateRoadmap: typeof validateRoadmap;
-  validateBuildGraph: typeof validateBuildGraph;
+  /** FEATURE-CONTRACT.md section 9: the optional sixth argument (ratified at 4.2.0; planning implements it). */
+  validateBuildGraph: (
+    ...args: [...Parameters<typeof validateBuildGraph>, BuildGraphValidationContext?]
+  ) => ReturnType<typeof validateBuildGraph>;
   /** contracts 4.2.0 (B-0002-planning), integration glue. */
   validateFeatureContract: typeof validateFeatureContract;
 }
@@ -136,6 +148,7 @@ export const DEFAULT_LOGIC: Logic = {
   validateChangeset,
   computeRoundOutcome,
   computeLedgerDrafts,
+  computeReleaseDrafts,
   parseRoadmapYaml,
   parseInventoryYaml,
   parseCatalogEntryYaml,

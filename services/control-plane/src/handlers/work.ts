@@ -30,6 +30,7 @@ import {
   type DocumentRow,
 } from "../domain/documents.js";
 import { buildPlan, renderServerDocument } from "../domain/plans.js";
+import { createContribution } from "../domain/ledger.js";
 import { revealRound, subjectAuthors } from "../domain/review.js";
 import {
   abuTransition,
@@ -52,6 +53,7 @@ import {
   taskTransition,
 } from "../domain/work.js";
 import { abuSummaries, revealedReviews } from "./public.js";
+import { assertToolchain } from "../domain/toolchain.js";
 import { scopesOverlap } from "@waronsaas/verification";
 import { transition } from "../db/transition.js";
 import {
@@ -132,6 +134,17 @@ async function withGithubRetries<T>(deps: Deps, what: string, fn: () => Promise<
   }
   deps.log("warn", `GitHub ${what} failed`, { error: last instanceof Error ? last.message : String(last) });
   throw new ApiFailure("UPSTREAM_GITHUB", `GitHub ${what} failed; retry with the same Idempotency-Key`);
+}
+
+/** D15: at most `maxConcurrentBuildLeasesPerProvider` active build leases per provider (AGENT-POLICY.md, D15). */
+async function assertProviderCapacity(tx: Tx, deps: Deps, accountId: string, provider: string): Promise<void> {
+  const [n] = await tx<{ n: number }[]>`
+    select count(*)::int as n from wos.leases l join wos.tasks t on t.id = l.task_id
+     where l.account_id = ${accountId} and l.state = 'active' and t.kind in ('abu_build', 'abu_revision')
+       and l.context_plan->>'provider' = ${provider}`;
+  const limit = deps.policy.limits.maxConcurrentBuildLeasesPerProvider;
+  if ((n?.n ?? 0) >= limit)
+    throw new ApiFailure("LIMIT_REACHED", `you already hold ${n!.n} build lease(s) on ${provider} (limit ${limit} per provider)`);
 }
 
 export const workHandlers: Pick<
@@ -241,8 +254,19 @@ export const workHandlers: Pick<
         otherSlotReviewerId: null,
         reviewsOfSameAuthorLast7d: 0,
         activeLeasesOfKind: active,
+        claimedModel: ctx.body.model ?? null,
+        builder: { writeScopes: abu.spec.scope.write, manifest },
       });
       if (!elig.eligible) throw new ApiFailure("NOT_ELIGIBLE", "not eligible to build this ABU", { reasons: elig.reasons });
+      await assertProviderCapacity(tx, deps, caller.accountId, elig.model.provider);
+      await assertToolchain(tx, deps, {
+        accountId: caller.accountId,
+        deviceId: ctx.body.deviceId,
+        repo,
+        commit: baseSha,
+        write: abu.spec.scope.write,
+        manifest,
+      });
       const attemptId = uuidv7();
       await tx`insert into wos.attempts (id, abu_id, account_id, github_user_id, state, base_sha)
                values (${attemptId}, ${abu.id}, ${caller.accountId}, ${caller.githubUserId!}, 'leased', ${baseSha})`;
@@ -445,6 +469,10 @@ export const workHandlers: Pick<
           : deps.policy.limits.maxConcurrentAuthorLeasesPerContributor;
       const active = await activeLeaseCount(tx, caller.accountId, family);
       if (active >= limit) throw new ApiFailure("LIMIT_REACHED", `you already hold ${active} leases of this kind`);
+      const revisionSpec =
+        task.kind === "abu_revision"
+          ? ((await tx<{ spec: AbuSpec }[]>`select spec from wos.abus where id = ${task.abu_id}`)[0]?.spec ?? null)
+          : null;
       let authors: string[] = [];
       if (task.kind === "conflict_resolution" && task.document_id)
         authors = await subjectAuthors(tx, { attempt_id: null, document_id: task.document_id });
@@ -457,8 +485,11 @@ export const workHandlers: Pick<
         otherSlotReviewerId: null,
         reviewsOfSameAuthorLast7d: 0,
         activeLeasesOfKind: active,
+        claimedModel: ctx.body.model ?? null,
+        ...(revisionSpec ? { builder: { writeScopes: revisionSpec.scope.write, manifest } } : {}),
       });
       if (!elig.eligible) throw new ApiFailure("NOT_ELIGIBLE", "not eligible for this task", { reasons: elig.reasons });
+      if (task.kind === "abu_revision") await assertProviderCapacity(tx, deps, caller.accountId, elig.model.provider);
       let spec: AbuSpec | null = null;
       let attemptId: string | null = null;
       let priorRound = 0;
@@ -469,6 +500,14 @@ export const workHandlers: Pick<
         attemptId = attempt.id;
         const [s] = await tx<{ spec: AbuSpec }[]>`select spec from wos.abus where id = ${attempt.abu_id}`;
         spec = s!.spec;
+        await assertToolchain(tx, deps, {
+          accountId: caller.accountId,
+          deviceId: ctx.body.deviceId,
+          repo: source.repo,
+          commit: source.commit,
+          write: spec.scope.write,
+          manifest,
+        });
         const [r] = await tx<
           { n: number | null }[]
         >`select max(round_number)::int as n from wos.rounds where attempt_id = ${attempt.id} and state = 'revealed'`;
@@ -928,6 +967,17 @@ export const workHandlers: Pick<
       await endLease(tx, l, "complete", SYSTEM, "verdict sealed");
       await taskTransition(tx, task, "submit", by(caller));
       await taskTransition(tx, { id: task.id, state: "submitted" }, "accept_output", SYSTEM);
+      // The review is a contribution from sealing; it is accepted only when its subject is (REWARD-PROTOCOL.md section 3).
+      await createContribution(tx, {
+        accountId: caller.accountId,
+        githubUserId: caller.githubUserId!,
+        category: "review",
+        attemptId: round.attempt_id,
+        documentId: round.document_id,
+        reviewId,
+        independence: elig.independence,
+        idempotencyKey: `review:${reviewId}:${caller.accountId}`,
+      });
       await insertEvent(
         tx,
         { type: "round.verdict_sealed", v: 1, visibility: "private", payload: { roundId: round.id, slot: task.reviewer_slot!, reviewId } },
@@ -956,6 +1006,15 @@ export const workHandlers: Pick<
       const rulingId = uuidv7();
       await tx`insert into wos.rulings (id, task_id, lease_id, account_id, body, state)
                values (${rulingId}, ${task.id}, ${l.id}, ${caller.accountId}, ${tx.json(ctx.body as never)}, 'awaiting_maintainer')`;
+      await createContribution(tx, {
+        accountId: caller.accountId,
+        githubUserId: caller.githubUserId!,
+        category: "architecture_resolution",
+        attemptId: task.attempt_id,
+        documentId: task.document_id,
+        independence: "independent",
+        idempotencyKey: `architecture_resolution:${rulingId}:${caller.accountId}`,
+      });
       for (const r of ctx.body.rulings) {
         await tx`insert into wos.finding_responses (id, finding_id, account_id, source, action, note)
                  values (${uuidv7()}, ${r.findingId}, ${caller.accountId}, 'resolver', ${r.decision}, ${r.rationale})`;

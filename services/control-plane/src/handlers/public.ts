@@ -265,16 +265,13 @@ async function requirementViews(tx: Tx, contractDocId: string | null, onlyTarget
 
 /**
  * D13 (contracts 4.0.0): per-surface progress with the roadmap's weights and rationales, and the journeys.
- * Features materialised before D13 have no surface rows and show one implicit web surface.
+ * Surface rows are materialised from the merged roadmap (D13).
  */
 async function featureSurfaces(tx: Tx, appFeatureId: string, fp: FeatureProgress | undefined) {
   const rows = await tx<{ surface: Surface; weight_bp: number; weight_rationale: string }[]>`
     select surface, weight_bp, weight_rationale from wos.app_feature_surfaces where app_feature_id = ${appFeatureId} order by surface`;
   const [j] = await tx<{ journeys: Journey[] }[]>`select journeys from wos.app_features where id = ${appFeatureId}`;
-  const base =
-    rows.length > 0
-      ? rows
-      : [{ surface: "web" as Surface, weight_bp: 10_000, weight_rationale: "Implicit single surface for a feature mapped before D13." }];
+  const base = rows;
   const surfaces = base.map((r) => {
     const sp = fp?.surfaces.find((x) => x.surface === r.surface);
     return {
