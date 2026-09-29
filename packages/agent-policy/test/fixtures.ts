@@ -67,3 +67,18 @@ export function planFor(role: AgentRole, overrides: Partial<ContextPlan> = {}): 
     ...overrides,
   };
 }
+
+/** The same plan for `role` on another allowed model (D15): model id, provider and effective budget follow the model. */
+export function planForModel(role: AgentRole, ref: "fable" | "opus" | "astra" | "sol", overrides: Partial<ContextPlan> = {}): ContextPlan {
+  const rp = policy.roles.find((r) => r.role === role)!;
+  const model = policy.models.find((m) => m.ref === ref)!;
+  const reasoning: ReasoningLevel = rp.reasoning.required === "max" ? model.maxReasoning : rp.reasoning.required;
+  return planFor(role, {
+    model: model.ref,
+    modelId: model.modelId,
+    provider: model.provider,
+    reasoning,
+    budgetTokens: rp.budgetOverrides.find((o) => o.model === ref)?.contextBudgetTokens ?? rp.contextBudgetTokens,
+    ...overrides,
+  });
+}

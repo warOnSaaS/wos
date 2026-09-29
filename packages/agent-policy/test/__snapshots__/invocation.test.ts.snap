@@ -326,3 +326,135 @@ exports[`agent-policy buildInvocation: argv snapshots for all ten roles > agent-
   },
 }
 `;
+
+exports[`agent-policy buildInvocation: codex builders and authors (D15) > agent-policy builder on astra matches the codex template 1`] = `
+{
+  "argv": [
+    "exec",
+    "--model",
+    "gpt-6-astra",
+    "--ephemeral",
+    "--ignore-user-config",
+    "--ignore-rules",
+    "-c",
+    "project_doc_max_bytes=0",
+    "-c",
+    "approval_policy="never"",
+    "--json",
+    "-o",
+    "/tmp/wos/last-message.json",
+    "-C",
+    "/work/wos/attempt-3",
+    "--sandbox",
+    "workspace-write",
+    "-c",
+    "sandbox_workspace_write.network_access=false",
+    "-c",
+    "model_reasoning_effort="high"",
+    "--output-schema",
+    "/tmp/wos/schema.json",
+    "-",
+  ],
+  "binary": "codex",
+  "env": {},
+}
+`;
+
+exports[`agent-policy buildInvocation: codex builders and authors (D15) > agent-policy builder on sol matches the codex template 1`] = `
+{
+  "argv": [
+    "exec",
+    "--model",
+    "gpt-6-sol",
+    "--ephemeral",
+    "--ignore-user-config",
+    "--ignore-rules",
+    "-c",
+    "project_doc_max_bytes=0",
+    "-c",
+    "approval_policy="never"",
+    "--json",
+    "-o",
+    "/tmp/wos/last-message.json",
+    "-C",
+    "/work/wos/attempt-3",
+    "--sandbox",
+    "workspace-write",
+    "-c",
+    "sandbox_workspace_write.network_access=false",
+    "-c",
+    "model_reasoning_effort="high"",
+    "--output-schema",
+    "/tmp/wos/schema.json",
+    "-",
+  ],
+  "binary": "codex",
+  "env": {},
+}
+`;
+
+exports[`agent-policy buildInvocation: codex builders and authors (D15) > agent-policy feature_author on astra matches the codex template 1`] = `
+{
+  "argv": [
+    "exec",
+    "--model",
+    "gpt-6-astra",
+    "--ephemeral",
+    "--ignore-user-config",
+    "--ignore-rules",
+    "-c",
+    "project_doc_max_bytes=0",
+    "-c",
+    "approval_policy="never"",
+    "--json",
+    "-o",
+    "/tmp/wos/last-message.json",
+    "-C",
+    "/work/wos/attempt-3",
+    "--sandbox",
+    "workspace-write",
+    "-c",
+    "sandbox_workspace_write.network_access=false",
+    "-c",
+    "model_reasoning_effort="max"",
+    "--output-schema",
+    "/tmp/wos/schema.json",
+    "-",
+  ],
+  "binary": "codex",
+  "env": {},
+}
+`;
+
+exports[`agent-policy buildInvocation: codex builders and authors (D15) > agent-policy roadmap_author on astra matches the codex template 1`] = `
+{
+  "argv": [
+    "exec",
+    "--model",
+    "gpt-6-astra",
+    "--ephemeral",
+    "--ignore-user-config",
+    "--ignore-rules",
+    "-c",
+    "project_doc_max_bytes=0",
+    "-c",
+    "approval_policy="never"",
+    "--json",
+    "-o",
+    "/tmp/wos/last-message.json",
+    "-C",
+    "/work/wos/attempt-3",
+    "--sandbox",
+    "workspace-write",
+    "-c",
+    "sandbox_workspace_write.network_access=false",
+    "-c",
+    "model_reasoning_effort="max"",
+    "--output-schema",
+    "/tmp/wos/schema.json",
+    "-",
+  ],
+  "binary": "codex",
+  "env": {},
+}
+`;
