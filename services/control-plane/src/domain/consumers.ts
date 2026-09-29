@@ -132,6 +132,8 @@ async function openOrUpdatePr(deps: Deps, e: EventRow, attemptId: string): Promi
     });
     prNumber = pr.number;
     prUrl = pr.url;
+    // BUILD-PROTOCOL section 9 step 5 (contracts 3.1.0): toolchain changes need a maintainer; ask explicitly.
+    if (facts.toolchain.length > 0) await deps.github.requestTeamReview(repo, prNumber, "maintainers");
   }
   await deps.github.setCommitStatus(repo, attempt.head_sha, {
     context: QUALIFIED_STATUS_CONTEXT,

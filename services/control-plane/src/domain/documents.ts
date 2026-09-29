@@ -126,8 +126,10 @@ async function openDocument(
       payload: {
         documentId: id,
         kind: input.kind,
-        target: input.kind === "roadmap" ? input.slug : input.openedFor,
+        // contracts 3.1.0: contracts have no target; relevantTo names the apps they serve (integration glue).
+        target: input.kind === "roadmap" ? input.slug : null,
         feature: input.kind === "roadmap" ? null : input.key,
+        relevantTo: [input.kind === "roadmap" ? input.slug : input.openedFor],
         version,
       },
     },

@@ -230,7 +230,7 @@ describe.skipIf(!HAS_DB)("maintainer actions, sweeper and submission security", 
     });
     const plan = claim.body.contextPlan;
     const leaseId = claim.body.lease.id;
-    const m = manifestFor(plan, "abu_build");
+    const m = await manifestFor(h, plan, "abu_build");
     await h.call("POST", `/v1/leases/${leaseId}/manifest`, { token: b.token, idem: true, body: m });
     const run = signedRun(b.key, plan, leaseId, b.deviceId, m.manifestSha256);
     const badRun = await h.call("POST", `/v1/leases/${leaseId}/agent-runs`, { token: b.token, idem: true, body: { ...run, exitCode: 1 } });

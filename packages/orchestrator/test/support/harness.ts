@@ -107,6 +107,21 @@ export const fakeEngines: Partial<Engines> = {
     }
     for (const a of plan.artifacts) {
       if (a.kind === "repo_file" || a.kind === "repo_glob") continue;
+      if (a.kind === "local_document") {
+        // contracts 3.1.0: local documents come only from readLocalDocument (null = absent).
+        const bytes = reader.readLocalDocument ? await reader.readLocalDocument(a.ref) : null;
+        if (bytes === null) excluded.push({ ref: a.ref, reason: "missing_optional" });
+        else
+          artifacts.push({
+            kind: "local_document",
+            ref: a.ref,
+            gitBlobOid: null,
+            sha256: sha256Of(bytes),
+            bytes: bytes.byteLength,
+            estTokens: 10,
+          });
+        continue;
+      }
       try {
         const bytes = await reader.readServerDocument(a.ref);
         artifacts.push({ kind: a.kind, ref: a.ref, gitBlobOid: null, sha256: sha256Of(bytes), bytes: bytes.byteLength, estTokens: 10 });

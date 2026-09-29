@@ -17,7 +17,7 @@ export async function reviewAs(
   if (claim.status !== 200 || !claim.body) throw new Error(`claimReview ${claim.status} ${JSON.stringify(claim.body)}`);
   const plan = claim.body.contextPlan;
   const leaseId = claim.body.lease.id;
-  const m = manifestFor(plan, kind);
+  const m = await manifestFor(h, plan, kind);
   const mr = await h.call("POST", `/v1/leases/${leaseId}/manifest`, { token: acct.token, idem: true, body: m });
   if (mr.status !== 200) throw new Error(`manifest ${mr.status} ${JSON.stringify(mr.body)}`);
   const run = await h.call("POST", `/v1/leases/${leaseId}/agent-runs`, {
@@ -42,7 +42,7 @@ export async function buildAndSubmit(h: Harness, builder: Account, abuId: string
   const plan = claim.body.contextPlan;
   const leaseId = claim.body.lease.id;
   const attemptId = claim.body.attempt.id;
-  const m = manifestFor(plan, "abu_build");
+  const m = await manifestFor(h, plan, "abu_build");
   expect((await h.call("POST", `/v1/leases/${leaseId}/manifest`, { token: builder.token, idem: true, body: m })).status).toBe(200);
   const run = await h.call("POST", `/v1/leases/${leaseId}/agent-runs`, {
     token: builder.token,

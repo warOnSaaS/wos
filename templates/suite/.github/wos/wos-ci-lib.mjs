@@ -6817,6 +6817,7 @@ const ContextPlan = object({
 	abu: AbuKey.nullable(),
 	attemptId: Uuid.nullable(),
 	roundId: Uuid.nullable(),
+	roundNumber: number$1().int().positive().nullable().optional(),
 	source: object({
 		repo: RepoFullName,
 		commit: GitSha
@@ -7478,8 +7479,9 @@ const DomainEventBody = discriminatedUnion("type", [
 	e("document.opened", "public", {
 		documentId: Uuid,
 		kind: DocumentKind,
-		target: TargetSlug,
+		target: TargetSlug.nullable(),
 		feature: FeatureKey.nullable(),
+		relevantTo: array(TargetSlug).default([]),
 		version: number$1().int()
 	}),
 	e("document.revision_submitted", "public", {
@@ -8676,7 +8678,7 @@ const ArchitectureBlocker = object({
 //#region packages/contracts/dist/data/agent-policy.v1.json
 var agent_policy_v1_default = {
 	policyVersion: "agent-policy.v1",
-	contractsVersion: "3.0.0",
+	contractsVersion: "3.1.0",
 	effectiveFrom: "2026-09-29",
 	providers: [{
 		"id": "claude_cli",

@@ -21,10 +21,14 @@ import {
   type ReviewVerdict,
 } from "@waronsaas/contracts";
 import type { EligibilityInput, EligibilityResult } from "@waronsaas/agent-policy";
+import { buildContext, type SnapshotReader } from "@waronsaas/context-engine";
+import { gitBlobOid } from "@waronsaas/contracts/canonical";
+import { matchesGlob } from "node:path";
+import { renderServerDocument } from "../../src/domain/plans.js";
 import postgres from "postgres";
 import { vi } from "vitest";
 import { createControlPlane } from "../../src/app.js";
-import type { Deps, GithubPort, GithubUserIdentity, Logic, OutboundMail } from "../../src/deps.js";
+import { DEFAULT_LOGIC, type Deps, type GithubPort, type GithubUserIdentity, type Logic, type OutboundMail } from "../../src/deps.js";
 import {
   agentRunSigningPayload,
   computeManifestSha256,
@@ -142,6 +146,9 @@ export class FakeGithub implements GithubPort {
   }
   async readFileAt(repo: string, commit: string, path: string) {
     if (path === "wos.json" && !this.files.has(`${repo}@${commit}:${path}`)) return Buffer.from(JSON.stringify(REPO_MANIFEST));
+    // Integration glue: the real context engine requires the feature contract a build plan selects.
+    if (/^features\/[^/]+\/CONTRACT\.yaml$/.test(path) && !this.files.has(`${repo}@${commit}:${path}`))
+      return Buffer.from(`schema: wos-feature-contract.v1\n# fake contract for ${path}\n`);
     return this.files.get(`${repo}@${commit}:${path}`) ?? null;
   }
   async listTreePaths(repo: string, commit: string) {
@@ -166,6 +173,10 @@ export class FakeGithub implements GithubPort {
   }
   async compareDiff(_repo: string, base: string, head: string) {
     return `diff ${base}..${head}`;
+  }
+  readonly teamReviews: Array<{ repo: string; prNumber: number; team: string }> = [];
+  async requestTeamReview(repo: string, prNumber: number, team: string) {
+    this.teamReviews.push({ repo, prNumber, team });
   }
 }
 
@@ -277,6 +288,13 @@ export const FAKE_LOGIC: Logic = {
   validateBuildGraph: () => [],
 };
 
+/** The real Wave 1 implementations (context-policy, verification), exactly as in DEFAULT_LOGIC. */
+export const REAL_WAVE1_LOGIC: Partial<Logic> = {
+  checkEligibility: DEFAULT_LOGIC.checkEligibility,
+  checkManifestAgainstPlan: DEFAULT_LOGIC.checkManifestAgainstPlan,
+  validateChangeset: DEFAULT_LOGIC.validateChangeset,
+};
+
 // biome-ignore lint/suspicious/noExplicitAny: test responses are asserted field by field
 export interface Response<T = any> {
   status: number;
@@ -340,7 +358,8 @@ export async function createHarness(overrides: Partial<Logic> = {}): Promise<Har
     },
     github,
     mailer,
-    logic: { ...FAKE_LOGIC, ...overrides },
+    // Wave 1 integration glue: the real Wave 1 packages replace the fakes (planning and rewards stay fake until Wave 2).
+    logic: { ...FAKE_LOGIC, ...REAL_WAVE1_LOGIC, ...overrides },
     policy: AGENT_POLICY_V1,
     schedule: REWARD_SCHEDULE_V1,
     log: (level, message, fields) => {
@@ -532,31 +551,36 @@ export async function seedFeature(
 
 // ---------------------------------------------------------------------------------------------- client-side helpers
 
-export function manifestFor(plan: ContextPlan, kind: string): ContextManifest {
-  const body = {
-    schema: "wos-context-manifest.v1" as const,
-    contextFormatVersion: plan.contextFormatVersion,
-    contractsVersion: "1.0.0",
-    policyVersion: plan.policyVersion,
-    role: plan.role,
-    provider: plan.provider,
-    model: { ref: plan.model, modelId: plan.modelId },
-    reasoning: plan.reasoning,
-    target: plan.target,
-    feature: plan.feature,
-    task: { id: plan.taskId, kind: kind as "abu_build" },
-    abu: plan.abu,
-    attemptId: plan.attemptId,
-    roundId: plan.roundId,
-    source: plan.source,
-    promptTemplate: { id: plan.promptTemplateId, sha256: sha256("template") },
-    artifacts: [],
-    excluded: [],
-    budget: { limitTokens: plan.budgetTokens, estimatedTokens: 10 },
-    outputSchema: plan.outputSchema,
-    renderedPromptSha256: sha256(`prompt:${plan.leaseId}`),
+/**
+ * Wave 1 integration glue: manifests are built by the REAL context engine (context-policy) over the fake
+ * GitHub's files and the control plane's own server-document renderer, so the real checkManifestAgainstPlan
+ * accepts them. `kind` is kept for call-site readability; the engine takes the kind from the plan.
+ */
+export async function manifestFor(h: Harness, plan: ContextPlan, _kind?: string): Promise<ContextManifest> {
+  const repo = plan.source.repo;
+  const commit = plan.source.commit;
+  const reader: SnapshotReader = {
+    async readFile(path) {
+      const bytes = await h.github.readFileAt(repo, commit, path);
+      return bytes ? { bytes: new Uint8Array(bytes), gitBlobOid: gitBlobOid(bytes) } : null;
+    },
+    async listFiles(glob) {
+      return (await h.github.listTreePaths(repo, commit)).filter((p) => matchesGlob(p, glob)).sort();
+    },
+    async readServerDocument(ref) {
+      const text = await h.owner.begin(async (tx) => {
+        await tx`select set_config('wos.actor_kind', 'system', true)`;
+        return renderServerDocument(tx as unknown as Parameters<typeof renderServerDocument>[0], h.deps, ref);
+      });
+      if (text === null) throw new Error(`no server document ${ref}`);
+      return new TextEncoder().encode(text);
+    },
+    async readLocalDocument() {
+      return null;
+    },
   };
-  return { ...body, manifestSha256: computeManifestSha256(body) };
+  const built = await buildContext(plan, reader, h.deps.policy);
+  return built.manifest;
 }
 
 export function signedRun(key: KeyObject, plan: ContextPlan, leaseId: string, deviceId: string, manifestSha256: string) {

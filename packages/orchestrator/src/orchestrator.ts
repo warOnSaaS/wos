@@ -544,13 +544,14 @@ export class OrchestratorImpl {
           .filter((p) => p !== "" && matchesGlob(p, glob))
           .sort();
       },
+      // contracts 3.1.0 (B-0005-github-build): local documents go through readLocalDocument only; null = absent.
+      async readLocalDocument(ref) {
+        if (ref !== LOCAL_VERIFICATION_REF) return null;
+        const text = localOutput();
+        return text === null ? null : new TextEncoder().encode(text);
+      },
       async readServerDocument(ref) {
-        if (ref === LOCAL_VERIFICATION_REF) {
-          // local_document: produced here, never fetched (see blockers/B-0005-github-build.md for the reader contract).
-          const text = localOutput();
-          if (text === null) throw new StepError("NOT_FOUND", `${ref}: no failing local verification in this lease yet`);
-          return new TextEncoder().encode(text);
-        }
+        if (ref === LOCAL_VERIFICATION_REF) throw new StepError("FORBIDDEN", `${ref} is a local document`);
         const selector = plan.artifacts.find((a) => a.kind === "server_document" && a.ref === ref);
         if (selector?.kind !== "server_document") throw new StepError("FORBIDDEN", `server document ${ref} is not in this lease's plan`);
         const doc = await api.call("getLeaseDocument", { params: { id: leaseId }, query: { ref } });

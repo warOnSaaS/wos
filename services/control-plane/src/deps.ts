@@ -95,6 +95,8 @@ export interface GithubPort {
   closePullRequest(repo: string, prNumber: number, options: { comment: string; lock: boolean }): Promise<void>;
   /** Unified diff base..head. */
   compareDiff(repo: string, base: string, head: string): Promise<string>;
+  /** contracts 3.1.0 (B-0005-control-plane): request review from an org team, e.g. "maintainers". */
+  requestTeamReview(repo: string, prNumber: number, teamSlug: string): Promise<void>;
 }
 
 export interface OutboundMail {
@@ -203,22 +205,6 @@ export function configFromEnv(env: Readonly<Record<string, string | undefined>>)
   };
 }
 
-/**
- * Calls a github/app operation ratified in contracts 3.0.0 by its exact name. Until github-build's Wave 1
- * branch is merged the stub package lacks it, and the call answers UPSTREAM_GITHUB (never silently).
- */
-async function ratified<T>(name: string, ...args: unknown[]): Promise<T> {
-  const fn = (githubApp as unknown as Record<string, unknown>)[name];
-  if (typeof fn !== "function")
-    throw new ApiFailure("UPSTREAM_GITHUB", `GitHub operation ${name} is not available in this build of @waronsaas/github/app`);
-  try {
-    return (await (fn as (...a: unknown[]) => Promise<T>)(...args)) as T;
-  } catch (err) {
-    if (err instanceof NotImplementedError) throw new ApiFailure("UPSTREAM_GITHUB", err.message);
-    throw err;
-  }
-}
-
 /** Production adapter over @waronsaas/github/app. Operations missing from that package fail with UPSTREAM_GITHUB. */
 export function githubFromEnv(env: Readonly<Record<string, string | undefined>>): GithubPort {
   const creds: githubApp.AppCredentials = {
@@ -252,21 +238,23 @@ export function githubFromEnv(env: Readonly<Record<string, string | undefined>>)
       }
     },
     exchangeUserAuthorization: (input) => upstream(() => githubApp.exchangeUserAuthorization(creds, input)),
-    startDeviceAuthorization: () => ratified("startDeviceAuthorization", creds),
-    webAuthorizeUrl: ({ state, redirectUri }) => {
-      const fn = (githubApp as unknown as Record<string, unknown>).webAuthorizeUrl;
-      if (typeof fn === "function")
-        return (fn as (c: githubApp.AppCredentials, i: { state: string; redirectUri: string }) => string)(creds, { state, redirectUri });
-      return `https://github.com/login/oauth/authorize?${new URLSearchParams({ client_id: creds.clientId, state, redirect_uri: redirectUri })}`;
-    },
-    getBranchHead: (repo, branch) => ratified("getBranchHead", creds, repo, branch),
-    readFileAt: (repo, commit, path) => ratified("readFileAt", creds, repo, commit, path),
-    listTreePaths: (repo, commit) => ratified("listTreePaths", creds, repo, commit),
-    createBranchAt: (repo, branch, sha) => ratified("createBranchAt", creds, repo, branch, sha),
-    moveBranch: (repo, branch, sha, mode) => ratified("moveBranch", creds, repo, branch, sha, mode),
-    deleteBranch: (repo, branch) => ratified("deleteBranch", creds, repo, branch),
-    closePullRequest: (repo, n, options) => ratified("closePullRequest", creds, repo, n, options),
-    compareDiff: (repo, base, head) => ratified("compareDiff", creds, repo, base, head),
+    // Wave 1 integration glue: the ratified github/app functions now exist, so they are called directly.
+    startDeviceAuthorization: () => upstream(() => githubApp.startDeviceAuthorization(creds)),
+    webAuthorizeUrl: ({ state, redirectUri }) => githubApp.webAuthorizeUrl(creds, { state, redirectUri }),
+    getBranchHead: (repo, branch) =>
+      upstream(async () => {
+        const sha = await githubApp.getBranchHead(creds, repo, branch);
+        if (sha === null) throw new ApiFailure("UPSTREAM_GITHUB", `branch ${branch} not found in ${repo}`);
+        return sha;
+      }),
+    readFileAt: (repo, commit, path) => upstream(() => githubApp.readFileAt(creds, repo, commit, path)),
+    listTreePaths: (repo, commit) => upstream(() => githubApp.listTreePaths(creds, repo, commit)),
+    createBranchAt: (repo, branch, sha) => upstream(async () => void (await githubApp.createBranchAt(creds, repo, branch, sha))),
+    moveBranch: (repo, branch, sha, mode) => upstream(async () => void (await githubApp.moveBranch(creds, repo, branch, sha, mode))),
+    deleteBranch: (repo, branch) => upstream(async () => void (await githubApp.deleteBranch(creds, repo, branch))),
+    closePullRequest: (repo, n, options) => upstream(() => githubApp.closePullRequest(creds, repo, n, options)),
+    compareDiff: (repo, base, head) => upstream(() => githubApp.compareDiff(creds, repo, base, head)),
+    requestTeamReview: (repo, n, team) => upstream(() => githubApp.requestTeamReview(creds, repo, n, team)),
   };
 }
 

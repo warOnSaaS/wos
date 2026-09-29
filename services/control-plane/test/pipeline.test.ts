@@ -75,7 +75,7 @@ describe.skipIf(!HAS_DB)("implementation pipeline (Postgres, fake GitHub)", () =
       body: { deviceId: fable.deviceId, slot: "fable", kinds: ["implementation_review"] },
     });
     const fplan = f1claim.body.contextPlan;
-    const fm = manifestFor(fplan, "implementation_review");
+    const fm = await manifestFor(h, fplan, "implementation_review");
     await h.call("POST", `/v1/leases/${f1claim.body.lease.id}/manifest`, { token: fable.token, idem: true, body: fm });
     const frun = await h.call("POST", `/v1/leases/${f1claim.body.lease.id}/agent-runs`, {
       token: fable.token,

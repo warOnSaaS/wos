@@ -120,7 +120,7 @@ describe("orchestrator build (fake control plane, fake claude)", () => {
     expect(subs[3]!.parentCommit).toBe(git(h.upstream.dir, "rev-parse", "main"));
     expect(events.some((e) => e.type === "verify" && e.status === "failed")).toBe(true);
     expect(events.filter((e) => e.type === "step" && e.step === "REVIEW" && e.status === "failed")).toHaveLength(3);
-  });
+  }, 30_000); // integration glue: real git work; 5 s default times out under full-suite load
 
   it("fails with LIMIT_REACHED when local verification keeps failing after the repair limit", async () => {
     h = harness();

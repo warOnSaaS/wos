@@ -3,43 +3,43 @@
 exports[`context-engine determinism (DONE 1) > golden hashes: identical on macOS and Linux (CI runs the same assertion on ubuntu) 1`] = `
 {
   "builder": {
-    "manifest": "sha256:755a9f7d0a4aa8ac7edd9f0d52921f4b7ccb990c46051ebd631696a2e93a6c04",
+    "manifest": "sha256:4506681364c5d40a409757e3d948da49251aa2843393e312a58f774100e052d8",
     "prompt": "sha256:e037216ca4d2932c6dd262ff222cc617d41af90084e1d1cb7d11b8949adf58bb",
   },
   "conflict_resolver": {
-    "manifest": "sha256:cc6a5c4a882eb356769d9fed76a3d260050fdce20932203892d13b447715f536",
+    "manifest": "sha256:1163e03b1ed70d47c801a1a78281749423a431d26becc058dcf48ac644d4162d",
     "prompt": "sha256:09f550be2e81a2a6b19ff4dadab95a374dd6dd542ffc59cd1fbfad2d6fcdaa58",
   },
   "feature_author": {
-    "manifest": "sha256:f1809ea032ed776eead0b9639d460f2bd6f70dfb80e0c2926ccf844d444a09c2",
+    "manifest": "sha256:4544b6083eae84a6e557bc27a080b0698ea2d5f7d96bd555b0dd7908bd95f990",
     "prompt": "sha256:f134afc91e0a6c5d4898b4bed1b827fdbc0e46caee6d5228d7c3681380451b80",
   },
   "feature_reviewer_astra": {
-    "manifest": "sha256:7d64b12cc182dfe6e028b6bbbaebe54f15f4fa01f9a9d62600de8a716def7109",
+    "manifest": "sha256:8ee0536cc78153e381dd2229744d3af499baf2517c3a8ef55ddf44a11e402847",
     "prompt": "sha256:27d34610e9f84237a29a2e564698fee619c190810dddf80ec0145eecbb5bbbec",
   },
   "feature_reviewer_fable": {
-    "manifest": "sha256:369ba2c93b7158e7fb62c8de7b7523454d7abeacd8b06938f3282c6a87c7158a",
+    "manifest": "sha256:6708663251ed2749fb21ab8fbe63f1be3b0d30829c0ec63ee8539a6e2b1c5e06",
     "prompt": "sha256:1e0f82e67e10ad3345ca2c7b1a1fd642867145a0de8f73c25db8090af3b678e9",
   },
   "implementation_reviewer_astra": {
-    "manifest": "sha256:48b005e07b4e6c0ea0274e101500181b2dbcd0d43ed09854017a332a57549dbb",
+    "manifest": "sha256:5942269eb10a54cf8d971ac22a4e8c5d1000757176ca9e1b38150a294d0cdca7",
     "prompt": "sha256:5ead8b03c8d84b12634538ad1c65acf9664ef48bc6b1f1c63711ce7e9e4d642a",
   },
   "implementation_reviewer_fable": {
-    "manifest": "sha256:cfda36b5b245c5ab599d9d43470a8c864a94c6484d4057d0b784abd6eb7ff0c0",
+    "manifest": "sha256:b95e21004efab90b23a36080c1ee0f565708ff98d580a0985019295a2059dd8f",
     "prompt": "sha256:15b0ba5cec406608fc1fc2f7130ee59a9821c699d280ebe9b2a2b1d9c34e9a52",
   },
   "roadmap_author": {
-    "manifest": "sha256:d50c3cc83b639103bf465ab6fb849891f40716ae2195d0f42d64a97217f653f6",
+    "manifest": "sha256:5df2ab6615d4376c13d92f98d6c8a634c97b94a0391f00ddcfd78c73ddd5165b",
     "prompt": "sha256:8f34aecf8ad063d083febf7a89693d2311f5b678bcdb67bd8d98888a6108cf0f",
   },
   "roadmap_reviewer_astra": {
-    "manifest": "sha256:357f4ffd356dfaa378e54200e40315b33249a6c52dc1d19cd708aad36ef12bf3",
+    "manifest": "sha256:cd8b813bd6df9791c70b707b37f5fe02f1e5e6e65af0eb9370d0b7c4ef9fd2f7",
     "prompt": "sha256:9dda5bd2e372d3cc29d3de305e545254ed7ad3a1a6741acb3e37818380c66ad5",
   },
   "roadmap_reviewer_fable": {
-    "manifest": "sha256:332e407dcf741a51504b7ed9ffde6f01d8ac1d6d732d393ac46e18c3cf488a9c",
+    "manifest": "sha256:a589afb3e2376b2d5f8fcdbf0a782a5eedbafe85013e061001570a376aea705e",
     "prompt": "sha256:09e722c7e033a3ba6f62073a04f318e2406054586439256961a6b4a4b477510a",
   },
 }

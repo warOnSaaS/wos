@@ -388,6 +388,25 @@ export async function closePullRequest(
   }
 }
 
+/**
+ * Requests review from an organisation team (contracts 3.1.0, B-0005-control-plane): used when a qualified
+ * diff touches a toolchain path so a maintainer must approve. `teamSlug` is the team's slug, e.g. "maintainers".
+ */
+export async function requestTeamReview(creds: AppCredentials, repo: string, prNumber: number, teamSlug: string): Promise<void> {
+  const { owner, repo: name } = splitRepo(repo);
+  const gh = await installationClient(creds, repo);
+  try {
+    await gh.request("POST /repos/{owner}/{repo}/pulls/{pull_number}/requested_reviewers", {
+      owner,
+      repo: name,
+      pull_number: prNumber,
+      team_reviewers: [teamSlug],
+    });
+  } catch (e) {
+    throw wrap(e, `requestTeamReview ${repo}#${prNumber}`);
+  }
+}
+
 /** Sets a commit status (e.g. `wos/qualified`). GitHub limits the description to 140 characters; longer ones are truncated. */
 export async function setCommitStatus(
   creds: AppCredentials,

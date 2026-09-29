@@ -116,7 +116,7 @@ describe.skipIf(!HAS_DB)("Wave 1 gate: contracts 3.0.0 shapes and rulings", () =
     const stolen = await h.call("GET", `/v1/leases/${leaseId}/documents?ref=${encodeURIComponent(planned[0].ref)}`, { token: other.token });
     expect(stolen.body.error.code).toBe("LEASE_NOT_HELD");
     // Several manifests per lease: a repair run posts a new one; both are accepted.
-    const m1 = manifestFor(claim.body.contextPlan, "abu_build");
+    const m1 = await manifestFor(h, claim.body.contextPlan, "abu_build");
     const m2 = { ...m1, renderedPromptSha256: `sha256:${"e".repeat(64)}` };
     const { computeManifestSha256 } = await import("@waronsaas/contracts/canonical");
     const m2full = { ...m2, manifestSha256: computeManifestSha256(m2) };
@@ -134,7 +134,7 @@ describe.skipIf(!HAS_DB)("Wave 1 gate: contracts 3.0.0 shapes and rulings", () =
     });
     const plan = claim.body.contextPlan;
     const leaseId = claim.body.lease.id;
-    const m = manifestFor(plan, "abu_build");
+    const m = await manifestFor(h, plan, "abu_build");
     await h.call("POST", `/v1/leases/${leaseId}/manifest`, { token: b.token, idem: true, body: m });
     await h.call("POST", `/v1/leases/${leaseId}/agent-runs`, {
       token: b.token,
@@ -193,7 +193,7 @@ describe.skipIf(!HAS_DB)("Wave 1 gate: contracts 3.0.0 shapes and rulings", () =
         idem: true,
         body: { deviceId: acct.deviceId, slot, kinds: ["implementation_review"] },
       });
-      const m = manifestFor(c.body.contextPlan, "implementation_review");
+      const m = await manifestFor(h, c.body.contextPlan, "implementation_review");
       await h.call("POST", `/v1/leases/${c.body.lease.id}/manifest`, { token: acct.token, idem: true, body: m });
       const run = await h.call("POST", `/v1/leases/${c.body.lease.id}/agent-runs`, {
         token: acct.token,

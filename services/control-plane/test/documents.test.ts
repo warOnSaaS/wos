@@ -145,7 +145,7 @@ describe.skipIf(!HAS_DB)("roadmap and feature contract workflows", () => {
     expect(claim.status, JSON.stringify(claim.body)).toBe(200);
     const plan = claim.body.contextPlan;
     const kind = claim.body.task.kind;
-    const m = manifestFor(plan, kind);
+    const m = await manifestFor(h, plan, kind);
     expect((await h.call("POST", `/v1/leases/${claim.body.lease.id}/manifest`, { token: acct.token, idem: true, body: m })).status).toBe(
       200,
     );
@@ -194,7 +194,7 @@ describe.skipIf(!HAS_DB)("roadmap and feature contract workflows", () => {
       idem: true,
       body: { deviceId: writer.deviceId },
     });
-    const pm = manifestFor(probe.body.contextPlan, "roadmap_author");
+    const pm = await manifestFor(h, probe.body.contextPlan, "roadmap_author");
     await h.call("POST", `/v1/leases/${probe.body.lease.id}/manifest`, { token: writer.token, idem: true, body: pm });
     const evil = signedChangeset(writer.key, {
       taskId: opened.body.taskId,
