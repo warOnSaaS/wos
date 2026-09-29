@@ -1,13 +1,16 @@
-import { MarkInline, OG } from "./og";
+import { OG } from "./og";
 
 /** 1200x630 share card: ops-console look, monochrome, hairline rules. */
 export function OgCard({
+  mark,
   kicker,
   id,
   title,
   subtitle,
   rows,
 }: {
+  /** data URL of the wOS mark (markDataUrl()). */
+  mark: string;
   kicker: string;
   id?: string;
   title: string;
@@ -42,8 +45,10 @@ export function OgCard({
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-            <MarkInline height={40} />
-            <span style={{ color: OG.fg, fontWeight: 700, letterSpacing: 1 }}>warOnSaaS</span>
+            <div style={{ display: "flex", border: `1px solid ${OG.fg}` }}>
+              <img src={mark} width={48} height={48} alt="" />
+            </div>
+            <span style={{ color: OG.fg, fontFamily: "Geist Mono", fontWeight: 700, letterSpacing: 0 }}>warOnSaaS</span>
           </div>
           <span>{kicker}</span>
         </div>
@@ -52,7 +57,7 @@ export function OgCard({
           {id ? (
             <div style={{ display: "flex", fontSize: 26, color: OG.dim, letterSpacing: 3, marginBottom: 12 }}>{id}</div>
           ) : null}
-          <div style={{ display: "flex", fontSize: title.length > 30 ? 52 : 64, fontWeight: 700, lineHeight: 1.15 }}>
+          <div style={{ display: "flex", fontFamily: "Geist Mono", fontSize: title.length > 30 ? 52 : 64, fontWeight: 700, lineHeight: 1.15 }}>
             {title}
           </div>
           <div style={{ display: "flex", fontSize: 26, color: OG.dim, marginTop: 16 }}>{subtitle}</div>

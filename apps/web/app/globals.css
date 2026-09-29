@@ -81,6 +81,13 @@ a:hover {
 
 h1,
 h2,
+h3,
+.wordmark,
+.mark {
+  font-family: var(--font-head), var(--font-mono), ui-monospace, monospace;
+}
+h1,
+h2,
 h3 {
   color: var(--fg);
   font-weight: 700;
@@ -201,13 +208,13 @@ strong {
 }
 .mark {
   display: inline-block;
-  border: 2px solid var(--fg);
+  border: 1px solid var(--fg);
   color: var(--fg);
   font-weight: 700;
   font-size: 1rem;
   line-height: 1;
-  letter-spacing: -0.04em;
-  padding: 0.3rem 0.4rem 0.32rem 0.35rem;
+  letter-spacing: 0;
+  padding: 0.4rem 0.5rem;
 }
 @media (max-width: 599px) {
   .brand__name {
