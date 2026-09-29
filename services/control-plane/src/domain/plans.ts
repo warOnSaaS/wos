@@ -117,7 +117,8 @@ export async function renderServerDocument(tx: Tx, deps: Deps, ref: string): Pro
     const [t] = await tx<{ document_id: string | null; attempt_id: string | null; carry: unknown }[]>`
       select document_id, attempt_id, carry from wos.tasks where id = ${m[1]!}`;
     if (!t) return null;
-    const findings = await findingLedger(tx, t.document_id ?? t.attempt_id ?? "", Number.MAX_SAFE_INTEGER, true);
+    const subject = t.document_id ?? t.attempt_id;
+    const findings = subject ? await findingLedger(tx, subject, Number.MAX_SAFE_INTEGER, true) : [];
     return canonicalJson({ taskId: m[1], carry: t.carry ?? null, findings });
   }
   return null;
