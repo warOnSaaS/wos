@@ -22,7 +22,14 @@ import { TEMPLATE_SOURCES } from "./templates.generated.js";
 
 /** The one canonical hashing module (contracts 2.0.0, rules C-1..C-7); re-exported, never reimplemented. */
 export { canonicalJson, canonicalSha256, computeManifestSha256, sha256Of } from "@waronsaas/contracts/canonical";
-export { builderArtifactSelectors, type BuilderSelectorInput } from "./selectors.js";
+export {
+  type BuilderSelectorInput,
+  builderArtifactSelectors,
+  type FeatureSelectorInput,
+  featureArtifactSelectors,
+  type RoadmapSelectorInput,
+  roadmapArtifactSelectors,
+} from "./selectors.js";
 
 /** Read-only view of the source repo at the plan's source commit, plus server documents. */
 export interface SnapshotReader {

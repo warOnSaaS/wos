@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { AGENT_POLICY_V1, AgentRole, ReviewVerdict } from "@waronsaas/contracts";
 import { describe, expect, it } from "vitest";
 import { allowedCommandRule, buildInvocation, checkPlanAgainstPolicy, outputJsonSchema, PolicyViolationError } from "../src/index.js";
-import { planFor } from "./fixtures.js";
+import { planFor, planForModel } from "./fixtures.js";
 
 const policy = AGENT_POLICY_V1;
 const paths = {
@@ -195,5 +195,48 @@ describe("agent-policy outputJsonSchema", () => {
       priorFindings: [],
     };
     expect(ReviewVerdict.safeParse(bad).success).toBe(false);
+  });
+});
+
+describe("agent-policy buildInvocation: codex builders and authors (D15)", () => {
+  const cases = [
+    ["builder", "astra"],
+    ["builder", "sol"],
+    ["roadmap_author", "astra"],
+    ["feature_author", "astra"],
+  ] as const;
+  for (const [role, ref] of cases) {
+    it(`agent-policy ${role} on ${ref} matches the codex template`, () => {
+      const inv = buildInvocation(planForModel(role, ref), paths);
+      expect({ binary: inv.binary, argv: readable(inv.argv, inv.outputSchemaJson), env: inv.env }).toMatchSnapshot();
+      const { argv } = inv;
+      expect(inv.binary).toBe("codex");
+      expect(argv[argv.indexOf("--model") + 1]).toBe(ref === "sol" ? "gpt-6-sol" : "gpt-6-astra");
+      expect(argv[argv.indexOf("--sandbox") + 1]).toBe("workspace-write");
+      expect(argv).toContain("sandbox_workspace_write.network_access=false");
+      expect(argv[argv.indexOf("sandbox_workspace_write.network_access=false") - 1]).toBe("-c");
+      expect(argv).toContain(`model_reasoning_effort="${role === "builder" ? "high" : "max"}"`);
+      expect(argv.at(-1)).toBe("-");
+      expect(argv.join(" ")).not.toMatch(/ultra|danger-full-access|--allowedTools|Bash\(/);
+    });
+  }
+
+  it("never ultra: Astra and Sol builders refuse ultra; xhigh and max are allowed above the high floor", () => {
+    for (const ref of ["astra", "sol"] as const) {
+      expect(() => buildInvocation(planForModel("builder", ref, { reasoning: "ultra" }), paths)).toThrow(/REASONING_FORBIDDEN/);
+      for (const level of ["xhigh", "max"] as const) {
+        expect(buildInvocation(planForModel("builder", ref, { reasoning: level }), paths).argv).toContain(
+          `model_reasoning_effort="${level}"`,
+        );
+      }
+    }
+  });
+
+  it("the plan must carry the model's effective budget, and Sol is never a reviewer or resolver", () => {
+    expect(() => buildInvocation(planForModel("builder", "astra", { budgetTokens: 999 }), paths)).toThrow(/BUDGET_MISMATCH/);
+    expect(() => buildInvocation(planForModel("roadmap_author", "astra", { budgetTokens: 350_000 }), paths)).toThrow(/BUDGET_MISMATCH/);
+    for (const role of AgentRole.options.filter((r) => r.includes("reviewer") || r === "conflict_resolver")) {
+      expect(() => buildInvocation(planForModel(role, "sol"), paths), role).toThrow(/MODEL_NOT_ALLOWED/);
+    }
   });
 });

@@ -21,9 +21,12 @@ import {
   type ProviderId,
   type ProviderSpec,
   type ReasoningLevel,
+  type RepoManifest,
   type RolePolicy,
   type TaskKind,
+  type ToolchainAttestation,
 } from "@waronsaas/contracts";
+import picomatch from "picomatch";
 
 export { canonicalJson } from "@waronsaas/contracts/canonical";
 
@@ -59,9 +62,9 @@ export function getProviderSpec(id: ProviderId, policy: AgentPolicyDocument = DE
 
 /** Roles whose leases count against `maxConcurrentBuildLeasesPerContributor`. */
 export const BUILD_ROLES: readonly AgentRole[] = ["builder"];
-/** Roles whose leases count against `maxConcurrentReviewLeasesPerContributor`. */
 /** Roles whose leases count against `maxConcurrentAuthorLeasesPerContributor` (roadmap_author, feature_author, conflict_resolution). */
 export const AUTHOR_ROLES: readonly AgentRole[] = ["roadmap_author", "feature_author", "conflict_resolver"];
+/** Roles whose leases count against `maxConcurrentReviewLeasesPerContributor`. */
 export const REVIEW_ROLES: readonly AgentRole[] = [
   "roadmap_reviewer_astra",
   "roadmap_reviewer_fable",
@@ -123,6 +126,14 @@ function reasoningLevelProblems(role: RolePolicy, model: ModelSpec, level: Reaso
   return problems;
 }
 
+/** The effective input budget for a role on a model: its `budgetOverrides` entry, else the role default (D15). */
+export function effectiveBudget(role: RolePolicy, model: ModelRef): { contextBudgetTokens: number; workingReserveTokens: number } {
+  const o = role.budgetOverrides.find((x) => x.model === model);
+  return o
+    ? { contextBudgetTokens: o.contextBudgetTokens, workingReserveTokens: o.workingReserveTokens }
+    : { contextBudgetTokens: role.contextBudgetTokens, workingReserveTokens: role.workingReserveTokens };
+}
+
 /** The task kinds a role may run (ContextPlan.taskKind is issued by the server and checked, never inferred). */
 export const TASK_KINDS_BY_ROLE: Readonly<Record<AgentRole, readonly TaskKind[]>> = {
   roadmap_author: ["roadmap_author"],
@@ -161,7 +172,7 @@ export function checkPlanAgainstPolicy(plan: ContextPlan, policy: AgentPolicyDoc
   if (!policy.providers.some((p) => p.id === plan.provider)) reasons.push(`UNKNOWN_PROVIDER: ${plan.provider}`);
   reasons.push(...reasoningLevelProblems(role, model, plan.reasoning));
   // D15 (contracts 4.1.0), integration glue: a per-model override replaces the role default.
-  const budget = role.budgetOverrides.find((o) => o.model === plan.model)?.contextBudgetTokens ?? role.contextBudgetTokens;
+  const budget = effectiveBudget(role, model.ref).contextBudgetTokens;
   if (plan.budgetTokens !== budget) {
     reasons.push(`BUDGET_MISMATCH: ${role.role} budget for ${plan.model} is ${budget}, plan says ${plan.budgetTokens}`);
   }
@@ -207,10 +218,36 @@ export interface EligibilityInput {
   excludedAccountIds?: string[];
   /** The task's `restricted_to_account_id` (AGENT-POLICY.md step 7). */
   restrictedToAccountId?: string | null;
+  /**
+   * The model the claim body names (D15; contracts 4.3.0, B-0010-github-build), e.g. an Astra or Sol builder.
+   * It must be in the role's allowedModels and attested (else NOT_ELIGIBLE) and have provider lease room (else
+   * LIMIT_REACHED, see eligibilityRouteError). Omitted = the first attested allowed model with room.
+   */
+  requestedModel?: ModelRef;
+  /**
+   * Builder only (D15): this account's active build leases per provider. REQUIRED for builder claims; a builder
+   * evaluation without it fails closed (`LEASE_FACTS_REQUIRED`).
+   */
+  activeBuildLeasesByProvider?: Partial<Record<ProviderId, number>>;
+  /**
+   * Builder only (D13): the ABU's write scopes, the target repository's `toolchainRequirements` (wos.json) and the
+   * device's latest ToolchainAttestation (null when the device reported none). REQUIRED for builder claims; a
+   * builder evaluation without it fails closed (`TOOLCHAIN_FACTS_REQUIRED`).
+   */
+  toolchain?: {
+    writeScopes: string[];
+    requirements: RepoManifest["toolchainRequirements"];
+    attestation: ToolchainAttestation | null;
+  };
 }
 
 export type EligibilityResult =
-  | { eligible: true; independence: "independent" | "bootstrap_maintainer" | "bootstrap_self"; model: ModelSpec; reasoning: ReasoningLevel }
+  | {
+      eligible: true;
+      independence: "independent" | "bootstrap_maintainer" | "bootstrap_self";
+      model: ModelSpec;
+      reasoning: ReasoningLevel;
+    }
   | { eligible: false; reasons: string[] };
 
 /** Stable reason codes returned by `checkEligibility` (each reason string starts with one). */
@@ -221,6 +258,12 @@ export const ELIGIBILITY_REASONS = [
   "GITHUB_ACCOUNT_TOO_NEW",
   "NOT_ENOUGH_ACCEPTED_CONTRIBUTIONS",
   "TOO_MANY_ACTIVE_LEASES",
+  "LEASE_FACTS_REQUIRED",
+  "REQUESTED_MODEL_NOT_ALLOWED",
+  "REQUESTED_MODEL_NOT_ATTESTED",
+  "PROVIDER_LEASE_LIMIT",
+  "TOOLCHAIN_FACTS_REQUIRED",
+  "TOOLCHAIN_UNSATISFIED",
   "NO_ATTESTED_MODEL",
   "REASONING_UNAVAILABLE",
   "SUBJECT_AUTHOR",
@@ -281,9 +324,56 @@ export function checkEligibility(input: EligibilityInput, policy: AgentPolicyDoc
     reason("TOO_MANY_ACTIVE_LEASES", `at most ${leaseLimit} active leases of this kind`);
   }
 
-  // 5. Model choice: first allowed model with a ready provider attestation.
-  const model = chooseModel(role, input.attestations, policy);
-  if (!model) reason("NO_ATTESTED_MODEL", `no installed, signed-in, recent-enough CLI attests any of ${role.allowedModels.join(", ")}`);
+  // 5. Model choice. Builders: at most maxConcurrentBuildLeasesPerProvider per provider (D15), so a provider
+  // already at its limit is skipped (or refused, when the claim names a model on it).
+  const isBuilder = BUILD_ROLES.includes(role.role);
+  const byProvider = input.activeBuildLeasesByProvider;
+  if (isBuilder && byProvider === undefined) {
+    reason("LEASE_FACTS_REQUIRED", "builder eligibility needs the account's active build leases per provider");
+  }
+  const providerFull = (m: ModelSpec) => isBuilder && (byProvider?.[m.provider] ?? 0) >= policy.limits.maxConcurrentBuildLeasesPerProvider;
+  let model: ModelSpec | null = null;
+  const claimed = input.requestedModel ?? null;
+  if (claimed !== null) {
+    const spec = policy.models.find((m) => m.ref === claimed);
+    if (!spec || !role.allowedModels.includes(claimed)) {
+      reason("REQUESTED_MODEL_NOT_ALLOWED", `${claimed} is not allowed for ${role.role} (allowed: ${role.allowedModels.join(", ")})`);
+    } else if (!modelReady(spec, input.attestations, policy)) {
+      reason("REQUESTED_MODEL_NOT_ATTESTED", `no installed, signed-in, recent-enough CLI attests ${claimed}`);
+    } else if (providerFull(spec)) {
+      reason(
+        "PROVIDER_LEASE_LIMIT",
+        `at most ${policy.limits.maxConcurrentBuildLeasesPerProvider} build lease per provider (${spec.provider})`,
+      );
+    } else {
+      model = spec;
+    }
+  } else {
+    const ready = role.allowedModels
+      .map((ref) => policy.models.find((m) => m.ref === ref))
+      .filter((m): m is ModelSpec => m !== undefined && modelReady(m, input.attestations, policy));
+    model = ready.find((m) => !providerFull(m)) ?? null;
+    if (ready.length === 0) {
+      reason("NO_ATTESTED_MODEL", `no installed, signed-in, recent-enough CLI attests any of ${role.allowedModels.join(", ")}`);
+    } else if (model === null) {
+      reason(
+        "PROVIDER_LEASE_LIMIT",
+        `every attested provider already holds ${policy.limits.maxConcurrentBuildLeasesPerProvider} build lease`,
+      );
+    }
+  }
+
+  // Toolchain (D13, AGENT-POLICY.md "Toolchain eligibility"): builders only; reviewers run no code.
+  if (isBuilder) {
+    if (input.toolchain === undefined) {
+      reason(
+        "TOOLCHAIN_FACTS_REQUIRED",
+        "builder eligibility needs the ABU write scopes, the repo's toolchainRequirements and the device attestation",
+      );
+    } else {
+      for (const problem of toolchainProblems(input.toolchain)) reason("TOOLCHAIN_UNSATISFIED", problem);
+    }
+  }
 
   // 6. Reasoning.
   let reasoning: ReasoningLevel | null = null;
@@ -342,24 +432,88 @@ export function checkEligibility(input: EligibilityInput, policy: AgentPolicyDoc
   }
 
   if (reasons.length > 0 || !model || reasoning === null) return { eligible: false, reasons };
+  // The plan's budgetTokens for this model: effectiveBudget(role, model.ref) (D15 budgetOverrides).
   return { eligible: true, independence, model, reasoning };
 }
 
-function chooseModel(role: RolePolicy, attestations: ProviderAttestation[], policy: AgentPolicyDocument): ModelSpec | null {
-  for (const ref of role.allowedModels) {
-    const model = policy.models.find((m) => m.ref === ref);
-    if (!model) continue;
-    const provider = policy.providers.find((p) => p.id === model.provider);
-    if (!provider) continue;
-    const latest = latestAttestation(attestations, model.provider);
-    if (!latest) continue;
-    if (!latest.installed || !latest.signedIn || !latest.models.includes(ref)) continue;
-    const version = latest.cliVersion === null ? null : parseVersion(latest.cliVersion);
-    const min = parseVersion(provider.minVersion);
-    if (!version || !min || compareVersions(version, min) < 0) continue;
-    return model;
+/** Reason codes that are lease limits (route error LIMIT_REACHED); every other refusal is NOT_ELIGIBLE. */
+const LIMIT_REASONS: readonly EligibilityReasonCode[] = ["TOO_MANY_ACTIVE_LEASES", "PROVIDER_LEASE_LIMIT"];
+
+/**
+ * The API error for a refused claim (B-0010-github-build ruling): LIMIT_REACHED when every reason is a lease
+ * limit (the account could claim once a lease ends), else NOT_ELIGIBLE. Null for an eligible result.
+ */
+export function eligibilityRouteError(result: EligibilityResult): "LIMIT_REACHED" | "NOT_ELIGIBLE" | null {
+  if (result.eligible) return null;
+  const codes = result.reasons.map((r) => r.split(":")[0] as EligibilityReasonCode);
+  return codes.length > 0 && codes.every((c) => LIMIT_REASONS.includes(c)) ? "LIMIT_REACHED" : "NOT_ELIGIBLE";
+}
+
+/** The device's latest attestation for the model's provider is installed, signed in, recent enough and lists the model. */
+function modelReady(model: ModelSpec, attestations: ProviderAttestation[], policy: AgentPolicyDocument): boolean {
+  const provider = policy.providers.find((p) => p.id === model.provider);
+  if (!provider) return false;
+  const latest = latestAttestation(attestations, model.provider);
+  if (!latest?.installed || !latest.signedIn || !latest.models.includes(model.ref)) return false;
+  const version = latest.cliVersion === null ? null : parseVersion(latest.cliVersion);
+  const min = parseVersion(provider.minVersion);
+  return !!version && !!min && compareVersions(version, min) >= 0;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Toolchain (D13)
+// ---------------------------------------------------------------------------------------------
+
+/** `major[.minor[.patch]]`, the first such run in a tool version string ("Xcode 16.2", "v22.12.0", "35.0.0"). */
+export function parseToolVersion(text: string): [number, number, number] | null {
+  const m = /(\d+)(?:\.(\d+))?(?:\.(\d+))?/.exec(text);
+  if (!m) return null;
+  return [Number(m[1]), Number(m[2] ?? 0), Number(m[3] ?? 0)];
+}
+
+/**
+ * Can a write scope (exact path or "<dir>/**", WriteScope) touch a path matched by a picomatch glob?
+ * Conservative where it cannot decide: a glob with no static base or a "**" reaching into the directory
+ * counts as touching.
+ */
+export function scopeCanTouchGlob(scope: string, glob: string): boolean {
+  const matches = picomatch(glob, { dot: true });
+  if (!scope.endsWith("/**")) return matches(scope);
+  const dir = scope.slice(0, -3);
+  const dirSegs = dir.split("/");
+  const globSegs = glob.split("/");
+  // Walk the directory's segments against the glob's; every path under dir has more segments than dir.
+  for (let i = 0; i < dirSegs.length; i++) {
+    const g = globSegs[i];
+    if (g === undefined) return false; // the glob ends above the directory: it matches no path inside it
+    if (g === "**") return true;
+    if (!picomatch(g, { dot: true })(dirSegs[i] as string)) return false;
   }
-  return null;
+  return globSegs.length > dirSegs.length;
+}
+
+/** The requirements an ABU's write scopes can touch, each checked against the attestation. Empty = satisfied. */
+export function toolchainProblems(t: NonNullable<EligibilityInput["toolchain"]>): string[] {
+  const problems: string[] = [];
+  for (const req of t.requirements) {
+    if (!req.paths.some((glob) => t.writeScopes.some((scope) => scopeCanTouchGlob(scope, glob)))) continue;
+    const a = t.attestation;
+    if (a === null) {
+      problems.push(`${req.id}: the device reported no toolchain`);
+      continue;
+    }
+    if (!req.os.includes(a.os)) problems.push(`${req.id}: needs ${req.os.join(" or ")}, device is ${a.os}`);
+    for (const tool of req.tools) {
+      const have = a.tools.find((x) => x.name === tool.name);
+      const want = parseToolVersion(tool.minVersion);
+      const got = have ? parseToolVersion(have.version) : null;
+      if (!have) problems.push(`${req.id}: ${tool.name} >= ${tool.minVersion} is missing`);
+      else if (!want || !got || compareVersions(got, want) < 0) {
+        problems.push(`${req.id}: ${tool.name} ${have.version} is older than ${tool.minVersion}`);
+      }
+    }
+  }
+  return problems;
 }
 
 /** Latest attestation for a provider by `checkedAt`; on equal times the later array entry wins. */
