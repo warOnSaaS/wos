@@ -116,3 +116,35 @@ The App is the only bypass actor, so it alone creates candidate refs, force-move
 - on pushes to the default branch every feature profile's acceptance suite runs as its own check run
   `wos-acceptance/<feature>/<target>` (`profileAcceptanceCheckName`). These are not required checks;
   the control plane records them for progress.
+
+## 6. Mobile releases (D13, SECURITY.md S-35)
+
+`release-mobile.yml` is the only product workflow that reads a secret (`EXPO_TOKEN`), and only in the
+`release` environment. The lint in the platform repo (`lintProductWorkflow`) fails any workflow that
+references secrets outside a `release` job, uses any other environment, or puts the `release` environment in
+a workflow triggered by anything but tag pushes.
+
+Environment `release` (repository settings):
+- required reviewer: a maintainer; "prevent self-review" on;
+- deployment policy: selected tags only, pattern `mobile-v*`;
+- secret: `EXPO_TOKEN` (an Expo robot token of the warOnSaaS account). The Apple distribution certificate,
+  App Store Connect API key and Google Play upload key are EAS-managed credentials of that account; none is
+  stored in GitHub, on a contributor machine, or in the platform repo (whose own `release` environment
+  holds only wOS Desktop's Developer ID).
+
+Ruleset `mobile-release-tags`:
+
+```json
+{
+  "name": "mobile-release-tags",
+  "target": "tag",
+  "enforcement": "active",
+  "conditions": { "ref_name": { "include": ["refs/tags/mobile-v*"], "exclude": [] } },
+  "bypass_actors": [{ "actor_id": "<MAINTAINERS_TEAM_ID>", "actor_type": "Team", "bypass_mode": "always" }],
+  "rules": [{ "type": "creation" }, { "type": "update" }, { "type": "deletion" }]
+}
+```
+
+The job also refuses a tag whose commit is not on the default branch, so a release is always code that
+passed `wos-verify`, two independent reviews and the merge queue. `apps/mobile/eas.json` (build and submit
+profiles) is a protected path and code-owned.

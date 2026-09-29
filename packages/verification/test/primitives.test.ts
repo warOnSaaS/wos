@@ -79,3 +79,63 @@ jobs:
     expect(lint(text)).toContain(rule);
   });
 });
+
+describe("product workflow lint: release environment and runners (S-35, D13)", () => {
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub expression, not a JS template
+  const secret = "${{ secrets.EXPO_TOKEN }}";
+  const release = (on: string, env = "release", where: "job" | "step" | "top" = "step") => `
+name: release-mobile
+on:
+${on}
+permissions:
+  contents: read
+${where === "top" ? `env:\n  T: ${secret}\n` : ""}jobs:
+  eas:
+    runs-on: ubuntu-latest
+    environment: ${env}
+    steps:
+      - uses: actions/checkout@v7
+        with: { persist-credentials: false }
+      - run: npx eas-cli build
+        env:
+          EXPO_TOKEN: ${secret}
+  other:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo${where === "job" ? `\n        env:\n          LEAK: ${secret}` : ""}
+`;
+  const lint = (text: string) => lintProductWorkflow(text, parseYaml(text)).map((i) => i.rule);
+  const tagsOnly = '  push:\n    tags: ["mobile-v*"]';
+
+  it("accepts secrets inside a release-environment job of a tag-only workflow", () => {
+    expect(lint(release(tagsOnly))).toEqual([]);
+  });
+  it.each([
+    ["the release job in a workflow that also runs on pull_request", release(`${tagsOnly}\n  pull_request:`), "environment"],
+    ["the release job on a candidate branch push", release('  push:\n    branches: ["wos/candidate/**"]'), "environment"],
+    ["tags plus branches", release('  push:\n    tags: ["mobile-v*"]\n    branches: [main]'), "environment"],
+    ["an environment other than release", release(tagsOnly, "production"), "environment"],
+    ["a secret in a job without the release environment", release(tagsOnly, "release", "job"), "no-secrets"],
+    ["a secret in the workflow-level env", release(tagsOnly, "release", "top"), "no-secrets"],
+  ])("rejects %s", (_, text, rule) => {
+    expect(lint(text)).toContain(rule);
+  });
+
+  const runner = (runsOn: string) => `
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  j:
+    runs-on: ${runsOn}
+    steps:
+      - run: echo
+`;
+  it("rejects an unconditional macOS runner and accepts one gated on runner == 'macos'", () => {
+    expect(lint(runner("macos-15"))).toContain("runner");
+    expect(lint(runner("[self-hosted, macOS]"))).toContain("runner");
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub expression, not a JS template
+    expect(lint(runner("${{ matrix.profile.runner == 'macos' && 'macos-15' || 'ubuntu-latest' }}"))).not.toContain("runner");
+  });
+});

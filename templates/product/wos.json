@@ -1,7 +1,20 @@
 {
   "schema": "wos-repo.v1",
   "displayName": "warOnSaaS suite",
-  "products": [],
+  "apps": [
+    {
+      "surface": "web",
+      "path": "apps/web"
+    },
+    {
+      "surface": "ios",
+      "path": "apps/mobile"
+    },
+    {
+      "surface": "android",
+      "path": "apps/mobile"
+    }
+  ],
   "defaultBranch": "main",
   "stack": {
     "language": "typescript",
@@ -27,7 +40,7 @@
       "timeoutSeconds": 1800
     }
   ],
-  "protectedPaths": [".github/**", "wos.json", "catalog/**", "roadmaps/**", "features/**"],
+  "protectedPaths": [".github/**", "wos.json", "catalog/**", "roadmaps/**", "features/**", "apps/mobile/eas.json"],
   "lockfiles": ["package-lock.json"],
   "toolchainPaths": [
     "wos.json",
@@ -45,6 +58,64 @@
     ".npmrc",
     ".nvmrc"
   ],
+  "toolchainRequirements": [
+    {
+      "id": "ios-native",
+      "paths": ["apps/mobile/ios/**", "modules/*/native/ios/**", "**/*.podspec"],
+      "os": ["macos"],
+      "tools": [
+        {
+          "name": "xcode",
+          "minVersion": "16.0"
+        },
+        {
+          "name": "node",
+          "minVersion": "22.0"
+        }
+      ]
+    },
+    {
+      "id": "android-native",
+      "paths": ["apps/mobile/android/**", "modules/*/native/android/**"],
+      "os": ["macos", "linux", "windows"],
+      "tools": [
+        {
+          "name": "android-sdk",
+          "minVersion": "35"
+        },
+        {
+          "name": "node",
+          "minVersion": "22.0"
+        }
+      ]
+    },
+    {
+      "id": "expo-native-config",
+      "paths": [
+        "apps/mobile/app.json",
+        "apps/mobile/app.config.*",
+        "apps/mobile/plugins/**",
+        "modules/*/native/*.ts",
+        "modules/*/expo-module.config.json"
+      ],
+      "os": ["macos"],
+      "tools": [
+        {
+          "name": "xcode",
+          "minVersion": "16.0"
+        },
+        {
+          "name": "android-sdk",
+          "minVersion": "35"
+        },
+        {
+          "name": "node",
+          "minVersion": "22.0"
+        }
+      ]
+    }
+  ],
+  "browsers": ["chromium", "edge", "webkit", "firefox", "mobile_safari", "mobile_chrome"],
   "generatedPaths": ["dist/**", "coverage/**"],
   "migrationsDir": "db/migrations",
   "maxChangesetBytes": 4000000

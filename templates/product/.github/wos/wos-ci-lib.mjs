@@ -17707,6 +17707,108 @@ function scanForSecrets(text) {
 }
 
 //#endregion
+//#region packages/verification/src/acceptance.ts
+const PLAYWRIGHT_PROJECTS = {
+	chromium: {
+		device: "Desktop Chrome",
+		viewport: "desktop"
+	},
+	edge: {
+		device: "Desktop Edge",
+		channel: "msedge",
+		viewport: "desktop"
+	},
+	webkit: {
+		device: "Desktop Safari",
+		viewport: "desktop"
+	},
+	firefox: {
+		device: "Desktop Firefox",
+		viewport: "desktop"
+	},
+	mobile_safari: {
+		device: "iPhone 15",
+		viewport: "phone"
+	},
+	mobile_chrome: {
+		device: "Pixel 7",
+		viewport: "phone"
+	}
+};
+function playwrightEngines(browsers) {
+	const engine = (b) => b === "edge" ? "msedge" : b === "mobile_safari" ? "webkit" : b === "mobile_chrome" ? "chromium" : b;
+	return [...new Set(browsers.map(engine))].sort();
+}
+function requiredBrowsers(suite, manifest) {
+	const order = Object.keys(PLAYWRIGHT_PROJECTS);
+	const all = /* @__PURE__ */ new Set([
+		...MINIMUM_BROWSERS,
+		...manifest.browsers ?? [],
+		...suite.browsers
+	]);
+	return order.filter((b) => all.has(b));
+}
+function runnerProblems(suite) {
+	if (suite.surface === "ios" && suite.runner !== "macos") return ["ios acceptance needs a macos runner (Simulator and Xcode)"];
+	if (suite.surface !== "ios" && suite.runner === "macos") return [`${suite.surface} acceptance may not use a macos runner (macOS only for native iOS)`];
+	return [];
+}
+function checkPlaywrightReport(report, browsers) {
+	const problems = [];
+	const r = report;
+	if (!r || !Array.isArray(r.suites)) return {
+		ok: false,
+		problems: ["not a Playwright JSON report"]
+	};
+	const projects = new Set((r.config?.projects ?? []).map((p) => p.name));
+	const ran = /* @__PURE__ */ new Map();
+	const walk = (s) => {
+		for (const spec of s.specs ?? []) for (const t of spec.tests ?? []) {
+			const k = t.projectName ?? "";
+			const c = ran.get(k) ?? {
+				run: 0,
+				skipped: 0,
+				bad: 0
+			};
+			if (t.status === "skipped") c.skipped++;
+			else if (t.status === "expected") c.run++;
+			else c.bad++;
+			ran.set(k, c);
+		}
+		for (const child of s.suites ?? []) walk(child);
+	};
+	for (const s of r.suites) walk(s);
+	for (const b of browsers) {
+		const c = ran.get(b);
+		if (!projects.has(b) && !c) problems.push(`browser ${b} did not run (no project in the report)`);
+		else if (!c || c.run + c.bad === 0) problems.push(`browser ${b} ran no test (${c?.skipped ?? 0} skipped)`);
+		if (c && c.bad > 0) problems.push(`browser ${b}: ${c.bad} test(s) failed, timed out or were flaky`);
+	}
+	for (const name of ran.keys()) if (!browsers.includes(name)) problems.push(`unexpected project ${JSON.stringify(name)}`);
+	return {
+		ok: problems.length === 0,
+		problems
+	};
+}
+function checkJUnitReport(xml) {
+	const problems = [];
+	if (!/<testsuites?[\s>]/.test(xml)) return {
+		ok: false,
+		problems: ["not a JUnit report"]
+	};
+	const cases = xml.match(/<testcase[\s>]/g)?.length ?? 0;
+	const failures = (xml.match(/<failure[\s>/]/g)?.length ?? 0) + (xml.match(/<error[\s>/]/g)?.length ?? 0);
+	const skipped = xml.match(/<skipped[\s>/]/g)?.length ?? 0;
+	if (cases === 0) problems.push("no test case ran");
+	else if (skipped >= cases) problems.push(`every test case was skipped (${skipped})`);
+	if (failures > 0) problems.push(`${failures} test case(s) failed`);
+	return {
+		ok: problems.length === 0,
+		problems
+	};
+}
+
+//#endregion
 //#region packages/verification/src/index.ts
 const HARD_MAX_CHANGESET_BYTES = 4e6;
 const MAX_CHANGESET_FILES = 500;
@@ -17866,4 +17968,4 @@ function checkCollisions(files, existing, add) {
 //#endregion
 var parseYaml = import_dist.parse;
 var picomatch = import_picomatch.default;
-export { AbuSpec, BuildGraph, RepoManifest, RequirementProfile, parseYaml, picomatch, sha256Of, submissionSha256, validateChangeset };
+export { AbuSpec, BuildGraph, MINIMUM_BROWSERS, PLAYWRIGHT_PROJECTS, RepoManifest, RequirementProfile, checkJUnitReport, checkPlaywrightReport, parseYaml, picomatch, playwrightEngines, requiredBrowsers, runnerProblems, sha256Of, submissionSha256, validateChangeset };

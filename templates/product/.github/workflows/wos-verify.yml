@@ -7,7 +7,10 @@
 # wos-verify-candidate-toolchain (not required) shows how the candidate's own toolchain fares.
 # On pushes to the default branch every feature profile's acceptance suite runs as its own check run
 # PER SURFACE, named wos-acceptance/<feature>/<target>/<surface> (profileAcceptanceCheckName, contracts 4.0.0,
-# D13). Only suites whose runner is "macos" (native iOS builds and E2E) use a macOS runner.
+# D13). Web suites run the wOS Playwright matrix (.github/wos/playwright.wos.config.mjs: Chrome, Edge, Safari's
+# WebKit, Firefox at desktop size; iPhone Safari and Android Chrome at phone size). iOS and Android suites run
+# Maestro flows (.github/wos/maestro.mjs). Only native iOS (runner "macos") uses a macOS runner; wos-ci.mjs
+# refuses any other placement. Store signing never happens here: see release-mobile.yml (S-35).
 name: wos-verify
 
 on:
@@ -32,13 +35,13 @@ jobs:
       # merge_group: the queue's base; otherwise wos-ci.mjs derives the base from the commit.
       WOS_BASE_SHA: ${{ github.event.merge_group.base_sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # For pull_request, test the exact reviewed head, not GitHub's synthetic merge commit.
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - name: scope check (same validator as client and control plane)
@@ -56,12 +59,12 @@ jobs:
     env:
       WOS_BASE_SHA: ${{ github.event.merge_group.base_sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - id: toolchain
@@ -78,10 +81,10 @@ jobs:
     outputs:
       matrix: ${{ steps.list.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - id: list
@@ -102,10 +105,16 @@ jobs:
       TARGET: ${{ matrix.profile.target }}
       SURFACE: ${{ matrix.profile.surface }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
+      - name: enable KVM for the Android emulator
+        if: matrix.profile.surface == 'android'
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
       - run: node .github/wos/wos-ci.mjs acceptance "$FEATURE" "$TARGET" "$SURFACE"
