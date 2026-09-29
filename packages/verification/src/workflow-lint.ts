@@ -27,9 +27,12 @@ export function lintProductWorkflow(raw: string, parsed: unknown, opts: { requir
   const issues: WorkflowLintIssue[] = [];
   const add = (rule: string, message: string) => issues.push({ rule, message });
 
-  // Any reference to the secrets context, including secrets["X"], toJSON(secrets) and `secrets: inherit`.
-  if (/\bsecrets\s*(?:\.|\[|\))|secrets\s*:\s*inherit/.test(raw)) add("no-secrets", "references the secrets context");
-  if (/\bgithub\.token\b|\bGITHUB_TOKEN\b/.test(raw)) add("no-token", "passes the job token to steps");
+  // The secrets context is only reachable from ${{ }} expressions (secrets.X, secrets['X'], toJSON(secrets));
+  // `secrets: inherit` on a reusable-workflow call is caught on the parsed job below.
+  for (const m of raw.matchAll(/\$\{\{([\s\S]*?)\}\}/g)) {
+    if (/\bsecrets\b/.test(m[1] ?? "")) add("no-secrets", `expression references the secrets context: ${m[0]}`);
+    if (/\bgithub\.token\b/.test(m[1] ?? "")) add("no-token", `expression hands the job token to a step: ${m[0]}`);
+  }
 
   if (!isRecord(parsed)) {
     add("shape", "workflow is not a mapping");
