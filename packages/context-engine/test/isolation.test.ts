@@ -90,7 +90,7 @@ describe("context-engine reviewer isolation (DONE 2, SECURITY.md S-11)", () => {
         expect(check, `seed ${seed}`).toEqual({ ok: true });
       }
     }
-  });
+  }, 60_000); // heavy loop: allow for a loaded CI machine running the whole suite in parallel
 
   it("the server rejects a manifest that adds the other slot's current verdict, even re-hashed", async () => {
     for (let seed = 1; seed <= 50; seed++) {

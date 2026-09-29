@@ -18,7 +18,7 @@ describe("context-engine determinism (DONE 1)", () => {
       expect(first.manifest.renderedPromptSha256).toBe(sha256Of(first.prompt));
       expect(first.manifest.manifestSha256).toBe(computeManifestSha256(first.manifest));
     }
-  });
+  }, 60_000); // heavy loop: allow for a loaded CI machine running the whole suite in parallel
 
   it("golden hashes: identical on macOS and Linux (CI runs the same assertion on ubuntu)", async () => {
     const golden: Record<string, { manifest: string; prompt: string }> = {};

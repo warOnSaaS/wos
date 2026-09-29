@@ -4,6 +4,7 @@ import {
   checkEligibility,
   compareVersions,
   effectiveBudget,
+  eligibilityRouteError,
   type EligibilityInput,
   parseToolVersion,
   parseVersion,
@@ -470,11 +471,11 @@ describe("agent-policy checkEligibility: two agents per contributor (D15)", () =
   });
 
   it("agent-policy eligibility: claimed Sol builder is honoured", () => {
-    expect(builder({ claimedModel: "sol" })).toMatchObject({ eligible: true, model: { ref: "sol", modelId: "gpt-6-sol" } });
+    expect(builder({ requestedModel: "sol" })).toMatchObject({ eligible: true, model: { ref: "sol", modelId: "gpt-6-sol" } });
   });
 
   it("agent-policy eligibility: claimed model on a provider already at its build-lease limit is refused", () => {
-    const r = builder({ claimedModel: "astra", activeLeasesOfKind: 1, activeBuildLeasesByProvider: { codex_cli: 1 } });
+    const r = builder({ requestedModel: "astra", activeLeasesOfKind: 1, activeBuildLeasesByProvider: { codex_cli: 1 } });
     expect(codes(r)).toEqual(["PROVIDER_LEASE_LIMIT"]);
   });
 
@@ -489,14 +490,16 @@ describe("agent-policy checkEligibility: two agents per contributor (D15)", () =
   });
 
   it("agent-policy eligibility: a claimed model the role does not allow, or the device does not attest, is refused", () => {
-    expect(codes(builder({ claimedModel: "fable" }))).toEqual(["CLAIMED_MODEL_NOT_ALLOWED"]);
-    expect(codes(builder({ claimedModel: "sol", attestations: [claudeOk, codexOk] }))).toEqual(["CLAIMED_MODEL_NOT_ATTESTED"]);
-    expect(codes(checkEligibility(input("implementation_reviewer_fable", { claimedModel: "sol" })))).toEqual(["CLAIMED_MODEL_NOT_ALLOWED"]);
-    expect(codes(checkEligibility(input("conflict_resolver", { claimedModel: "astra" })))).toEqual(["CLAIMED_MODEL_NOT_ALLOWED"]);
+    expect(codes(builder({ requestedModel: "fable" }))).toEqual(["REQUESTED_MODEL_NOT_ALLOWED"]);
+    expect(codes(builder({ requestedModel: "sol", attestations: [claudeOk, codexOk] }))).toEqual(["REQUESTED_MODEL_NOT_ATTESTED"]);
+    expect(codes(checkEligibility(input("implementation_reviewer_fable", { requestedModel: "sol" })))).toEqual([
+      "REQUESTED_MODEL_NOT_ALLOWED",
+    ]);
+    expect(codes(checkEligibility(input("conflict_resolver", { requestedModel: "astra" })))).toEqual(["REQUESTED_MODEL_NOT_ALLOWED"]);
   });
 
   it("agent-policy eligibility: an Astra author gets the Astra budget override", () => {
-    const r = checkEligibility(input("roadmap_author", { claimedModel: "astra" }));
+    const r = checkEligibility(input("roadmap_author", { requestedModel: "astra" }));
     expect(r).toMatchObject({ eligible: true, model: { ref: "astra" }, reasoning: "max" });
     const role = (x: string) => policy.roles.find((y) => y.role === x)!;
     expect(effectiveBudget(role("roadmap_author"), "astra").contextBudgetTokens).toBe(140_000);
@@ -624,4 +627,100 @@ describe("agent-policy checkEligibility: toolchain (D13)", () => {
     expect(parseToolVersion("v22.12.0")).toEqual([22, 12, 0]);
     expect(parseToolVersion("35")).toEqual([35, 0, 0]);
   });
+});
+
+// ---------------------------------------------------------------------------------------------
+// B-0010-github-build (contracts 4.3.0): the claim body's requested model.
+// ---------------------------------------------------------------------------------------------
+
+type ModelRow = {
+  name: string;
+  role: AgentRole;
+  over: Partial<EligibilityInput>;
+  expect: { model: string } | { codes: string[]; error: "NOT_ELIGIBLE" | "LIMIT_REACHED" };
+};
+const both: ProviderAttestation = { ...codexOk, models: ["astra", "sol"] };
+const codexHeld = { activeLeasesOfKind: 1, activeBuildLeasesByProvider: { codex_cli: 1 } };
+const modelRows: ModelRow[] = [
+  { name: "omitted: builder first-fit is Opus", role: "builder", over: {}, expect: { model: "opus" } },
+  { name: "omitted: author first-fit is Fable", role: "feature_author", over: {}, expect: { model: "fable" } },
+  { name: "opus requested for a builder", role: "builder", over: { requestedModel: "opus" }, expect: { model: "opus" } },
+  { name: "astra requested for a builder", role: "builder", over: { requestedModel: "astra" }, expect: { model: "astra" } },
+  { name: "sol requested for a builder", role: "builder", over: { requestedModel: "sol" }, expect: { model: "sol" } },
+  { name: "astra requested for an author", role: "roadmap_author", over: { requestedModel: "astra" }, expect: { model: "astra" } },
+  {
+    name: "fable requested for its reviewer slot",
+    role: "roadmap_reviewer_fable",
+    over: { requestedModel: "fable" },
+    expect: { model: "fable" },
+  },
+  {
+    name: "fable requested for a builder",
+    role: "builder",
+    over: { requestedModel: "fable" },
+    expect: { codes: ["REQUESTED_MODEL_NOT_ALLOWED"], error: "NOT_ELIGIBLE" },
+  },
+  {
+    name: "sol requested for an author",
+    role: "feature_author",
+    over: { requestedModel: "sol" },
+    expect: { codes: ["REQUESTED_MODEL_NOT_ALLOWED"], error: "NOT_ELIGIBLE" },
+  },
+  {
+    name: "astra requested for the Fable slot",
+    role: "feature_reviewer_fable",
+    over: { requestedModel: "astra" },
+    expect: { codes: ["REQUESTED_MODEL_NOT_ALLOWED"], error: "NOT_ELIGIBLE" },
+  },
+  {
+    name: "sol requested for the resolver",
+    role: "conflict_resolver",
+    over: { requestedModel: "sol" },
+    expect: { codes: ["REQUESTED_MODEL_NOT_ALLOWED"], error: "NOT_ELIGIBLE" },
+  },
+  {
+    name: "sol requested, device attests only astra",
+    role: "builder",
+    over: { requestedModel: "sol", attestations: [claudeOk, codexOk] },
+    expect: { codes: ["REQUESTED_MODEL_NOT_ATTESTED"], error: "NOT_ELIGIBLE" },
+  },
+  {
+    name: "astra requested, codex signed out",
+    role: "builder",
+    over: { requestedModel: "astra", attestations: [claudeOk, { ...both, signedIn: false }] },
+    expect: { codes: ["REQUESTED_MODEL_NOT_ATTESTED"], error: "NOT_ELIGIBLE" },
+  },
+  {
+    name: "astra requested, codex build lease already held",
+    role: "builder",
+    over: { requestedModel: "astra", ...codexHeld },
+    expect: { codes: ["PROVIDER_LEASE_LIMIT"], error: "LIMIT_REACHED" },
+  },
+  {
+    name: "sol requested while astra holds the codex slot",
+    role: "builder",
+    over: { requestedModel: "sol", ...codexHeld },
+    expect: { codes: ["PROVIDER_LEASE_LIMIT"], error: "LIMIT_REACHED" },
+  },
+  {
+    name: "opus requested while an astra build runs",
+    role: "builder",
+    over: { requestedModel: "opus", ...codexHeld },
+    expect: { model: "opus" },
+  },
+];
+
+describe("agent-policy checkEligibility: requestedModel (contracts 4.3.0, B-0010-github-build)", () => {
+  for (const row of modelRows) {
+    it(`agent-policy requestedModel: ${row.name}`, () => {
+      const r = checkEligibility(input(row.role, { attestations: [claudeOk, both], ...row.over }));
+      if ("model" in row.expect) {
+        expect(r, JSON.stringify(r)).toMatchObject({ eligible: true, model: { ref: row.expect.model } });
+        expect(eligibilityRouteError(r)).toBeNull();
+      } else {
+        expect(codes(r)).toEqual(row.expect.codes);
+        expect(eligibilityRouteError(r)).toBe(row.expect.error);
+      }
+    });
+  }
 });

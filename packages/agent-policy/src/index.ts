@@ -219,10 +219,11 @@ export interface EligibilityInput {
   /** The task's `restricted_to_account_id` (AGENT-POLICY.md step 7). */
   restrictedToAccountId?: string | null;
   /**
-   * The model the claim names (D15, contracts 4.1.0), e.g. a contributor choosing an Astra builder. When set it
-   * must be an allowed, attested model with lease room; step 5 no longer picks one. Null/absent = first eligible.
+   * The model the claim body names (D15; contracts 4.3.0, B-0010-github-build), e.g. an Astra or Sol builder.
+   * It must be in the role's allowedModels and attested (else NOT_ELIGIBLE) and have provider lease room (else
+   * LIMIT_REACHED, see eligibilityRouteError). Omitted = the first attested allowed model with room.
    */
-  claimedModel?: ModelRef | null;
+  requestedModel?: ModelRef;
   /**
    * Builder only (D15): this account's active build leases per provider. REQUIRED for builder claims; a builder
    * evaluation without it fails closed (`LEASE_FACTS_REQUIRED`).
@@ -258,8 +259,8 @@ export const ELIGIBILITY_REASONS = [
   "NOT_ENOUGH_ACCEPTED_CONTRIBUTIONS",
   "TOO_MANY_ACTIVE_LEASES",
   "LEASE_FACTS_REQUIRED",
-  "CLAIMED_MODEL_NOT_ALLOWED",
-  "CLAIMED_MODEL_NOT_ATTESTED",
+  "REQUESTED_MODEL_NOT_ALLOWED",
+  "REQUESTED_MODEL_NOT_ATTESTED",
   "PROVIDER_LEASE_LIMIT",
   "TOOLCHAIN_FACTS_REQUIRED",
   "TOOLCHAIN_UNSATISFIED",
@@ -332,13 +333,13 @@ export function checkEligibility(input: EligibilityInput, policy: AgentPolicyDoc
   }
   const providerFull = (m: ModelSpec) => isBuilder && (byProvider?.[m.provider] ?? 0) >= policy.limits.maxConcurrentBuildLeasesPerProvider;
   let model: ModelSpec | null = null;
-  const claimed = input.claimedModel ?? null;
+  const claimed = input.requestedModel ?? null;
   if (claimed !== null) {
     const spec = policy.models.find((m) => m.ref === claimed);
     if (!spec || !role.allowedModels.includes(claimed)) {
-      reason("CLAIMED_MODEL_NOT_ALLOWED", `${claimed} is not allowed for ${role.role} (allowed: ${role.allowedModels.join(", ")})`);
+      reason("REQUESTED_MODEL_NOT_ALLOWED", `${claimed} is not allowed for ${role.role} (allowed: ${role.allowedModels.join(", ")})`);
     } else if (!modelReady(spec, input.attestations, policy)) {
-      reason("CLAIMED_MODEL_NOT_ATTESTED", `no installed, signed-in, recent-enough CLI attests ${claimed}`);
+      reason("REQUESTED_MODEL_NOT_ATTESTED", `no installed, signed-in, recent-enough CLI attests ${claimed}`);
     } else if (providerFull(spec)) {
       reason(
         "PROVIDER_LEASE_LIMIT",
@@ -433,6 +434,19 @@ export function checkEligibility(input: EligibilityInput, policy: AgentPolicyDoc
   if (reasons.length > 0 || !model || reasoning === null) return { eligible: false, reasons };
   // The plan's budgetTokens for this model: effectiveBudget(role, model.ref) (D15 budgetOverrides).
   return { eligible: true, independence, model, reasoning };
+}
+
+/** Reason codes that are lease limits (route error LIMIT_REACHED); every other refusal is NOT_ELIGIBLE. */
+const LIMIT_REASONS: readonly EligibilityReasonCode[] = ["TOO_MANY_ACTIVE_LEASES", "PROVIDER_LEASE_LIMIT"];
+
+/**
+ * The API error for a refused claim (B-0010-github-build ruling): LIMIT_REACHED when every reason is a lease
+ * limit (the account could claim once a lease ends), else NOT_ELIGIBLE. Null for an eligible result.
+ */
+export function eligibilityRouteError(result: EligibilityResult): "LIMIT_REACHED" | "NOT_ELIGIBLE" | null {
+  if (result.eligible) return null;
+  const codes = result.reasons.map((r) => r.split(":")[0] as EligibilityReasonCode);
+  return codes.length > 0 && codes.every((c) => LIMIT_REASONS.includes(c)) ? "LIMIT_REACHED" : "NOT_ELIGIBLE";
 }
 
 /** The device's latest attestation for the model's provider is installed, signed in, recent enough and lists the model. */
