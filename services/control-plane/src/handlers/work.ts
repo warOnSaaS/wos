@@ -723,7 +723,7 @@ export const workHandlers: Pick<
     const validation: ChangesetValidation = deps.logic.validateChangeset(cs, {
       kind: pre.doc ? pre.doc.kind : "abu",
       abu: pre.spec,
-      documentPaths: pre.doc ? await documentScope(deps, pre.doc, cs) : [],
+      documentPaths: pre.doc ? await documentScope(deps, pre.doc, cs, existingPaths) : [],
       repoManifest,
       existingPaths,
     });

@@ -164,7 +164,12 @@ async function revisionFile(deps: Deps, repo: string, commit: string, changeset:
 }
 
 /** Paths an author may write for this document (ROADMAP-PROTOCOL.md 2.4, FEATURE-CONTRACT.md "Allowed paths"). */
-export async function documentScope(deps: Deps, doc: DocumentRow, changeset: Changeset): Promise<string[]> {
+export async function documentScope(
+  deps: Deps,
+  doc: DocumentRow,
+  changeset: Changeset,
+  existingPaths: ReadonlySet<string>,
+): Promise<string[]> {
   if (doc.kind === "feature_contract") {
     const k = doc.feature_key!;
     return [ARTIFACT_PATHS.featureContract(k), ARTIFACT_PATHS.buildGraph(k), `${ARTIFACT_PATHS.acceptanceDir(k)}/**`];
@@ -173,9 +178,15 @@ export async function documentScope(deps: Deps, doc: DocumentRow, changeset: Cha
   const paths = [`roadmaps/${slug}/**`];
   const roadmapText = changeset.files.find((f) => f.path === ARTIFACT_PATHS.roadmap(slug));
   const text = roadmapText ? decode(roadmapText) : null;
-  if (text) {
-    const parsed = deps.logic.parseRoadmapYaml(text);
-    if (parsed.ok) for (const k of parsed.value.newCatalogFeatures) paths.push(ARTIFACT_PATHS.catalogEntry(k));
+  const parsed = text ? deps.logic.parseRoadmapYaml(text) : null;
+  if (parsed?.ok) {
+    for (const k of parsed.value.newCatalogFeatures) paths.push(ARTIFACT_PATHS.catalogEntry(k));
+  } else if (parsed) {
+    // The roadmap does not parse, so newCatalogFeatures is unknown: allow only NEW catalog files and let
+    // validation report the schema errors to the author (validation_failed) instead of a scope refusal.
+    for (const f of changeset.files) {
+      if (/^catalog\/[a-z][a-z0-9-]*\.yaml$/.test(f.path) && !existingPaths.has(f.path)) paths.push(f.path);
+    }
   }
   return paths;
 }
