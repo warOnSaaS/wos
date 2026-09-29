@@ -76,12 +76,24 @@ async function contributionFact(tx: Tx, contributionId: string): Promise<Contrib
     case "implementation": {
       const [a] = await tx<{ abu_id: string; key: string; size_points: number; state: string }[]>`
         select at.abu_id, ab.key, ab.size_points, at.state from wos.attempts at join wos.abus ab on ab.id = at.abu_id where at.id = ${c.attempt_id}`;
-      if (a) fact.implementation = { attemptId: c.attempt_id!, abuId: a.abu_id, abuKey: a.key, sizePoints: a.size_points, merged: a.state === "merged" };
+      if (a)
+        fact.implementation = {
+          attemptId: c.attempt_id!,
+          abuId: a.abu_id,
+          abuKey: a.key,
+          sizePoints: a.size_points,
+          merged: a.state === "merged",
+        };
       break;
     }
     case "review": {
       const [r] = await tx<
-        { subject_kind: "roadmap" | "feature_contract" | "implementation"; size_points: number | null; accepted: boolean; on_time: boolean }[]
+        {
+          subject_kind: "roadmap" | "feature_contract" | "implementation";
+          size_points: number | null;
+          accepted: boolean;
+          on_time: boolean;
+        }[]
       >`
         select rd.subject_kind,
                (select ab.size_points from wos.attempts at join wos.abus ab on ab.id = at.abu_id where at.id = rd.attempt_id) as size_points,
@@ -147,8 +159,12 @@ async function ensurePool(
 ): Promise<{ id: string; state: string }> {
   const existing =
     input.kind === "feature_completion"
-      ? await tx<{ id: string; state: string }[]>`select id, state from wos.reward_pools where kind = 'feature_completion' and app_feature_id = ${input.appFeatureId}`
-      : await tx<{ id: string; state: string }[]>`select id, state from wos.reward_pools where kind = 'application_completion' and target_id = ${input.targetId}`;
+      ? await tx<
+          { id: string; state: string }[]
+        >`select id, state from wos.reward_pools where kind = 'feature_completion' and app_feature_id = ${input.appFeatureId}`
+      : await tx<
+          { id: string; state: string }[]
+        >`select id, state from wos.reward_pools where kind = 'application_completion' and target_id = ${input.targetId}`;
   if (existing[0]) return existing[0];
   const id = uuidv7();
   await tx`insert into wos.reward_pools (id, kind, target_id, app_feature_id, amount, schedule_version, state)
@@ -212,7 +228,13 @@ export async function loadRewardFacts(tx: Tx, deps: Deps, event: DomainEvent): P
       });
       if (pool.state !== "open") break;
       poolId = pool.id;
-      facts.featurePool = { poolId: pool.id, target: event.payload.target, feature: event.payload.feature, appFeatureId: af.id, implementationAwards };
+      facts.featurePool = {
+        poolId: pool.id,
+        target: event.payload.target,
+        feature: event.payload.feature,
+        appFeatureId: af.id,
+        implementationAwards,
+      };
       break;
     }
     case "progress.recomputed": {

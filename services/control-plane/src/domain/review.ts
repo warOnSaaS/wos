@@ -91,7 +91,14 @@ export async function revealRound(tx: Tx, deps: Deps, roundId: string): Promise<
   const [round] = await tx<RoundRow[]>`select * from wos.rounds where id = ${roundId}`;
   if (round?.state !== "awaiting_reviews") throw new Error(`round ${roundId} is not awaiting reviews`);
   const reviews = await tx<
-    { id: string; account_id: string; github_user_id: string; slot: "astra" | "fable"; body: ReviewVerdict; independence: ReviewIndependence }[]
+    {
+      id: string;
+      account_id: string;
+      github_user_id: string;
+      slot: "astra" | "fable";
+      body: ReviewVerdict;
+      independence: ReviewIndependence;
+    }[]
   >`
     select id, account_id, github_user_id, slot, body, independence from wos.reviews where round_id = ${roundId}`;
   const astra = reviews.find((r) => r.slot === "astra");

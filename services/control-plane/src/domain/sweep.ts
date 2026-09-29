@@ -6,7 +6,6 @@ import { inTransaction } from "@waronsaas/db";
 import type { Deps } from "../deps.js";
 import { ApiFailure } from "../errors.js";
 import { insertEvent } from "../db/events.js";
-import { uuidv7 } from "../util/crypto.js";
 import { loadAttempt } from "../views.js";
 import { releaseDueAwards } from "./rewards.js";
 import { afterLeaseLost, endAttempt, endLease, SYSTEM } from "./work.js";

@@ -8,6 +8,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./test-harness": {
+      "types": "./dist/test-harness.d.ts",
+      "default": "./dist/test-harness.js"
     }
   },
   "files": [

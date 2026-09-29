@@ -143,7 +143,8 @@ async function assertProviderCapacity(tx: Tx, deps: Deps, accountId: string, pro
      where l.account_id = ${accountId} and l.state = 'active' and t.kind in ('abu_build', 'abu_revision')
        and l.context_plan->>'provider' = ${provider}`;
   const limit = deps.policy.limits.maxConcurrentBuildLeasesPerProvider;
-  if ((n?.n ?? 0) >= limit) throw new ApiFailure("LIMIT_REACHED", `you already hold ${n!.n} build lease(s) on ${provider} (limit ${limit} per provider)`);
+  if ((n?.n ?? 0) >= limit)
+    throw new ApiFailure("LIMIT_REACHED", `you already hold ${n!.n} build lease(s) on ${provider} (limit ${limit} per provider)`);
 }
 
 export const workHandlers: Pick<
@@ -253,10 +254,19 @@ export const workHandlers: Pick<
         otherSlotReviewerId: null,
         reviewsOfSameAuthorLast7d: 0,
         activeLeasesOfKind: active,
+        claimedModel: ctx.body.model ?? null,
+        builder: { writeScopes: abu.spec.scope.write, manifest },
       });
       if (!elig.eligible) throw new ApiFailure("NOT_ELIGIBLE", "not eligible to build this ABU", { reasons: elig.reasons });
       await assertProviderCapacity(tx, deps, caller.accountId, elig.model.provider);
-      await assertToolchain(tx, deps, { accountId: caller.accountId, deviceId: ctx.body.deviceId, repo, commit: baseSha, write: abu.spec.scope.write, manifest });
+      await assertToolchain(tx, deps, {
+        accountId: caller.accountId,
+        deviceId: ctx.body.deviceId,
+        repo,
+        commit: baseSha,
+        write: abu.spec.scope.write,
+        manifest,
+      });
       const attemptId = uuidv7();
       await tx`insert into wos.attempts (id, abu_id, account_id, github_user_id, state, base_sha)
                values (${attemptId}, ${abu.id}, ${caller.accountId}, ${caller.githubUserId!}, 'leased', ${baseSha})`;
@@ -459,6 +469,10 @@ export const workHandlers: Pick<
           : deps.policy.limits.maxConcurrentAuthorLeasesPerContributor;
       const active = await activeLeaseCount(tx, caller.accountId, family);
       if (active >= limit) throw new ApiFailure("LIMIT_REACHED", `you already hold ${active} leases of this kind`);
+      const revisionSpec =
+        task.kind === "abu_revision"
+          ? ((await tx<{ spec: AbuSpec }[]>`select spec from wos.abus where id = ${task.abu_id}`)[0]?.spec ?? null)
+          : null;
       let authors: string[] = [];
       if (task.kind === "conflict_resolution" && task.document_id)
         authors = await subjectAuthors(tx, { attempt_id: null, document_id: task.document_id });
@@ -471,6 +485,8 @@ export const workHandlers: Pick<
         otherSlotReviewerId: null,
         reviewsOfSameAuthorLast7d: 0,
         activeLeasesOfKind: active,
+        claimedModel: ctx.body.model ?? null,
+        ...(revisionSpec ? { builder: { writeScopes: revisionSpec.scope.write, manifest } } : {}),
       });
       if (!elig.eligible) throw new ApiFailure("NOT_ELIGIBLE", "not eligible for this task", { reasons: elig.reasons });
       if (task.kind === "abu_revision") await assertProviderCapacity(tx, deps, caller.accountId, elig.model.provider);

@@ -555,6 +555,14 @@ export async function materialiseRoadmap(
   }
   await tx`update wos.capabilities set retired = true where target_id = ${targetId} and key not in ${tx(roadmap.capabilities.map((c) => c.key))}`;
 
+  // D13: the app's surfaces (in scope with repo and app shell path, or excluded with a reason).
+  await tx`delete from wos.target_surfaces where target_id = ${targetId}`;
+  for (const sf of roadmap.surfaces) {
+    await tx`insert into wos.target_surfaces (target_id, surface, status, reason, repo_full_name, path, roadmap_version)
+             values (${targetId}, ${sf.surface}, ${sf.status}, ${sf.status === "excluded" ? sf.reason : null},
+                     ${sf.status === "in_scope" ? sf.repo : null}, ${sf.status === "in_scope" ? sf.path : null}, ${roadmap.version})`;
+  }
+
   // 3. new catalog features
   for (const k of roadmap.newCatalogFeatures) {
     const entry = files.catalog.get(k)!;
@@ -578,14 +586,22 @@ export async function materialiseRoadmap(
     const [f] = await tx<{ id: string }[]>`select id from wos.catalog_features where key = ${key} and repo_full_name = ${doc.repo}`;
     if (!f) throw new Error(`roadmap references unknown catalog feature ${key} in ${doc.repo}`);
     featureIds.set(key, f.id);
-    await tx`
+    const [afRow] = await tx<{ id: string }[]>`
       insert into wos.app_features (id, target_id, catalog_feature_id, capability_id, state, weight_bp, weight_rationale, app_notes, phase,
                                     first_roadmap_version, roadmap_version)
       values (${uuidv7()}, ${targetId}, ${f.id}, ${capIds.get(capability)!}, 'mapped', ${ref.weightBp}, ${ref.weightRationale}, ${ref.appNotes},
               ${ref.phase}, ${roadmap.version}, ${roadmap.version})
       on conflict (target_id, catalog_feature_id) do update set capability_id = excluded.capability_id, weight_bp = excluded.weight_bp,
         weight_rationale = excluded.weight_rationale, app_notes = excluded.app_notes, phase = excluded.phase,
-        roadmap_version = excluded.roadmap_version, row_version = wos.app_features.row_version + 1`;
+        roadmap_version = excluded.roadmap_version, row_version = wos.app_features.row_version + 1
+      returning id`;
+    // D13: the feature's reasoned surface weights and its key journeys, frozen with this roadmap version.
+    await tx`update wos.app_features set journeys = ${tx.json(ref.journeys as never)} where id = ${afRow!.id}`;
+    await tx`delete from wos.app_feature_surfaces where app_feature_id = ${afRow!.id}`;
+    for (const sw of ref.surfaces) {
+      await tx`insert into wos.app_feature_surfaces (app_feature_id, surface, weight_bp, weight_rationale, roadmap_version)
+               values (${afRow!.id}, ${sw.surface}, ${sw.weightBp}, ${sw.weightRationale}, ${roadmap.version})`;
+    }
     await insertEvent(
       tx,
       {
@@ -732,6 +748,7 @@ export async function ingestContract(
     await tx`insert into wos.requirements (id, document_id, catalog_feature_id, key, kind, statement)
              values (${id}, ${doc.id}, ${featureId}, ${r.key}, ${r.kind}, ${r.statement})`;
     reqIds.set(r.key, id);
+    for (const sf of r.surfaces) await tx`insert into wos.requirement_surfaces (requirement_id, surface) values (${id}, ${sf})`;
   }
   const profileTargets: string[] = [];
   for (const p of files.contract.profiles) {

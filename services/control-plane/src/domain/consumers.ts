@@ -60,7 +60,16 @@ async function openOrUpdatePr(deps: Deps, e: EventRow, attemptId: string): Promi
       select a.spec->>'title' as title, a.spec->>'objective' as objective, f.key as feature
         from wos.abus a join wos.catalog_features f on f.id = a.catalog_feature_id where a.id = ${attempt.abu_id}`;
     const [builder] = await tx<{ github_login: string }[]>`select github_login from wos.accounts where id = ${attempt.account_id}`;
-    const runs = await tx<{ id: string; role: string; model_id: string; reasoning: ReasoningLevel; manifest_sha256: string; provider: "claude_cli" | "codex_cli" }[]>`
+    const runs = await tx<
+      {
+        id: string;
+        role: string;
+        model_id: string;
+        reasoning: ReasoningLevel;
+        manifest_sha256: string;
+        provider: "claude_cli" | "codex_cli";
+      }[]
+    >`
       select r.id, m.role, m.model_id, m.reasoning, m.manifest_sha256, r.record->>'provider' as provider
         from wos.agent_runs r join wos.context_manifests m on m.id = r.manifest_id
        where r.id in (select agent_run_id from wos.reviews where round_id = ${round!.id})

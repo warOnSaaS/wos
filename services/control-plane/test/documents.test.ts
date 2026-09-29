@@ -3,6 +3,7 @@
  * author revision -> validation -> round -> consensus -> merge -> materialisation / ingestion -> progress.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { DEFAULT_LOGIC } from "../src/deps.js";
 import { reviewAs } from "./support/flow.js";
 import {
   type Account,
@@ -26,7 +27,10 @@ const inventory = {
   version: 1,
   sources: [{ title: "Vendor docs", url: "https://example.com/docs", retrievedOn: "2026-09-01" }],
   // contracts 4.0.0 (D13) fixture update by the architect: surfaces are required.
-  surfaces: [{ surface: "web", title: "Web app", source: 0, platforms: [], browsers: ["chromium", "firefox"] }],
+  surfaces: [
+    { surface: "web", title: "Web app", source: 0, platforms: [], browsers: ["chromium", "firefox"] },
+    { surface: "ios", title: "iPhone app", source: 0, platforms: ["iPhone"], browsers: [] },
+  ],
   items: [
     { key: "INV-0001", area: "Sales", title: "Contacts", description: "Contact records", source: 0, weight: 1 },
     { key: "INV-0002", area: "Analytics", title: "Reports", description: "Reports and dashboards", source: 0, weight: 1 },
@@ -46,7 +50,10 @@ const roadmap = (crmWeight: number) => ({
     appSpecificData: "None yet.",
     selfHosting: "Docker.",
   },
-  surfaces: [{ surface: "web", status: "in_scope", reason: null, repo: "waronsaas/product", path: "apps/web" }],
+  surfaces: [
+    { surface: "web", status: "in_scope", reason: null, repo: "waronsaas/product", path: "apps/web" },
+    { surface: "ios", status: "in_scope", reason: null, repo: "waronsaas/product", path: "apps/mobile" },
+  ],
   capabilities: [
     {
       key: "crm",
@@ -60,8 +67,20 @@ const roadmap = (crmWeight: number) => ({
           feature: "contacts",
           weightBp: 10000,
           weightRationale: WHY,
-          surfaces: [{ surface: "web", weightBp: 10000, weightRationale: WHY }],
+          surfaces: [
+            { surface: "web", weightBp: 6000, weightRationale: WHY },
+            { surface: "ios", weightBp: 4000, weightRationale: WHY },
+          ],
           journeys: [
+            {
+              key: "J-002",
+              surface: "ios",
+              title: "Call a contact",
+              steps: ["Open Contacts", "Tap a contact", "Tap call"],
+              entryPoints: ["tab bar"],
+              platformBehaviour: "native navigation and swipe back",
+              nativeCapabilities: [],
+            },
             {
               key: "J-001",
               surface: "web",
@@ -111,7 +130,7 @@ const contract = {
       kind: "functional",
       statement: "Users MUST be able to list contacts.",
       acceptance: ["the list shows every contact"],
-      surfaces: ["web"],
+      surfaces: ["web", "ios"],
     },
     {
       key: "R-002",
@@ -132,8 +151,18 @@ const contract = {
       nativeCapabilities: [],
       requirements: ["R-001", "R-002"],
     },
+    {
+      key: "J-002",
+      surface: "ios",
+      title: "Call a contact",
+      steps: ["Open Contacts", "Tap a contact", "Tap call"],
+      entryPoints: ["tab bar"],
+      platformBehaviour: "native navigation and swipe back",
+      nativeCapabilities: [],
+      requirements: ["R-001"],
+    },
   ],
-  sharedApi: null,
+  sharedApi: "modules/contacts exports listContacts() and getContact(id), typed, consumed by web and iOS.",
   profiles: [
     {
       target: "salesforce",
@@ -146,6 +175,7 @@ const contract = {
           browsers: ["chromium", "edge", "webkit", "firefox", "mobile_safari", "mobile_chrome"],
           runner: "linux",
         },
+        { surface: "ios", dir: "features/contacts/acceptance/salesforce-ios", run: ["maestro", "test"], browsers: [], runner: "macos" },
       ],
     },
   ],
@@ -173,11 +203,18 @@ const graph = {
   abus: [unit("01", "R-001", "modules/contacts/list/**", [], 2), unit("02", "R-002", "modules/contacts/detail/**", ["contacts#01"], 3)],
 };
 
+const buildGraphContexts: unknown[] = [];
+
 describe.skipIf(!HAS_DB)("roadmap and feature contract workflows", () => {
   let h: Harness;
   let maint: Account;
   beforeAll(async () => {
-    h = await createHarness();
+    h = await createHarness({
+      validateBuildGraph: (...args) => {
+        buildGraphContexts.push(args[5]);
+        return DEFAULT_LOGIC.validateBuildGraph(...args);
+      },
+    });
     maint = await h.contributor("doc-maint", { maintainer: true });
   });
   afterAll(async () => {
@@ -307,6 +344,24 @@ describe.skipIf(!HAS_DB)("roadmap and feature contract workflows", () => {
     expect((await h.call("POST", "/v1/github/webhook", { body: merged, headers: webhookHeaders("pull_request", merged) })).status).toBe(
       200,
     );
+    // D13 materialisation: both surfaces, the feature's surface weights and journeys.
+    const ts = await h.owner<{ surface: string; status: string; path: string }[]>`
+      select s.surface, s.status, s.path from wos.target_surfaces s join wos.targets t on t.id = s.target_id where t.slug = 'salesforce' order by s.surface`;
+    expect(ts).toEqual([
+      { surface: "ios", status: "in_scope", path: "apps/mobile" },
+      { surface: "web", status: "in_scope", path: "apps/web" },
+    ]);
+    const afs = await h.owner<{ surface: string; weight_bp: number }[]>`
+      select s.surface, s.weight_bp from wos.app_feature_surfaces s join wos.app_features af on af.id = s.app_feature_id
+        join wos.catalog_features f on f.id = af.catalog_feature_id where f.key = 'contacts' order by s.surface`;
+    expect(afs).toEqual([
+      { surface: "ios", weight_bp: 4000 },
+      { surface: "web", weight_bp: 6000 },
+    ]);
+    const [jr] = await h.owner<
+      { n: number }[]
+    >`select jsonb_array_length(af.journeys) as n from wos.app_features af join wos.catalog_features f on f.id = af.catalog_feature_id where f.key = 'contacts'`;
+    expect(jr!.n).toBe(2);
     const target = await h.call("GET", "/v1/public/targets/salesforce");
     expect(target.body.productName).toBe("OpenCRM");
     expect(target.body.progress).toMatchObject({
@@ -337,6 +392,10 @@ describe.skipIf(!HAS_DB)("roadmap and feature contract workflows", () => {
       { path: "features/contacts/BUILD-GRAPH.yaml", content: JSON.stringify(graph) },
     ]);
     expect(submitted.status, JSON.stringify(submitted.body)).toBe(200);
+    const carries = await h.owner<
+      { carry: unknown }[]
+    >`select carry from wos.tasks where kind = 'feature_author' and carry ? 'validatorErrors'`;
+    expect(carries.map((c) => c.carry)).toEqual([]);
     await reviewAs(h, await h.contributor("fc-astra"), "astra", "feature_review", verdict("NO_MATERIAL_GAPS"));
     await reviewAs(h, await h.contributor("fc-fable"), "fable", "feature_review", verdict("NO_MATERIAL_GAPS"));
     await dispatch();
@@ -356,6 +415,30 @@ describe.skipIf(!HAS_DB)("roadmap and feature contract workflows", () => {
     expect(abus).toEqual([
       { key: "contacts#01", state: "ready", task: "open" },
       { key: "contacts#02", state: "pending_dependencies", task: "blocked" },
+    ]);
+    const rs = await h.owner<{ key: string; surfaces: string[] }[]>`
+      select r.key, array_agg(s.surface order by s.surface) as surfaces from wos.requirements r join wos.requirement_surfaces s on s.requirement_id = r.id
+       group by r.key order by r.key`;
+    expect(rs).toEqual([
+      { key: "R-001", surfaces: ["ios", "web"] },
+      { key: "R-002", surfaces: ["web"] },
+    ]);
+    // validateBuildGraph got the ratified sixth argument (FEATURE-CONTRACT.md section 9).
+    const ctx = buildGraphContexts.at(-1) as {
+      repositories: Map<string, string>;
+      contractRepo: string;
+      surfacesInScope: Map<string, string[]>;
+    };
+    expect(ctx.contractRepo).toBe("waronsaas/product");
+    expect(ctx.repositories.get("waronsaas/product")).toBe("product");
+    expect(ctx.repositories.get("waronsaas/wos")).toBe("platform");
+    expect(ctx.surfacesInScope.get("salesforce")).toEqual(["ios", "web"]);
+    // Document pool: the contract author's feature_contract_work share was written by the real rules.
+    const pool = await h.owner<{ category: string; amount: string }[]>`
+      select category, amount from wos.ledger_entries where category in ('roadmap_work', 'feature_contract_work') order by category`;
+    expect(pool.map((p) => [p.category, Number(p.amount)])).toEqual([
+      ["feature_contract_work", h.deps.schedule.featureContract.mergedContractPool],
+      ["roadmap_work", h.deps.schedule.roadmap.mergedRoadmapPool],
     ]);
     const after = await h.call("GET", "/v1/public/targets/salesforce/features/contacts");
     expect(after.body).toMatchObject({ state: "specified", specifiedBp: 10000, builtBp: 0, relevantPoints: 5, mergedPoints: 0 });

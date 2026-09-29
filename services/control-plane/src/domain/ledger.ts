@@ -136,7 +136,9 @@ export async function settleKeyedContribution(
 ): Promise<void> {
   const rows = await tx<{ id: string; state: "pending"; account_id: string; category: RewardCategory }[]>`
     select id, state, account_id, category from wos.contributions where state = 'pending' and idempotency_key like ${`${prefix}:%`} order by id`;
-  for (const c of rows) await contributionTransition(tx, c, event, actor === "maintainer" ? "maintainer" : "system", actorAccountId, reason);
+  // ContributionMachine: accept is a system/github step (the acceptance condition holds); a maintainer may reject.
+  const by = event === "accept" ? "system" : actor === "maintainer" ? "maintainer" : "system";
+  for (const c of rows) await contributionTransition(tx, c, event, by, actorAccountId, reason);
 }
 
 /** Authors of accepted revisions of a merged document: one work contribution each, weight = accepted revisions. */

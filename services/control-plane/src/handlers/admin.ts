@@ -374,7 +374,8 @@ export const adminHandlers: Pick<
           if (acct.github_user_id === null) throw new ApiFailure("VALIDATION_FAILED", "the reporter needs a linked GitHub account");
           // The key carries the severity the loader passes to the rules (facts.security).
           const key = `security:${a.severity}:${sha256Of(a.reference).slice(7, 31)}:${acct.id}`;
-          const [dupe] = await tx`select 1 as x from wos.contributions where idempotency_key like ${`security:%:${sha256Of(a.reference).slice(7, 31)}:${acct.id}`}`;
+          const [dupe] =
+            await tx`select 1 as x from wos.contributions where idempotency_key like ${`security:%:${sha256Of(a.reference).slice(7, 31)}:${acct.id}`}`;
           if (dupe) throw new ApiFailure("CONFLICT", "this report was already awarded");
           const cid = await createContribution(tx, {
             accountId: acct.id,
@@ -398,7 +399,9 @@ export const adminHandlers: Pick<
       }
     });
     // Consumers run inline after commit when cheap (DOMAIN-MODEL.md section 3): rewards, progress, GitHub.
-    await runDispatch(deps).catch((err: unknown) => deps.log("error", "inline dispatch failed", { error: err instanceof Error ? err.message : String(err) }));
+    await runDispatch(deps).catch((err: unknown) =>
+      deps.log("error", "inline dispatch failed", { error: err instanceof Error ? err.message : String(err) }),
+    );
     return { ok: true as const };
   },
 

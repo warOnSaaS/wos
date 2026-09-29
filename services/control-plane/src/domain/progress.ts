@@ -38,13 +38,10 @@ export async function buildProgressInput(
     const features = [];
     for (const f of feats) {
       featureIds.set(f.key, f.id);
-      // D13 surface weights from the merged roadmap; a feature materialised before D13 has one implicit web surface.
+      // D13 surface weights, materialised from the merged roadmap (app_feature_surfaces).
       const surfaceRows = await tx<{ surface: Surface; weight_bp: number }[]>`
         select surface, weight_bp from wos.app_feature_surfaces where app_feature_id = ${f.id} order by surface`;
-      const surfaces =
-        surfaceRows.length > 0
-          ? surfaceRows.map((r) => ({ surface: r.surface, weightBp: r.weight_bp }))
-          : [{ surface: "web" as Surface, weightBp: 10_000 }];
+      const surfaces = surfaceRows.map((r) => ({ surface: r.surface, weightBp: r.weight_bp }));
       let contract: ProgressCapabilityInput["features"][number]["contract"] = null;
       if (f.contract_doc) {
         const profile = await tx<{ key: string }[]>`

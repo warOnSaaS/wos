@@ -11,8 +11,8 @@ describe.skipIf(!HAS_DB)("leases and locks (Postgres)", () => {
     await h?.close();
   });
 
-  const claim = (a: Account, abuId: string, idem: string | boolean = true) =>
-    h.call("POST", `/v1/abus/${abuId}/claim`, { token: a.token, idem, body: { deviceId: a.deviceId } });
+  const claim = (a: Account, abuId: string, idem: string | boolean = true, model?: "opus" | "astra" | "sol" | "fable") =>
+    h.call("POST", `/v1/abus/${abuId}/claim`, { token: a.token, idem, body: { deviceId: a.deviceId, ...(model ? { model } : {}) } });
   const sweep = () => h.call("GET", "/v1/cron/sweep", { headers: { authorization: `Bearer ${CRON_SECRET}` } });
 
   it("leases-and-locks R-001 twenty parallel claims of one ABU produce exactly one lease", async () => {
@@ -84,7 +84,7 @@ describe.skipIf(!HAS_DB)("leases and locks (Postgres)", () => {
     const locked = await claim(y, seeded.abus.get("02")!);
     expect(locked.body.error.code).toBe("RESOURCE_LOCKED");
     expect((await claim(y, seeded.abus.get("03")!)).status).toBe(200);
-    expect((await claim(x, seeded.abus.get("04")!)).status).toBe(200);
+    expect((await claim(x, seeded.abus.get("04")!, true, "astra")).status).toBe(200); // D15: second lease on the other provider
   });
 
   it("leases-and-locks R-001 a lease with no heartbeat expires and the task reopens", async () => {
@@ -164,7 +164,7 @@ describe.skipIf(!HAS_DB)("leases and locks (Postgres)", () => {
     expect(again.status).toBe(200);
   });
 
-  it("limits concurrent build leases per contributor (LIMIT_REACHED)", async () => {
+  it("D15: one build lease per provider and two in total; the claim may name the model (LIMIT_REACHED, NOT_ELIGIBLE)", async () => {
     const seeded = await seedFeature(h.owner, {
       feature: "limits",
       abus: [
@@ -174,11 +174,24 @@ describe.skipIf(!HAS_DB)("leases and locks (Postgres)", () => {
       ],
     });
     const greedy = await h.contributor("greedy");
-    expect((await claim(greedy, seeded.abus.get("01")!)).status).toBe(200);
-    expect((await claim(greedy, seeded.abus.get("02")!)).status).toBe(200);
-    const third = await claim(greedy, seeded.abus.get("03")!);
+    const first = await claim(greedy, seeded.abus.get("01")!);
+    expect(first.status).toBe(200);
+    expect(first.body.contextPlan).toMatchObject({ model: "opus", provider: "claude_cli" }); // omitted model: first attested allowed
+    const sameProvider = await claim(greedy, seeded.abus.get("02")!);
+    expect(sameProvider.body.error.code).toBe("LIMIT_REACHED");
+    const notAllowed = await claim(greedy, seeded.abus.get("02")!, true, "fable");
+    expect(notAllowed.body.error.code).toBe("NOT_ELIGIBLE");
+    const astra = await claim(greedy, seeded.abus.get("02")!, true, "astra");
+    expect(astra.status).toBe(200);
+    expect(astra.body.contextPlan).toMatchObject({ model: "astra", provider: "codex_cli", modelId: "gpt-6-astra" });
+    const third = await claim(greedy, seeded.abus.get("03")!, true, "astra");
     expect(third.status).toBe(409);
     expect(third.body.error.code).toBe("LIMIT_REACHED");
+    const [row] = await h.owner<
+      { context_plan: { budgetTokens: number } }[]
+    >`select context_plan from wos.leases where id = ${astra.body.lease.id}`;
+    const override = h.deps.policy.roles.find((r) => r.role === "builder")!.budgetOverrides.find((o) => o.model === "astra");
+    if (override) expect(row!.context_plan.budgetTokens).toBe(override.contextBudgetTokens);
   });
 
   it("replays an idempotent claim for the same key and body, and refuses the key with another body", async () => {

@@ -135,7 +135,9 @@ export interface Logic {
   parseBuildGraphYaml: typeof parseBuildGraphYaml;
   validateRoadmap: typeof validateRoadmap;
   /** FEATURE-CONTRACT.md section 9: the optional sixth argument (ratified at 4.2.0; planning implements it). */
-  validateBuildGraph: (...args: [...Parameters<typeof validateBuildGraph>, BuildGraphValidationContext?]) => ReturnType<typeof validateBuildGraph>;
+  validateBuildGraph: (
+    ...args: [...Parameters<typeof validateBuildGraph>, BuildGraphValidationContext?]
+  ) => ReturnType<typeof validateBuildGraph>;
   /** contracts 4.2.0 (B-0002-planning), integration glue. */
   validateFeatureContract: typeof validateFeatureContract;
 }
