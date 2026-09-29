@@ -1,0 +1,18 @@
+# wOS product repo code owners (template: platform repo templates/suite/.github/CODEOWNERS).
+#
+# Only the files that define the gate are owned. Implementation PRs opened by the wOS App touch
+# modules/** and products/** only (the validator rejects everything below), so they need no code owner;
+# any PR that touches one of these paths needs a maintainer's review (ruleset: require code owner review).
+/.github/                 @waronsaas/maintainers
+/wos.json                 @waronsaas/maintainers
+/package.json             @waronsaas/maintainers
+/package-lock.json        @waronsaas/maintainers
+/.npmrc                   @waronsaas/maintainers
+/.nvmrc                   @waronsaas/maintainers
+/tsconfig.json            @waronsaas/maintainers
+/tsconfig.base.json       @waronsaas/maintainers
+/vitest.config.ts         @waronsaas/maintainers
+/biome.json               @waronsaas/maintainers
+/db/migrations/           @waronsaas/maintainers
+/.gitattributes           @waronsaas/maintainers
+/.gitmodules              @waronsaas/maintainers

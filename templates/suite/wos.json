@@ -1,0 +1,30 @@
+{
+  "schema": "wos-repo.v1",
+  "displayName": "warOnSaaS suite",
+  "products": [],
+  "defaultBranch": "main",
+  "stack": { "language": "typescript", "runtime": "node", "packageManager": "npm", "nodeVersion": "22" },
+  "install": ["npm", "ci", "--ignore-scripts"],
+  "verify": [
+    { "id": "typecheck", "run": ["npm", "run", "typecheck"], "timeoutSeconds": 900 },
+    { "id": "lint", "run": ["npm", "run", "lint"], "timeoutSeconds": 600 },
+    { "id": "test", "run": ["npm", "test"], "timeoutSeconds": 1800 }
+  ],
+  "protectedPaths": [
+    ".github/**",
+    "wos.json",
+    "catalog/**",
+    "roadmaps/**",
+    "features/**",
+    ".npmrc",
+    ".nvmrc",
+    "tsconfig.json",
+    "tsconfig.base.json",
+    "vitest.config.ts",
+    "biome.json"
+  ],
+  "lockfiles": ["package-lock.json", "package.json"],
+  "generatedPaths": ["dist/**", "coverage/**"],
+  "migrationsDir": "db/migrations",
+  "maxChangesetBytes": 4000000
+}
