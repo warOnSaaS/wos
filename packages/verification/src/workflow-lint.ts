@@ -23,16 +23,9 @@ function readOnlyPermissions(p: unknown): boolean {
   return isRecord(p) && Object.keys(p).length === 1 && p.contents === "read";
 }
 
-export function lintProductWorkflow(raw: string, parsed: unknown, opts: { requireVerifyTriggers?: boolean } = {}): WorkflowLintIssue[] {
+export function lintProductWorkflow(_raw: string, parsed: unknown, opts: { requireVerifyTriggers?: boolean } = {}): WorkflowLintIssue[] {
   const issues: WorkflowLintIssue[] = [];
   const add = (rule: string, message: string) => issues.push({ rule, message });
-
-  // The secrets context is only reachable from ${{ }} expressions (secrets.X, secrets['X'], toJSON(secrets));
-  // `secrets: inherit` on a reusable-workflow call is caught on the parsed job below.
-  for (const m of raw.matchAll(/\$\{\{([\s\S]*?)\}\}/g)) {
-    if (/\bsecrets\b/.test(m[1] ?? "")) add("no-secrets", `expression references the secrets context: ${m[0]}`);
-    if (/\bgithub\.token\b/.test(m[1] ?? "")) add("no-token", `expression hands the job token to a step: ${m[0]}`);
-  }
 
   if (!isRecord(parsed)) {
     add("shape", "workflow is not a mapping");
@@ -54,12 +47,46 @@ export function lintProductWorkflow(raw: string, parsed: unknown, opts: { requir
     if (!("merge_group" in triggers)) add("triggers", "must run on merge_group");
   }
 
-  const jobs = isRecord(parsed.jobs) ? parsed.jobs : {};
+  // S-35: a RELEASE workflow runs only on pushed tags (never on candidate pushes, PRs or the merge queue),
+  // and only its jobs in the protected `release` environment may read secrets. Everything else: none.
+  const push = triggers.push;
+  const releaseOnly =
+    Object.keys(triggers).length === 1 &&
+    isRecord(push) &&
+    Array.isArray(push.tags) &&
+    push.tags.length > 0 &&
+    !("branches" in push) &&
+    !("branches-ignore" in push);
+  const expressions = (v: unknown): string[] => [...JSON.stringify(v ?? null).matchAll(/\$\{\{([\s\S]*?)\}\}/g)].map((m) => m[1] ?? "");
+  const scan = (where: string, v: unknown, secretsAllowed: boolean) => {
+    for (const e of expressions(v)) {
+      if (/\bsecrets\b/.test(e) && !secretsAllowed) add("no-secrets", `${where} references the secrets context: \${{${e}}}`);
+      if (/\bgithub\.token\b/.test(e)) add("no-token", `${where} hands the job token to a step: \${{${e}}}`);
+    }
+  };
+  const { jobs: jobsValue, ...rest } = parsed;
+  scan("workflow", rest, false);
+
+  const jobs = isRecord(jobsValue) ? jobsValue : {};
   if (Object.keys(jobs).length === 0) add("shape", "no jobs");
   for (const [name, job] of Object.entries(jobs)) {
     if (!isRecord(job)) continue;
     if ("permissions" in job && !readOnlyPermissions(job.permissions)) add("permissions", `job ${name} widens permissions`);
-    if ("environment" in job) add("environment", `job ${name} uses an environment (environments can hold secrets)`);
+    const env = isRecord(job.environment) ? job.environment.name : job.environment;
+    const isRelease = env === "release" && releaseOnly;
+    if ("environment" in job && !isRelease) {
+      add(
+        "environment",
+        env === "release"
+          ? `job ${name} uses the release environment in a workflow that is not tag-only (candidate code could reach it)`
+          : `job ${name} uses an environment other than release (environments can hold secrets)`,
+      );
+    }
+    scan(`job ${name}`, job, isRelease);
+    const runsOn = JSON.stringify(job["runs-on"] ?? "");
+    if (/macos/i.test(runsOn) && !/runner == 'macos'/.test(runsOn)) {
+      add("runner", `job ${name} runs on macOS unconditionally; macOS runners are only for native iOS acceptance (runner == 'macos')`);
+    }
     if ("secrets" in job) add("no-secrets", `job ${name} passes secrets to a reusable workflow`);
     const steps = Array.isArray(job.steps) ? job.steps : [];
     for (const step of steps) {

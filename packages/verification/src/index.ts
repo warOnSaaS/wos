@@ -20,6 +20,15 @@ import { scanForSecrets } from "./secrets.js";
 
 export { fold, inScope, matchesDeny, pathProblem } from "./paths.js";
 export { SECRET_PATTERNS, scanForSecrets, type SecretHit, type SecretPattern } from "./secrets.js";
+export {
+  checkJUnitReport,
+  checkPlaywrightReport,
+  PLAYWRIGHT_PROJECTS,
+  playwrightEngines,
+  type ReportCheck,
+  requiredBrowsers,
+  runnerProblems,
+} from "./acceptance.js";
 export { lintProductWorkflow, type WorkflowLintIssue } from "./workflow-lint.js";
 
 /** True when two write scopes can touch the same path (prefix algebra, BUILD-PROTOCOL.md). */
