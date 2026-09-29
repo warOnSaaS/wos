@@ -28,13 +28,28 @@ export const ArtifactSelector = z.discriminatedUnion("kind", [
   /** Every file matching a glob in the source repo at the source commit (sorted by path). */
   z.object({ kind: z.literal("repo_glob"), repo: RepoFullName, glob: z.string(), required: z.boolean() }),
   /** A server-provided document (finding ledger, task spec, prior round summary), fetched by id. */
+  /**
+   * A server-provided document fetched by ref with GET /v1/leases/:id/documents/:ref (route getLeaseDocument).
+   * Ref forms are listed in CONTEXT-PROTOCOL.md section 2 (e.g. "wos:task/<taskId>",
+   * "wos:findings/<subjectId>@<roundNumber>" for revealed rounds only). The form
+   * "wos:verdict/<roundId>/<slot>" names a sealed verdict and is NEVER placed in a plan; the server rejects
+   * any server_document ref that is not in the lease's plan.
+   */
   z.object({ kind: z.literal("server_document"), ref: z.string(), sha256: Sha256, required: z.boolean() }),
+  /**
+   * A document produced on the contributor's machine. V1 has one: "local:verification-output", the
+   * failing local check output a builder's repair run sees (verify_failed_locally). Its sha256 is
+   * recorded in the manifest; the server cannot verify its content and treats it as evidence only.
+   */
+  z.object({ kind: z.literal("local_document"), ref: z.literal("local:verification-output"), required: z.literal(false) }),
 ]);
 export type ArtifactSelector = z.infer<typeof ArtifactSelector>;
 
 export const ContextPlan = z.object({
   schema: z.literal("wos-context-plan.v1"),
   taskId: Uuid,
+  /** Copied into ContextManifest.task.kind (contracts 2.0.0, B-0001-context-policy). */
+  taskKind: TaskKind,
   leaseId: Uuid,
   role: AgentRole,
   model: ModelRef,
@@ -43,11 +58,17 @@ export const ContextPlan = z.object({
   reasoning: ReasoningLevel,
   policyVersion: z.string(),
   contextFormatVersion: z.string(),
-  target: TargetSlug,
+  /** Exactly one of target (roadmap work) and feature (feature work) is set (contracts 3.0.0, see TaskView). */
+  target: TargetSlug.nullable(),
   feature: FeatureKey.nullable(),
   abu: AbuKey.nullable(),
   attemptId: Uuid.nullable(),
   roundId: Uuid.nullable(),
+  /**
+   * The snapshot the agent works on. For abu_build and abu_revision plans this commit IS the submission's
+   * parentCommit: the attempt base for the first build, the current candidate head for a revision, or the
+   * new default-branch head after a rebase (B-0004-github-build).
+   */
   source: z.object({ repo: RepoFullName, commit: GitSha }),
   /** Ordered: the engine includes artifacts in this order until the budget is exhausted. */
   artifacts: z.array(ArtifactSelector),
@@ -72,7 +93,7 @@ export const ExclusionReason = z.enum([
 ]);
 
 export const ManifestArtifact = z.object({
-  kind: z.enum(["repo_file", "server_document", "task_spec", "policy", "prompt_template"]),
+  kind: z.enum(["repo_file", "server_document", "local_document", "task_spec", "policy", "prompt_template"]),
   /** repo path or server ref. */
   ref: z.string(),
   /** git blob oid at the source commit for repo files, so the server can verify via the Trees API. */
@@ -92,7 +113,7 @@ export const ContextManifest = z.object({
   provider: ProviderId,
   model: z.object({ ref: ModelRef, modelId: z.string() }),
   reasoning: ReasoningLevel,
-  target: TargetSlug,
+  target: TargetSlug.nullable(),
   feature: FeatureKey.nullable(),
   task: z.object({ id: Uuid, kind: TaskKind }),
   abu: AbuKey.nullable(),
@@ -229,6 +250,7 @@ export const Changeset = z.object({
   parentCommit: GitSha,
   /** The accepted Context Manifest of the agent run that produced this submission. */
   manifestSha256: Sha256,
+  /** The diff hash, exactly canonical.ts submissionSha256 (C-3). */
   submissionSha256: Sha256,
   files: z.array(ChangesetFile).min(1).max(500),
   /** The agent's structured output for this submission. */
@@ -236,7 +258,7 @@ export const Changeset = z.object({
   localVerification: z
     .array(z.object({ id: z.string(), exitCode: z.number().int(), durationMs: z.number().int().nonnegative(), outputSha256: Sha256 }))
     .default([]),
-  /** Ed25519 (base64) by the registered device key over JCS(changeset without `signature` and file contents replaced by their sha256). */
+  /** Ed25519 signature, base64 of 64 bytes, over changesetSigningPayload (canonical.ts C-4) with the device key (C-5). */
   signature: z.string().min(1),
 });
 export type Changeset = z.infer<typeof Changeset>;
@@ -248,6 +270,7 @@ export const ChangesetErrorCode = z.enum([
   "WORKFLOW_FILE",
   "LOCKFILE_WITHOUT_RESOURCE",
   "MIGRATION_WITHOUT_RESOURCE",
+  "TOOLCHAIN_WITHOUT_RESOURCE",
   "CASE_COLLISION",
   "HASH_MISMATCH",
   "TOO_LARGE",
@@ -293,7 +316,7 @@ export const AgentRunRecord = z.object({
   transcriptSha256: Sha256,
   outputSha256: Sha256,
   usage: z.object({ inputTokens: z.number().int().nullable(), outputTokens: z.number().int().nullable() }),
-  /** Ed25519 signature (base64) by the registered device key over the JCS canonical JSON without this field. */
+  /** Ed25519 signature, base64 of 64 bytes, over agentRunSigningPayload (canonical.ts C-4) with the device key (C-5). */
   signature: z.string(),
 });
 export type AgentRunRecord = z.infer<typeof AgentRunRecord>;
@@ -326,6 +349,11 @@ export const ProvenanceRecord = z.object({
     z.object({ kind: z.literal("feature_contract"), documentId: Uuid, feature: FeatureKey }),
   ]),
   repo: RepoFullName,
+  /**
+   * The real PR number. The App opens the PR first, then fills this field, renders the provenance section
+   * and PATCHes the PR body; the control plane stores the record with the number returned by
+   * openPullRequest, so the hash in the PR body and in wos.provenance_records agree (B-0002-github-build).
+   */
   prNumber: z.number().int().positive(),
   headSha: GitSha,
   baseSha: GitSha,

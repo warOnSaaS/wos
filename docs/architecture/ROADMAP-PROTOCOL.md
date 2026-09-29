@@ -59,6 +59,8 @@ One roadmap per application (Sniper Target). It answers three questions, and rev
 
 A revision is valid only if all of these pass. Failure moves the document `validating -> revising` (`validation_failed`) with the errors carried into the new author task (`tasks.carry`); the round counter does not advance.
 
+- Catalogs are per repository (contracts 3.0.0, GAPS G-54): every referenced catalog feature must have the roadmap's own `repo_full_name`; a product roadmap cannot reference a TGT-00 platform feature and vice versa.
+
 1. YAML parses (`@waronsaas/planning` `parseInventoryYaml`, `parseRoadmapYaml`, `parseCatalogEntryYaml`).
 2. Zod schema passes, including the `Roadmap` `superRefine`: capability weights sum to 10000; each mapped capability's feature weights sum to 10000; no feature listed twice in one capability; every weight 1..10000 with a rationale of at least 40 characters.
 3. `planning.validateRoadmap(roadmap, inventory, catalog, previousMergedVersion)`:
@@ -137,6 +139,7 @@ Definitions:
 - `W_c`: capability weight toward the app (bp). `w_f`: feature weight inside its capability (bp). Effective app weight of a feature = floor(W_c x w_f / 10000), published on the feature page.
 - Relevant ABUs of f for A: non-superseded ABUs of f's latest merged contract whose `requirements` intersect A's profile. A shared ABU counts for every app whose profile it touches (built once, D10). Building HubSpot-only ABUs does not move Salesforce.
 - Complete (for A): at least one relevant ABU, every requirement in A's profile covered by merged ABUs, and A's profile acceptance suite passed on the default branch after the last relevant merge.
+- How acceptance is recorded (contracts 3.0.0): `wos-verify` runs, on every push to the default branch, one check run per profile named `profileAcceptanceCheckName(feature, target)` = `wos-acceptance/<feature>/<target>`. The control plane records each concluded run as `verification_runs` (subject `profile_acceptance`, `catalog_feature_id`, `profile_target_id`, `head_sha`, `conclusion`) and emits `verification.recorded`, which triggers the progress consumer. `profileAcceptancePassed` is true when the latest recorded run for (feature, target) on a default-branch commit that contains the last merged relevant ABU concluded `success`.
 - Invariant: BUILT <= SPECIFIED <= MAPPED at every level. 10000 only when literally complete.
 - Before the first roadmap merges, every number is 0 (`roadmap: null`).
 - Unmapped capabilities are 0/0/0. The inventory size and excluded count are reported next to the numbers but weight nothing.

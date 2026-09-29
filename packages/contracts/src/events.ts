@@ -69,7 +69,22 @@ export const DomainEventBody = z.discriminatedUnion("type", [
   e("lease.issued", "private", { leaseId: Uuid, taskId: Uuid, accountId: Uuid }),
   e("lease.ended", "private", { leaseId: Uuid, taskId: Uuid, to: z.enum(["completed", "released", "expired", "revoked"]) }),
 
+  /** Creating an aggregate in its initial state writes `<aggregate>.created`, never a state_changed from "none". */
+  e("attempt.created", "public", { attemptId: Uuid, abu: AbuKey, state: z.literal("leased") }),
   e("attempt.state_changed", "public", { attemptId: Uuid, abu: AbuKey, from: z.string(), to: z.string() }),
+  // contracts 3.0.0 (B-0002-control-plane): one event type for every transition that had none.
+  e("document.state_changed", "public", { documentId: Uuid, event: z.string(), from: z.string(), to: z.string() }),
+  e("round.cancelled", "public", { roundId: Uuid, reason: z.string() }),
+  e("contribution.state_changed", "public", { contributionId: Uuid, from: z.string(), to: z.string(), reason: z.string().nullable() }),
+  e("proposal.state_changed", "public", { proposalId: Uuid, from: z.string(), to: z.string() }),
+  e("blocker.state_changed", "public", { blockerId: Uuid, from: z.string(), to: z.string() }),
+  e("inventory_version.state_changed", "public", { id: Uuid, event: z.string(), from: z.string(), to: z.string() }),
+  e("verification.recorded", "public", {
+    subject: z.enum(["attempt", "document", "profile_acceptance"]),
+    subjectId: z.string(),
+    headSha: GitSha,
+    conclusion: z.string(),
+  }),
   e("attempt.manifest_recorded", "private", { attemptId: Uuid, manifestSha256: Sha256 }),
   e("attempt.pr_opened", "public", { attemptId: Uuid, abu: AbuKey, prNumber: z.number().int(), prUrl: z.string() }),
   e("attempt.merged", "public", { attemptId: Uuid, abu: AbuKey, mergeSha: GitSha, prNumber: z.number().int() }),
