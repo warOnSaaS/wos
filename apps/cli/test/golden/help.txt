@@ -1,0 +1,41 @@
+Usage: wos [options] [command]
+
+wOS: build warOnSaaS with your own Claude Code and Codex CLIs
+
+Options:
+  -V, --version              output the version number
+  --json                     print one JSON object per line (OrchestratorEvents,
+                             then a result line)
+  -v, --verbose              show raw agent output
+  -h, --help                 display help for command
+
+Commands:
+  login [options] [email]    Sign in by email: wOS mails you an 8-character code
+  link-github                Link your GitHub account (device flow); required to
+                             contribute
+  logout                     Sign out on this machine (revokes the session,
+                             keeps the device key)
+  status                     git, claude and codex readiness, sign-in, toolchain
+                             attestation, active work
+  build [options] <abu>      LEASE, BUILD, VERIFY, submit, then wait through CI,
+                             REVIEW, QUALIFY and PR
+  review [options]           Claim the review assigned to you and run it
+                             read-only (astra: codex, fable: claude)
+  roadmap [options] [task]   Author a target's canonical roadmap or a Feature
+                             Contract
+  resolve [options] [task]   Rule on an escalated dispute or architecture
+                             blocker
+  propose [options]          Propose a roadmap or Feature Contract change (opens
+                             a GitHub issue through wOS)
+  resume                     Re-attach to every attempt this machine drives
+                             (after a restart or --detach)
+  release [options] <lease>  Give a lease back and remove its worktree
+  abus <target> <feature>    List a feature's ABUs and whether you can claim
+                             them now
+  tasks [options]            List open tasks you could take
+  work                       Your leases, tasks and attempts
+  events [options]           Your recent events
+  help [command]             display help for command
+
+Exit codes: 0 ok, 1 failed, 2 usage, 3 not signed in or GitHub not linked.
+Session: OS keychain. Workspace: $WOS_HOME (default ~/.wos).

@@ -1,0 +1,4 @@
+sign-in  email_sent sign-in email sent to dev@example.com
+sign-in  waiting_for_code type the 8-character code from the email, or open the link
+sign-in  waiting_for_code redeemEmailSignIn: UNAUTHENTICATED: wrong code
+sign-in  redeemed signed in as dev@example.com

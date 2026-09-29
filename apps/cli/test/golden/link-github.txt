@@ -1,0 +1,4 @@
+open     https://github.com/login/device
+enter    WOS1-2345
+github   waiting_for_user enter WOS1-2345 at https://github.com/login/device
+github   linked   linked
