@@ -5,9 +5,24 @@
  * Mutation check: WOS_VERIFY_MUTATION_SQL (see support/db.ts) removes a control; docs/dogfood/verification.md
  * records which tests turned red.
  */
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { scopesOverlap } from "../../packages/verification/src/index.js";
-import { asActor, DB_REASON, failure, freshDatabase, id, PLATFORM_REPO_NAME, Pipeline, SUITE_REPO, type Sql } from "./support/db.js";
+import {
+  asActor,
+  DB_REASON,
+  failure,
+  freshDatabase,
+  id,
+  PLATFORM_REPO_NAME,
+  Pipeline,
+  SUITE_REPO,
+  type Sql,
+  type Tx,
+} from "./support/db.js";
+
+// These tests spawn git, npm and Postgres work; under a cold full-suite run (all files in parallel) the
+// 5 s default was too short (Wave 2a gate: two files failed under load, passed alone).
+vi.setConfig({ testTimeout: 60_000, hookTimeout: 120_000 });
 
 const APPEND_ONLY = [
   "github_identity_history",
@@ -25,6 +40,7 @@ const APPEND_ONLY = [
   "events",
   "event_consumptions",
   "inventory_items",
+  "toolchain_attestations",
 ];
 
 describe.skipIf(!process.env.WOS_VERIFY_DATABASE_URL)(`security-hardening: database controls${DB_REASON}`, () => {
@@ -289,6 +305,38 @@ describe.skipIf(!process.env.WOS_VERIFY_DATABASE_URL)(`security-hardening: datab
     it("moving an existing ABU to another repo is rejected", async () => {
       const abu = await p.abu();
       expect(await failure(sql`update wos.abus set repo_full_name = ${PLATFORM_REPO_NAME} where id = ${abu}`)).toMatch(/row is in repo/);
+    });
+  });
+
+  // ---- S-34: toolchain attestations ---------------------------------------------------------------------
+  describe("S-34: toolchain attestations are the device owner's own append-only claims", () => {
+    const attest = (tx: Sql | Tx, account: string, os = "linux") =>
+      tx`insert into wos.toolchain_attestations (account_id, device_id, os, os_version, tools, checked_at)
+         values (${account}, ${p.device(account)}, ${os}, '24.04', '[{"name":"node","version":"22.12.0"}]', now()) returning id`;
+
+    it("a contributor records their own attestation but cannot record one for another account", async () => {
+      expect(await failure(asActor(sql, "contributor", p.A.dave, (tx) => attest(tx, p.A.dave)))).toBeNull();
+      expect(await failure(asActor(sql, "contributor", p.A.dave, (tx) => attest(tx, p.A.alice, "macos")))).toMatch(/row-level security/);
+    });
+
+    it("another account's attestations are invisible", async () => {
+      await attest(sql, p.A.alice, "macos");
+      const seen = await asActor(sql, "contributor", p.A.dave, async (tx) =>
+        (await tx`select account_id from wos.toolchain_attestations`).map((r) => r.account_id),
+      );
+      expect(seen.every((a) => a === p.A.dave)).toBe(true);
+    });
+
+    it("an attestation cannot be upgraded after the fact (macOS claimed later is a new row, never an edit)", async () => {
+      await attest(sql, p.A.erin);
+      expect(await failure(sql`update wos.toolchain_attestations set os = 'macos' where account_id = ${p.A.erin}`)).toMatch(/append-only/);
+      expect(
+        await failure(asActor(sql, "contributor", p.A.erin, (tx) => tx`update wos.toolchain_attestations set os = 'macos'`)),
+      ).not.toBeNull();
+    });
+
+    it("only macos, linux or windows can be attested", async () => {
+      expect(await failure(attest(sql, p.A.dave, "ios"))).not.toBeNull();
     });
   });
 

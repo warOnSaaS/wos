@@ -19,9 +19,13 @@ import {
 } from "@waronsaas/contracts";
 import { verifyWebhookSignature } from "@waronsaas/github/app";
 import { captureChanges } from "@waronsaas/github/local";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { TempRepo } from "../../packages/verification/test/support/git-fixture.js";
 import { implemented, implementedAsync, pendingReason } from "../../packages/verification/test/support/pending.js";
+
+// These tests spawn git, npm and Postgres work; under a cold full-suite run (all files in parallel) the
+// 5 s default was too short (Wave 2a gate: two files failed under load, passed alone).
+vi.setConfig({ testTimeout: 60_000, hookTimeout: 120_000 });
 
 const policy = AGENT_POLICY_V1;
 const provider = (id: string) => policy.providers.find((p) => p.id === id)!;

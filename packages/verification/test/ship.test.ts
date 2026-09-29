@@ -1,9 +1,13 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { parse as parseYaml } from "yaml";
 import { lintProductWorkflow } from "../src/index.js";
 import { REPO_ROOT, TempRepo } from "./support/git-fixture.js";
+
+// These tests spawn git, npm and Postgres work; under a cold full-suite run (all files in parallel) the
+// 5 s default was too short (Wave 2a gate: two files failed under load, passed alone).
+vi.setConfig({ testTimeout: 60_000, hookTimeout: 120_000 });
 
 const SHIP = join(REPO_ROOT, "scripts/ship.sh");
 const REQUIRED = ["typecheck, lint, test", "db:test", "adversarial db suite"];

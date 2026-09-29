@@ -283,6 +283,65 @@ describe.skipIf(!h)(`integration-and-e2e: API attacks${h ? "" : HARNESS_REASON}`
     });
   });
 
+  // ---- D13 / S-34: native ABUs need a macOS toolchain at claim -------------------------------------------
+  describe("toolchain eligibility at claim", () => {
+    const providers = [
+      {
+        provider: "claude_cli",
+        installed: true,
+        cliVersion: "9.9.9",
+        signedIn: true,
+        authMethod: "claude.ai",
+        models: ["fable", "opus"],
+        checkedAt: new Date().toISOString(),
+      },
+    ];
+    const attest = (who: Contributor, toolchain: unknown) =>
+      H.request("POST", Routes.postAttestation.path, {
+        token: who.accessToken,
+        body: { deviceId: who.deviceId, providers, toolchain },
+        headers: { "Idempotency-Key": crypto.randomUUID() },
+      });
+    const claim = (who: Contributor, abu: string) =>
+      H.request("POST", path(Routes.claimBuild.path, { id: abu }), {
+        token: who.accessToken,
+        body: { deviceId: who.deviceId },
+        headers: { "Idempotency-Key": crypto.randomUUID() },
+      });
+
+    it("a native ABU (apps/mobile/ios/**) claimed from a Linux device is refused; the same ABU from macOS + Xcode is granted", async () => {
+      const linux = await H.contributor();
+      const mac = await H.contributor();
+      await attest(linux, {
+        os: "linux",
+        osVersion: "Ubuntu 24.04",
+        tools: [{ name: "node", version: "22.12.0" }],
+        checkedAt: new Date().toISOString(),
+      });
+      await attest(mac, {
+        os: "macos",
+        osVersion: "15.4",
+        tools: [
+          { name: "xcode", version: "16.2" },
+          { name: "node", version: "22.12.0" },
+        ],
+        checkedAt: new Date().toISOString(),
+      });
+      const abu = await H.seedAbu({ key: "atk-native-ios#01", write: ["apps/mobile/ios/**"] });
+      const refused = await claim(linux, abu);
+      expect(refused.status).toBe(403);
+      expect(JSON.stringify(refused.body)).toContain("NOT_ELIGIBLE");
+      expect((await claim(mac, abu)).status).toBe(200);
+    });
+
+    it("no toolchain attestation at all means no native claim; a JS-only mobile ABU is claimable from anywhere", async () => {
+      const none = await H.contributor();
+      await attest(none, null);
+      expect((await claim(none, await H.seedAbu({ key: "atk-native-none#01", write: ["apps/mobile/android/**"] }))).status).toBe(403);
+      expect((await claim(none, await H.seedAbu({ key: "atk-js-mobile#01", write: ["apps/mobile/src/**"] }))).status).toBe(200);
+    });
+  });
+
   // ---- S-1 .. S-6: identity ---------------------------------------------------------------------------
   describe("accounts and sessions", () => {
     it("S-3: the start response is identical for a known and an unknown email", async () => {
