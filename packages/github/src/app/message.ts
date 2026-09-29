@@ -111,6 +111,8 @@ export function renderPullRequestBody(input: {
   objective: string;
   qualification: QualificationRow[];
   reviews: ReviewRow[];
+  /** D15 (contracts 4.1.0): which provider and model built the unit (AttemptView.builtWith). */
+  builtWith?: { provider: "claude_cli" | "codex_cli"; model: string; modelId: string } | null;
   footer?: string;
 }): string {
   const cell = (s: string) => s.replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
@@ -121,6 +123,12 @@ export function renderPullRequestBody(input: {
     "",
     input.objective.trim(),
     "",
+    ...(input.builtWith
+      ? [
+          `Built with ${cell(input.builtWith.model)} (\`${cell(input.builtWith.modelId)}\`, ${input.builtWith.provider === "codex_cli" ? "Codex CLI" : "Claude Code"}), attested by the builder's signed agent run.`,
+          "",
+        ]
+      : []),
     "### Qualification",
     "",
     "| # | Check | Result | Evidence |",

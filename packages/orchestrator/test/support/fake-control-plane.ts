@@ -268,6 +268,10 @@ export class FakeControlPlane {
   }
 
   readonly rulings: unknown[] = [];
+  /** Events served by listMyEvents (tests push contract-shaped DomainEvents). */
+  readonly domainEvents: Array<{ id: number } & Record<string, unknown>> = [];
+  /** D15: the model the server issues builder plans for (until the claim can name it, B-0010-github-build). */
+  builderModel: "opus" | "astra" | "sol" | null = null;
 
   private authorPlan(t: TaskView, leaseId: string): ContextPlan {
     const roleName = t.role;
@@ -319,7 +323,7 @@ export class FakeControlPlane {
     commit: string,
   ): ContextPlan {
     const role = getRolePolicy("builder", AGENT_POLICY_V1);
-    const model = AGENT_POLICY_V1.models.find((m) => m.ref === role.allowedModels[0])!;
+    const model = AGENT_POLICY_V1.models.find((m) => m.ref === (this.builderModel ?? role.allowedModels[0]))!;
     const policyText = renderPolicyDocument("builder", AGENT_POLICY_V1);
     return {
       schema: "wos-context-plan.v1",
@@ -535,6 +539,11 @@ export class FakeControlPlane {
         if (!inPlan) throw new HttpErr(403, "FORBIDDEN", "ref not in this lease's plan");
         const text = this.renderDoc(query.ref!);
         return { ref: query.ref, sha256: sha256Of(text), contentBase64: Buffer.from(text).toString("base64") };
+      }
+      case "listMyEvents": {
+        const after = Number(query.after ?? 0);
+        const items = this.domainEvents.filter((e) => e.id > after);
+        return { items, lastId: items.at(-1)?.id ?? after };
       }
       case "postAttestation":
         this.attestations.push(body as never);
