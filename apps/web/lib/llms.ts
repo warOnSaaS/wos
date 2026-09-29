@@ -1,7 +1,8 @@
 import { BRIEFING, BRIEFING_INTRO, type Block } from "./briefing";
-import { WOS_PROPOSAL_LABEL, WOS_ZERO_REASON, wosCapabilities, wosTarget } from "@/data/wos-roadmap";
+import { WOS_PROPOSAL_LABEL, WOS_ZERO_REASON, wosTarget } from "@/data/wos-roadmap";
+import { formatPercent, getTarget, listTargets, ROADMAP_SOURCE, SURFACE_LABEL, siteFields, suiteSurfaceProgress } from "./data-source";
 import { programme, roadmapState, roadmapStatus, roadmapTitle, targetStatus, targets } from "@/data/targets";
-import { ABOUT, FAQ, OBJECTIVE, PROGRESS_METRICS, ROE, STEPS, TOKENS } from "./content";
+import { ABOUT, FAQ, OBJECTIVE, PROGRESS_METRICS, ROE, STEPS, SUITE, TOKENS } from "./content";
 import { abs } from "./seo";
 import { CLI, DOWNLOADS, LINKS, PREREQUISITES, SIGN_IN, SITE_DESCRIPTION, SITE_NAME, TAGLINE } from "./site";
 
@@ -10,15 +11,18 @@ const pages = [
   { path: "/briefing", title: "Briefing", about: "The whole idea and how every part works: PR types, Feature Catalog, progress, leases, review, gated PRs, tokens, sign-in, models." },
   { path: "/targets/waronsaas", title: "TGT-00 warOnSaaS builds itself", about: "The proposed wOS V1 feature list in roadmap format, with honest status." },
   { path: "/how-it-works", title: "How it works", about: "The seven steps from public roadmap to merged code, and how progress is measured." },
-  { path: "/download", title: "Download wOS", about: "wOS Desktop for macOS, Windows and Linux, the wOS CLI, and prerequisites." },
+  { path: "/download", title: "Download wOS", about: "wOS Desktop for macOS and Linux (Windows coming later), the wOS CLI, and prerequisites." },
   { path: "/tokens", title: "WOS tokens", about: "What earns WOS tokens. WOS tokens are in-app credits with no cash value." },
   { path: "/leaderboard", title: "Leaderboard", about: "Contributors ranked by accepted work. No accepted contributions yet." },
   { path: "/faq", title: "FAQ", about: "Short answers to common questions." },
   { path: "/about", title: "About", about: "The mission." },
 ];
 
-const progressLine = (t: (typeof targets)[number]) =>
-  `mapped ${t.mapped}%, specified ${t.specified}%, built ${t.built}%`;
+/** Progress line for a target, from the data source (formatPercent of basis points). */
+const progressLine = (slug: string) => {
+  const p = listTargets().find((x) => x.slug === slug)!.progress;
+  return `mapped ${formatPercent(p.mappedBp)}, specified ${formatPercent(p.specifiedBp)}, built ${formatPercent(p.builtBp)}`;
+};
 
 export function llmsTxt(): string {
   return [
@@ -34,9 +38,9 @@ export function llmsTxt(): string {
     "",
     "## The Sniper List (targets, in order)",
     "",
-    `- [${wosTarget.id} warOnSaaS (wOS)](${abs("/targets/waronsaas")}): warOnSaaS is its own first target. ${WOS_PROPOSAL_LABEL}. Progress: ${progressLine(wosTarget)}.`,
+    `- [${wosTarget.id} warOnSaaS (wOS)](${abs("/targets/waronsaas")}): warOnSaaS is its own first target. ${WOS_PROPOSAL_LABEL}. Progress: ${progressLine(wosTarget.slug)}.`,
     ...targets.map(
-      (t) => `- [${t.id} Open-source ${t.name} alternative](${abs(`/targets/${t.slug}`)}): ${t.category}. ${t.whatItIs} Progress: ${progressLine(t)}. ${roadmapStatus(t)}.`,
+      (t) => `- [${t.id} Open-source ${t.name} alternative](${abs(`/targets/${t.slug}`)}): ${t.category}. ${t.whatItIs} Progress: ${progressLine(t.slug)}. ${roadmapStatus(t)}.`,
     ),
     "",
     "## Optional",
@@ -68,6 +72,7 @@ export function llmsFullTxt(): string {
     "",
   );
   push("### Objective", "", OBJECTIVE, "");
+  push("### One suite", "", SUITE.summary, "", SUITE.profile, "", SUITE.parity, "", SUITE.repos, "");
   push("### The Sniper List", "");
   push(
     "Each target gets its own public roadmap. Progress is three independent numbers:",
@@ -76,8 +81,11 @@ export function llmsFullTxt(): string {
     "",
   );
   push("| ID | Target | Category | Mapped | Specified | Built | Roadmap | Status |", "|---|---|---|---|---|---|---|---|");
-  push(`| ${wosTarget.id} | warOnSaaS (wOS) | ${wosTarget.category} | 0% | 0% | 0% | ${roadmapState(wosTarget)} | ${targetStatus(wosTarget)} |`);
-  targets.forEach((t) => push(`| ${t.id} | ${t.name} | ${t.category} | ${t.mapped}% | ${t.specified}% | ${t.built}% | ${roadmapState(t)} | ${targetStatus(t)} |`));
+  listTargets().forEach((t) => {
+    const site = siteFields(t.slug)!;
+    const p = t.progress;
+    push(`| ${site.id} | ${site.name} | ${site.category} | ${formatPercent(p.mappedBp)} | ${formatPercent(p.specifiedBp)} | ${formatPercent(p.builtBp)} | ${roadmapState(site)} | ${targetStatus(site)} |`);
+  });
   push("");
 
   push("", "### Procedure (summary)", "", "1. Each target gets one public roadmap. Two AI reviewers from two labs must both find no gaps.", "2. Each feature gets a contract, cut into tasks small enough for one AI agent.", "3. A contributor presses BUILD. Someone else reviews it. Only then does wOS open the PR.", "");
@@ -97,19 +105,22 @@ export function llmsFullTxt(): string {
     sec.blocks.forEach((b) => push(...blockMd(b), ""));
   });
   push(`## TGT-00 warOnSaaS builds itself (${abs("/targets/waronsaas")})`, "");
-  push("warOnSaaS is its own first target. wOS will be built with the same process it runs for every other target.", "");
-  push(`- Status: ${targetStatus(wosTarget)}`, "- Roadmap: not opened", `- Mapped ${wosTarget.mapped}%, specified ${wosTarget.specified}%, built ${wosTarget.built}%`, `- Why 0%: ${WOS_ZERO_REASON}`, "");
-  push("State of work: the public website exists (this site, static v0: pages rendered at build time, data from a file, every number 0%). Architecture is in progress (Phase 0, nothing merged). Everything else is not started.", "");
-  push(`### Feature proposal (${WOS_PROPOSAL_LABEL})`, "");
-  wosCapabilities.forEach((c) => {
-    push(`#### ${c.id} ${c.name} [${c.status}]`, "", c.summary + (c.note ? ` ${c.note}` : ""), "");
-    c.features.forEach((f) => push(`- [${f.status}] ${f.name}${f.note ? ` (${f.note})` : ""}`));
+  push("warOnSaaS is its own first target. wOS is built with the same process it runs for every other target. Repository: waronsaas/wos.", "");
+  push(`- Status: ${targetStatus(wosTarget)}`, `- Roadmap: ${WOS_PROPOSAL_LABEL}`, `- Progress: ${progressLine(wosTarget.slug)}`, `- Why 0%: ${WOS_ZERO_REASON}`, "");
+  push("State of work: contracts, database schema and protocols are written. Wave 1 (control plane, GitHub integration, context and policy, verification) passes its tests locally; not deployed, not on GitHub yet. Wave 2 is in progress (planning, rewards, orchestrator, CLI, Desktop, this website). None of it counts toward the measures until the roadmap merges and work goes through wOS.", "");
+  const wos = getTarget(wosTarget.slug)!.data;
+  push(`### Roadmap (${WOS_PROPOSAL_LABEL}; source ${ROADMAP_SOURCE.path})`, "");
+  push("Surfaces: " + wos.surfaces.map((s) => `${SURFACE_LABEL[s.surface]} (${s.status === "in_scope" ? "in scope" : "excluded"}, ${s.repo ?? "no repo"})`).join("; ") + ".", "");
+  wos.capabilities.forEach((c) => {
+    push(`#### ${c.title} (weight ${c.weightBp} bp)`, "", c.summary, "", `Weight rationale: ${c.weightRationale}`, "");
+    c.features.forEach((f) => push(`- ${f.title} (${f.weightBp} bp of the capability, ${f.effectiveAppWeightBp} bp of wOS): ${f.summary}`));
     push("");
   });
+  push(`Drilldown with every rationale, surface weight, journey and requirement: ${abs("/drilldown/waronsaas")}`, "");
   push(`## Download wOS (${abs("/download")})`, "");
   push("wOS is the build tool. Pick a target, a feature and a task. Press BUILD. Your local Claude Code does the work under wOS's checks.", "");
   push("### Sign-in", "", SIGN_IN, "No GitHub account is needed just to sign in.", "");
-  push("### wOS Desktop", "", ...DOWNLOADS.map((d) => `- ${d.os} (${d.file}): ${d.href}`), "");
+  push("### wOS Desktop", "", ...DOWNLOADS.map((d) => (d.href ? `- ${d.os} (${d.file}): ${d.href}` : `- ${d.os}: ${d.file}`)), "");
   push("### Command line", "", "```", CLI.install, ...CLI.commands.map((c) => `${c.cmd}    # ${c.what}`), "```", "");
   push("### Requirements", "", ...PREREQUISITES.map((p) => `- ${p.name}${p.href ? ` (${p.href})` : ""}`), "");
   push(
@@ -139,10 +150,12 @@ export function llmsFullTxt(): string {
   targets.forEach((t, i) => {
     push(`### ${t.id} Open-source ${t.name} alternative (${abs(`/targets/${t.slug}`)})`, "");
     push(`Target ${i + 1} of ${targets.length}. Designation: ${t.name}. Category: ${t.category}. Status: ${targetStatus(t)}. ${t.whatItIs}`, "");
-    push(`- Mapped: ${t.mapped}%`, `- Specified: ${t.specified}%`, `- Built: ${t.built}%`);
-    push(`- Roadmap: ${t.roadmapPr ?? roadmapStatus(t)} (the canonical PR will be titled "${roadmapTitle(t)}")`);
+    const p = getTarget(t.slug)!.data;
+    push(`- Progress: ${progressLine(t.slug)}`);
+    push(`- Progress per surface: ${suiteSurfaceProgress(p).map((s) => `${SURFACE_LABEL[s.surface]} specified ${formatPercent(s.specifiedBp)}, built ${formatPercent(s.builtBp)}`).join("; ")}`);
+    push(`- Roadmap: ${t.roadmapPr ?? roadmapStatus(t)} (the canonical PR will be titled "${roadmapTitle(t)}", in waronsaas/product)`);
     push(`- Self-hosted: ${t.selfHosted ? "available" : "not available yet"}`, `- Hosted: ${t.hosted ? "running" : "not running yet"}`, "- Contributors: none yet", "");
-    push("Scope (provisional outline; the public roadmap sets the exact scope; not a feature commitment):", "", ...t.replacementCovers.map((c) => `- ${c}`), "");
+    push(`Parity profile: what the suite must do to fully replace ${t.name} (provisional outline; the public roadmap sets the exact profile; not a feature commitment):`, "", ...t.replacementCovers.map((c) => `- ${c}`), "", SUITE.parity, "");
     push("To contribute: propose changes to the one canonical roadmap pull request (do not start a separate one). Fable and Astra review it independently until both report no material gaps. Once features have agreed contracts, download wOS, pick this target, a feature and a task, and press BUILD. Contributing requires a linked GitHub account.", "");
   });
 

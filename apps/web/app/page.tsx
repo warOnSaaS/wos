@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { overall, programme, roadmapsOpen, targets } from "@/data/targets";
-import { wosTarget } from "@/data/wos-roadmap";
+import { programme, targets } from "@/data/targets";
+import { formatPercent, listTargets, sniperListTotals } from "@/lib/data-source";
 import { desktopAppLd, pageMetadata, targetListLd } from "@/lib/seo";
 import { SITE_DESCRIPTION, SITE_NAME } from "@/lib/site";
 import { Section } from "@/components/Section";
@@ -16,12 +16,13 @@ export const metadata = pageMetadata({
 });
 
 export default function Home() {
+  const totals = sniperListTotals();
   const sitrep: [string, string][] = [
-    ["TARGETS", String(targets.length)],
-    ["ROADMAPS OPEN", String(roadmapsOpen())],
-    ["MAPPED", `${overall("mapped")}%`],
-    ["SPECIFIED", `${overall("specified")}%`],
-    ["BUILT", `${overall("built")}%`],
+    ["TARGETS", String(totals.targets)],
+    ["ROADMAPS OPEN", String(totals.roadmapsOpen)],
+    ["MAPPED", formatPercent(totals.mappedBp)],
+    ["SPECIFIED", formatPercent(totals.specifiedBp)],
+    ["BUILT", formatPercent(totals.builtBp)],
     ["CONTRIBUTORS", String(programme.contributors)],
     ["ACCEPTED WORK", String(programme.acceptedContributions)],
     ["TOKENS ISSUED", String(programme.tokensIssued)],
@@ -33,8 +34,9 @@ export default function Home() {
         <p className="label">OPERATION ORDER // <span>warOnSaaS</span></p>
         <h1>Open-source replacements for the software you rent.</h1>
         <p className="lead">
-          warOnSaaS builds open-source replacements for the biggest rented business software, one feature at a time.
-          The code is written by AI coding agents that contributors run on their own subscriptions.
+          warOnSaaS builds one open-source suite that replaces the biggest rented business software: one account, one
+          web app, one phone app for iPhone and Android. Built one feature at a time by AI coding agents that
+          contributors run on their own subscriptions.
         </p>
         <div className="cmds-row">
           <a className="cmd" href="#targets">SNIPER LIST</a>
@@ -56,10 +58,10 @@ export default function Home() {
       </Section>
 
       <Section n="02" title="THE SNIPER LIST" id="targets" aside="TGT-00 TO TGT-10">
-        <TargetTable targets={targets} self={wosTarget} />
+        <TargetTable items={listTargets()} />
         <p className="fine">
-          Mapped: share of the product on its roadmap. Specified: share with an agreed Feature Contract. Built: share
-          merged. Measured separately.
+          Each target is a parity profile: what the suite must do to fully replace that product, on web, iPhone and
+          Android. Mapped: share on its roadmap. Specified: share with an agreed Feature Contract. Built: share merged.
         </p>
       </Section>
 

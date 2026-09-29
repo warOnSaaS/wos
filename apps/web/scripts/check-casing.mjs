@@ -6,7 +6,8 @@
  * Allowed exceptions:
  *   - lowercase in URLs, the domain, the npm scope and route slugs (waronsaas.com, @waronsaas/cli, /targets/waronsaas)
  *   - "WOS" only in "WOS token(s)" (required legal wording)
- *   - "wos" only as the CLI command (wos build|login|status|roadmap|propose|resolve|review) or a branch/check (wos/...)
+ *   - "wos" only as the CLI command (wos build|login|…, "the wos command"), the Postgres schema ("wos Postgres")
+ *     or a branch/check (wos/...); repository names waronsaas/wos and waronsaas/product
  * Also fails if any built CSS uses text-transform, because CSS re-casing would
  * make rendered text differ from the text checked here.
  *
@@ -45,13 +46,17 @@ function renderedText(html) {
 }
 const css = files.filter((f) => f.includes(join(".next", "static")) && f.endsWith(".css"));
 
-const CLI_SUB = /^(\s+(build|login|status|roadmap|propose|resolve|review)\b|\/)/;
+// Lowercase `wos` is the CLI binary and the Postgres schema: allowed as "wos <subcommand>",
+// "the wos command", "wos Postgres schema" and "wos/<branch-or-check>".
+const CLI_SUB = /^(\s+(build|login|status|roadmap|propose|resolve|review|logout|link-github|command|Postgres)\b|\s+--[a-z]|\/)/;
 const errors = [];
 
 function scrub(text) {
   return text
     .replace(/https?:\/\/[^\s"'<>)\]]+/g, " ")
     .replace(/@waronsaas\//g, " ")
+    .replace(/\bwaronsaas\/(wos|product)\b/g, " ")
+    .replace(/\bwaronsaas\.roadmap\.json\b/g, " ")
     .replace(/\/targets\/waronsaas\b/g, " ")
     .replace(/"waronsaas"/g, " ")
     .replace(/\bwaronsaas\.com\b/g, " ")

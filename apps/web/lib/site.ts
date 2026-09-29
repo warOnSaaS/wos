@@ -12,21 +12,25 @@ export const TOKEN_DISCLAIMER = "WOS tokens are in-app credits with no cash valu
 
 export const LINKS = {
   github: "https://github.com/waronsaas",
-  repo: "https://github.com/waronsaas/waronsaas",
-  releases: "https://github.com/waronsaas/waronsaas/releases/latest",
-  pullRequests: "https://github.com/waronsaas/waronsaas/pulls",
+  /** The wOS platform repository (D14). */
+  repo: "https://github.com/waronsaas/wos",
+  releases: "https://github.com/waronsaas/wos/releases/latest",
+  pullRequests: "https://github.com/waronsaas/wos/pulls",
+  /** The suite's code: one web app, one phone app, feature modules (D14). */
+  product: "https://github.com/waronsaas/product",
+  productPullRequests: "https://github.com/waronsaas/product/pulls",
   claudeCode: "https://docs.anthropic.com/en/docs/claude-code/overview",
   codexCli: "https://github.com/openai/codex",
   git: "https://git-scm.com/downloads",
   githubSignup: "https://github.com/signup",
 } as const;
 
-/** wOS Desktop downloads. All three point at the latest GitHub release for now. */
-export const DOWNLOADS = [
+/** wOS Desktop downloads. V1 ships macOS and Linux; Windows is coming later (href null). */
+export const DOWNLOADS: { os: string; file: string; label: string; href: string | null }[] = [
   { os: "macOS", file: ".dmg", label: "DOWNLOAD — MACOS", href: LINKS.releases },
-  { os: "Windows", file: ".exe", label: "DOWNLOAD — WINDOWS", href: LINKS.releases },
   { os: "Linux", file: ".AppImage", label: "DOWNLOAD — LINUX", href: LINKS.releases },
-] as const;
+  { os: "Windows", file: "coming later", label: "WINDOWS", href: null },
+];
 
 export const CLI = {
   packageName: "@waronsaas/cli",

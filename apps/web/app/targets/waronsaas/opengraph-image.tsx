@@ -1,6 +1,7 @@
 import { ImageResponse } from "next/og";
 import { targetStatus } from "@/data/targets";
 import { wosTarget as t } from "@/data/wos-roadmap";
+import { formatPercent, getTarget } from "@/lib/data-source";
 import { ogFont } from "@/lib/og";
 import { OgCard } from "@/lib/ogCard";
 
@@ -9,16 +10,17 @@ export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
 export default async function Image() {
+  const p = getTarget(t.slug)!.data.progress;
   return new ImageResponse(
     <OgCard
       kicker={`TARGET DOSSIER // ${targetStatus(t)}`}
       id="TGT-00 // DOGFOOD"
       title="warOnSaaS builds itself"
-      subtitle="The wOS feature proposal, pending roadmap consensus."
+      subtitle="The wOS roadmap, proposed, pending consensus."
       rows={[
-        { label: "MAPPED", value: `${t.mapped}%` },
-        { label: "SPECIFIED", value: `${t.specified}%` },
-        { label: "BUILT", value: `${t.built}%` },
+        { label: "MAPPED", value: formatPercent(p.mappedBp) },
+        { label: "SPECIFIED", value: formatPercent(p.specifiedBp) },
+        { label: "BUILT", value: formatPercent(p.builtBp) },
       ]}
     />,
     { ...size, fonts: await ogFont() },
