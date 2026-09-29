@@ -4,7 +4,14 @@ import { describe, expect, it } from "vitest";
 import {
   AbuStates,
   AgentRole,
+  AppBilling,
   AppFeatureStates,
+  AppKind,
+  AppReleaseStates,
+  EntitlementStates,
+  OrganizationKind,
+  OrgRole,
+  ProductSurface,
   AttemptStates,
   BlockerStates,
   ContributionStates,
@@ -65,11 +72,33 @@ describe("SQL CHECK lists mirror the contracts", () => {
     for (const t of appendOnly) expect(updateGrant.includes(`wos.${t},`) || updateGrant.includes(`wos.${t}\n`), t).toBe(false);
   });
 
-  it("surface CHECK lists in 0005 mirror Surface (D13)", () => {
-    const s5 = readFileSync(fileURLToPath(new URL("../migrations/0005_surfaces.sql", import.meta.url)), "utf8");
-    const lists = [...s5.matchAll(/surface in \(([^)]*)\)/g)].map((m) => [...m[1]!.matchAll(/'([^']+)'/g)].map((x) => x[1]!).sort());
-    expect(lists.length).toBeGreaterThanOrEqual(4);
-    for (const l of lists) expect(l).toEqual([...Surface.options].sort());
+  it("surface CHECK lists: 0005 had Surface without api, 0006 replaces all four with Surface (D13, 5.0.0)", () => {
+    const lists = (file: string) =>
+      [...readFileSync(fileURLToPath(new URL(`../migrations/${file}`, import.meta.url)), "utf8").matchAll(/surface in \(([^)]*)\)/g)].map(
+        (m) => [...m[1]!.matchAll(/'([^']+)'/g)].map((x) => x[1]!).sort(),
+      );
+    const l5 = lists("0005_surfaces.sql");
+    expect(l5.length).toBeGreaterThanOrEqual(4);
+    for (const l of l5) expect(l).toEqual(Surface.options.filter((x) => x !== "api").sort());
+    const l6 = lists("0006_one_product.sql");
+    expect(l6).toHaveLength(4);
+    for (const l of l6) expect(l).toEqual([...Surface.options].sort());
+  });
+
+  it("0006 CHECK lists mirror the one-product contracts", () => {
+    const s6 = readFileSync(fileURLToPath(new URL("../migrations/0006_one_product.sql", import.meta.url)), "utf8");
+    const list = (re: RegExp) => [...re.exec(s6)![1]!.matchAll(/'([^']+)'/g)].map((x) => x[1]!).sort();
+    expect(list(/state\s+text not null check \(state in \(([^)]*)\)\),\n\s+suspended_reason/)).toEqual(
+      EntitlementStates.filter((x) => x !== "available").sort(),
+    );
+    expect(list(/kind\s+text not null check \(kind in \(([^)]*)\)\),\n\s+billing/)).toEqual([...AppKind.options].sort());
+    expect(list(/billing\s+text not null check \(billing in \(([^)]*)\)\)/)).toEqual([...AppBilling.options].sort());
+    expect(list(/role\s+text not null check \(role in \(([^)]*)\)\)/)).toEqual([...OrgRole.options].sort());
+    expect(list(/kind\s+text not null check \(kind in \(([^)]*)\)\),\n\s+personal_account_id/)).toEqual(
+      [...OrganizationKind.options].sort(),
+    );
+    expect(list(/state\s+text not null default 'published' check \(state in \(([^)]*)\)\)/)).toEqual([...AppReleaseStates].sort());
+    expect(list(/surfaces\s+text\[\] not null check \(surfaces <@ array\[([^\]]*)\]\)/)).toEqual([...ProductSurface.options].sort());
   });
 
   it("enables RLS on every table", () => {

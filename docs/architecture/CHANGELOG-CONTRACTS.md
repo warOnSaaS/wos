@@ -87,6 +87,33 @@ MINOR, additive.
 - `BuildOptions.model?: ModelRef`. `AuthorOptions.model` is now documented as sent in the `claimTask` body.
 - For implementers: the control plane passes the requested model to eligibility (`EligibilityInput.requestedModel?: ModelRef`, which the context-policy workstream adds to `@waronsaas/agent-policy`), and the orchestrator sends the field.
 
+## 5.0.0 — 2026-09-30 (Amendment 01: one product; D16, D17)
+
+MAJOR: `FeatureContract.surfaces` is required.
+- New module `wos-app.ts` (node-free):
+  - `WosAppManifest` (`wos-app/v1`), `ModulePackage`, `AppRegistryEntry`;
+  - `Organization`/`OrganizationView`/`OrgRole`, `EntitlementState`, `AppEntitlement`, `OrgApps`;
+  - `EnvironmentDescriptor`/`EnvironmentAuth`/`EnvironmentTokenClaims`/`ActiveApps`, `CoreRoutes`, `MobileScreen` (`wos-screen.v1`);
+  - `ProductSurface`, and the helpers `activeAppIds`, `satisfiesRange`, `compareSemVer`.
+- `canonical.ts` C-6: `modulePackageSigningPayload`, `verifyModulePackage` (pinned keys).
+- State machines: `EntitlementMachine`, `AppReleaseMachine`, `ModuleInstallMachine`; actors `account` and `client`.
+- Events: `organization.created`, `organization.member_changed`, `entitlement.changed`, `app.release_published`, `app.release_yanked`.
+- API:
+  - `AppRoutes`, served by the control plane from Wave 3: registry, organizations, org apps, enable/disable, environment tokens and keys, app releases.
+  - Error codes `NOT_ENTITLED`, `DEPENDENCY_NOT_ENABLED`, `DEPENDENT_ENABLED`.
+  - `NOT_ENTITLED` on `claimBuild`, `claimTask` and `claimReview` (the Build gate, D16).
+  - `HOSTS.app` and `HOSTS.core`.
+- `Surface` gains `api`.
+- Artifacts:
+  - `FeatureContract.surfaces` (required; per surface `required` and `capabilities`, with consistency refinements).
+  - `Roadmap.apps` (target → applications); a product-repo roadmap may not put a non-product surface in scope.
+  - `ARTIFACT_PATHS` gains `apiApp`, `desktopApp`, `appManifest` and `appDir`.
+- Migration 0006:
+  - organizations, memberships, app_registry, app_releases, app_entitlements, target_apps, environments;
+  - `api` in the surface checks;
+  - backfill of personal organizations with Build enabled for existing accounts.
+- Docs: `WOS-APP-PROTOCOL.md`, ARCHITECTURE section 14, SECURITY S-37..S-42, DOMAIN-MODEL section 8, FEATURE-CONTRACT and ROADMAP-PROTOCOL surface sections, WORKSTREAMS section 12, GAPS G-59..G-65, FOUNDER-CHECKLIST sections 12–13, DECISIONS D16/D17.
+
 ## 4.4.0 — 2026-09-30 (Wave 2 gate)
 
 MINOR, additive.

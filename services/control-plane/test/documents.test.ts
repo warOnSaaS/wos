@@ -183,6 +183,10 @@ const contract = {
   interfaces: {},
   dependsOnFeatures: [],
   openQuestions: [],
+  surfaces: {
+    web: { required: true, capabilities: ["list_contacts", "view_contact"] },
+    ios: { required: true, capabilities: ["list_contacts", "call_contact"] },
+  },
 };
 const unit = (n: string, req: string, write: string, deps: string[], size: number) => ({
   repo: "waronsaas/product",

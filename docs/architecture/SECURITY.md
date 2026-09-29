@@ -313,7 +313,7 @@ openExternal allowlist.
 
 **S-30 Signing and updates.** macOS builds are signed with a Developer ID certificate and notarised in
 GitHub Actions only (D7). Auto-update via `electron-updater` from GitHub Releases of the platform repo,
-which verifies signatures on macOS; Windows builds are signed or not shipped (GAPS.md). The CLI is
+which verifies signatures on macOS; Windows builds are signed (S-42, D17) or not shipped. The CLI is
 published to npm with provenance from Actions. Workstream: desktop, verification. Test: release
 workflow refuses to publish an unsigned macOS artefact.
 
@@ -371,3 +371,37 @@ signed-in user on their own machine, but this is not a legal opinion. See GAPS.m
 **S-36 No vendor trade dress.** Reviewers at roadmap, contract and implementation level treat copying the vendor's trade dress, logos, icons or visual design as a material finding (policy `materialFindingRules`). This limits legal exposure (GAPS G-23) and keeps the product ours.
 
 **S-29 amendment (contracts 4.4.0, B-0002-desktop).** Besides the allowlist, the Desktop main process may open exactly `https://github.com/login/device` (exact string match: no query, no other path), and only as the `openUrl` callback of `Orchestrator.linkGithub`, never through the renderer's `openExternal` channel. The user still types the code GitHub shows; the Desktop also displays it with a copy button.
+
+## 5. Contracts 5.0.0 additions (Amendment 01, D16, D17)
+
+**S-37 Signed desktop modules.** Desktop installs an application's desktop surface only from a `ModulePackage` that satisfies all of the following:
+- It is signed (Ed25519 over JCS, C-6) by a module-signing key whose public half is **pinned in the signed Desktop binary**. A key is never fetched at runtime; rotation ships in a Desktop release with both keys pinned for one cycle.
+- Every file matches its listed sha256 and size.
+- The manifest matches `manifestSha256` and parses as `WosAppManifest`.
+- It contains no native binaries or scripts.
+
+The signing key exists only in the `release` environment of `waronsaas/wos` (the product repo holds no secrets, S-20). Packages are built from a tag of `waronsaas/product`, which only the wOS GitHub App writes (D9). The control plane re-verifies a package before recording its release. Workstreams: desktop (installer), verification (module-release workflow), control-plane (publish). Tests: pinned-key and tamper vectors (`packages/contracts/test/wos-app.test.ts`); the Desktop installer refuses an unsigned, tampered or unpinned package.
+
+**S-38 No arbitrary code loader.**
+- **Desktop modules** run only in the sandboxed renderer, under the custom origin `wos-module://<app>/<version>/`, with a CSP that allows scripts from that origin only: no `eval`, no remote scripts, no Node. They reach their environment only through the host bridge, which applies the manifest's API prefix and declared permissions.
+- **No module code runs in the main process.**
+- **Mobile** downloads no executable code after store install. App code is bundled, and screens are data (`wos-screen.v1`) with a fixed action set and app-scoped resources.
+- **Web** in V1 ships app code compiled into the deployment.
+
+A Feature Contract or ABU that adds a loader of remote code on any surface is a material finding. Workstreams: desktop, suite-shell, mobile-runtime, context-policy (policy rule).
+
+**S-39 Versions only move forward; rollback is local.**
+- Registry versions only increase (trigger `app_releases_rules`). Releases are immutable except a one-way yank.
+- Desktop keeps exactly one `previous` version per app and rolls back only to it (`ModuleInstallMachine`). It never downloads an older version, never installs a yanked one, and deactivates a yanked active version in favour of `previous`.
+
+Workstreams: control-plane, desktop. Tests: DB assertions (older release refused, published release immutable, un-yank refused).
+
+**S-40 Build is gated (D16).** Build's main-process capabilities are registered as IPC handlers only while both of these hold:
+- Build is enabled for an organization of the signed-in account (checked against the control plane at start, then every 60 seconds);
+- the user turned Build on for this device.
+
+Those capabilities are spawning the claude, codex and git processes, worktrees and filesystem access under the workspace root, CLI attestation, and lease heartbeats. If either condition lapses, Desktop releases held leases and unregisters the handlers. The server independently refuses claims with `NOT_ENTITLED`. S-29 and S-14 still bound everything Build does. Business-only installs never expose agent or git IPC. Workstreams: desktop, control-plane, cli. Tests: IPC fuzz with Build off (handlers absent); claim without entitlement → 403.
+
+**S-41 Entitlements are not DRM.** Self-hosted wOS Core decides what is active from the operator's configuration and never calls wOS Cloud to permit execution. Environment tokens are minted only for wOS Cloud environments. A payment check never sits in the path of running open-source code. Environment tokens are EdDSA JWS with a 15-minute lifetime and a single environment audience; their keys are published at `/v1/public/environment-keys`, current and next. Hosted Core has no platform-DB credentials, and the control plane has none for product data. Workstreams: control-plane, suite-shell. Test: V1 proof step 8 (a self-hosted Core with CRM active and no network route to warOnSaaS).
+
+**S-42 Windows releases are signed (D17).** The Windows installer is signed in the `release` job with Azure Trusted Signing (or an OV certificate), exactly like macOS signing and notarisation (S-30, D7). Unsigned Windows artefacts are never uploaded. Build on Windows keeps worktrees under a short per-user root with `core.longpaths` and `core.autocrlf=false`, and changesets use `/` paths only (case collisions are already refused, S-16). Workstreams: desktop, verification, github-build.

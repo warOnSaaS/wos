@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { AppId, ProductSurface } from "./wos-app.js";
 import {
   AbuKey,
   CapabilityKey,
@@ -12,6 +13,7 @@ import {
   WriteScope,
   RepoFullName,
   Surface,
+  PRODUCT_REPO,
   Browser,
   MINIMUM_BROWSERS,
   ToolName,
@@ -50,6 +52,13 @@ export const ARTIFACT_PATHS = {
   module: (feature: string) => `modules/${feature}`,
   webApp: "apps/web",
   mobileApp: "apps/mobile",
+  /** Amendment 01 (contracts 5.0.0): the suite's API server (wOS Core + app servers), the `api` surface. */
+  apiApp: "apps/api",
+  /** The desktop surface's renderer bundles (no Electron here: the one wOS Desktop shell is waronsaas/wos apps/desktop). */
+  desktopApp: "apps/desktop",
+  /** One WOS-APP manifest per application or shared module (WOS-APP-PROTOCOL.md). */
+  appManifest: (app: string) => `applications/${app}/wos-app.json`,
+  appDir: (app: string) => `applications/${app}`,
 } as const;
 
 // ---------------------------------------------------------------------------------------------
@@ -304,6 +313,11 @@ export const Roadmap = z
     /** Name of the replacement product (never the vendor's trademark). */
     productName: z.string().min(1),
     summary: z.string().min(1),
+    /**
+     * The wOS applications that replace this target (Amendment 01: Salesforce -> crm; HubSpot -> crm, marketing,
+     * helpdesk). The Sniper List tracks the TARGET; the apps are the PRODUCT. Progress stays profile based.
+     */
+    apps: z.array(AppId).default([]),
     /** How this target's parity profile maps onto the suite's modules and app shells (D14): no per-target codebase. */
     architecture: z.object({
       overview: z.string().min(1),
@@ -322,7 +336,10 @@ export const Roadmap = z
           status: z.enum(["in_scope", "excluded"]),
           reason: z.string().min(10).nullable(),
           repo: RepoFullName.nullable(),
-          /** The suite app shell that serves this surface (D14): "apps/web" or "apps/mobile" in waronsaas/product. */
+          /**
+           * The suite app shell that serves this surface (D14): "apps/web", "apps/mobile", "apps/desktop" or "apps/api"
+           * in waronsaas/product. Product-repo surfaces in scope must be product surfaces (contracts 5.0.0).
+           */
           path: z.string().nullable(),
         }),
       )
@@ -343,6 +360,14 @@ export const Roadmap = z
         ctx.addIssue({ code: "custom", path: ["surfaces", k, "reason"], message: `excluded surface ${s.surface} needs a reason` });
       if (s.status === "in_scope" && (!s.repo || !s.path))
         ctx.addIssue({ code: "custom", path: ["surfaces", k], message: `in-scope surface ${s.surface} needs repo and path` });
+    }
+    for (const [k, s] of r.surfaces.entries()) {
+      if (s.status === "in_scope" && s.repo === PRODUCT_REPO && !ProductSurface.safeParse(s.surface).success)
+        ctx.addIssue({
+          code: "custom",
+          path: ["surfaces", k, "surface"],
+          message: `${s.surface} is not a wOS product surface (web, desktop, ios, android, api); exclude it with a reason`,
+        });
     }
     const inScope = new Set(r.surfaces.filter((s) => s.status === "in_scope").map((s) => s.surface));
     const capTotal = sum(r.capabilities);
@@ -434,43 +459,82 @@ export const RequirementProfile = z.object({
 });
 export type RequirementProfile = z.infer<typeof RequirementProfile>;
 
-export const FeatureContract = z.object({
-  schema: z.literal("wos-feature-contract.v1"),
-  feature: FeatureKey,
-  version: z.number().int().positive(),
-  title: z.string().min(1),
-  summary: z.string().min(1),
-  requirements: z.array(Requirement).min(1),
-  /**
-   * Key user journeys per surface (D13), each linked to the requirements that implement it; acceptance tests
-   * journeys, not only endpoints. Journeys needing native capabilities name them (the contract must then
-   * include the ABUs that add the native modules).
-   */
-  journeys: z.array(Journey.extend({ requirements: z.array(RequirementKey).min(1) })).min(1),
-  /**
-   * The API every surface consumes (D13). Required when the contract's requirements span more than one
-   * surface: web and mobile use the same typed client from modules/<feature>. Null for single-surface features.
-   */
-  sharedApi: z.string().min(20).nullable(),
-  /** One profile per app that references this feature and has been specified. */
-  profiles: z.array(RequirementProfile).min(1),
-  /**
-   * Apps whose profile or shared requirements change in this version compared with the previous merged
-   * version. Required (non-empty) for every version > 1; review contexts include these apps' roadmap refs
-   * and profiles (FEATURE-CONTRACT.md "Versioning a shared contract").
-   */
-  impactedTargets: z.array(TargetSlug).default([]),
-  /** Interfaces this feature defines or consumes. Free text per entry, but every entry is named. */
-  interfaces: z.object({
-    data: z.array(z.object({ name: z.string(), definition: z.string() })).default([]),
-    api: z.array(z.object({ name: z.string(), definition: z.string() })).default([]),
-    ui: z.array(z.object({ name: z.string(), definition: z.string() })).default([]),
-    events: z.array(z.object({ name: z.string(), definition: z.string() })).default([]),
-  }),
-  dependsOnFeatures: z.array(FeatureKey).default([]),
-  /** Must be empty for consensus (reviewers treat any entry as a material gap). */
-  openQuestions: z.array(z.string()).default([]),
+/**
+ * What a feature must do on one surface (Amendment 01, contracts 5.0.0). Parity is not identical UX: mobile may
+ * view/edit/create/call a contact while desktop adds bulk import. Capabilities are snake_case verbs-objects.
+ */
+export const ContractSurface = z.object({
+  required: z.boolean(),
+  capabilities: z.array(z.string().regex(/^[a-z][a-z0-9_]{1,60}$/)).default([]),
 });
+export type ContractSurface = z.infer<typeof ContractSurface>;
+
+export const FeatureContract = z
+  .object({
+    schema: z.literal("wos-feature-contract.v1"),
+    feature: FeatureKey,
+    version: z.number().int().positive(),
+    title: z.string().min(1),
+    summary: z.string().min(1),
+    requirements: z.array(Requirement).min(1),
+    /**
+     * Key user journeys per surface (D13), each linked to the requirements that implement it; acceptance tests
+     * journeys, not only endpoints. Journeys needing native capabilities name them (the contract must then
+     * include the ABUs that add the native modules).
+     */
+    journeys: z.array(Journey.extend({ requirements: z.array(RequirementKey).min(1) })).min(1),
+    /**
+     * The API every surface consumes (D13). Required when the contract's requirements span more than one
+     * surface: web and mobile use the same typed client from modules/<feature>. Null for single-surface features.
+     */
+    sharedApi: z.string().min(20).nullable(),
+    /** One profile per app that references this feature and has been specified. */
+    profiles: z.array(RequirementProfile).min(1),
+    /**
+     * Apps whose profile or shared requirements change in this version compared with the previous merged
+     * version. Required (non-empty) for every version > 1; review contexts include these apps' roadmap refs
+     * and profiles (FEATURE-CONTRACT.md "Versioning a shared contract").
+     */
+    impactedTargets: z.array(TargetSlug).default([]),
+    /** Interfaces this feature defines or consumes. Free text per entry, but every entry is named. */
+    interfaces: z.object({
+      data: z.array(z.object({ name: z.string(), definition: z.string() })).default([]),
+      api: z.array(z.object({ name: z.string(), definition: z.string() })).default([]),
+      ui: z.array(z.object({ name: z.string(), definition: z.string() })).default([]),
+      events: z.array(z.object({ name: z.string(), definition: z.string() })).default([]),
+    }),
+    dependsOnFeatures: z.array(FeatureKey).default([]),
+    /** Must be empty for consensus (reviewers treat any entry as a material gap). */
+    openQuestions: z.array(z.string()).default([]),
+    /**
+     * Required surfaces and their accepted end state (Amendment 01, contracts 5.0.0). Product-family contracts use
+     * product surfaces only (web, desktop, ios, android, api; planning checks the family); a feature is not
+     * complete until every required surface's requirements are built and accepted.
+     */
+    surfaces: z.partialRecord(Surface, ContractSurface),
+  })
+  .superRefine((c, ctx) => {
+    const issue = (path: (string | number)[], message: string) => ctx.addIssue({ code: "custom", path, message });
+    const required = new Set(
+      Object.entries(c.surfaces)
+        .filter(([, v]) => v?.required)
+        .map(([k]) => k),
+    );
+    if (required.size === 0) issue(["surfaces"], "at least one surface is required");
+    for (const [k, v] of Object.entries(c.surfaces))
+      if (v?.required && v.capabilities.length === 0)
+        issue(["surfaces", k, "capabilities"], `required surface ${k} lists its capabilities`);
+    for (const [i, r] of c.requirements.entries())
+      for (const s of r.surfaces)
+        if (!required.has(s)) issue(["requirements", i, "surfaces"], `${s} is not a required surface of this contract`);
+    for (const s of required) {
+      if (!c.requirements.some((r) => r.surfaces.includes(s as Surface)))
+        issue(["surfaces", s], `required surface ${s} has no requirement`);
+      if (s !== "api" && !c.journeys.some((j) => j.surface === s)) issue(["surfaces", s], `required surface ${s} has no journey`);
+    }
+    for (const [i, j] of c.journeys.entries())
+      if (!required.has(j.surface)) issue(["journeys", i, "surface"], `${j.surface} is not a required surface`);
+  });
 export type FeatureContract = z.infer<typeof FeatureContract>;
 
 // ---------------------------------------------------------------------------------------------

@@ -86,6 +86,11 @@ Parity means features AND experience, on every surface the rented product ships.
 - **Not trade dress.** Parity is functional and experiential, explicitly NOT a copy of the vendor's trade dress, logos, icons, colours, layouts or wording. Our look is the warOnSaaS monochrome design system. Copying the vendor's visual design is a material finding at every review level.
 - The schema (`Roadmap.superRefine`) rejects: surface weights not summing to 10000, a feature on a surface that is not in scope, a surface without a journey, an excluded surface without a reason, an in-scope surface without repo and path.
 
+### Product surfaces and applications (Amendment 01, contracts 5.0.0)
+
+- **Surfaces in scope.** In `waronsaas/product` only wOS's own shells can be in scope: `web` (`apps/web`), `desktop` (`apps/desktop`, renderer bundles for the one wOS Desktop), `ios` and `android` (`apps/mobile`), and `api` (`apps/api`). A vendor surface wOS does not ship (browser extension, e-mail add-in, vendor CLI) is `excluded` with a reason; the schema refuses it in scope. A vendor desktop app maps to `desktop`, and a vendor public API maps to `api`.
+- **`apps`.** The roadmap names the wOS applications that replace the target (`Roadmap.apps`, `wos.target_apps`): Salesforce → `crm`. The Sniper List tracks the target; the application is the product. The roadmap still plans no target-specific shell, login or store listing (D14).
+
 ## 3. Lifecycle
 
 The roadmap workflow is a `documents` row with `kind = 'roadmap'` driven by `DocumentMachine`. Only one open roadmap workflow per app exists at a time (`documents_one_open_roadmap`: unique `target_id` where state not in `merged`, `abandoned`). This is the spec's "ONE canonical active Roadmap PR per application".
@@ -173,6 +178,10 @@ Display: `formatPercent(bp)`: `0%`; `<1%` for 1..99 bp; whole percent floored, m
 ### Per-surface progress (D13, contracts 4.0.0)
 
 `progress.ts` computes every feature per surface: a surface is SPECIFIED when the merged contract's profile for the app has requirements tagged with it, and BUILT by the size points of the ABUs relevant to those requirements, capped at 9999 until the surface's own acceptance check `wos-acceptance/<feature>/<target>/<surface>` passed. The feature's numbers are the surface-weighted sum, so a feature reaches 10000 only when every in-scope surface is complete; iOS and Android are separate surfaces with separate checks. `AppProgress.surfaces` gives per-surface app progress (over the features that include the surface) for the drilldown, and each `AppFeatureSummary.surfaces` shows the weights, rationales and numbers.
+
+### Target progress versus application progress (Amendment 01)
+
+Target progress (above) is unchanged, and it never reads entitlements or installs: enabling or disabling CRM changes nothing on the Sniper List (V1 proof step 9). Application progress (wOS CRM overall and per surface) is derived from the same merged ABUs and acceptance records of the application's features (WOS-APP-PROTOCOL section 11).
 
 ## 7. Failure paths
 

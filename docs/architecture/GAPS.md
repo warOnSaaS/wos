@@ -19,7 +19,7 @@ Sources: `docs/V1-SPEC.md` (the spec), `docs/DECISIONS.md` (D1–D12 and the nam
 | 7 | G-09 | Whether the App counts as a collaborator under "restrict PR creation to collaborators" is UNVERIFIED | D9 gate on day one | Test, then confirm |
 | 8 | G-15 | Builders and reviewers run other contributors' code on their own machines | Contributor safety | **FOUNDER DECISION** (accept V1 risk) |
 | 9 | G-12 | Reward amounts and pool sizes are unspecified | Rewards being "recorded" in the V1 test | **FOUNDER DECISION** |
-| 10 | G-18 | The website already offers Windows and Linux downloads; signing for them does not exist | Honest download page; Desktop release | **FOUNDER DECISION** |
+| 10 | G-18 | The website already offers Windows and Linux downloads; signing for them does not exist | Honest download page; Desktop release | DECIDED 2026-09-29 (D17): macOS, Windows and Linux in V1; Windows signing per FOUNDER-CHECKLIST section 12 |
 
 ---
 
@@ -246,3 +246,27 @@ Sources: `docs/V1-SPEC.md` (the spec), `docs/DECISIONS.md` (D1–D12 and the nam
 
 ### G-58 Expo SDK and React Native pairing is UNVERIFIED
 - `expo` 57.0.26 is the latest SDK on npm (2026-09-29); its `jest-expo` presets target React Native 0.86.x, while `react-native` 0.87.1 is already published. The exact pairing must be taken from `npx expo install --check` when the first mobile app is scaffolded (verification or the first mobile ABU), not guessed.
+
+
+## J. Found with Amendment 01 (contracts 5.0.0)
+
+### G-59 Hosted prices — FOUNDER DECISION (not blocking V1)
+- The architecture supports a base membership (core) plus a recurring price per `addon` application; `build` and modules are free. No production billing exists in V1, and no number is anywhere in the code. **Founder decides** the prices and the billing provider before wOS Cloud charges anyone. Until then every hosted entitlement is free, and `suspended` is used only for abuse.
+
+### G-60 Domains for wOS Web and hosted Core — FOUNDER CONFIRMS
+- The contracts use `https://app.waronsaas.com` (authenticated wOS Web) and `https://core.waronsaas.com` (wOS Cloud's Core API; `HOSTS`, the `environments` seed). Both are subdomains of the domain we already own, so no purchase is needed. **Founder confirms** or renames them before the Vercel projects are created (FOUNDER-CHECKLIST section 13); renaming is a data change plus a MINOR contracts change.
+
+### G-61 Module-signing key custody
+- One Ed25519 key signs every desktop module package. It is generated offline by the founder, stored only as a secret in the wos `release` environment, and its public half is pinned in Desktop. Losing it means a Desktop release that pins a new key; leaking it means rotating the key through a Desktop release and yanking the affected versions. Recommendation: generate two keys now (current and next) so that rotation needs no emergency release. No founder decision beyond doing it (FOUNDER-CHECKLIST section 13).
+
+### G-62 Offline and local caching
+- V1 clients keep no canonical data. Postgres on the environment is canonical, as the amendment says. Offline read caches and conflict handling come after V1; a Feature Contract that needs offline behaviour names it in its journeys (D13), and such work waits for a Core offline contract. No founder decision.
+
+### G-63 Independently deployed web modules
+- The amendment allows web modules to be "loaded/deployed independently". V1 compiles released apps into the one wOS Web deployment and activates them at runtime, because independently loaded web code needs the same signing and loader rules as Desktop (S-37, S-38) on an origin that also holds the session. We revisit this after V1 with a signed-module design for web. No founder decision.
+
+### G-64 Teams, invitations and member management
+- Migration 0006 has organizations, memberships and roles, but no invitation flow; e-mail invitations need the D8 mail path. Wave 3 needs only personal organizations and one team organization created by its owner, so invitations are post-V1 unless the V1 proof must show a second member. No founder decision.
+
+### G-65 Windows build of Build (D17)
+- Contributors on Windows need the claude and codex CLIs on PATH, Git for Windows, and long-path support. Some product toolchains (the iOS native requirement) are macOS-only regardless. The toolchain attestation already carries `os: windows`, and eligibility handles it. Risk: agent CLIs may behave differently on Windows; the Wave 3 Windows CI covers our code, not the vendors' CLIs. No founder decision.

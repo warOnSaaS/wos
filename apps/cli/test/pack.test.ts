@@ -5,6 +5,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { CONTRACTS_VERSION } from "@waronsaas/contracts";
 import { describe, expect, it } from "vitest";
 
 const CLI_DIR = fileURLToPath(new URL("..", import.meta.url));
@@ -36,6 +37,6 @@ describe("npm pack", () => {
 
   it("the bundled binary runs: wos --version prints the version and contracts", () => {
     const out = execFileSync(process.execPath, [`${CLI_DIR}dist/wos.mjs`, "--version"], { encoding: "utf8" });
-    expect(out).toMatch(/^0\.0\.0 \(contracts 4\.4\.0\)\n$/);
+    expect(out).toBe(`0.0.0 (contracts ${CONTRACTS_VERSION})\n`);
   });
 });

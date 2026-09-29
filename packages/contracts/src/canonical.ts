@@ -31,6 +31,7 @@
 import { createHash, createPrivateKey, createPublicKey, type KeyObject, sign, verify } from "node:crypto";
 import { AgentRunRecord, Changeset, type ChangesetFile, ContextManifest, ProvenanceRecord } from "./agent-io.js";
 import type { Sha256 } from "./primitives.js";
+import { ModulePackage } from "./wos-app.js";
 
 // ---------------------------------------------------------------------------------------------- C-1
 
@@ -195,4 +196,29 @@ export function gitBlobOid(bytes: Uint8Array): string {
   h.update(`blob ${bytes.byteLength}\0`);
   h.update(bytes);
   return h.digest("hex");
+}
+
+// ---------------------------------------------------------------------------------------------- C-6
+// Signed desktop module packages (contracts 5.0.0, SECURITY S-37). The module-signing key signs the UTF-8
+// bytes of canonicalJson(package without `signature`); Desktop verifies against keys pinned in its binary.
+
+export function modulePackageSigningPayload(pkg: Omit<ModulePackage, "signature"> | ModulePackage): Uint8Array {
+  const { signature: _drop, ...rest } = pkg as ModulePackage;
+  return new TextEncoder().encode(canonicalJson(rest));
+}
+
+/**
+ * Verifies a module package: schema, signature by a pinned key (keyId -> base64 public key), and the manifest
+ * hash. File hashes are checked by the installer against the bytes it received. Returns the reasons it fails.
+ */
+export function verifyModulePackage(input: unknown, pinnedKeys: Readonly<Record<string, string>>): string[] {
+  const parsed = ModulePackage.safeParse(input);
+  if (!parsed.success) return parsed.error.issues.map((i) => `schema: ${i.path.join(".")}: ${i.message}`);
+  const pkg = parsed.data;
+  const reasons: string[] = [];
+  const key = pinnedKeys[pkg.signature.keyId];
+  if (!key) reasons.push(`signature: key ${pkg.signature.keyId} is not pinned in this Desktop`);
+  else if (!verifyEd25519(key, modulePackageSigningPayload(pkg), pkg.signature.value)) reasons.push("signature: invalid");
+  if (canonicalSha256(pkg.manifest) !== pkg.manifestSha256) reasons.push("manifestSha256 does not match the manifest");
+  return reasons;
 }

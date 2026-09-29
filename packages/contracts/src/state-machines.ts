@@ -11,6 +11,8 @@
  *   maintainer   a human with the maintainer role (V1: the founder), via an admin route
  *   system       the control plane itself (request handler side effects, sweeper cron, event consumers)
  *   github       a verified GitHub webhook delivery processed by the control plane
+ *   account      any signed-in account acting on an organization it belongs to (contracts 5.0.0; the guard names the org role)
+ *   client       a wOS client (Desktop main process) on the user's machine, persisting its own local state
  *
  * Persistence rule: every transition is a single SQL statement of the form
  *   UPDATE ... SET state = $to, row_version = row_version + 1 WHERE id = $id AND state = $from AND row_version = $v
@@ -18,7 +20,7 @@
  * means a concurrent transition won; the caller gets 409 CONFLICT and must re-read.
  */
 
-export type Actor = "contributor" | "maintainer" | "system" | "github";
+export type Actor = "contributor" | "maintainer" | "system" | "github" | "account" | "client";
 
 export interface Transition<S extends string, E extends string> {
   readonly from: S;
@@ -838,6 +840,155 @@ export const BlockerMachine = machine<BlockerState, BlockerEvent>({
   ],
 });
 
+// ---------------------------------------------------------------------------------------------
+// App entitlement (Amendment 01, contracts 5.0.0): one row per (organization, kind-app application).
+// "available" is the absence of a row. Entitlements gate HOSTED activation only, never self-hosted
+// execution (S-41). Core and modules have no entitlement.
+// ---------------------------------------------------------------------------------------------
+
+export const EntitlementStates = ["available", "enabled", "disabled", "suspended"] as const;
+export type EntitlementStateName = (typeof EntitlementStates)[number];
+export type EntitlementEvent = "enable" | "disable" | "suspend" | "resume";
+
+export const EntitlementMachine = machine<EntitlementStateName, EntitlementEvent>({
+  name: "entitlement",
+  states: EntitlementStates,
+  initial: ["available"],
+  terminal: [],
+  transitions: [
+    {
+      from: "available",
+      to: "enabled",
+      event: "enable",
+      actor: ["account", "maintainer"],
+      guard:
+        "caller is owner or admin of the org; the app is kind app, hosted-compatible and in the registry; every app it requires is enabled (DEPENDENCY_NOT_ENABLED otherwise); modules it requires activate implicitly",
+    },
+    {
+      from: "disabled",
+      to: "enabled",
+      event: "enable",
+      actor: ["account", "maintainer"],
+      guard: "same as the first enable; the app's data was kept while disabled and becomes visible again",
+    },
+    {
+      from: "enabled",
+      to: "disabled",
+      event: "disable",
+      actor: ["account", "maintainer"],
+      guard: "caller is owner or admin; no other enabled app of this org requires it (DEPENDENT_ENABLED otherwise); data is never deleted",
+    },
+    {
+      from: "enabled",
+      to: "suspended",
+      event: "suspend",
+      actor: ["system", "maintainer"],
+      guard: "hosted service suspended for this org (billing lapse or abuse, reason recorded); self-hosted copies are unaffected",
+    },
+    { from: "suspended", to: "enabled", event: "resume", actor: ["system", "maintainer"], guard: "the suspension reason is cleared" },
+    {
+      from: "suspended",
+      to: "disabled",
+      event: "disable",
+      actor: ["account", "maintainer"],
+      guard: "caller is owner or admin; same dependent check as disable",
+    },
+  ],
+});
+
+// ---------------------------------------------------------------------------------------------
+// App release (registry): one row per (app, version), published from a signed product release.
+// ---------------------------------------------------------------------------------------------
+
+export const AppReleaseStates = ["published", "yanked"] as const;
+export type AppReleaseState = (typeof AppReleaseStates)[number];
+export type AppReleaseEvent = "yank";
+
+export const AppReleaseMachine = machine<AppReleaseState, AppReleaseEvent>({
+  name: "app_release",
+  states: AppReleaseStates,
+  initial: ["published"],
+  terminal: ["yanked"],
+  transitions: [
+    {
+      from: "published",
+      to: "yanked",
+      event: "yank",
+      actor: ["maintainer"],
+      guard: "reason recorded; clients never install a yanked version and roll back to their previous one if it is active",
+    },
+  ],
+});
+
+// ---------------------------------------------------------------------------------------------
+// Desktop module install (client-local, persisted by the Desktop main process; S-37..S-39).
+// Per (app, version) on one machine. At most one `active` and one `previous` version per app.
+// ---------------------------------------------------------------------------------------------
+
+export const ModuleInstallStates = ["staged", "active", "previous", "failed", "removed"] as const;
+export type ModuleInstallState = (typeof ModuleInstallStates)[number];
+export type ModuleInstallEvent = "activate" | "supersede" | "rollback" | "fail" | "remove";
+
+export const ModuleInstallMachine = machine<ModuleInstallState, ModuleInstallEvent>({
+  name: "module_install",
+  states: ModuleInstallStates,
+  initial: ["staged"],
+  terminal: ["removed"],
+  transitions: [
+    {
+      from: "staged",
+      to: "active",
+      event: "activate",
+      actor: ["client"],
+      guard:
+        "package signature verified against a pinned key, every file hash matches, WOS-APP compatible with this Desktop, version newer than the active one, not yanked, and the app is active for the org",
+    },
+    {
+      from: "staged",
+      to: "failed",
+      event: "fail",
+      actor: ["client"],
+      guard: "verification or first load failed; the reason is shown and logged",
+    },
+    {
+      from: "active",
+      to: "previous",
+      event: "supersede",
+      actor: ["client"],
+      guard: "a newer version of the same app became active; the older one is kept for rollback",
+    },
+    {
+      from: "active",
+      to: "failed",
+      event: "fail",
+      actor: ["client"],
+      guard: "the module failed to load or crashed repeatedly; the previous version is re-activated if present",
+    },
+    {
+      from: "previous",
+      to: "active",
+      event: "rollback",
+      actor: ["client"],
+      guard: "the newer version failed or was yanked; the previous package still verifies (never a download of an older version)",
+    },
+    {
+      from: "previous",
+      to: "removed",
+      event: "remove",
+      actor: ["client"],
+      guard: "a newer previous exists (keep one) or the app is no longer active",
+    },
+    {
+      from: "active",
+      to: "removed",
+      event: "remove",
+      actor: ["client"],
+      guard: "the app is no longer active for any org on this machine; files deleted",
+    },
+    { from: "failed", to: "removed", event: "remove", actor: ["client"], guard: "cleanup of a failed package" },
+  ],
+});
+
 export const ALL_MACHINES = [
   TaskMachine,
   LeaseMachine,
@@ -851,4 +1002,7 @@ export const ALL_MACHINES = [
   InventoryMachine,
   ProposalMachine,
   BlockerMachine,
+  EntitlementMachine,
+  AppReleaseMachine,
+  ModuleInstallMachine,
 ] as const;

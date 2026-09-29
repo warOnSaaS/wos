@@ -15,7 +15,7 @@ Secrets never go in the repo. Every secret below goes into the place named (Verc
 | G-04 | Who merges | App auto-merges implementation PRs; maintainer approval for roadmap/contract PRs during bootstrap | first merge |
 | G-01 | Public wording for model claims | "max reasoning, attested" | site and PR copy |
 | G-12 | Reward amounts (`reward-schedule.v1.json`) | activate as proposed or edit | rewards in V1 test |
-| G-18 | Desktop platforms in V1 | macOS + Linux; Windows later | Desktop release, download page |
+| G-18 | Desktop platforms in V1 | DECIDED (D17): macOS, Windows and Linux | Desktop release, download page |
 | G-27 | What non-contributors get | follow targets + weekly progress email | web sign-in scope |
 | G-31 | "WOS tokens" vs "wOS tokens" | founder's call | copy |
 | G-22 | Hosted / self-hostable criteria | as in GAPS.md | status badges |
@@ -151,7 +151,7 @@ Remember D7: Vercel CLI deploys are blocked unless the HEAD commit author is `ad
 2. Create a **Developer ID Application** certificate; export as `.p12` with a password.
 3. App Store Connect → Users and Access → Integrations → **App Store Connect API** key with Developer access; download the `.p8` once.
 4. In `waronsaas/wos` create GitHub Actions environment `release` (required reviewer: you) with secrets: `CSC_LINK` (base64 of the .p12), `CSC_KEY_PASSWORD`, `APPLE_API_KEY` (contents of the .p8), `APPLE_API_KEY_ID`, `APPLE_API_ISSUER`. Notarisation runs only in Actions (D7).
-5. Windows (only if G-18 says so): an Azure Trusted Signing account or an OV code-signing certificate.
+5. Windows (D17: required for V1): see section 12.
 
 ## 8. npm (blocks publishing `@waronsaas/cli`)
 
@@ -177,3 +177,30 @@ Remember D7: Vercel CLI deploys are blocked unless the HEAD commit author is `ad
 ## 11. Vercel: build the website from the monorepo root (Wave 2 gate)
 
 In the `waronsaas-web` project settings: keep Root Directory `apps/web`; enable "Include files outside the root directory in the Build Step"; set Install Command `cd ../.. && npm ci --ignore-scripts` and Node.js 22.x. Deploy a preview from `main` and check it before promoting. Then tell the web workstream to remove the standalone-build workarounds (ARCHITECTURE section 13).
+
+## 12. Windows code signing (D17; blocks the Windows Desktop release)
+
+Choose ONE:
+- **Azure Trusted Signing (recommended).** It is cheaper, and there is no hardware token to keep.
+  1. Create an Azure subscription and a Trusted Signing account, and complete identity validation for the organisation. CONFIRM IN UI: the portal name is "Trusted Signing" or "Artifact Signing".
+  2. Create a certificate profile (Public Trust).
+  3. Create an app registration (service principal) with the "Trusted Signing Certificate Profile Signer" role.
+  4. In `waronsaas/wos` environment `release`, add the secrets `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, and the endpoint, account and profile names as `AZURE_SIGNING_ENDPOINT`, `AZURE_SIGNING_ACCOUNT`, `AZURE_SIGNING_PROFILE`.
+- **OV code-signing certificate** from a CA. Since 2023 the private key must live on a hardware token or in a cloud HSM, so CI signing needs the CA's cloud signing service; put its credentials in the same `release` environment. Expect SmartScreen reputation to build up slowly with either option.
+
+Tell the verification workstream which option you chose. The workflow refuses to publish an unsigned Windows installer (S-42).
+
+## 13. One product (Amendment 01; blocks the V1 proof)
+
+1. **Domains (G-60).** Confirm `app.waronsaas.com` (wOS Web) and `core.waronsaas.com` (wOS Cloud Core API), and add both as Vercel domains when the projects exist.
+2. **Product database.** Create a separate Neon project for wOS Cloud product data (not the platform database), region us-west-2, and give its connection string only to the Core project (`CORE_DATABASE_URL`). The platform database's credentials must never be set on it.
+3. **Vercel projects.** Create `waronsaas-app` (root `apps/web` of `waronsaas/product`) and `waronsaas-core` (root `apps/api` of `waronsaas/product`), after the product repo exists.
+4. **Seed the product repo.** Create `waronsaas/product` from `templates/product` in the wos repo: the first commit is yours; every later change goes through the App (D9).
+5. **Module-signing keys (G-61).**
+   1. On a trusted machine, generate two Ed25519 keys with `openssl genpkey -algorithm ed25519 -out wos-module-2026.pem`, and repeat for `wos-module-2026-next`.
+   2. Put the current private key in `waronsaas/wos` environment `release` as `WOS_MODULE_SIGNING_KEY`, with key id `wos-module-2026`.
+   3. Give both public keys (`openssl pkey -in X.pem -pubout`) to the desktop workstream to pin.
+   4. Keep the `-next` private key offline.
+6. **Environment-token keys.** Generate one Ed25519 key for the control plane → Vercel env `WOS_ENV_TOKEN_KEY` on `waronsaas-api` (plus a `-next` one for rotation).
+7. **Prices (G-59).** Decide them only when wOS Cloud is to charge; nothing blocks on it now.
+8. **Migration 0006.** It is applied to production by the coordinator through the runner (not by any workstream).

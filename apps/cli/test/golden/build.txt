@@ -4,7 +4,7 @@ attempt  leased   contacts#04 0192ab3c-0000-7000-8000-000000000003
 LEASE    passed   lease 0192ab3c-0000-7000-8000-000000000004 until 2026-09-29T12:30:00.000Z
 worktree ready    <root>/worktrees/a-0192ab3c-0192ab3c @ ed42b814c4ed
 BUILD    started  building contacts#04
-context  built    7 artifacts, 1951/120000 tokens, manifest 5727285dfe28
+context  built    7 artifacts, 1951/120000 tokens, manifest 727dcaff4f2e
 agent    started  builder on claude-opus-5-5 (claude_cli, reasoning high) pid 4242
 agent    exited   code 0 after 7ms
 BUILD    passed   implemented contacts#04 (run 1)
