@@ -22,6 +22,7 @@
     "@waronsaas/agent-policy": "*",
     "@waronsaas/context-engine": "*",
     "@waronsaas/verification": "*",
-    "@waronsaas/github": "*"
+    "@waronsaas/github": "*",
+    "@waronsaas/planning": "*"
   }
 }

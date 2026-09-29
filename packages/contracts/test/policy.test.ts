@@ -65,9 +65,14 @@ describe("agent-policy.v1", () => {
 
   it("every CLI flag used in args templates was verified locally", () => {
     for (const p of policy.providers) {
-      const used = [...p.baseArgs, ...p.readOnlyArgs, ...p.workspaceWriteArgs, ...p.reasoningArgs, ...p.outputSchemaArgs].filter(
-        (a) => a.startsWith("-") && a !== "-",
-      );
+      const used = [
+        ...p.baseArgs,
+        ...p.readOnlyArgs,
+        ...p.workspaceWriteArgs,
+        ...p.reasoningArgs,
+        ...p.outputSchemaArgs,
+        ...p.trailingArgs,
+      ].filter((a) => a.startsWith("-") && a !== "-");
       for (const flag of used) expect(p.verification.verifiedFlags, `${p.id} ${flag}`).toContain(flag);
     }
   });
@@ -78,6 +83,8 @@ describe("agent-policy.v1", () => {
       expect.arrayContaining(["--ignore-user-config", "--ignore-rules", "project_doc_max_bytes=0", "--ephemeral"]),
     );
     expect(codex.reasoningArgs.join(" ")).toContain("model_reasoning_effort");
+    expect(codex.baseArgs).not.toContain("-");
+    expect(codex.trailingArgs).toEqual(["-"]);
   });
 });
 

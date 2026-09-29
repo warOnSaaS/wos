@@ -13,7 +13,7 @@
  *   github       a verified GitHub webhook delivery processed by the control plane
  *
  * Persistence rule: every transition is a single SQL statement of the form
- *   UPDATE ... SET state = $to, version = version + 1 WHERE id = $id AND state = $from AND version = $v
+ *   UPDATE ... SET state = $to, row_version = row_version + 1 WHERE id = $id AND state = $from AND row_version = $v
  * in the same transaction as the INSERT of the corresponding domain event. Zero rows updated
  * means a concurrent transition won; the caller gets 409 CONFLICT and must re-read.
  */
@@ -101,7 +101,7 @@ export const TaskMachine = machine<TaskState, TaskEvent>({
       event: "reject_output",
       actor: ["system"],
       guard:
-        "post-submission checks failed for a reason not attributable to the subject (e.g. GitHub API outage after retries); a new lease may be taken",
+        "document author tasks only: post-submission processing failed for a reason not attributable to the author (e.g. GitHub outage after retries); a new lease may be taken. Never used for abu_build/abu_revision: their attempt stays `submitted` while the github_sync consumer retries the App commit with backoff for up to 1 hour, then the attempt is failed with reason upstream_github",
     },
     {
       from: "blocked",
@@ -348,7 +348,8 @@ export const AbuMachine = machine<AbuState, AbuEvent>({
       to: "ready",
       event: "attempt_ended",
       actor: ["system"],
-      guard: "the attempt reached expired/abandoned/failed/closed_unmerged; failed_attempts < policy.maxFailedAttemptsPerAbu",
+      guard:
+        "the attempt reached expired/abandoned/failed/closed_unmerged; failed_attempts is incremented in the same transaction for failed/expired/closed_unmerged (not abandoned); failed_attempts < policy.maxFailedAttemptsPerAbu",
     },
     {
       from: "in_progress",
@@ -533,7 +534,8 @@ export const AttemptMachine = machine<AttemptState, AttemptEvent>({
       to: "pr_open",
       event: "pr_opened",
       actor: ["system"],
-      guard: "GitHub App opened PR from candidate branch; wos/qualified status set on head sha",
+      guard:
+        "GitHub App opened the PR (first qualification) or moved the open PR's official branch to the newly qualified head (re-qualification after merge_blocked); wos/qualified status set on that head sha",
     },
     {
       from: "pr_open",

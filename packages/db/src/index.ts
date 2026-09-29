@@ -39,4 +39,5 @@ export async function runMigrations(input: { databaseUrl: string; migrationsDir:
 /** Per-request connection helper contract: every transaction first runs
  *  `select set_config('wos.actor_id', $1, true), set_config('wos.actor_kind', $2, true)`
  *  so RLS policies can see who is acting (see SECURITY.md "Row-level security"). */
-export type ActorKind = "account" | "maintainer" | "system" | "github" | "anonymous";
+/** Mirrors the SQL: wos.is_privileged() is true for system, github and maintainer; events.actor_kind uses the first four. */
+export type ActorKind = "contributor" | "maintainer" | "system" | "github" | "anonymous";

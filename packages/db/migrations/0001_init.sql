@@ -675,8 +675,9 @@ create table wos.reviews (
   manifest_id     uuid not null references wos.context_manifests (id),
   independence    text not null check (independence in ('independent', 'bootstrap_maintainer', 'bootstrap_self')),
   sealed_at       timestamptz not null default now(),
-  unique (round_id, slot),
-  unique (round_id, account_id)    -- the two slots of a round are always different accounts
+  unique (round_id, slot)
+  -- Distinct reviewers per round are enforced by check_review_independence(): the same account may
+  -- hold both slots ONLY when both reviews are bootstrap_self (a solo founder in bootstrap, GAPS G-02).
 );
 
 create table wos.findings (
@@ -732,15 +733,22 @@ create table wos.rulings (
 
 create table wos.verification_runs (
   id                     uuid primary key default gen_random_uuid(),
+  subject                text not null check (subject in ('attempt', 'document', 'profile_acceptance')),
   attempt_id             uuid references wos.attempts (id),
   document_id            uuid references wos.documents (id),
+  -- profile_acceptance: the per-app acceptance suite of a catalog feature on the default branch (D10/D11)
+  catalog_feature_id     uuid references wos.catalog_features (id),
+  profile_target_id      uuid references wos.targets (id),
   source                 text not null check (source in ('local', 'ci')),
   head_sha               text not null check (head_sha ~ '^[0-9a-f]{40}$'),
   conclusion             text not null check (conclusion in ('success', 'failure', 'cancelled', 'timed_out', 'action_required', 'neutral', 'skipped', 'stale')),
   github_check_suite_id  bigint,
   details                jsonb not null default '{}',
   created_at             timestamptz not null default now(),
-  check ((attempt_id is null) <> (document_id is null)),
+  check ((subject = 'attempt') = (attempt_id is not null)),
+  check ((subject = 'document') = (document_id is not null)),
+  check ((subject = 'profile_acceptance') = (catalog_feature_id is not null and profile_target_id is not null)),
+  check (subject <> 'profile_acceptance' or source = 'ci'),
   check ((source = 'ci') = (github_check_suite_id is not null))
 );
 create index verification_runs_attempt on wos.verification_runs (attempt_id, head_sha);
@@ -1027,6 +1035,14 @@ begin
   end if;
   if new.head_sha <> r.head_sha or new.submission_sha256 <> r.submission_sha256 then
     raise exception 'wos: review is bound to %/% but round % is %/%', new.head_sha, new.submission_sha256, r.id, r.head_sha, r.submission_sha256
+      using errcode = 'check_violation';
+  end if;
+  if exists (
+    select 1 from wos.reviews o
+     where o.round_id = new.round_id and o.account_id = new.account_id
+       and not (o.independence = 'bootstrap_self' and new.independence = 'bootstrap_self')
+  ) then
+    raise exception 'wos: account % already reviewed round % (distinct reviewers required)', new.account_id, new.round_id
       using errcode = 'check_violation';
   end if;
   if new.independence = 'bootstrap_self' then

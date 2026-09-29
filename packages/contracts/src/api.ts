@@ -42,7 +42,7 @@ import { AbuKey, Cursor, FeatureKey, GitSha, Page, Sha256, TargetSlug, Timestamp
  *   account         any signed-in account (D8: email magic link). Desktop/CLI send
  *                   `Authorization: Bearer <wOS access token>` (opaque, 1h); the web sends the
  *                   HttpOnly cookie `wos_session` (Domain=waronsaas.com, Secure, SameSite=Lax)
- *                   and, for state-changing requests, header `X-Wos-Csrf` matching cookie `wos_csrf`.
+ *                   and, for state-changing requests, header `X-wOS-Csrf` matching cookie `wos_csrf`.
  *   contributor     an account with a linked GitHub identity, not suspended. Otherwise 403 GITHUB_REQUIRED.
  *   maintainer      contributor whose account has the maintainer role
  *   github_webhook  `X-Hub-Signature-256` HMAC with GITHUB_WEBHOOK_SECRET
@@ -395,6 +395,19 @@ export const Routes = {
     errors: ["NOT_FOUND", "GITHUB_LINKED_ELSEWHERE", "GITHUB_RESERVED", "UPSTREAM_GITHUB"],
     summary:
       "Completes the link. One GitHub per account; a GitHub linked to (or reserved by) another account is refused. The GitHub token is discarded after reading /user.",
+  }),
+  githubOAuthCallback: route({
+    method: "GET",
+    path: "/v1/github/oauth/callback",
+    auth: "public",
+    idempotent: false,
+    params: None,
+    query: z.object({ code: z.string().optional(), state: z.string(), error: z.string().optional() }),
+    body: None,
+    response: z.object({ redirectTo: z.url() }),
+    errors: ["NOT_FOUND", "GITHUB_LINKED_ELSEWHERE", "GITHUB_RESERVED", "UPSTREAM_GITHUB"],
+    summary:
+      "Web linking flow callback (the App's Callback URL). `state` must match a pending github_link_requests row; responds 302 to https://waronsaas.com/account?github=linked|refused.",
   }),
   unlinkGithub: route({
     method: "POST",

@@ -85,6 +85,11 @@ export const ProviderSpec = z.object({
   reasoningArgs: z.array(ArgTemplate),
   /** How to pin the output to a JSON schema file. */
   outputSchemaArgs: z.array(ArgTemplate),
+  /**
+   * Appended LAST. Final argv = baseArgs + (readOnlyArgs | workspaceWriteArgs) + reasoningArgs +
+   * outputSchemaArgs + trailingArgs. codex needs its stdin marker "-" here, after every option.
+   */
+  trailingArgs: z.array(ArgTemplate).default([]),
   /** Environment variables wOS sets. It never sets credentials. */
   env: z.record(z.string(), z.string()).default({}),
   /** Flags verified present by running `--help` locally, vs assumed. */
@@ -152,6 +157,8 @@ export const RolePolicy = z.object({
     minGithubAccountAgeDays: z.number().int().nonnegative(),
     minAcceptedContributions: z.number().int().nonnegative(),
     requiresMaintainer: z.boolean(),
+    /** Maintainers skip minAcceptedContributions (someone has to review first). */
+    maintainersExempt: z.boolean(),
   }),
 });
 export type RolePolicy = z.infer<typeof RolePolicy>;
@@ -181,6 +188,8 @@ export const BootstrapPolicy = z.object({
   publicLabel: z.string(),
   /** Awards for self-reviewed work stay held until an independent re-review passes. */
   holdSelfReviewedAwards: z.literal(true),
+  /** While bootstrap is on, minAcceptedContributions is not enforced for anyone (seed reviewers start at zero). */
+  waiveMinAcceptedContributions: z.boolean(),
 });
 export type BootstrapPolicy = z.infer<typeof BootstrapPolicy>;
 

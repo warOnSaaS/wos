@@ -59,7 +59,8 @@
           "--effort max accepted for claude-fable-5-1 and claude-opus-5-5",
           "prompt read from stdin when no positional prompt is given with -p"
         ]
-      }
+      },
+      "trailingArgs": []
     },
     {
       "id": "codex_cli",
@@ -82,8 +83,7 @@
         "-o",
         "{lastMessagePath}",
         "-C",
-        "{cwd}",
-        "-"
+        "{cwd}"
       ],
       "readOnlyArgs": ["--sandbox", "read-only"],
       "workspaceWriteArgs": ["--sandbox", "workspace-write"],
@@ -112,7 +112,8 @@
           "positional '-' after options reads the prompt from stdin (help says '-' or omitted reads stdin)",
           "--json events report the resolved model id and effort"
         ]
-      }
+      },
+      "trailingArgs": ["-"]
     }
   ],
   "models": [
@@ -175,7 +176,8 @@
       "eligibility": {
         "minGithubAccountAgeDays": 90,
         "minAcceptedContributions": 0,
-        "requiresMaintainer": false
+        "requiresMaintainer": false,
+        "maintainersExempt": true
       },
       "obligations": [
         "Produce roadmaps/<target>/INVENTORY.yaml and ROADMAP.yaml that validate against wos-inventory.v1 and wos-roadmap.v1.",
@@ -218,7 +220,8 @@
       "eligibility": {
         "minGithubAccountAgeDays": 90,
         "minAcceptedContributions": 1,
-        "requiresMaintainer": false
+        "requiresMaintainer": false,
+        "maintainersExempt": true
       },
       "obligations": [
         "Independently try to prove this roadmap and its inventory incomplete or wrongly weighted. You do not see the other reviewer's current verdict.",
@@ -264,7 +267,8 @@
       "eligibility": {
         "minGithubAccountAgeDays": 90,
         "minAcceptedContributions": 1,
-        "requiresMaintainer": false
+        "requiresMaintainer": false,
+        "maintainersExempt": true
       },
       "obligations": [
         "Independently try to prove this roadmap and its inventory incomplete or wrongly weighted. You do not see the other reviewer's current verdict.",
@@ -304,7 +308,8 @@
       "eligibility": {
         "minGithubAccountAgeDays": 90,
         "minAcceptedContributions": 0,
-        "requiresMaintainer": false
+        "requiresMaintainer": false,
+        "maintainersExempt": true
       },
       "obligations": [
         "Produce features/<feature>/CONTRACT.yaml and BUILD-GRAPH.yaml that validate against wos-feature-contract.v1 and wos-build-graph.v1 and pass the build-graph validator.",
@@ -347,7 +352,8 @@
       "eligibility": {
         "minGithubAccountAgeDays": 90,
         "minAcceptedContributions": 1,
-        "requiresMaintainer": false
+        "requiresMaintainer": false,
+        "maintainersExempt": true
       },
       "obligations": [
         "Independently try to prove this feature contract and build graph incomplete, app-specific, ambiguous or unsafe to parallelise. You do not see the other reviewer's current verdict.",
@@ -393,7 +399,8 @@
       "eligibility": {
         "minGithubAccountAgeDays": 90,
         "minAcceptedContributions": 1,
-        "requiresMaintainer": false
+        "requiresMaintainer": false,
+        "maintainersExempt": true
       },
       "obligations": [
         "Independently try to prove this feature contract and build graph incomplete, app-specific, ambiguous or unsafe to parallelise. You do not see the other reviewer's current verdict.",
@@ -433,7 +440,8 @@
       "eligibility": {
         "minGithubAccountAgeDays": 90,
         "minAcceptedContributions": 0,
-        "requiresMaintainer": false
+        "requiresMaintainer": false,
+        "maintainersExempt": true
       },
       "obligations": [
         "Implement exactly the ABU given; write only inside its write scope; do not touch protected, generated or lockfile paths unless the ABU declares the resource.",
@@ -474,7 +482,8 @@
       "eligibility": {
         "minGithubAccountAgeDays": 90,
         "minAcceptedContributions": 1,
-        "requiresMaintainer": false
+        "requiresMaintainer": false,
+        "maintainersExempt": true
       },
       "obligations": [
         "Review ONLY the candidate diff at the given head sha against its ABU, the feature contract and the acceptance checks.",
@@ -519,7 +528,8 @@
       "eligibility": {
         "minGithubAccountAgeDays": 90,
         "minAcceptedContributions": 1,
-        "requiresMaintainer": false
+        "requiresMaintainer": false,
+        "maintainersExempt": true
       },
       "obligations": [
         "Review ONLY the candidate diff at the given head sha against its ABU, the feature contract and the acceptance checks.",
@@ -564,7 +574,8 @@
       "eligibility": {
         "minGithubAccountAgeDays": 90,
         "minAcceptedContributions": 3,
-        "requiresMaintainer": false
+        "requiresMaintainer": false,
+        "maintainersExempt": true
       },
       "obligations": [
         "Rule on each escalated finding: upheld (the author must fix it) or overruled (not material), with a rationale that cites the contract, roadmap or evidence.",
@@ -590,7 +601,8 @@
     "exitActivityWindowDays": 14,
     "selfReviewAfterHours": 24,
     "publicLabel": "Bootstrap review: not yet independently cross-reviewed",
-    "holdSelfReviewedAwards": true
+    "holdSelfReviewedAwards": true,
+    "waiveMinAcceptedContributions": true
   },
   "tokenEstimator": {
     "charsPerToken": 3.0,

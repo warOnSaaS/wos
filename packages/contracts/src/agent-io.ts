@@ -350,9 +350,9 @@ export type ProvenanceRecord = z.infer<typeof ProvenanceRecord>;
 
 /** Commit trailers the GitHub App writes on every official commit. */
 export const COMMIT_TRAILERS = {
-  task: "Wos-Task",
-  attempt: "Wos-Attempt",
-  abu: "Wos-Abu",
-  manifest: "Wos-Manifest",
-  contributor: "Wos-Contributor",
+  task: "wOS-Task",
+  attempt: "wOS-Attempt",
+  abu: "wOS-Abu",
+  manifest: "wOS-Manifest",
+  contributor: "wOS-Contributor",
 } as const;
