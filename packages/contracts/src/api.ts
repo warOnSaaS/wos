@@ -53,6 +53,9 @@ import { AbuKey, Cursor, FeatureKey, GitSha, Page, Sha256, TargetSlug, Timestamp
  * The server stores (key, contributor, route, sha256(body)) -> response for 24h. Same key +
  * same body replays the stored response; same key + different body -> 422 IDEMPOTENCY_MISMATCH.
  *
+ * A refused submission (422 SCOPE_VIOLATION on submitChangeset) carries its ChangesetValidation in
+ * `error.details` (contracts 4.4.0, B-0006-control-plane); there is no top-level `validation` field on errors.
+ *
  * Implicit errors (never listed per route): UNAUTHENTICATED and GITHUB_REQUIRED where the auth mode
  * requires them, RATE_LIMITED and INTERNAL everywhere, IDEMPOTENCY_MISMATCH on every idempotent route,
  * VALIDATION_FAILED for any request that fails its zod schema.

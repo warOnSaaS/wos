@@ -139,4 +139,11 @@ export interface Orchestrator {
   listOpenTasks(filter: { kind?: TaskKind; target?: string; feature?: string }): Promise<TaskView[]>;
   myWork(): Promise<{ leases: LeaseView[]; tasks: TaskView[]; attempts: AttemptView[] }>;
   events(after?: number): Promise<{ items: DomainEvent[]; lastId: number }>;
+  /** contracts 4.4.0 (B-0003-desktop): account preferences through the orchestrator's session (PATCH /v1/me). */
+  updateMe(patch: {
+    displayName?: string | null;
+    leaderboardOptIn?: boolean;
+    followedTargets?: string[];
+    progressEmails?: boolean;
+  }): Promise<Me>;
 }

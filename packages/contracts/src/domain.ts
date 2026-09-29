@@ -114,7 +114,8 @@ export const AppFeatureSummary = z.object({
   capability: CapabilityKey,
   title: z.string(),
   summary: z.string(),
-  state: AppFeatureStateSchema,
+  /** "proposed" (4.4.0): a feature of an unmerged roadmap; it has no app_features row and no progress yet. */
+  state: z.union([AppFeatureStateSchema, z.literal("proposed")]),
   weightBp: z.number().int().positive(),
   weightRationale: z.string(),
   effectiveAppWeightBp: z.number().int().nonnegative(),
@@ -156,6 +157,11 @@ export const CapabilitySummary = z.object({
 });
 
 export const TargetDetail = TargetSummary.extend({
+  /**
+   * contracts 4.4.0 (B-0001-web): "merged" when capabilities come from the latest merged roadmap version,
+   * "proposed" when they come from an unmerged roadmap (TGT-00 until its first consensus). Absent = merged.
+   */
+  basis: z.enum(["merged", "proposed"]).optional(),
   /** D13: every surface the vendor ships, in scope or excluded, with per-surface app progress. */
   surfaces: z.array(
     z.object({
@@ -176,6 +182,8 @@ export const RequirementView = z.object({
   key: RequirementKey,
   kind: z.string(),
   statement: z.string(),
+  /** contracts 4.4.0 (B-0001-web): the requirement's acceptance criteria, shown in the drilldown. */
+  acceptance: z.array(z.string()).optional(),
   /** Relevant ABUs covering it (for the app in context, or all ABUs on catalog pages). */
   abus: z.array(AbuKey),
   built: z.boolean(),

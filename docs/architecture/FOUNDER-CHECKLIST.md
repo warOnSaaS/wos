@@ -173,3 +173,7 @@ Remember D7: Vercel CLI deploys are blocked unless the HEAD commit author is `ad
 4. **Google Play:** create a Google Play Console developer account (one-time fee), a service account JSON with release permissions → `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` in the `release` environment; let EAS generate and hold the upload keystore.
 5. **CI budget:** set a spending limit and alert for GitHub Actions macOS minutes on the org (G-55).
 6. The suite's store name and publisher name for both stores (G-57).
+
+## 11. Vercel: build the website from the monorepo root (Wave 2 gate)
+
+In the `waronsaas-web` project settings: keep Root Directory `apps/web`; enable "Include files outside the root directory in the Build Step"; set Install Command `cd ../.. && npm ci --ignore-scripts` and Node.js 22.x. Deploy a preview from `main` and check it before promoting. Then tell the web workstream to remove the standalone-build workarounds (ARCHITECTURE section 13).

@@ -140,7 +140,12 @@ export const RepoManifest = z.object({
     .array(
       z.object({
         id: z.string().regex(/^[a-z][a-z0-9-]*$/),
-        paths: z.array(z.string().min(1)).min(1),
+        /**
+         * Anchored globs (contracts 4.4.0): no leading "**" or "*", so a requirement applies only to ABUs whose
+         * write scopes can reach that directory. "**\/app.plugin.*" would match every ABU and force macOS on
+         * JS-only work; write "apps/mobile/app.plugin.*" instead.
+         */
+        paths: z.array(z.string().min(1).refine((p) => !p.startsWith("*"), "toolchainRequirements paths must be anchored (no leading * or **)")).min(1),
         os: z.array(z.enum(["macos", "linux", "windows"])).min(1),
         tools: z.array(z.object({ name: ToolName, minVersion: z.string().min(1) })).default([]),
       }),

@@ -319,3 +319,9 @@ The product is ONE web app and ONE mobile app: a modular suite in the spirit of 
 - **Self-hosting** deploys the one suite (web app, API, database) with the modules the operator enables; there is no per-target deployment.
 - **Mobile:** one React Native app (`apps/mobile`) for iPhone and Android; modules ship their mobile screens inside it; per-surface acceptance still separates web, iOS and Android.
 - **Rejected:** a separate app per target. It duplicates shells, auth and data; turns shared data (a contact used by CRM, helpdesk and e-signature) into integration work; and multiplies App Store and Play listings, signing and review cycles by the number of targets.
+
+## 13. apps/web adoption (Wave 2 gate, B-0001-web)
+
+Two steps, so the live site keeps building exactly as deployed:
+1. **Now:** `apps/web` is in the root workspaces. Root `npm ci` installs it, root tests and checks run it, and `npm run build -w @waronsaas/web` builds it from the root install. `apps/web/package-lock.json` STAYS for now: the Vercel project `waronsaas-web` (root directory `apps/web`) still installs from it. The `generated/` copy of the contracts' progress code and the path alias stay too, so the Vercel build does not need the monorepo.
+2. **When the founder switches the Vercel project** (FOUNDER-CHECKLIST section 11) to install from the repo root (Root Directory `apps/web`, "Include files outside the root directory" on, Install Command `cd ../.. && npm ci --ignore-scripts`), the web workstream deletes `apps/web/package-lock.json`, the `generated/` copy, the path alias and `ignoreBuildErrors`, and imports `@waronsaas/contracts` directly.

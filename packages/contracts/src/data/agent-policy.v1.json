@@ -1,14 +1,21 @@
 {
   "policyVersion": "agent-policy.v1",
-  "contractsVersion": "4.3.0",
+  "contractsVersion": "4.4.0",
   "effectiveFrom": "2026-09-29",
   "providers": [
     {
       "id": "claude_cli",
       "binary": "claude",
       "minVersion": "2.1.284",
-      "versionCommand": ["claude", "--version"],
-      "authCheckCommand": ["claude", "auth", "status"],
+      "versionCommand": [
+        "claude",
+        "--version"
+      ],
+      "authCheckCommand": [
+        "claude",
+        "auth",
+        "status"
+      ],
       "baseArgs": [
         "-p",
         "--model",
@@ -27,10 +34,24 @@
         "--permission-prompts",
         "none"
       ],
-      "readOnlyArgs": ["--permission-mode", "dontAsk"],
-      "workspaceWriteArgs": ["--permission-mode", "acceptEdits", "--allowedTools", "{allowedCommandRules}"],
-      "reasoningArgs": ["--effort", "{reasoning}"],
-      "outputSchemaArgs": ["--json-schema", "{schemaJson}"],
+      "readOnlyArgs": [
+        "--permission-mode",
+        "dontAsk"
+      ],
+      "workspaceWriteArgs": [
+        "--permission-mode",
+        "acceptEdits",
+        "--allowedTools",
+        "{allowedCommandRules}"
+      ],
+      "reasoningArgs": [
+        "--effort",
+        "{reasoning}"
+      ],
+      "outputSchemaArgs": [
+        "--json-schema",
+        "{schemaJson}"
+      ],
       "env": {
         "CLAUDE_CODE_SAFE_MODE": "1"
       },
@@ -67,8 +88,15 @@
       "id": "codex_cli",
       "binary": "codex",
       "minVersion": "0.155.0",
-      "versionCommand": ["codex", "--version"],
-      "authCheckCommand": ["codex", "login", "status"],
+      "versionCommand": [
+        "codex",
+        "--version"
+      ],
+      "authCheckCommand": [
+        "codex",
+        "login",
+        "status"
+      ],
       "baseArgs": [
         "exec",
         "--model",
@@ -86,10 +114,24 @@
         "-C",
         "{cwd}"
       ],
-      "readOnlyArgs": ["--sandbox", "read-only"],
-      "workspaceWriteArgs": ["--sandbox", "workspace-write", "-c", "sandbox_workspace_write.network_access=false"],
-      "reasoningArgs": ["-c", "model_reasoning_effort=\"{reasoning}\""],
-      "outputSchemaArgs": ["--output-schema", "{schemaPath}"],
+      "readOnlyArgs": [
+        "--sandbox",
+        "read-only"
+      ],
+      "workspaceWriteArgs": [
+        "--sandbox",
+        "workspace-write",
+        "-c",
+        "sandbox_workspace_write.network_access=false"
+      ],
+      "reasoningArgs": [
+        "-c",
+        "model_reasoning_effort=\"{reasoning}\""
+      ],
+      "outputSchemaArgs": [
+        "--output-schema",
+        "{schemaPath}"
+      ],
       "env": {},
       "verification": {
         "verifiedFlags": [
@@ -119,7 +161,9 @@
           "codex has no per-command allowlist equivalent to claude --allowedTools Bash(...): an Astra builder may run any command inside the sandbox (writes confined to the worktree, no network); CI and reviews remain the control"
         ]
       },
-      "trailingArgs": ["-"]
+      "trailingArgs": [
+        "-"
+      ]
     }
   ],
   "models": [
@@ -128,7 +172,13 @@
       "provider": "claude_cli",
       "modelId": "claude-fable-5-1",
       "displayName": "Fable",
-      "reasoningLevels": ["low", "medium", "high", "xhigh", "max"],
+      "reasoningLevels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
       "maxReasoning": "max",
       "forbiddenReasoning": [],
       "contextWindowTokens": 1000000,
@@ -139,7 +189,13 @@
       "provider": "claude_cli",
       "modelId": "claude-opus-5-5",
       "displayName": "Opus",
-      "reasoningLevels": ["low", "medium", "high", "xhigh", "max"],
+      "reasoningLevels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
       "maxReasoning": "max",
       "forbiddenReasoning": [],
       "contextWindowTokens": 1000000,
@@ -150,9 +206,18 @@
       "provider": "codex_cli",
       "modelId": "gpt-6-astra",
       "displayName": "Astra",
-      "reasoningLevels": ["low", "medium", "high", "xhigh", "max", "ultra"],
+      "reasoningLevels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        "ultra"
+      ],
       "maxReasoning": "max",
-      "forbiddenReasoning": ["ultra"],
+      "forbiddenReasoning": [
+        "ultra"
+      ],
       "contextWindowTokens": 258000,
       "notes": "'ultra' is 'Maximum reasoning with automatic task delegation'; delegation spawns sub-agents outside the context manifest, so wOS treats 'max' as maximum. codex debug models (codex-cli 0.155.0, 2026-09-29): context_window 272000, effective_context_window_percent 95 (=258400), max_context_window 872000 (raising it via config is possible but UNVERIFIED and costs more quota). wOS budgets use 258000."
     },
@@ -161,9 +226,18 @@
       "provider": "codex_cli",
       "modelId": "gpt-6-sol",
       "displayName": "Sol",
-      "reasoningLevels": ["low", "medium", "high", "xhigh", "max", "ultra"],
+      "reasoningLevels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        "ultra"
+      ],
       "maxReasoning": "max",
-      "forbiddenReasoning": ["ultra"],
+      "forbiddenReasoning": [
+        "ultra"
+      ],
       "contextWindowTokens": 258000,
       "notes": "'Previous generation workhorse model.' Builders only (D15); never a reviewer or resolver. 'ultra' forbidden as for Astra. codex debug models (codex-cli 0.155.0, 2026-09-29): context_window 272000, effective_context_window_percent 95 (=258400), max_context_window 872000 (raising it via config is possible but UNVERIFIED and costs more quota). wOS budgets use 258000."
     }
@@ -172,14 +246,24 @@
     {
       "role": "roadmap_author",
       "description": "Application Roadmap Agent: writes or revises roadmap/ROADMAP.yaml and roadmap/INVENTORY.yaml for one target, answering every open material finding.",
-      "allowedModels": ["fable", "opus", "astra"],
+      "allowedModels": [
+        "fable",
+        "opus",
+        "astra"
+      ],
       "reviewerSlot": null,
       "reasoning": {
         "required": "max",
         "exact": false
       },
       "sandbox": "workspace_write",
-      "claudeTools": ["Read", "Grep", "Glob", "Edit", "Write"],
+      "claudeTools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Edit",
+        "Write"
+      ],
       "network": false,
       "outputSchema": "author-summary.v1",
       "contextBudgetTokens": 350000,
@@ -222,7 +306,9 @@
     {
       "role": "roadmap_reviewer_astra",
       "description": "Application Roadmap Astra Reviewer: independently attempts to prove the roadmap and inventory incomplete.",
-      "allowedModels": ["astra"],
+      "allowedModels": [
+        "astra"
+      ],
       "reviewerSlot": "astra",
       "reasoning": {
         "required": "max",
@@ -282,14 +368,20 @@
     {
       "role": "roadmap_reviewer_fable",
       "description": "Application Roadmap Fable Reviewer: independently attempts to prove the roadmap and inventory incomplete.",
-      "allowedModels": ["fable"],
+      "allowedModels": [
+        "fable"
+      ],
       "reviewerSlot": "fable",
       "reasoning": {
         "required": "max",
         "exact": true
       },
       "sandbox": "read_only",
-      "claudeTools": ["Read", "Grep", "Glob"],
+      "claudeTools": [
+        "Read",
+        "Grep",
+        "Glob"
+      ],
       "network": false,
       "outputSchema": "review-verdict.v1",
       "contextBudgetTokens": 180000,
@@ -336,14 +428,24 @@
     {
       "role": "feature_author",
       "description": "Feature Agent: writes or revises features/<key>/CONTRACT.yaml and BUILD-GRAPH.yaml for one feature.",
-      "allowedModels": ["fable", "opus", "astra"],
+      "allowedModels": [
+        "fable",
+        "opus",
+        "astra"
+      ],
       "reviewerSlot": null,
       "reasoning": {
         "required": "max",
         "exact": false
       },
       "sandbox": "workspace_write",
-      "claudeTools": ["Read", "Grep", "Glob", "Edit", "Write"],
+      "claudeTools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Edit",
+        "Write"
+      ],
       "network": false,
       "outputSchema": "author-summary.v1",
       "contextBudgetTokens": 300000,
@@ -386,7 +488,9 @@
     {
       "role": "feature_reviewer_astra",
       "description": "Feature Astra Reviewer: independently attempts to prove the feature contract or its build graph incomplete, ambiguous or unsafe to parallelise.",
-      "allowedModels": ["astra"],
+      "allowedModels": [
+        "astra"
+      ],
       "reviewerSlot": "astra",
       "reasoning": {
         "required": "max",
@@ -444,14 +548,20 @@
     {
       "role": "feature_reviewer_fable",
       "description": "Feature Fable Reviewer: independently attempts to prove the feature contract or its build graph incomplete, ambiguous or unsafe to parallelise.",
-      "allowedModels": ["fable"],
+      "allowedModels": [
+        "fable"
+      ],
       "reviewerSlot": "fable",
       "reasoning": {
         "required": "max",
         "exact": true
       },
       "sandbox": "read_only",
-      "claudeTools": ["Read", "Grep", "Glob"],
+      "claudeTools": [
+        "Read",
+        "Grep",
+        "Glob"
+      ],
       "network": false,
       "outputSchema": "review-verdict.v1",
       "contextBudgetTokens": 180000,
@@ -496,14 +606,25 @@
     {
       "role": "builder",
       "description": "Builder: implements exactly one Atomic Build Unit inside its write scope and makes its acceptance checks pass. Runs on Opus (claude), Astra or Sol (codex), the contributor's choice per lease (D15).",
-      "allowedModels": ["opus", "astra", "sol"],
+      "allowedModels": [
+        "opus",
+        "astra",
+        "sol"
+      ],
       "reviewerSlot": null,
       "reasoning": {
         "required": "high",
         "exact": false
       },
       "sandbox": "workspace_write",
-      "claudeTools": ["Read", "Grep", "Glob", "Edit", "Write", "Bash"],
+      "claudeTools": [
+        "Read",
+        "Grep",
+        "Glob",
+        "Edit",
+        "Write",
+        "Bash"
+      ],
       "network": false,
       "outputSchema": "build-summary.v1",
       "contextBudgetTokens": 120000,
@@ -546,7 +667,9 @@
     {
       "role": "implementation_reviewer_astra",
       "description": "Implementation Astra Reviewer: reviews one candidate diff against its ABU, contract and acceptance checks; looks for material defects.",
-      "allowedModels": ["astra"],
+      "allowedModels": [
+        "astra"
+      ],
       "reviewerSlot": "astra",
       "reasoning": {
         "required": "max",
@@ -602,14 +725,20 @@
     {
       "role": "implementation_reviewer_fable",
       "description": "Implementation Fable Reviewer: reviews one candidate diff against its ABU, contract and acceptance checks; looks for material defects.",
-      "allowedModels": ["fable"],
+      "allowedModels": [
+        "fable"
+      ],
       "reviewerSlot": "fable",
       "reasoning": {
         "required": "max",
         "exact": true
       },
       "sandbox": "read_only",
-      "claudeTools": ["Read", "Grep", "Glob"],
+      "claudeTools": [
+        "Read",
+        "Grep",
+        "Glob"
+      ],
       "network": false,
       "outputSchema": "review-verdict.v1",
       "contextBudgetTokens": 150000,
@@ -652,14 +781,20 @@
     {
       "role": "conflict_resolver",
       "description": "Architecture Conflict Resolver: rules on escalated findings and architecture blockers; proposes the minimal contract change. Rulings need maintainer confirmation in V1.",
-      "allowedModels": ["fable"],
+      "allowedModels": [
+        "fable"
+      ],
       "reviewerSlot": null,
       "reasoning": {
         "required": "max",
         "exact": true
       },
       "sandbox": "read_only",
-      "claudeTools": ["Read", "Grep", "Glob"],
+      "claudeTools": [
+        "Read",
+        "Grep",
+        "Glob"
+      ],
       "network": false,
       "outputSchema": "ruling.v1",
       "contextBudgetTokens": 300000,

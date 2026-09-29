@@ -86,3 +86,14 @@ MINOR, additive.
 - `claimBuild` and `claimTask` bodies: optional `model: ModelRef`. The server checks it is in the role's `allowedModels` and attested by the device (`NOT_ELIGIBLE` otherwise; a second build lease on the same provider is `LIMIT_REACHED`). When omitted, the server uses the first entry of the role's `allowedModels` (in policy order) that the device attests: Opus for builders. The plan's model, modelId, provider, reasoning and budget (with `budgetOverrides`) follow the chosen model, and the manifest must match the plan. For `conflict_resolution` the only model is Fable.
 - `BuildOptions.model?: ModelRef`. `AuthorOptions.model` is now documented as sent in the `claimTask` body.
 - For implementers: the control plane passes the requested model to eligibility (`EligibilityInput.requestedModel?: ModelRef`, which the context-policy workstream adds to `@waronsaas/agent-policy`), and the orchestrator sends the field.
+
+## 4.4.0 — 2026-09-30 (Wave 2 gate)
+
+MINOR, additive.
+- `Orchestrator.updateMe(patch)` (B-0003-desktop).
+- `TargetDetail.basis?: "merged" | "proposed"`; `AppFeatureSummary.state` also accepts `"proposed"`; `RequirementView.acceptance?: string[]` (B-0001-web).
+- `RepoManifest.toolchainRequirements[].paths` must be anchored (no leading `*`/`**`) so JS-only ABUs do not inherit macOS requirements (control-plane flag).
+- Documented: a 422 `SCOPE_VIOLATION` carries `ChangesetValidation` in `error.details` (B-0006-control-plane).
+- SECURITY S-29 amendment: Desktop main may open exactly `https://github.com/login/device` from `linkGithub` (B-0002-desktop).
+- Dependencies (one lockfile change): `esbuild` (CLI bundle, B-0001-cli), `electron-updater` (B-0006-desktop), `picomatch` declared in agent-policy (B-0004-context-policy); `apps/web` joins the workspaces (B-0001-web, two-step adoption, ARCHITECTURE section 9).
+- Root test config: Desktop tests included; `testTimeout` 30 s, `hookTimeout` 60 s (B-0001-desktop, B-0007-verification).
