@@ -109,3 +109,11 @@ These override `docs/V1-SPEC.md` where they differ. Date: 2026-09-29.
 - Targets (Salesforce, Slack...) stay the Sniper List and become parity PROFILES: the definition of what the suite must do to fully replace each product. They are not separate codebases or store listings. Per-target "replacement complete" is still computed from that target's profile.
 - `waronsaas/product` mirrors wos: `apps/web`, `apps/mobile` (React Native + Expo), `modules/<featureKey>/**`, plus `catalog/`, `roadmaps/<target>/`, `features/<key>/`. No `products/<target>/**`.
 - The app shell (workspace modules, navigation, accounts, tenancy) is itself catalog features every target references. Self-hosting deploys the one suite with the modules you enable. Marketing pages per target stay on the site.
+
+## D15. Contributors with both subscriptions are two agents
+- Founder's words: "I have a ChatGPT subscription, so I am 2 agents."
+- The Builder may run on Opus (claude CLI) or Astra (codex CLI, `gpt-6-astra`), the contributor's choice per lease, at the policy's builder reasoning minimum. Same for `roadmap_author` and `feature_author`.
+- Reviews are unchanged: every round needs one Astra and one Fable review by contributors other than the author (D2).
+- A contributor may hold one build lease per provider at a time, so one person with both subscriptions can run an Opus builder and an Astra builder in parallel on different ABUs.
+- Provenance records which provider and model built each unit; the site can show it.
+- Addition (founder): GPT-6-Sol (`gpt-6-sol`, "Previous generation workhorse model") is also permitted for builders only, never for reviews or rulings. The builder model list is policy data; provenance records the model so throughput and quality can be compared per model.

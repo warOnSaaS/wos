@@ -61,3 +61,11 @@ MAJOR.
 
 Integration adaptations made by the architect so `main` stays green (owners review in Wave 2): control-plane progress input (surfaces from `app_feature_surfaces`, requirement tags, per-surface acceptance; features mapped before D13 fall back to one web surface), per-surface check-run parsing in webhooks, public views; verification CI (`wos-ci.mjs` profiles and acceptance per surface, workflow job name and runner), vectors and template fixtures; `repo` in ABU fixtures of context-engine, orchestrator and control-plane tests; golden hashes.
 - D14 (folded into 4.0.0): `PLATFORM_REPO = "waronsaas/wos"`; the product is ONE suite: `RepoManifest.products` replaced by `apps` (surface → app shell path), `ARTIFACT_PATHS.product` replaced by `webApp`/`mobileApp`, `TargetSummary.productPath` removed (`targets.product_path` dropped in 0005), repository registry uses `waronsaas/wos`; roadmap author obligation and reviewer rule against target-specific apps.
+
+## 4.1.0 — 2026-09-29 (D15: two agents per contributor)
+
+MINOR.
+- Policy data: `builder` allows `opus` and `astra`; `roadmap_author` and `feature_author` also allow `astra`; `RolePolicy.budgetOverrides` (per-model budgets; Astra entries); `limits.maxConcurrentBuildLeasesPerProvider` = 1 (total stays 2); codex `workspaceWriteArgs` add `sandbox_workspace_write.network_access=false`; two UNVERIFIED items about codex sandbox confinement and the missing per-command allowlist.
+- `ModelRef` gains `sol` (gpt-6-sol), builders only; policy `models[]` adds Sol.
+- Correction: `codex debug models` reports a 272000 window at 95% effective for Astra and Sol; `contextWindowTokens` is now 258000 (was an UNVERIFIED 400000), and Astra reviewer and author budgets get overrides that fit.
+- Optional fields: `ProvenanceRecord.agentRuns[].provider`, `AttemptView.builtWith`.

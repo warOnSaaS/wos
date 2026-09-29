@@ -64,17 +64,31 @@ describe("agent-policy.v1", () => {
     }
   });
 
-  it("context budget + working reserve fits every allowed model's window", () => {
+  it("the effective budget (per-model override or role default) fits every allowed model's window", () => {
     for (const r of policy.roles) {
       for (const ref of r.allowedModels) {
-        expect(r.contextBudgetTokens + r.workingReserveTokens, `${r.role}/${ref}`).toBeLessThanOrEqual(model(ref).contextWindowTokens);
+        const o = r.budgetOverrides.find((x) => x.model === ref);
+        const total = (o?.contextBudgetTokens ?? r.contextBudgetTokens) + (o?.workingReserveTokens ?? r.workingReserveTokens);
+        expect(total, `${r.role}/${ref}`).toBeLessThanOrEqual(model(ref).contextWindowTokens);
       }
     }
   });
 
+  it("D15: builders and authors may run on Opus/Fable or Astra; reviews stay one Astra + one Fable; one build lease per provider", () => {
+    expect(policy.roles.find((r) => r.role === "builder")!.allowedModels).toEqual(["opus", "astra", "sol"]);
+    expect(model("sol")).toMatchObject({ provider: "codex_cli", modelId: "gpt-6-sol", maxReasoning: "max" });
+    expect(model("sol").forbiddenReasoning).toContain("ultra");
+    for (const r of policy.roles.filter((x) => x.role !== "builder")) expect(r.allowedModels, r.role).not.toContain("sol");
+    for (const a of ["roadmap_author", "feature_author"]) expect(policy.roles.find((r) => r.role === a)!.allowedModels).toContain("astra");
+    for (const r of policy.roles.filter((x) => x.reviewerSlot)) expect(r.allowedModels).toEqual([r.reviewerSlot]);
+    expect(policy.limits.maxConcurrentBuildLeasesPerProvider).toBe(1);
+    expect(policy.limits.maxConcurrentBuildLeasesPerContributor).toBe(2);
+    const codex = policy.providers.find((p) => p.id === "codex_cli")!;
+    expect(codex.workspaceWriteArgs).toEqual(["--sandbox", "workspace-write", "-c", "sandbox_workspace_write.network_access=false"]);
+  });
+
   it("builder is Opus with Bash only through allowed commands; no role has network", () => {
     const b = policy.roles.find((r) => r.role === "builder")!;
-    expect(b.allowedModels).toEqual(["opus"]);
     expect(b.claudeTools).toContain("Bash");
     const claude = policy.providers.find((p) => p.id === "claude_cli")!;
     expect(claude.workspaceWriteArgs).toContain("--allowedTools");

@@ -358,6 +358,8 @@ export const AttemptView = z.object({
   candidateBranch: z.string().nullable(),
   headSha: GitSha.nullable(),
   repairCount: z.number().int().nonnegative(),
+  /** D15: the provider and model that built the latest submission (shown on the site). Optional for 4.0 producers. */
+  builtWith: z.object({ provider: ProviderId, model: ModelRef, modelId: z.string() }).nullable().optional(),
   pr: z.object({ number: z.number().int(), url: z.url() }).nullable(),
   failureReason: z.string().nullable(),
   updatedAt: Timestamp,

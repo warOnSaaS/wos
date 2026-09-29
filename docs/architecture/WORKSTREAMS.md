@@ -271,3 +271,14 @@ TGT-00 mapping for the new capability `surfaces` (weight 700): multi-repo-produc
 - `data/targets.ts` / API switch: drop any per-target product path; `TargetSummary.productPath` no longer exists in contracts 4.0.0.
 - `llms.txt` / `llms-full.txt` and the about/how-it-works pages: the same repository names and the one-suite model.
 - TGT-00 page: repository `waronsaas/wos`; roadmap from `docs/roadmap/waronsaas.roadmap.json` (now with surfaces, journeys and the `surfaces` capability).
+
+## 10. D15 (contracts 4.1.0): who picks it up
+
+| Workstream | Change |
+|---|---|
+| context-policy (next session) | `checkEligibility`: per-provider build-lease limit; honour a model chosen at claim; effective budget from `budgetOverrides`; `buildInvocation` snapshot for an Astra builder and Astra authors |
+| github-build (building now) | orchestrator: let the contributor choose the builder model (`wos build --model astra`, Desktop picker); capture codex runs for builds; fill `provider` in agent-run provenance |
+| control-plane | claim body may name the model; per-provider lease count; `AttemptView.builtWith`; provenance `agentRuns[].provider` |
+| web (building now) | show "built with Opus/Astra" on ABU and PR drilldown from `builtWith` / provenance |
+| planning, rewards (building now) | nothing required; rewards stay per unit regardless of provider |
+| cli, desktop | model choice in `wos build` and the BUILD flow |

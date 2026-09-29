@@ -34,7 +34,8 @@ export const ProviderId = z.enum(["claude_cli", "codex_cli"]);
 export type ProviderId = z.infer<typeof ProviderId>;
 
 /** Stable model reference used everywhere in wOS; mapped to a provider model id in the policy. */
-export const ModelRef = z.enum(["fable", "opus", "astra"]);
+/** "sol" (gpt-6-sol) is allowed for builders only (D15 addition); the per-role lists are policy data. */
+export const ModelRef = z.enum(["fable", "opus", "astra", "sol"]);
 export type ModelRef = z.infer<typeof ModelRef>;
 
 /**
@@ -150,6 +151,16 @@ export const RolePolicy = z.object({
   contextBudgetTokens: z.number().int().positive(),
   /** Tokens reserved for the agent's own work inside the model window. */
   workingReserveTokens: z.number().int().nonnegative(),
+  /**
+   * Per-model budget overrides (contracts 4.1.0, D15): e.g. an Astra builder has a smaller window than an Opus
+   * builder. The effective budget for a model is its override, else the role default; it must fit the model's
+   * window (budget + reserve <= contextWindowTokens).
+   */
+  budgetOverrides: z
+    .array(
+      z.object({ model: ModelRef, contextBudgetTokens: z.number().int().positive(), workingReserveTokens: z.number().int().nonnegative() }),
+    )
+    .default([]),
   lease: z.object({
     ttlMinutes: z.number().int().positive(),
     heartbeatSeconds: z.number().int().positive(),
@@ -176,6 +187,8 @@ export const WorkflowLimits = z.object({
   maxFailedAttemptsPerAbu: z.number().int().positive(),
   revisionWindowHours: z.number().int().positive(),
   maxConcurrentBuildLeasesPerContributor: z.number().int().positive(),
+  /** D15: at most this many build leases per provider (claude_cli, codex_cli) per contributor at once. */
+  maxConcurrentBuildLeasesPerProvider: z.number().int().positive(),
   maxConcurrentReviewLeasesPerContributor: z.number().int().positive(),
   /** roadmap_author, feature_author and conflict_resolution leases together (B-0001-context-policy note). */
   maxConcurrentAuthorLeasesPerContributor: z.number().int().positive(),

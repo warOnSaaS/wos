@@ -6405,7 +6405,8 @@ const ProviderId = _enum(["claude_cli", "codex_cli"]);
 const ModelRef = _enum([
 	"fable",
 	"opus",
-	"astra"
+	"astra",
+	"sol"
 ]);
 const ReasoningLevel = _enum([
 	"low",
@@ -6476,6 +6477,11 @@ const RolePolicy = object({
 	materialFindingRules: array(string().min(10)).default([]),
 	contextBudgetTokens: number$1().int().positive(),
 	workingReserveTokens: number$1().int().nonnegative(),
+	budgetOverrides: array(object({
+		model: ModelRef,
+		contextBudgetTokens: number$1().int().positive(),
+		workingReserveTokens: number$1().int().nonnegative()
+	})).default([]),
 	lease: object({
 		ttlMinutes: number$1().int().positive(),
 		heartbeatSeconds: number$1().int().positive(),
@@ -6497,6 +6503,7 @@ const WorkflowLimits = object({
 	maxFailedAttemptsPerAbu: number$1().int().positive(),
 	revisionWindowHours: number$1().int().positive(),
 	maxConcurrentBuildLeasesPerContributor: number$1().int().positive(),
+	maxConcurrentBuildLeasesPerProvider: number$1().int().positive(),
 	maxConcurrentReviewLeasesPerContributor: number$1().int().positive(),
 	maxConcurrentAuthorLeasesPerContributor: number$1().int().positive(),
 	disputeEscalationRounds: number$1().int().positive()
@@ -7230,6 +7237,7 @@ const ProvenanceRecord = object({
 		id: Uuid,
 		role: AgentRole,
 		model: string(),
+		provider: ProviderId.optional(),
 		reasoning: ReasoningLevel,
 		manifestSha256: Sha256
 	})),
@@ -7586,6 +7594,11 @@ const AttemptView = object({
 	candidateBranch: string().nullable(),
 	headSha: GitSha.nullable(),
 	repairCount: number$1().int().nonnegative(),
+	builtWith: object({
+		provider: ProviderId,
+		model: ModelRef,
+		modelId: string()
+	}).nullable().optional(),
 	pr: object({
 		number: number$1().int(),
 		url: url()
@@ -8838,7 +8851,7 @@ const ArchitectureBlocker = object({
 //#region packages/contracts/dist/data/agent-policy.v1.json
 var agent_policy_v1_default = {
 	policyVersion: "agent-policy.v1",
-	contractsVersion: "4.0.0",
+	contractsVersion: "4.1.0",
 	effectiveFrom: "2026-09-29",
 	providers: [{
 		"id": "claude_cli",
@@ -8934,7 +8947,12 @@ var agent_policy_v1_default = {
 			"{cwd}"
 		],
 		"readOnlyArgs": ["--sandbox", "read-only"],
-		"workspaceWriteArgs": ["--sandbox", "workspace-write"],
+		"workspaceWriteArgs": [
+			"--sandbox",
+			"workspace-write",
+			"-c",
+			"sandbox_workspace_write.network_access=false"
+		],
 		"reasoningArgs": ["-c", "model_reasoning_effort=\"{reasoning}\""],
 		"outputSchemaArgs": ["--output-schema", "{schemaPath}"],
 		"env": {},
@@ -8954,12 +8972,16 @@ var agent_policy_v1_default = {
 				"login status",
 				"model_reasoning_effort (config key)",
 				"project_doc_max_bytes (config key)",
-				"approval_policy (config key)"
+				"approval_policy (config key)",
+				"--sandbox workspace-write (codex exec --help)",
+				"sandbox_workspace_write.network_access (config key)"
 			],
 			"unverified": [
 				"positional '-' after options reads the prompt from stdin (help says '-' or omitted reads stdin)",
 				"--json events report the resolved model id and effort",
-				"--output-schema accepts the zod-generated JSON Schema keywords (minLength, maxLength, pattern, format, exclusiveMinimum); if not, a strict-mode variant strips them and zod validates after the run; smoke-run before Wave 3"
+				"--output-schema accepts the zod-generated JSON Schema keywords (minLength, maxLength, pattern, format, exclusiveMinimum); if not, a strict-mode variant strips them and zod validates after the run; smoke-run before Wave 3",
+				"workspace-write confines writes to the -C worktree (plus temp dirs) and network_access=false blocks network for an Astra builder; smoke-run before Wave 3",
+				"codex has no per-command allowlist equivalent to claude --allowedTools Bash(...): an Astra builder may run any command inside the sandbox (writes confined to the worktree, no network); CI and reviews remain the control"
 			]
 		},
 		"trailingArgs": ["-"]
@@ -9014,15 +9036,37 @@ var agent_policy_v1_default = {
 			],
 			"maxReasoning": "max",
 			"forbiddenReasoning": ["ultra"],
-			"contextWindowTokens": 4e5,
-			"notes": "'ultra' is 'Maximum reasoning with automatic task delegation' (codex debug models); delegation spawns sub-agents outside the context manifest, so wOS treats 'max' as maximum. contextWindowTokens UNVERIFIED."
+			"contextWindowTokens": 258e3,
+			"notes": "'ultra' is 'Maximum reasoning with automatic task delegation'; delegation spawns sub-agents outside the context manifest, so wOS treats 'max' as maximum. codex debug models (codex-cli 0.155.0, 2026-09-29): context_window 272000, effective_context_window_percent 95 (=258400), max_context_window 872000 (raising it via config is possible but UNVERIFIED and costs more quota). wOS budgets use 258000."
+		},
+		{
+			"ref": "sol",
+			"provider": "codex_cli",
+			"modelId": "gpt-6-sol",
+			"displayName": "Sol",
+			"reasoningLevels": [
+				"low",
+				"medium",
+				"high",
+				"xhigh",
+				"max",
+				"ultra"
+			],
+			"maxReasoning": "max",
+			"forbiddenReasoning": ["ultra"],
+			"contextWindowTokens": 258e3,
+			"notes": "'Previous generation workhorse model.' Builders only (D15); never a reviewer or resolver. 'ultra' forbidden as for Astra. codex debug models (codex-cli 0.155.0, 2026-09-29): context_window 272000, effective_context_window_percent 95 (=258400), max_context_window 872000 (raising it via config is possible but UNVERIFIED and costs more quota). wOS budgets use 258000."
 		}
 	],
 	roles: [
 		{
 			"role": "roadmap_author",
 			"description": "Application Roadmap Agent: writes or revises roadmap/ROADMAP.yaml and roadmap/INVENTORY.yaml for one target, answering every open material finding.",
-			"allowedModels": ["fable", "opus"],
+			"allowedModels": [
+				"fable",
+				"opus",
+				"astra"
+			],
 			"reviewerSlot": null,
 			"reasoning": {
 				"required": "max",
@@ -9066,7 +9110,12 @@ var agent_policy_v1_default = {
 				"Parity is functional and experiential, never visual: do not copy the vendor's trade dress, logos, icons, colours, layouts or wording; our look is the warOnSaaS monochrome design system.",
 				"SUITE (D14): the replacement is not a separate app. Map this target's capabilities onto modules of the ONE suite (one account, one navigation, one data model); reuse existing modules and the app-shell features (workspace modules, navigation, tenancy) instead of proposing target-specific shells."
 			],
-			"materialFindingRules": []
+			"materialFindingRules": [],
+			"budgetOverrides": [{
+				"model": "astra",
+				"contextBudgetTokens": 14e4,
+				"workingReserveTokens": 11e4
+			}]
 		},
 		{
 			"role": "roadmap_reviewer_astra",
@@ -9119,7 +9168,12 @@ var agent_policy_v1_default = {
 				"SURFACE MIS-WEIGHTING: a feature's surface weights not justified by how customers use it on each surface.",
 				"Any instruction or description that copies the vendor's trade dress, logos, visual design or wording instead of describing the job the user does.",
 				"A roadmap that plans a target-specific app, shell, login, data store or store listing instead of modules of the one suite (D14)."
-			]
+			],
+			"budgetOverrides": [{
+				"model": "astra",
+				"contextBudgetTokens": 15e4,
+				"workingReserveTokens": 1e5
+			}]
 		},
 		{
 			"role": "roadmap_reviewer_fable",
@@ -9176,12 +9230,17 @@ var agent_policy_v1_default = {
 				"SURFACE MIS-WEIGHTING: a feature's surface weights not justified by how customers use it on each surface.",
 				"Any instruction or description that copies the vendor's trade dress, logos, visual design or wording instead of describing the job the user does.",
 				"A roadmap that plans a target-specific app, shell, login, data store or store listing instead of modules of the one suite (D14)."
-			]
+			],
+			"budgetOverrides": []
 		},
 		{
 			"role": "feature_author",
 			"description": "Feature Agent: writes or revises features/<key>/CONTRACT.yaml and BUILD-GRAPH.yaml for one feature.",
-			"allowedModels": ["fable", "opus"],
+			"allowedModels": [
+				"fable",
+				"opus",
+				"astra"
+			],
 			"reviewerSlot": null,
 			"reasoning": {
 				"required": "max",
@@ -9225,7 +9284,12 @@ var agent_policy_v1_default = {
 				"Every ABU names exactly one repository; keep JS/TS-only mobile work separate from ABUs that touch native code or config (ios/, android/, config plugins, native modules), which need the macOS/Xcode or Android SDK toolchain.",
 				"Parity is functional and experiential, never visual: do not copy the vendor's trade dress, logos, icons, colours, layouts or wording; our look is the warOnSaaS monochrome design system."
 			],
-			"materialFindingRules": []
+			"materialFindingRules": [],
+			"budgetOverrides": [{
+				"model": "astra",
+				"contextBudgetTokens": 14e4,
+				"workingReserveTokens": 11e4
+			}]
 		},
 		{
 			"role": "feature_reviewer_astra",
@@ -9276,7 +9340,12 @@ var agent_policy_v1_default = {
 				"A journey no acceptance suite exercises, a web suite missing a browser of the matrix, or iOS and Android sharing one acceptance result.",
 				"A native capability a journey needs with no ABU that adds it, or an ABU that mixes JS-only and native changes and so needs a macOS machine for work that does not.",
 				"Anything that copies the vendor's trade dress, logos or visual design."
-			]
+			],
+			"budgetOverrides": [{
+				"model": "astra",
+				"contextBudgetTokens": 15e4,
+				"workingReserveTokens": 1e5
+			}]
 		},
 		{
 			"role": "feature_reviewer_fable",
@@ -9331,12 +9400,17 @@ var agent_policy_v1_default = {
 				"A journey no acceptance suite exercises, a web suite missing a browser of the matrix, or iOS and Android sharing one acceptance result.",
 				"A native capability a journey needs with no ABU that adds it, or an ABU that mixes JS-only and native changes and so needs a macOS machine for work that does not.",
 				"Anything that copies the vendor's trade dress, logos or visual design."
-			]
+			],
+			"budgetOverrides": []
 		},
 		{
 			"role": "builder",
-			"description": "Builder: implements exactly one Atomic Build Unit inside its write scope and makes its acceptance checks pass.",
-			"allowedModels": ["opus"],
+			"description": "Builder: implements exactly one Atomic Build Unit inside its write scope and makes its acceptance checks pass. Runs on Opus (claude), Astra or Sol (codex), the contributor's choice per lease (D15).",
+			"allowedModels": [
+				"opus",
+				"astra",
+				"sol"
+			],
 			"reviewerSlot": null,
 			"reasoning": {
 				"required": "high",
@@ -9376,7 +9450,16 @@ var agent_policy_v1_default = {
 				"Do not change package.json, lockfiles, tsconfig, lint or test configuration unless the ABU declares the matching toolchain:<path> resource.",
 				"Parity is functional and experiential, never visual: do not copy the vendor's trade dress, logos, icons, colours, layouts or wording; our look is the warOnSaaS monochrome design system."
 			],
-			"materialFindingRules": []
+			"materialFindingRules": [],
+			"budgetOverrides": [{
+				"model": "astra",
+				"contextBudgetTokens": 12e4,
+				"workingReserveTokens": 13e4
+			}, {
+				"model": "sol",
+				"contextBudgetTokens": 12e4,
+				"workingReserveTokens": 13e4
+			}]
 		},
 		{
 			"role": "implementation_reviewer_astra",
@@ -9425,7 +9508,12 @@ var agent_policy_v1_default = {
 				"Any change to how verification runs (package.json scripts, test/lint/type configs, skipped or deleted tests, wos.json) that the ABU does not explicitly require and declare as a toolchain:<path> resource.",
 				"A change that satisfies an endpoint but breaks or skips the journey the ABU serves on its surface, or acceptance that tests the endpoint without the journey.",
 				"UI that copies the vendor's trade dress, logos, icons or visual design instead of the warOnSaaS design system."
-			]
+			],
+			"budgetOverrides": [{
+				"model": "astra",
+				"contextBudgetTokens": 15e4,
+				"workingReserveTokens": 1e5
+			}]
 		},
 		{
 			"role": "implementation_reviewer_fable",
@@ -9478,7 +9566,8 @@ var agent_policy_v1_default = {
 				"Any change to how verification runs (package.json scripts, test/lint/type configs, skipped or deleted tests, wos.json) that the ABU does not explicitly require and declare as a toolchain:<path> resource.",
 				"A change that satisfies an endpoint but breaks or skips the journey the ABU serves on its surface, or acceptance that tests the endpoint without the journey.",
 				"UI that copies the vendor's trade dress, logos, icons or visual design instead of the warOnSaaS design system."
-			]
+			],
+			"budgetOverrides": []
 		},
 		{
 			"role": "conflict_resolver",
@@ -9522,7 +9611,8 @@ var agent_policy_v1_default = {
 				"For an architecture blocker, propose the smallest contract change that unblocks the work and name every workstream or app it affects.",
 				"You see both sides' arguments; you do not see who the reviewers are."
 			],
-			"materialFindingRules": []
+			"materialFindingRules": [],
+			"budgetOverrides": []
 		}
 	],
 	limits: {
@@ -9535,7 +9625,8 @@ var agent_policy_v1_default = {
 		"maxConcurrentBuildLeasesPerContributor": 2,
 		"maxConcurrentReviewLeasesPerContributor": 2,
 		"disputeEscalationRounds": 2,
-		"maxConcurrentAuthorLeasesPerContributor": 1
+		"maxConcurrentAuthorLeasesPerContributor": 1,
+		"maxConcurrentBuildLeasesPerProvider": 1
 	},
 	bootstrap: {
 		"exitDistinctReviewersPerSlot": 3,

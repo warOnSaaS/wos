@@ -377,7 +377,17 @@ export const ProvenanceRecord = z.object({
   headSha: GitSha,
   baseSha: GitSha,
   authors: z.array(z.object({ accountId: Uuid, githubLogin: z.string(), role: AgentRole })),
-  agentRuns: z.array(z.object({ id: Uuid, role: AgentRole, model: z.string(), reasoning: ReasoningLevel, manifestSha256: Sha256 })),
+  agentRuns: z.array(
+    z.object({
+      id: Uuid,
+      role: AgentRole,
+      model: z.string(),
+      /** D15: which CLI ran it (a builder may be Opus via claude or Astra via codex). Optional for 4.0 producers. */
+      provider: ProviderId.optional(),
+      reasoning: ReasoningLevel,
+      manifestSha256: Sha256,
+    }),
+  ),
   reviews: z.array(
     z.object({
       slot: ReviewerSlot,
