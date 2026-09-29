@@ -6,10 +6,19 @@
   "type": "module",
   "license": "UNLICENSED",
   "description": "wOS Desktop: the contributor build environment. Electron main process owns processes, git and the filesystem; the renderer is sandboxed.",
-  "main": "dist/main/index.js",
+  "main": "dist/app/main.mjs",
   "scripts": {
     "build": "tsc -b",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b",
+    "typecheck:test": "tsc -p tsconfig.test.json",
+    "bundle": "node scripts/build.mjs",
+    "bundle:release": "node scripts/build.mjs --no-fake",
+    "start:fake": "npm run bundle && electron dist/app/main-fake.mjs",
+    "test": "vitest run --config vitest.config.ts",
+    "smoke": "npm run bundle && vitest run --config vitest.config.ts test/electron.test.ts",
+    "shots": "npm run bundle && node scripts/shots.mjs",
+    "dist:mac": "npm run bundle:release && electron-builder --config electron-builder.yml --mac dmg --publish never",
+    "dist:linux": "npm run bundle:release && electron-builder --config electron-builder.yml --linux AppImage --publish never"
   },
   "dependencies": {
     "@waronsaas/contracts": "*",
@@ -24,5 +33,10 @@
     "electron": "^44.4.5",
     "electron-builder": "^26.15.3",
     "vite": "^8.3.1"
-  }
+  },
+  "author": {
+    "name": "warOnSaaS",
+    "email": "anthonydventurini@gmail.com"
+  },
+  "homepage": "https://waronsaas.com"
 }
