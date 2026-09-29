@@ -9,6 +9,7 @@ import type { Deps } from "../deps.js";
 import { transition } from "../db/transition.js";
 import { uuidv7 } from "../util/crypto.js";
 import { loadAttempt, type AttemptRow } from "../views.js";
+import { createContribution, settleKeyedContribution } from "./ledger.js";
 import { documentAfterReveal } from "./documents.js";
 import { type ActorRef, attemptTransition, createTask, endAttempt, requestChanges, SYSTEM } from "./work.js";
 
@@ -90,9 +91,9 @@ export async function revealRound(tx: Tx, deps: Deps, roundId: string): Promise<
   const [round] = await tx<RoundRow[]>`select * from wos.rounds where id = ${roundId}`;
   if (round?.state !== "awaiting_reviews") throw new Error(`round ${roundId} is not awaiting reviews`);
   const reviews = await tx<
-    { id: string; account_id: string; slot: "astra" | "fable"; body: ReviewVerdict; independence: ReviewIndependence }[]
+    { id: string; account_id: string; github_user_id: string; slot: "astra" | "fable"; body: ReviewVerdict; independence: ReviewIndependence }[]
   >`
-    select id, account_id, slot, body, independence from wos.reviews where round_id = ${roundId}`;
+    select id, account_id, github_user_id, slot, body, independence from wos.reviews where round_id = ${roundId}`;
   const astra = reviews.find((r) => r.slot === "astra");
   const fable = reviews.find((r) => r.slot === "fable");
   if (!astra || !fable) throw new Error(`round ${roundId} needs both slots before reveal`);
@@ -119,6 +120,7 @@ export async function revealRound(tx: Tx, deps: Deps, roundId: string): Promise<
     const v = verdictsOn.get(id) ?? [];
     if (v.length > 0 && v.every((s) => s === "resolved")) {
       await tx`update wos.findings set state = 'resolved', row_version = row_version + 1 where id = ${id} and state in ('open', 'disputed')`;
+      await settleKeyedContribution(tx, `review_finding:${id}`, "accept", "system", null, "finding resolved");
     } else stillOpen.push(id);
   }
   const overruled = await tx<{ id: string }[]>`select id from wos.findings where ${subjectCol} and state = 'overruled'`;
@@ -132,12 +134,26 @@ export async function revealRound(tx: Tx, deps: Deps, roundId: string): Promise<
   let material = 0;
   for (const r of [astra, fable]) {
     for (const f of r.body.findings) {
-      if (f.severity === "material") material++;
+      const findingId = uuidv7();
       await tx`
         insert into wos.findings (id, review_id, round_id, document_id, attempt_id, local_id, severity, category, title, detail, evidence,
                                   suggested_resolution, state)
-        values (${uuidv7()}, ${r.id}, ${roundId}, ${round.document_id}, ${round.attempt_id}, ${f.localId}, ${f.severity}, ${f.category},
+        values (${findingId}, ${r.id}, ${roundId}, ${round.document_id}, ${round.attempt_id}, ${f.localId}, ${f.severity}, ${f.category},
                 ${f.title}, ${f.detail}, ${tx.json(f.evidence as never)}, ${f.suggestedResolution}, 'open')`;
+      if (f.severity === "material") {
+        material++;
+        // A material finding is a contribution; accepted when it becomes resolved or upheld (REWARD-PROTOCOL.md section 3).
+        await createContribution(tx, {
+          accountId: r.account_id,
+          githubUserId: r.github_user_id,
+          category: "review_finding",
+          attemptId: round.attempt_id,
+          documentId: round.document_id,
+          reviewId: r.id,
+          independence: r.independence,
+          idempotencyKey: `review_finding:${findingId}:${r.account_id}`,
+        });
+      }
     }
   }
   const independence = [astra.independence, fable.independence].sort((a, b) => WEAKNESS[b] - WEAKNESS[a])[0]!;

@@ -21,7 +21,8 @@ import { provenanceSha256 } from "@waronsaas/contracts/canonical";
 import { loadAttempt } from "../views.js";
 import { repoManifestAt } from "./documents.js";
 import { insertEvent } from "../db/events.js";
-import { createContribution, insertLedgerEntry } from "./ledger.js";
+import { createContribution } from "./ledger.js";
+import { applyRewards } from "./rewards.js";
 import { recomputeTarget } from "./progress.js";
 import { qualify } from "./review.js";
 import { abuTransition, attemptTransition, SYSTEM, taskTransition } from "./work.js";
@@ -59,8 +60,9 @@ async function openOrUpdatePr(deps: Deps, e: EventRow, attemptId: string): Promi
       select a.spec->>'title' as title, a.spec->>'objective' as objective, f.key as feature
         from wos.abus a join wos.catalog_features f on f.id = a.catalog_feature_id where a.id = ${attempt.abu_id}`;
     const [builder] = await tx<{ github_login: string }[]>`select github_login from wos.accounts where id = ${attempt.account_id}`;
-    const runs = await tx<{ id: string; role: string; model_id: string; reasoning: ReasoningLevel; manifest_sha256: string }[]>`
-      select r.id, m.role, m.model_id, m.reasoning, m.manifest_sha256 from wos.agent_runs r join wos.context_manifests m on m.id = r.manifest_id
+    const runs = await tx<{ id: string; role: string; model_id: string; reasoning: ReasoningLevel; manifest_sha256: string; provider: "claude_cli" | "codex_cli" }[]>`
+      select r.id, m.role, m.model_id, m.reasoning, m.manifest_sha256, r.record->>'provider' as provider
+        from wos.agent_runs r join wos.context_manifests m on m.id = r.manifest_id
        where r.id in (select agent_run_id from wos.reviews where round_id = ${round!.id})
           or r.id = (select r2.id from wos.candidate_commits cc join wos.changesets c on c.id = cc.changeset_id
                        join wos.context_manifests m2 on m2.lease_id = c.lease_id and m2.manifest_sha256 = c.manifest_sha256
@@ -152,6 +154,7 @@ async function openOrUpdatePr(deps: Deps, e: EventRow, attemptId: string): Promi
     authors: [{ accountId: attempt.account_id, githubLogin: facts.builderLogin, role: "builder" }],
     agentRuns: facts.runs.map((r) => ({
       id: r.id,
+      provider: r.provider,
       role: r.role as "builder",
       model: r.model_id,
       reasoning: r.reasoning,
@@ -375,35 +378,19 @@ const progressConsumer: Consumer = {
 
 const rewardsConsumer: Consumer = {
   name: "rewards",
+  // REWARD-PROTOCOL.md section 8: the events the rules price, including the two pool triggers.
   types: [
-    "attempt.merged",
-    "document.merged",
-    "round.revealed",
-    "attempt.pr_opened",
     "contribution.accepted",
     "contribution.reversed",
-    "finding.ruled",
+    "document.merged",
+    "app_feature.state_changed",
+    "progress.recomputed",
+    "round.revealed",
   ],
   async handle(deps, e) {
     const parsed = DomainEvent.safeParse(eventWire(e));
-    if (!parsed.success) return inTransaction(deps.sql, SYS, (tx) => markConsumed(tx, e.id, "rewards"));
     await inTransaction(deps.sql, SYS, async (tx) => {
-      const [boot] = await tx<{ n: number }[]>`
-        select count(*)::int as n from wos.contributions where independence = 'bootstrap_self'
-           and (attempt_id::text = ${String((e.payload as { attemptId?: string }).attemptId ?? "")}
-                or document_id::text = ${String((e.payload as { documentId?: string }).documentId ?? "")})`;
-      const contributions = await tx<{ id: string; account_id: string; category: string; state: string; weight: number }[]>`
-        select id, account_id, category, state, weight from wos.contributions
-         where attempt_id::text = ${String((e.payload as { attemptId?: string }).attemptId ?? "")}
-            or document_id::text = ${String((e.payload as { documentId?: string }).documentId ?? "")}
-            or id::text = ${String((e.payload as { contributionId?: string }).contributionId ?? "")}`;
-      const [now] = await tx<{ now: Date }[]>`select now() as now`;
-      const drafts = deps.logic.computeLedgerDrafts(
-        parsed.data,
-        { now: now!.now.toISOString(), bootstrapSelfReviewed: (boot?.n ?? 0) > 0, contributions },
-        deps.schedule,
-      );
-      for (const d of drafts) await insertLedgerEntry(tx, d, { kind: "system", accountId: null });
+      if (parsed.success) await applyRewards(tx, deps, parsed.data);
       await markConsumed(tx, e.id, "rewards");
     });
   },

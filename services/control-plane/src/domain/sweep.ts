@@ -8,7 +8,7 @@ import { ApiFailure } from "../errors.js";
 import { insertEvent } from "../db/events.js";
 import { uuidv7 } from "../util/crypto.js";
 import { loadAttempt } from "../views.js";
-import { insertLedgerEntry } from "./ledger.js";
+import { releaseDueAwards } from "./rewards.js";
 import { afterLeaseLost, endAttempt, endLease, SYSTEM } from "./work.js";
 
 const SYS = { kind: "system" as const, accountId: null };
@@ -57,49 +57,8 @@ export async function runSweep(deps: Deps): Promise<{ expiredLeases: number; exp
     }
   }
 
-  // Releases: awards past release_after with no release/void/clawback, unless held for a bootstrap_self re-review.
-  const awards = await inTransaction(
-    deps.sql,
-    SYS,
-    (tx) =>
-      tx<{ id: string; account_id: string; amount: string; schedule_version: string }[]>`
-      select l.id, l.account_id, l.amount, l.schedule_version from wos.ledger_entries l
-        left join wos.contributions c on c.id = l.contribution_id
-       where l.kind = 'award' and l.release_after <= now()
-         and coalesce(c.independence, 'independent') <> 'bootstrap_self'
-         and coalesce(c.state, 'accepted') = 'accepted'
-         and not exists (select 1 from wos.ledger_entries x where x.related_entry_id = l.id and x.kind in ('release', 'void', 'clawback'))
-       order by l.entry_no limit 500`,
-  );
-  for (const a of awards) {
-    await inTransaction(deps.sql, SYS, async (tx) => {
-      const pairId = uuidv7();
-      const amount = Number(a.amount);
-      const base = {
-        accountId: a.account_id,
-        kind: "release" as const,
-        category: null,
-        contributionId: null,
-        poolId: null,
-        relatedEntryId: a.id,
-        pairId,
-        scheduleVersion: a.schedule_version,
-        memo: "hold window passed",
-        releaseAfter: null,
-      };
-      const h = await insertLedgerEntry(
-        tx,
-        { ...base, bucket: "held", amount: -amount, idempotencyKey: `release:${a.id}:held` },
-        { kind: "system", accountId: null },
-      );
-      const v = await insertLedgerEntry(
-        tx,
-        { ...base, bucket: "available", amount, idempotencyKey: `release:${a.id}:available` },
-        { kind: "system", accountId: null },
-      );
-      if (h && v) released++;
-    });
-  }
+  // Releases (REWARD-PROTOCOL.md section 8): the pure computeReleaseDrafts over the awards past their hold.
+  released = await inTransaction(deps.sql, SYS, (tx) => releaseDueAwards(tx, deps));
 
   await checkBootstrapExit(deps);
   await inTransaction(deps.sql, SYS, async (tx) => {

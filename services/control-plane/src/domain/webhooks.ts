@@ -11,7 +11,7 @@ import { uuidv7 } from "../util/crypto.js";
 import { loadAttempt } from "../views.js";
 import { runDispatch, unlockDependents } from "./consumers.js";
 import { ingestContract, loadDocument, materialiseRoadmap, readMergedContract, readMergedRoadmap } from "./documents.js";
-import { settleContributions } from "./ledger.js";
+import { createDocumentWorkContributions, settleContributions } from "./ledger.js";
 import { openRound } from "./review.js";
 import { abuTransition, attemptTransition, type ActorRef, endAttempt, releaseLocks, requestChanges } from "./work.js";
 
@@ -260,6 +260,7 @@ async function onPullRequest(deps: Deps, p: Payload): Promise<void> {
           { sha: mergeSha, prNumber: pr.number! },
           files as Awaited<ReturnType<typeof readMergedContract>>,
         );
+      await createDocumentWorkContributions(tx, doc.id, doc.kind);
       await settleContributions(tx, { documentId: doc.id }, "accept", "github", "document merged");
     });
   }

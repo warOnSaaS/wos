@@ -18,6 +18,7 @@ import {
   type RepoManifest,
   RepoManifest as RepoManifestSchema,
   type Roadmap,
+  type Surface,
   type BuildGraph,
 } from "@waronsaas/contracts";
 import type { Tx } from "@waronsaas/db";
@@ -289,7 +290,18 @@ export async function validateDocumentRevision(
   for (const i of deps.logic.validateFeatureContract(contract.value, prevParsed?.ok ? prevParsed.value : null)) {
     errors.push({ path: ARTIFACT_PATHS.featureContract(key), code: i.code, message: i.message });
   }
-  for (const i of deps.logic.validateBuildGraph(graph.value, contract.value, manifest, estimate, deps.policy)) {
+  // Context (FEATURE-CONTRACT.md section 9): the repository registry, the contract's repo, and each profile app's surfaces in scope.
+  const repos = await tx<{ repo_full_name: string; family: "platform" | "product" }[]>`select repo_full_name, family from wos.repositories`;
+  const surfaceRows = await tx<{ slug: string; surface: Surface }[]>`
+    select t.slug, s.surface from wos.app_feature_surfaces s join wos.app_features af on af.id = s.app_feature_id
+      join wos.targets t on t.id = af.target_id
+     where af.catalog_feature_id = ${doc.catalog_feature_id} and af.state <> 'descoped'
+       and t.slug in ${tx(contract.value.profiles.map((p) => p.target).concat(["-"]))}
+     order by t.slug, s.surface`;
+  const surfacesInScope = new Map<string, Surface[]>();
+  for (const r of surfaceRows) surfacesInScope.set(r.slug, [...(surfacesInScope.get(r.slug) ?? []), r.surface]);
+  const context = { repositories: new Map(repos.map((r) => [r.repo_full_name, r.family])), contractRepo: doc.repo, surfacesInScope };
+  for (const i of deps.logic.validateBuildGraph(graph.value, contract.value, manifest, estimate, deps.policy, context)) {
     errors.push({ path: `${ARTIFACT_PATHS.buildGraph(key)}${i.abu ? `:${i.abu}` : ""}`, code: i.code, message: i.message });
   }
   return errors;

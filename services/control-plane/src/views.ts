@@ -148,12 +148,19 @@ export interface AttemptRow {
   relevant_to: string[];
   repo: string;
   builder_handle: string;
+  /** D15: provider and model of the run that produced the latest submission. */
+  built_with: { provider: "claude_cli" | "codex_cli"; model: "fable" | "opus" | "astra" | "sol"; modelId: string } | null;
 }
 
 export async function loadAttempt(tx: Tx, id: string): Promise<AttemptRow | null> {
   const rows = await tx.unsafe<AttemptRow[]>(
     `select at.*, ab.key as abu_key, ab.state as abu_state, ab.row_version as abu_row_version, cf.id as feature_id, cf.key as feature_key,
-            ${ABU_RELEVANCE("ab.id")} as relevant_to, ab.repo_full_name as repo, ac.handle as builder_handle
+            ${ABU_RELEVANCE("ab.id")} as relevant_to, ab.repo_full_name as repo, ac.handle as builder_handle,
+            (select jsonb_build_object('provider', m.manifest->>'provider', 'model', m.manifest->'model'->>'ref', 'modelId', m.model_id)
+               from wos.changesets c join wos.tasks t on t.id = c.task_id
+               join wos.context_manifests m on m.lease_id = c.lease_id and m.manifest_sha256 = c.manifest_sha256
+              where c.ok and (t.attempt_id = at.id or (t.kind = 'abu_build' and t.abu_id = at.abu_id and c.account_id = at.account_id))
+              order by c.created_at desc limit 1) as built_with
        from wos.attempts at
        join wos.abus ab on ab.id = at.abu_id
        join wos.catalog_features cf on cf.id = ab.catalog_feature_id
@@ -171,6 +178,7 @@ export function attemptView(r: AttemptRow): AttemptView {
     feature: r.feature_key,
     relevantTo: r.relevant_to,
     repo: r.repo,
+    builtWith: r.built_with,
     state: r.state,
     builderHandle: r.builder_handle,
     baseSha: r.base_sha,
