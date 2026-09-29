@@ -18,8 +18,10 @@ export const metadata = pageMetadata({
 
 const KEY = { mapped: "mappedBp", specified: "specifiedBp", built: "builtBp" } as const;
 
-export default function WosDossier() {
-  const t = getTarget("waronsaas")!.data;
+export const revalidate = 60;
+
+export default async function WosDossier() {
+  const t = (await getTarget("waronsaas"))!.data;
   const features = t.capabilities.reduce((n, c) => n + c.features.length, 0);
   const header: [string, string][] = [
     ["ID", wosTarget.id],

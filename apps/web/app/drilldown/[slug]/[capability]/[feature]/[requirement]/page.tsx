@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getFeature, getTarget, proposedAcceptance, siteFields, SURFACE_LABEL } from "@/lib/data-source";
+import { getFeature, proposedAcceptance, proposedCapabilities, siteFields, SURFACE_LABEL } from "@/lib/data-source";
 import { pageMetadata } from "@/lib/seo";
 import { Section } from "@/components/Section";
 import { Crumbs } from "@/components/Crumbs";
@@ -10,8 +10,7 @@ import { SourceNote } from "@/components/SourceNote";
 export const dynamicParams = false;
 
 export function generateStaticParams() {
-  const t = getTarget("waronsaas")!.data;
-  return t.capabilities.flatMap((c) =>
+  return proposedCapabilities().flatMap((c) =>
     c.features.flatMap((f) =>
       (getFeature("waronsaas", f.key)?.data.requirements ?? []).map((r) => ({
         slug: "waronsaas",
@@ -27,7 +26,7 @@ type Props = { params: Promise<{ slug: string; capability: string; feature: stri
 
 function load(slug: string, capability: string, feature: string, requirement: string) {
   const got = getFeature(slug, feature);
-  const cap = getTarget(slug)?.data.capabilities.find((c) => c.key === capability);
+  const cap = slug === "waronsaas" ? proposedCapabilities().find((c) => c.key === capability) : undefined;
   const req = got?.data.requirements.find((r) => r.key.toLowerCase() === requirement);
   return got && cap && req && got.data.capability === capability ? { got, cap, req } : null;
 }

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { formatPercent, getTarget, siteFields } from "@/lib/data-source";
+import { formatPercent, proposedCapabilities, ROADMAP_SOURCE, siteFields } from "@/lib/data-source";
 import { pageMetadata } from "@/lib/seo";
 import { Section } from "@/components/Section";
 import { Bar } from "@/components/Bar";
@@ -10,16 +10,15 @@ import { SourceNote } from "@/components/SourceNote";
 export const dynamicParams = false;
 
 export function generateStaticParams() {
-  const t = getTarget("waronsaas")!.data;
-  return t.capabilities.map((c) => ({ slug: "waronsaas", capability: c.key }));
+  return proposedCapabilities().map((c) => ({ slug: "waronsaas", capability: c.key }));
 }
 
 type Props = { params: Promise<{ slug: string; capability: string }> };
 
 function load(slug: string, capability: string) {
-  const got = getTarget(slug);
-  const cap = got?.data.capabilities.find((c) => c.key === capability);
-  return got && cap ? { got, cap } : null;
+  if (slug !== "waronsaas") return null;
+  const cap = proposedCapabilities().find((c) => c.key === capability);
+  return cap ? { got: { data: { name: "warOnSaaS" }, source: ROADMAP_SOURCE }, cap } : null;
 }
 
 export async function generateMetadata({ params }: Props) {

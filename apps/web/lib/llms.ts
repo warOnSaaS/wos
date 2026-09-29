@@ -1,3 +1,4 @@
+import type { TargetDetail, TargetSummary } from "@contracts/domain";
 import { BRIEFING, BRIEFING_INTRO, type Block } from "./briefing";
 import { WOS_PROPOSAL_LABEL, WOS_ZERO_REASON, wosTarget } from "@/data/wos-roadmap";
 import { formatPercent, getTarget, listTargets, ROADMAP_SOURCE, SURFACE_LABEL, siteFields, suiteSurfaceProgress } from "./data-source";
@@ -19,12 +20,28 @@ const pages = [
 ];
 
 /** Progress line for a target, from the data source (formatPercent of basis points). */
+type Data = { list: TargetSummary[]; details: Map<string, TargetDetail> };
+
+/** Everything the llms files need from the API, fetched once per render. */
+async function load(): Promise<Data> {
+  const list = await listTargets();
+  const details = new Map<string, TargetDetail>();
+  for (const t of list) {
+    const d = await getTarget(t.slug);
+    if (d) details.set(t.slug, d.data);
+  }
+  return { list, details };
+}
+
+let data: Data;
+
 const progressLine = (slug: string) => {
-  const p = listTargets().find((x) => x.slug === slug)!.progress;
+  const p = data.list.find((x) => x.slug === slug)!.progress;
   return `mapped ${formatPercent(p.mappedBp)}, specified ${formatPercent(p.specifiedBp)}, built ${formatPercent(p.builtBp)}`;
 };
 
-export function llmsTxt(): string {
+export async function llmsTxt(): Promise<string> {
+  data = await load();
   return [
     `# ${SITE_NAME}`,
     "",
@@ -52,7 +69,8 @@ export function llmsTxt(): string {
   ].join("\n");
 }
 
-export function llmsFullTxt(): string {
+export async function llmsFullTxt(): Promise<string> {
+  data = await load();
   const out: string[] = [];
   const push = (...l: string[]) => out.push(...l);
 
@@ -81,7 +99,7 @@ export function llmsFullTxt(): string {
     "",
   );
   push("| ID | Target | Category | Mapped | Specified | Built | Roadmap | Status |", "|---|---|---|---|---|---|---|---|");
-  listTargets().forEach((t) => {
+  data.list.forEach((t) => {
     const site = siteFields(t.slug)!;
     const p = t.progress;
     push(`| ${site.id} | ${site.name} | ${site.category} | ${formatPercent(p.mappedBp)} | ${formatPercent(p.specifiedBp)} | ${formatPercent(p.builtBp)} | ${roadmapState(site)} | ${targetStatus(site)} |`);
@@ -108,7 +126,7 @@ export function llmsFullTxt(): string {
   push("warOnSaaS is its own first target. wOS is built with the same process it runs for every other target. Repository: waronsaas/wos.", "");
   push(`- Status: ${targetStatus(wosTarget)}`, `- Roadmap: ${WOS_PROPOSAL_LABEL}`, `- Progress: ${progressLine(wosTarget.slug)}`, `- Why 0%: ${WOS_ZERO_REASON}`, "");
   push("State of work: contracts, database schema and protocols are written. Wave 1 (control plane, GitHub integration, context and policy, verification) passes its tests locally; not deployed, not on GitHub yet. Wave 2 is in progress (planning, rewards, orchestrator, CLI, Desktop, this website). None of it counts toward the measures until the roadmap merges and work goes through wOS.", "");
-  const wos = getTarget(wosTarget.slug)!.data;
+  const wos = data.details.get(wosTarget.slug)!;
   push(`### Roadmap (${WOS_PROPOSAL_LABEL}; source ${ROADMAP_SOURCE.path})`, "");
   push("Surfaces: " + wos.surfaces.map((s) => `${SURFACE_LABEL[s.surface]} (${s.status === "in_scope" ? "in scope" : "excluded"}, ${s.repo ?? "no repo"})`).join("; ") + ".", "");
   wos.capabilities.forEach((c) => {
@@ -150,7 +168,7 @@ export function llmsFullTxt(): string {
   targets.forEach((t, i) => {
     push(`### ${t.id} Open-source ${t.name} alternative (${abs(`/targets/${t.slug}`)})`, "");
     push(`Target ${i + 1} of ${targets.length}. Designation: ${t.name}. Category: ${t.category}. Status: ${targetStatus(t)}. ${t.whatItIs}`, "");
-    const p = getTarget(t.slug)!.data;
+    const p = data.details.get(t.slug)!;
     push(`- Progress: ${progressLine(t.slug)}`);
     push(`- Progress per surface: ${suiteSurfaceProgress(p).map((s) => `${SURFACE_LABEL[s.surface]} specified ${formatPercent(s.specifiedBp)}, built ${formatPercent(s.builtBp)}`).join("; ")}`);
     push(`- Roadmap: ${t.roadmapPr ?? roadmapStatus(t)} (the canonical PR will be titled "${roadmapTitle(t)}", in waronsaas/product)`);
