@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getTarget, roadmapStatus, roadmapTitle, targets } from "@/data/targets";
+import { getTarget, roadmapState, roadmapStatus, roadmapTitle, targetStatus, targets } from "@/data/targets";
 import { PROGRESS_METRICS } from "@/lib/content";
 import { breadcrumbLd, pageMetadata } from "@/lib/seo";
 import { LINKS, TOKEN_DISCLAIMER } from "@/lib/site";
-import { Progress } from "@/components/Progress";
+import { Section } from "@/components/Section";
+import { Bar } from "@/components/Bar";
 import { JsonLd } from "@/components/JsonLd";
 
 export const dynamicParams = false;
@@ -31,149 +32,148 @@ export default async function TargetPage({ params }: Props) {
   const { slug } = await params;
   const t = getTarget(slug);
   if (!t) notFound();
-  const position = targets.findIndex((x) => x.slug === t.slug) + 1;
+
+  const header: [string, string][] = [
+    ["ID", t.id],
+    ["Designation", t.name],
+    ["Category", t.category],
+    ["Status", targetStatus(t)],
+    ["Roadmap", roadmapState(t)],
+    ["Self-hosted", t.selfHosted ? "Available" : "Not yet"],
+    ["Hosted", t.hosted ? "Running" : "Not yet"],
+    ["Contributors", "0"],
+  ];
 
   return (
     <>
-      <section className="hero" aria-labelledby="t-h">
-        <div className="wrap">
-          <nav className="crumbs" aria-label="Breadcrumb">
-            <ol>
-              <li><Link href="/">Home</Link></li>
-              <li><Link href="/#sniper-list">Sniper List</Link></li>
-              <li><span aria-current="page">{t.name}</span></li>
-            </ol>
-          </nav>
-          <p className="kicker">Target {String(position).padStart(2, "0")} of {targets.length}</p>
-          <h1 id="t-h">Open-source {t.name} alternative</h1>
-          <p className="lede">
-            {t.name}: {t.whatItIs.charAt(0).toLowerCase() + t.whatItIs.slice(1)} warOnSaaS is building an open-source
-            replacement you can run yourself, one feature at a time.
-          </p>
-        </div>
-      </section>
-
-      <section className="section" aria-labelledby="progress-h">
-        <div className="wrap grid-2">
-          <div>
-            <h2 id="progress-h">Progress</h2>
-            <p>
-              Three separate numbers, measured independently. Nothing has started yet, so all three are zero.
-            </p>
-            <dl className="facts">
-              {PROGRESS_METRICS.map((m) => (
-                <div key={m.key}>
-                  <dt>{m.label}</dt>
-                  <dd>{m.means}</dd>
-                </div>
-              ))}
-            </dl>
-          </div>
-          <Progress target={t} size="lg" />
-        </div>
-      </section>
-
-      <section className="section" aria-labelledby="replaces-h">
-        <div className="wrap grid-2">
-          <div>
-            <h2 id="replaces-h">What it replaces</h2>
-            <p>{t.name} is {t.whatItIs.charAt(0).toLowerCase() + t.whatItIs.slice(1)}</p>
-            <p>In broad strokes, the replacement will cover:</p>
-            <ul className="covers">
-              {t.replacementCovers.map((c) => (
-                <li key={c}>{c}</li>
-              ))}
-            </ul>
-            <p className="fine">
-              The public roadmap decides the exact scope. This list is a starting outline, not a promise of every
-              feature.
-            </p>
-          </div>
-          <div>
-            <h2>Status</h2>
-            <dl className="facts">
-              <div>
-                <dt>Roadmap</dt>
-                <dd>
-                  {t.roadmapPr ? <a href={t.roadmapPr}>{roadmapTitle(t)}</a> : roadmapStatus(t)}
-                </dd>
-              </div>
-              <div>
-                <dt>Self-hosted</dt>
-                <dd>{t.selfHosted ? "Available" : "Not available yet"}</dd>
-              </div>
-              <div>
-                <dt>Hosted</dt>
-                <dd>{t.hosted ? "Running" : "Not running yet"}</dd>
-              </div>
-              <div>
-                <dt>Contributors</dt>
-                <dd>None yet</dd>
-              </div>
-            </dl>
-          </div>
-        </div>
-      </section>
-
-      <section className="section" aria-labelledby="contribute-h">
-        <div className="wrap">
-          <h2 id="contribute-h">How to contribute to this roadmap</h2>
-          <ol className="steps">
-            <li className="step">
-              <span className="step__num" aria-hidden="true">1</span>
-              <div>
-                <h3 className="step__title">Find the one roadmap</h3>
-                <p>
-                  Everything for this target goes into a single public pull request called “{roadmapTitle(t)}”.{" "}
-                  {t.roadmapPr ? (
-                    <a href={t.roadmapPr}>Open the roadmap.</a>
-                  ) : (
-                    <>
-                      It has not been opened yet. When it is, it will appear in the{" "}
-                      <a href={LINKS.pullRequests}>warOnSaaS pull requests on GitHub</a> and on this page.
-                    </>
-                  )}
-                </p>
-              </div>
-            </li>
-            <li className="step">
-              <span className="step__num" aria-hidden="true">2</span>
-              <div>
-                <h3 className="step__title">Propose a change to it</h3>
-                <p>
-                  Spot a missing feature, a wrong assumption or a gap? Propose a change to the roadmap itself. Please
-                  do not start a separate roadmap: one plan per target keeps everyone building the same thing.
-                </p>
-              </div>
-            </li>
-            <li className="step">
-              <span className="step__num" aria-hidden="true">3</span>
-              <div>
-                <h3 className="step__title">Two AIs test it</h3>
-                <p>
-                  Fable (Claude, by Anthropic) and Astra (ChatGPT, by OpenAI) each try to prove the roadmap is
-                  incomplete, without seeing each other’s answer. Rounds continue until both say there are no
-                  material gaps.
-                </p>
-              </div>
-            </li>
-            <li className="step">
-              <span className="step__num" aria-hidden="true">4</span>
-              <div>
-                <h3 className="step__title">Then build it</h3>
-                <p>
-                  Once features have agreed contracts, <Link href="/download">download wOS</Link>, pick {t.name}, pick a
-                  feature and a task, and press BUILD. Accepted work earns WOS tokens. {TOKEN_DISCLAIMER}
-                </p>
-              </div>
-            </li>
+      <div className="title">
+        <nav className="crumbs" aria-label="Breadcrumb">
+          <ol>
+            <li><Link href="/">Home</Link></li>
+            <li><Link href="/#targets">Targets</Link></li>
+            <li><span aria-current="page">{t.id}</span></li>
           </ol>
-          <p className="fine" style={{ marginTop: "1.5rem" }}>
-            {t.name} is a trademark of its owner. warOnSaaS is not affiliated with it. See{" "}
-            <Link href="/how-it-works">how it works</Link> for the full process.
-          </p>
+        </nav>
+        <p className="label">Target dossier // {t.id}</p>
+        <h1>Open-source {t.name} alternative</h1>
+        <p>
+          {t.name}: {t.whatItIs} warOnSaaS is building an open-source replacement you can run yourself, one feature at
+          a time.
+        </p>
+      </div>
+
+      <Section n="01" title="Header" id="header">
+        <dl className="cells">
+          {header.map(([k, v]) => (
+            <div key={k}>
+              <dt>{k}</dt>
+              <dd>{v}</dd>
+            </div>
+          ))}
+        </dl>
+      </Section>
+
+      <Section n="02" title="Progress" id="progress" aside="Three independent measures">
+        <div className="readout">
+          {PROGRESS_METRICS.map((m) => (
+            <div key={m.key}>
+              <span className="label">{m.label}</span>
+              <span className="readout__n">{t[m.key]}%</span>
+              <Bar value={t[m.key]} cells={20} showValue={false} />
+              <p className="fine">{m.means}</p>
+            </div>
+          ))}
         </div>
-      </section>
+      </Section>
+
+      <Section n="03" title="Roadmap" id="roadmap">
+        <dl className="kv">
+          <div>
+            <dt>Canonical PR</dt>
+            <dd>“{roadmapTitle(t)}”</dd>
+          </div>
+          <div>
+            <dt>State</dt>
+            <dd>
+              {t.roadmapPr ? <a href={t.roadmapPr}>{roadmapStatus(t)}</a> : roadmapStatus(t)}
+            </dd>
+          </div>
+          <div>
+            <dt>Consensus</dt>
+            <dd>
+              {t.roadmapPr ? "See the roadmap PR." : "Not reached."} Requires Fable and Astra to both report no material
+              gaps.
+            </dd>
+          </div>
+        </dl>
+      </Section>
+
+      <Section n="04" title="Scope" id="scope" aside="Provisional outline">
+        <p>{t.name} is: {t.whatItIs.charAt(0).toLowerCase() + t.whatItIs.slice(1)} The replacement is expected to cover, in broad strokes:</p>
+        <ul className="rules">
+          {t.replacementCovers.map((c, i) => (
+            <li key={c}>
+              <span aria-hidden="true">S-{i + 1}</span>
+              <span>{c}</span>
+            </li>
+          ))}
+        </ul>
+        <p className="fine">Provisional. The public roadmap sets the exact scope. This is not a feature commitment.</p>
+      </Section>
+
+      <Section n="05" title="How to contribute" id="contribute">
+        <ol className="proc">
+          <li>
+            <span className="proc__n" aria-hidden="true">01</span>
+            <div>
+              <h3>Find the roadmap</h3>
+              <p>
+                All work on this target goes into one pull request: “{roadmapTitle(t)}”.{" "}
+                {t.roadmapPr ? (
+                  <a href={t.roadmapPr}>Open it.</a>
+                ) : (
+                  <>
+                    Not opened yet. It will appear in the <a href={LINKS.pullRequests}>warOnSaaS pull requests</a> and
+                    on this page.
+                  </>
+                )}
+              </p>
+            </div>
+          </li>
+          <li>
+            <span className="proc__n" aria-hidden="true">02</span>
+            <div>
+              <h3>Propose a change</h3>
+              <p>Missing feature, wrong assumption, gap: propose a change to that roadmap. Do not start a separate one.</p>
+            </div>
+          </li>
+          <li>
+            <span className="proc__n" aria-hidden="true">03</span>
+            <div>
+              <h3>Review</h3>
+              <p>
+                Fable (Claude, by Anthropic) and Astra (ChatGPT, by OpenAI) each try to prove the roadmap incomplete,
+                independently. Rounds continue until both report no material gaps.
+              </p>
+            </div>
+          </li>
+          <li>
+            <span className="proc__n" aria-hidden="true">04</span>
+            <div>
+              <h3>Build</h3>
+              <p>
+                Once features have agreed contracts: <Link href="/download">download wOS</Link>, pick {t.name}, a
+                feature and a task, press BUILD. Contributing requires a linked GitHub account. Accepted work earns WOS
+                tokens. {TOKEN_DISCLAIMER}
+              </p>
+            </div>
+          </li>
+        </ol>
+        <p className="fine">
+          {t.name} is a trademark of its owner. warOnSaaS is not affiliated with it.{" "}
+          <Link href="/how-it-works">Full procedure</Link>.
+        </p>
+      </Section>
 
       <JsonLd
         data={breadcrumbLd([

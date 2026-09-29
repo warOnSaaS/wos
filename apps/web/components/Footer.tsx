@@ -4,30 +4,30 @@ import { LINKS, TOKEN_DISCLAIMER } from "@/lib/site";
 
 export function Footer() {
   return (
-    <footer className="site-footer">
-      <div className="wrap footer-grid">
+    <footer>
+      <div className="foot">
         <div>
-          <p className="wordmark wordmark--sm">
-            war<span>On</span>SaaS
-          </p>
-          <p className="muted">Open-source replacements for the software you rent. One feature at a time.</p>
+          <p className="wordmark">WARONSAAS</p>
+          <p className="fine">Open-source replacements for rented business software. One feature at a time.</p>
         </div>
-        <nav aria-label="The Sniper List">
-          <h2 className="footer-h">The Sniper List</h2>
-          <ul className="footer-list">
+        <nav aria-label="Targets">
+          <h2>Targets</h2>
+          <ul>
             {targets.map((t) => (
               <li key={t.slug}>
-                <Link href={`/targets/${t.slug}`}>{t.name} alternative</Link>
+                <Link href={`/targets/${t.slug}`}>
+                  {t.id} {t.name}
+                </Link>
               </li>
             ))}
           </ul>
         </nav>
         <nav aria-label="Site">
-          <h2 className="footer-h">Site</h2>
-          <ul className="footer-list">
-            <li><Link href="/how-it-works">How it works</Link></li>
-            <li><Link href="/download">Download wOS</Link></li>
-            <li><Link href="/tokens">WOS tokens</Link></li>
+          <h2>Index</h2>
+          <ul>
+            <li><Link href="/how-it-works">Procedure</Link></li>
+            <li><Link href="/download">Download</Link></li>
+            <li><Link href="/tokens">Tokens</Link></li>
             <li><Link href="/leaderboard">Leaderboard</Link></li>
             <li><Link href="/about">About</Link></li>
             <li><a href={LINKS.repo}>GitHub</a></li>
@@ -35,12 +35,13 @@ export function Footer() {
           </ul>
         </nav>
       </div>
-      <div className="wrap fine">
+      <div className="foot-fine fine">
         <p>{TOKEN_DISCLAIMER} They are not cryptocurrency and cannot be transferred or sold.</p>
-        <p>
-          Product names on this site are trademarks of their respective owners. warOnSaaS is not affiliated with,
-          endorsed by or sponsored by any of them.
-        </p>
+        <p>Product names are trademarks of their owners. warOnSaaS is not affiliated with, endorsed by or sponsored by any of them.</p>
+      </div>
+      <div className="strip" role="presentation">
+        <span>Distribution: public</span>
+        <span>End of document</span>
       </div>
     </footer>
   );

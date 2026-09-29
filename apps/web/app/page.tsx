@@ -1,10 +1,12 @@
 import Link from "next/link";
-import { targets } from "@/data/targets";
-import { ABOUT, FAQ, TOKENS } from "@/lib/content";
+import { overall, programme, roadmapsOpen, targets } from "@/data/targets";
+import { FAQ, OBJECTIVE, TOKENS } from "@/lib/content";
 import { desktopAppLd, faqLd, pageMetadata, targetListLd } from "@/lib/seo";
-import { SITE_DESCRIPTION, SITE_NAME, TAGLINE } from "@/lib/site";
-import { TargetList } from "@/components/TargetList";
-import { Steps } from "@/components/Steps";
+import { SITE_DESCRIPTION, SITE_NAME } from "@/lib/site";
+import { Section } from "@/components/Section";
+import { TargetTable } from "@/components/TargetTable";
+import { Procedure } from "@/components/Procedure";
+import { Rules } from "@/components/Rules";
 import { DownloadBlock } from "@/components/DownloadBlock";
 import { FaqList } from "@/components/FaqList";
 import { JsonLd } from "@/components/JsonLd";
@@ -17,100 +19,69 @@ export const metadata = pageMetadata({
 });
 
 export default function Home() {
-  const names = targets.map((t) => t.name);
+  const sitrep: [string, string][] = [
+    ["Targets", String(targets.length)],
+    ["Roadmaps open", String(roadmapsOpen())],
+    ["Mapped", `${overall("mapped")}%`],
+    ["Specified", `${overall("specified")}%`],
+    ["Built", `${overall("built")}%`],
+    ["Contributors", String(programme.contributors)],
+    ["Accepted work", String(programme.acceptedContributions)],
+    ["Tokens issued", String(programme.tokensIssued)],
+  ];
+
   return (
     <>
-      <section className="hero" aria-labelledby="hero-h">
-        <div className="wrap">
-          <p className="kicker">The war on rented software</p>
-          <h1 id="hero-h">{TAGLINE}</h1>
-          <p className="lede">
-            warOnSaaS builds open-source replacements for the biggest rented business software, one feature at a
-            time, with AI coding agents run by contributors on their own subscriptions.
-          </p>
-          <div className="actions">
-            <a className="btn" href="#sniper-list">See the Sniper List</a>
-            <Link className="btn btn--ghost" href="/download">Download wOS</Link>
-          </div>
-          <p className="hero__zero">
-            <strong>0%</strong>
-            <span>built so far, across all ten targets. The war starts at zero.</span>
-          </p>
-        </div>
-      </section>
+      <div className="title">
+        <p className="label">Operation order // warOnSaaS</p>
+        <h1>Open-source replacements for the software you rent.</h1>
+        <p>{SITE_DESCRIPTION}</p>
+      </div>
 
-      <section className="section" id="sniper-list" aria-labelledby="list-h">
-        <div className="wrap">
-          <div className="section-head">
-            <div>
-              <p className="kicker">Ten targets, in order</p>
-              <h2 id="list-h">The Sniper List</h2>
+      <Section n="01" title="Sitrep" id="sitrep" aside="Status: standby">
+        <dl className="cells">
+          {sitrep.map(([k, v]) => (
+            <div key={k}>
+              <dt>{k}</dt>
+              <dd>{v}</dd>
             </div>
-            <p className="muted">
-              {names.slice(0, -1).join(", ")} and {names[names.length - 1]}. Each gets its own public roadmap. Every
-              number below is real, and every number is zero.
-            </p>
-          </div>
-          <TargetList targets={targets} />
-          <p className="fine" style={{ marginTop: "1.25rem" }}>
-            Mapped: how much of the product is on the roadmap. Specified: how much has an agreed plan for each
-            feature. Built: how much is merged. The three are measured separately.
-          </p>
-        </div>
-      </section>
+          ))}
+        </dl>
+        <p className="dim">Nothing has started. The numbers are real. The war starts at zero.</p>
+      </Section>
 
-      <section className="section" id="how-it-works" aria-labelledby="how-h">
-        <div className="wrap">
-          <div className="section-head">
-            <div>
-              <p className="kicker">Seven steps</p>
-              <h2 id="how-h">How it works</h2>
-            </div>
-            <Link href="/how-it-works">The full explanation</Link>
-          </div>
-          <Steps />
-        </div>
-      </section>
+      <Section n="02" title="Objective" id="objective">
+        <p>{OBJECTIVE}</p>
+      </Section>
 
-      <section className="section" id="tokens" aria-labelledby="tokens-h">
-        <div className="wrap grid-2">
-          <div>
-            <p className="kicker">Keeping score</p>
-            <h2 id="tokens-h">WOS tokens</h2>
-            <p className="lede">{TOKENS.intro}</p>
-            <p>{TOKENS.rule}</p>
-            <p>
-              <Link href="/tokens">What earns tokens</Link>
-            </p>
-          </div>
-          <div className="panel">
-            <p className="disclaimer">{TOKENS.disclaimer}</p>
-            <p>{TOKENS.notCrypto}</p>
-          </div>
-        </div>
-      </section>
+      <Section n="03" title="Targets" id="targets" aside="The Sniper List">
+        <TargetTable targets={targets} />
+        <p className="fine">
+          Mapped: share of the product on the roadmap. Specified: share with an agreed Feature Contract. Built: share
+          merged. Measured separately.
+        </p>
+      </Section>
 
-      <section className="section" id="download" aria-labelledby="download-h">
-        <div className="wrap">
-          <div className="section-head">
-            <div>
-              <p className="kicker">Join the build</p>
-              <h2 id="download-h">Download wOS</h2>
-            </div>
-            <Link href="/download">Setup instructions</Link>
-          </div>
-          <DownloadBlock />
-        </div>
-      </section>
+      <Section n="04" title="Procedure" id="procedure" aside={<Link href="/how-it-works">Full procedure</Link>}>
+        <Procedure />
+      </Section>
 
-      <section className="section" id="faq" aria-labelledby="faq-h">
-        <div className="wrap">
-          <p className="kicker">Questions</p>
-          <h2 id="faq-h">FAQ</h2>
-          <FaqList faq={FAQ} />
-          <p className="fine" style={{ marginTop: "1.5rem" }}>{ABOUT.selfHost}</p>
-        </div>
-      </section>
+      <Section n="05" title="Rules of engagement" id="roe">
+        <Rules />
+      </Section>
+
+      <Section n="06" title="Equipment" id="equipment" aside={<Link href="/download">Setup</Link>}>
+        <DownloadBlock />
+      </Section>
+
+      <Section n="07" title="Tokens" id="tokens" aside={<Link href="/tokens">Detail</Link>}>
+        <p>{TOKENS.intro} {TOKENS.rule}</p>
+        <p><strong>{TOKENS.disclaimer}</strong> {TOKENS.notCrypto.replace("WOS tokens are not", "They are not")}</p>
+      </Section>
+
+      <Section n="08" title="FAQ" id="faq">
+        <FaqList faq={FAQ} />
+      </Section>
 
       <JsonLd data={targetListLd(targets)} />
       <JsonLd data={desktopAppLd} />

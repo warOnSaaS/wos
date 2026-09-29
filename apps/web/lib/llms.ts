@@ -1,7 +1,7 @@
-import { roadmapStatus, roadmapTitle, targets } from "@/data/targets";
-import { ABOUT, FAQ, PROGRESS_METRICS, STEPS, TOKENS } from "./content";
+import { programme, roadmapState, roadmapStatus, roadmapTitle, targetStatus, targets } from "@/data/targets";
+import { ABOUT, FAQ, OBJECTIVE, PROGRESS_METRICS, ROE, STEPS, TOKENS } from "./content";
 import { abs } from "./seo";
-import { CLI, DOWNLOADS, LINKS, PREREQUISITES, SITE_DESCRIPTION, SITE_NAME, TAGLINE } from "./site";
+import { CLI, DOWNLOADS, LINKS, PREREQUISITES, SIGN_IN, SITE_DESCRIPTION, SITE_NAME, TAGLINE } from "./site";
 
 const pages = [
   { path: "/", title: "Home", about: "What warOnSaaS is, the Sniper List with live progress, how it works, WOS tokens, download and FAQ." },
@@ -30,7 +30,7 @@ export function llmsTxt(): string {
     "## The Sniper List (targets, in order)",
     "",
     ...targets.map(
-      (t) => `- [Open-source ${t.name} alternative](${abs(`/targets/${t.slug}`)}): ${t.whatItIs} Progress: ${progressLine(t)}. ${roadmapStatus(t)}.`,
+      (t) => `- [${t.id} Open-source ${t.name} alternative](${abs(`/targets/${t.slug}`)}): ${t.category}. ${t.whatItIs} Progress: ${progressLine(t)}. ${roadmapStatus(t)}.`,
     ),
     "",
     "## Optional",
@@ -50,52 +50,77 @@ export function llmsFullTxt(): string {
   push("This file contains the full text of every page on " + abs("/") + ".", "");
 
   push(`## Home (${abs("/")})`, "");
-  push("0% built so far, across all ten targets. The war starts at zero.", "");
-  push("### The Sniper List", "");
+  push("### Sitrep", "");
+  push(
+    `- Targets: ${targets.length}`,
+    `- Roadmaps open: ${targets.filter((t) => t.roadmapPr).length}`,
+    `- Contributors: ${programme.contributors}`,
+    `- Accepted work: ${programme.acceptedContributions}`,
+    `- Tokens issued: ${programme.tokensIssued}`,
+    "",
+    "Nothing has started. The numbers are real. The war starts at zero.",
+    "",
+  );
+  push("### Objective", "", OBJECTIVE, "");
+  push("### Rules of engagement", "", ...ROE.map((r, i) => `R-${i + 1}. ${r}`), "");
+  push("### Targets (the Sniper List)", "");
   push(
     "Each target gets its own public roadmap. Progress is three independent numbers:",
     "",
     ...PROGRESS_METRICS.map((m) => `- ${m.label.toUpperCase()} %: ${m.means}`),
     "",
   );
-  targets.forEach((t, i) => push(`${i + 1}. ${t.name}: ${t.whatItIs} (${progressLine(t)}; ${roadmapStatus(t)})`));
+  push("| ID | Target | Category | Mapped | Specified | Built | Roadmap | Status |", "|---|---|---|---|---|---|---|---|");
+  targets.forEach((t) => push(`| ${t.id} | ${t.name} | ${t.category} | ${t.mapped}% | ${t.specified}% | ${t.built}% | ${roadmapState(t)} | ${targetStatus(t)} |`));
   push("");
 
   push(`## How it works (${abs("/how-it-works")})`, "");
   STEPS.forEach((s, i) => push(`### ${i + 1}. ${s.title}`, "", s.summary, "", `Detail: ${s.detail}`, ""));
   push(
-    "### Why two AIs?",
+    "### Reviewers",
     "",
-    "One AI can miss what it does not know. Two models from two different labs, trained differently and working without seeing each other's answer, are much less likely to miss the same thing. Nothing moves forward until both agree. Fable is Claude, made by Anthropic. Astra is ChatGPT, made by OpenAI. Both run at maximum reasoning effort for every review.",
+    "Fable: Claude, by Anthropic. Astra: ChatGPT, by OpenAI. Two models from two labs, working without seeing each other's answer, are less likely to miss the same gap. Nothing proceeds until both agree. Both run at maximum reasoning effort for every review.",
     "",
   );
 
   push(`## Download wOS (${abs("/download")})`, "");
-  push("wOS is the app you build with. Pick a target, a feature and a task, press BUILD, and the Claude Code on your computer does the work under wOS's checks.", "");
+  push("wOS is the build tool. Pick a target, a feature and a task. Press BUILD. Your local Claude Code does the work under wOS's checks.", "");
+  push("### Sign-in", "", SIGN_IN, "No GitHub account is needed just to sign in.", "");
   push("### wOS Desktop", "", ...DOWNLOADS.map((d) => `- ${d.os} (${d.file}): ${d.href}`), "");
   push("### Command line", "", "```", CLI.install, ...CLI.commands.map((c) => `${c.cmd}    # ${c.what}`), "```", "");
-  push("### Prerequisites", "", ...PREREQUISITES.map((p) => `- ${p.name} (${p.href})`), "");
-  push("wOS uses your own Claude and ChatGPT subscriptions; the AI runs on your computer with your sign-in.", "");
+  push("### Requirements", "", ...PREREQUISITES.map((p) => `- ${p.name}${p.href ? ` (${p.href})` : ""}`), "");
+  push(
+    "### Setup",
+    "",
+    `1. Install wOS: download wOS Desktop for your system, or run \`${CLI.install}\`.`,
+    "2. Sign in with your email (`wos login`). A magic link is sent to you. No GitHub account is needed to sign in.",
+    "3. To contribute (build, review, propose), link a GitHub account.",
+    "4. Install the build tools: Claude Code signed in with a Claude subscription; the Codex CLI signed in with ChatGPT, for reviews; git. Check with `wos status`.",
+    "5. Build. Desktop: pick a target, a feature and a task, press BUILD. CLI: `wos build <task-id>`. Accepted work earns WOS tokens.",
+    "",
+    "The AI runs on your machine with your own Claude and ChatGPT sign-ins.",
+    "",
+  );
 
   push(`## WOS tokens (${abs("/tokens")})`, "", TOKENS.intro, "", "Earned for:", "");
   TOKENS.earnedFor.forEach((e) => push(`- ${e.what}: ${e.how}`));
   push("", TOKENS.rule, "", TOKENS.notCrypto, "", TOKENS.disclaimer, "");
-  push("No tokens have been earned yet, because no work has been accepted yet.", "");
+  push(TOKENS.balance, "");
 
-  push(`## Leaderboard (${abs("/leaderboard")})`, "", "Contributors are ranked by the WOS tokens they earn for accepted work.", "", "No accepted contributions yet.", "");
+  push(`## Leaderboard (${abs("/leaderboard")})`, "", "Contributors are ranked by WOS tokens earned for accepted work.", "", "No accepted contributions yet.", "");
 
-  push(`## About (${abs("/about")})`, "", ABOUT.mission, "", "### Why now", "", ...ABOUT.why.map((w) => `- ${w}`), "");
-  push("### How we work", "", ABOUT.how, "", ABOUT.selfHost, "", "### Where we are", "", ABOUT.zero, "");
+  push(`## About (${abs("/about")})`, "", ABOUT.mission, "", "### Reasons", "", ...ABOUT.why.map((w) => `- ${w}`), "");
+  push("### Method", "", ABOUT.how, "", ABOUT.selfHost, "", "### Position", "", ABOUT.zero, "");
 
   push("## Targets", "");
   targets.forEach((t, i) => {
-    push(`### Open-source ${t.name} alternative (${abs(`/targets/${t.slug}`)})`, "");
-    push(`Target ${i + 1} of ${targets.length}. ${t.name}: ${t.whatItIs}`, "");
+    push(`### ${t.id} Open-source ${t.name} alternative (${abs(`/targets/${t.slug}`)})`, "");
+    push(`Target ${i + 1} of ${targets.length}. Designation: ${t.name}. Category: ${t.category}. Status: ${targetStatus(t)}. ${t.whatItIs}`, "");
     push(`- Mapped: ${t.mapped}%`, `- Specified: ${t.specified}%`, `- Built: ${t.built}%`);
     push(`- Roadmap: ${t.roadmapPr ?? roadmapStatus(t)} (the canonical PR will be titled "${roadmapTitle(t)}")`);
     push(`- Self-hosted: ${t.selfHosted ? "available" : "not available yet"}`, `- Hosted: ${t.hosted ? "running" : "not running yet"}`, "- Contributors: none yet", "");
-    push("In broad strokes, the replacement will cover:", "", ...t.replacementCovers.map((c) => `- ${c}`), "");
-    push("The public roadmap decides the exact scope. To contribute: propose changes to the one canonical roadmap pull request (do not start a separate roadmap); Fable and Astra review it independently until both find no material gaps; once features have agreed contracts, download wOS, pick this target, a feature and a task, and press BUILD.", "");
+    push("Scope (provisional outline; the public roadmap sets the exact scope; not a feature commitment):", "", ...t.replacementCovers.map((c) => `- ${c}`), "");
+    push("To contribute: propose changes to the one canonical roadmap pull request (do not start a separate one). Fable and Astra review it independently until both report no material gaps. Once features have agreed contracts, download wOS, pick this target, a feature and a task, and press BUILD. Contributing requires a linked GitHub account.", "");
   });
 
   push("## FAQ", "");

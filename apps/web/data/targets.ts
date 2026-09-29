@@ -11,7 +11,11 @@
 export type Target = {
   /** Product name, text only. Never render a company's logo. */
   name: string;
+  /** Stable target ID, e.g. TGT-01. Order on the Sniper List. */
+  id: string;
   slug: string;
+  /** Short category label, e.g. CRM. */
+  category: string;
   /** What the product is, in one line. */
   whatItIs: string;
   /** What the replacement will cover, in broad strokes. The roadmap decides the detail. */
@@ -33,7 +37,9 @@ export type Target = {
 export const targets: Target[] = [
   {
     name: "Salesforce",
+    id: "TGT-01",
     slug: "salesforce",
+    category: "CRM",
     whatItIs: "Customer relationship management (CRM) for sales teams.",
     replacementCovers: [
       "Contacts, companies and leads",
@@ -51,7 +57,9 @@ export const targets: Target[] = [
   },
   {
     name: "HubSpot",
+    id: "TGT-02",
     slug: "hubspot",
+    category: "Marketing",
     whatItIs: "Marketing, sales and customer service software built around one contact database.",
     replacementCovers: [
       "A shared contact database",
@@ -69,7 +77,9 @@ export const targets: Target[] = [
   },
   {
     name: "Slack",
+    id: "TGT-03",
     slug: "slack",
+    category: "Team chat",
     whatItIs: "Team chat for work.",
     replacementCovers: [
       "Channels and direct messages",
@@ -87,7 +97,9 @@ export const targets: Target[] = [
   },
   {
     name: "Zoom",
+    id: "TGT-04",
     slug: "zoom",
+    category: "Video meetings",
     whatItIs: "Video meetings and webinars.",
     replacementCovers: [
       "Video and audio calls",
@@ -105,7 +117,9 @@ export const targets: Target[] = [
   },
   {
     name: "Shopify",
+    id: "TGT-05",
     slug: "shopify",
+    category: "E-commerce",
     whatItIs: "Software for running an online store.",
     replacementCovers: [
       "Storefront and product catalogue",
@@ -123,7 +137,9 @@ export const targets: Target[] = [
   },
   {
     name: "QuickBooks",
+    id: "TGT-06",
     slug: "quickbooks",
+    category: "Accounting",
     whatItIs: "Accounting software for small businesses.",
     replacementCovers: [
       "Invoices and payments",
@@ -141,7 +157,9 @@ export const targets: Target[] = [
   },
   {
     name: "Jira",
+    id: "TGT-07",
     slug: "jira",
+    category: "Issue tracking",
     whatItIs: "Issue and project tracking for software teams.",
     replacementCovers: [
       "Issues and backlogs",
@@ -159,7 +177,9 @@ export const targets: Target[] = [
   },
   {
     name: "Zendesk",
+    id: "TGT-08",
     slug: "zendesk",
+    category: "Customer support",
     whatItIs: "Customer support and help desk software.",
     replacementCovers: [
       "Support tickets and a shared inbox",
@@ -177,7 +197,9 @@ export const targets: Target[] = [
   },
   {
     name: "DocuSign",
+    id: "TGT-09",
     slug: "docusign",
+    category: "E-signature",
     whatItIs: "Electronic signatures for documents and agreements.",
     replacementCovers: [
       "Upload a document and place signature fields",
@@ -195,7 +217,9 @@ export const targets: Target[] = [
   },
   {
     name: "NetSuite",
+    id: "TGT-10",
     slug: "netsuite",
+    category: "ERP",
     whatItIs: "Business management (ERP) software for finance and operations.",
     replacementCovers: [
       "Financials and general ledger",
@@ -224,4 +248,41 @@ export function roadmapTitle(t: Target): string {
 
 export function roadmapStatus(t: Target): string {
   return t.roadmapPr ? "Roadmap PR open" : "Roadmap PR not opened yet";
+}
+
+/** Short roadmap state for tables: OPEN or NOT OPENED. */
+export function roadmapState(t: Target): string {
+  return t.roadmapPr ? "OPEN" : "NOT OPENED";
+}
+
+/**
+ * Operational status, derived only from the data above.
+ * STANDBY: no roadmap opened. MAPPING: roadmap open, nothing specified.
+ * SPECIFYING: contracts in progress, nothing built. BUILDING: some merged. COMPLETE: 100% built.
+ */
+export function targetStatus(t: Target): string {
+  if (t.built >= 100) return "COMPLETE";
+  if (t.built > 0) return "BUILDING";
+  if (t.specified > 0) return "SPECIFYING";
+  if (t.roadmapPr || t.mapped > 0) return "MAPPING";
+  return "STANDBY";
+}
+
+/**
+ * Programme-wide counters. Real values only; swap for the control-plane API later.
+ * Nothing has started, so every counter is zero.
+ */
+export const programme = {
+  contributors: 0,
+  acceptedContributions: 0,
+  tokensIssued: 0,
+};
+
+/** Programme-wide percentages: the mean across all targets. */
+export function overall(key: "mapped" | "specified" | "built"): number {
+  return Math.round(targets.reduce((n, t) => n + t[key], 0) / targets.length);
+}
+
+export function roadmapsOpen(): number {
+  return targets.filter((t) => t.roadmapPr).length;
 }

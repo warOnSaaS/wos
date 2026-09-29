@@ -1,30 +1,29 @@
-import { CLI, DOWNLOADS, PREREQUISITES } from "@/lib/site";
+import { CLI, DOWNLOADS, PREREQUISITES, SIGN_IN } from "@/lib/site";
 
-/** Desktop buttons, CLI and prerequisites. Used on / and /download. */
+/** Equipment: desktop builds, CLI, prerequisites. Used on / and /download. */
 export function DownloadBlock({ headingLevel = 3 }: { headingLevel?: 2 | 3 }) {
   const H = headingLevel === 2 ? "h2" : "h3";
   return (
-    <div className="download">
-      <div className="download__col">
+    <div className="equip">
+      <div>
         <H className="h3">wOS Desktop</H>
-        <p>The desktop app. Pick a target, a feature and a task, then press BUILD.</p>
-        <ul className="dl-buttons">
+        <p className="dim">Pick a target, a feature and a task. Press BUILD.</p>
+        <ul className="dl">
           {DOWNLOADS.map((d) => (
             <li key={d.os}>
-              <a className="btn" href={d.href}>
-                {d.label}
-                <span className="btn__sub">{d.file}</span>
+              <a className="cmd" href={d.href}>
+                <span>[ {d.label} ]</span>
+                <span className="dim">{d.file}</span>
               </a>
             </li>
           ))}
         </ul>
       </div>
-      <div className="download__col">
-        <H className="h3">Or use the command line</H>
-        <p>Install the wos CLI with npm:</p>
-        <pre className="code"><code>{CLI.install}</code></pre>
-        <p>Then:</p>
-        <dl className="cmds">
+      <div>
+        <H className="h3">wos CLI</H>
+        <p className="dim">Install with npm:</p>
+        <pre className="term"><code>{CLI.install}</code></pre>
+        <dl className="clist">
           {CLI.commands.map((c) => (
             <div key={c.cmd}>
               <dt><code>{c.cmd}</code></dt>
@@ -33,13 +32,13 @@ export function DownloadBlock({ headingLevel = 3 }: { headingLevel?: 2 | 3 }) {
           ))}
         </dl>
       </div>
-      <div className="download__col">
-        <H className="h3">Before you start</H>
-        <p>You will need:</p>
-        <ul className="checklist">
+      <div>
+        <H className="h3">Requirements</H>
+        <p className="dim">{SIGN_IN}</p>
+        <ul className="checks">
           {PREREQUISITES.map((p) => (
             <li key={p.name}>
-              <a href={p.href}>{p.name}</a>
+              <span>{p.href ? <a href={p.href}>{p.name}</a> : p.name}</span>
             </li>
           ))}
         </ul>

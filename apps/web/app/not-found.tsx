@@ -9,16 +9,14 @@ export const metadata: Metadata = {
 
 export default function NotFound() {
   return (
-    <section className="hero" aria-labelledby="h">
-      <div className="wrap">
-        <p className="kicker">404</p>
-        <h1 id="h">Nothing here</h1>
-        <p className="lede">This page does not exist. The targets that do are on the Sniper List.</p>
-        <div className="actions">
-          <Link className="btn" href="/#sniper-list">See the Sniper List</Link>
-          <Link className="btn btn--ghost" href="/">Home</Link>
-        </div>
+    <div className="title">
+      <p className="label">Error 404 // no such page</p>
+      <h1>Not found</h1>
+      <p>This page does not exist.</p>
+      <div className="cmds-row" style={{ marginTop: "1rem" }}>
+        <Link className="cmd" href="/#targets">Targets</Link>
+        <Link className="cmd" href="/">Home</Link>
       </div>
-    </section>
+    </div>
   );
 }

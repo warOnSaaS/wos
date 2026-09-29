@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { pageMetadata } from "@/lib/seo";
 import { TOKEN_DISCLAIMER } from "@/lib/site";
+import { Section } from "@/components/Section";
 
 export const metadata = pageMetadata({
   title: "Leaderboard",
@@ -12,32 +13,23 @@ export const metadata = pageMetadata({
 export default function Leaderboard() {
   return (
     <>
-      <section className="hero" aria-labelledby="h">
-        <div className="wrap">
-          <p className="kicker">Ranked by accepted work</p>
-          <h1 id="h">Leaderboard</h1>
-          <p className="lede">Contributors are ranked by the WOS tokens they earn for accepted work.</p>
-        </div>
-      </section>
+      <div className="title">
+        <p className="label">Leaderboard // ranked by accepted work</p>
+        <h1>Leaderboard</h1>
+        <p>Contributors are ranked by WOS tokens earned for accepted work.</p>
+      </div>
 
-      <section className="section" aria-label="Rankings">
-        <div className="wrap">
-          <div className="empty">
-            <p className="empty__big">No accepted contributions yet</p>
-            <p>
-              Nothing has been merged, so nobody is on the board. The first accepted roadmap change, contract, review
-              or build unit will put its author at the top.
-            </p>
-            <div className="actions">
-              <Link className="btn" href="/download">Download wOS</Link>
-              <Link className="btn btn--ghost" href="/how-it-works">How it works</Link>
-            </div>
-          </div>
-          <p className="fine" style={{ marginTop: "1.5rem" }}>
-            {TOKEN_DISCLAIMER} They are not cryptocurrency and cannot be transferred or sold.
-          </p>
+      <Section n="01" title="Rankings" id="rankings" aside="Entries: 0">
+        <div className="empty">
+          <strong>No accepted contributions yet</strong>
+          <p>Nothing has been merged. The board is empty. The first accepted roadmap change, contract, review or build unit takes rank 1.</p>
         </div>
-      </section>
+        <div className="cmds-row">
+          <Link className="cmd" href="/download">Download wOS</Link>
+          <Link className="cmd" href="/how-it-works">Procedure</Link>
+        </div>
+        <p className="fine">{TOKEN_DISCLAIMER} They are not cryptocurrency and cannot be transferred or sold.</p>
+      </Section>
     </>
   );
 }
