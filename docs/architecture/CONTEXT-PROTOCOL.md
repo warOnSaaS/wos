@@ -45,7 +45,12 @@ Selectors:
 |---|---|
 | `repo_file` | one path at `source.commit`; `required` decides failure if missing |
 | `repo_glob` | every path matching the picomatch glob at `source.commit`, sorted by bytewise path order, each file its own artifact |
-| `server_document` | a document the control plane renders (task spec, finding ledger, catalog index, diff, CI summary, policy obligations); fetched by `ref`, must match `sha256` |
+| `server_document` | a document the control plane renders (task spec, finding ledger, catalog index, diff, CI summary, policy obligations); fetched with `GET /v1/leases/:id/documents/:ref` (route `getLeaseDocument`, contracts 2.0.0), must match `sha256` |
+| `local_document` | produced on the contributor's machine; V1 has only `local:verification-output` (the failing local checks' output for a builder repair run); hashed into the manifest, unverifiable by the server, evidence only |
+
+The plan also carries `taskKind` (contracts 2.0.0), copied into `ContextManifest.task.kind`; nothing is
+inferred. For `abu_build` and `abu_revision` plans, `source.commit` is exactly the submission's
+`parentCommit` (base, current candidate head, or the new base after a rebase).
 
 Server document refs used in V1 (all rendered by the control plane as UTF-8 Markdown or JSON with
 sorted keys):
@@ -60,6 +65,14 @@ sorted keys):
 | `wos:proposals/<target or feature>` | accepted and open proposals with ids |
 | `wos:validator-errors/<taskId>` | deterministic validator errors carried from `validation_failed` |
 | `wos:diff/<attemptId>@<headSha>` | unified diff base..head of the candidate (implementation reviews) |
+| `wos:ci/<attemptId>@<headSha>` | CI failure summary for a revision after `ci_failed` |
+| `wos:dispute/<taskId>` | escalated findings and their history for the conflict resolver |
+
+Sealed verdicts have the reserved form `wos:verdict/<roundId>/<slot>`. It is NEVER placed in a plan and
+can never be fetched: `getLeaseDocument` returns 403 for any ref not in the caller's lease plan, and
+`checkManifestAgainstPlan` rejects any `server_document` artifact whose ref is not in the plan and any
+`wos:verdict/` ref (B-0001-context-policy, B-0004-verification). A reviewer's plan may contain
+`wos:findings/<subject>@<k>` only for k <= current round - 1.
 | `wos:ci/<attemptId>@<headSha>` | CI check names, conclusions and failure log tails (bounded to 200 lines per check) |
 | `wos:dispute/<taskId>` | for the resolver: the escalated findings, both sides' arguments, reviewer identities removed |
 
@@ -77,6 +90,7 @@ budget runs out. "R" = required, "O" = optional.
 5. R every existing file inside the ABU's write scopes (`repo_glob` per scope)
 6. R every path in `acceptance.tests` that exists at base
 7. R on revisions: `wos:findings/<attemptId>@<n>` and, after `ci_failed`, `wos:ci/<attemptId>@<headSha>`
+7a. O `local:verification-output` (local_document; present only in a local repair run's manifest)
 8. O each glob in the ABU's `scope.read`, in declared order
 9. O `features/<feature>/BUILD-GRAPH.yaml`
 
@@ -166,6 +180,10 @@ look further; the manifest records only what was placed in the prompt.
 - Server documents are rendered with sorted keys and stable ordering (findings by round then id).
 - The prompt template is a file `packages/context-engine/templates/<templateId>.md`; its sha256 is in
   the manifest. Template ids are `tpl.<role-family>.v<n>`; any text change creates a new version.
+  Ownership by file (contracts 2.0.0, B-0001-context-policy): `tpl.roadmap_*`, `tpl.feature_*` and
+  `tpl.conflict_resolver*` are written by the planning workstream; `tpl.builder*` and
+  `tpl.implementation_reviewer*` by context-policy. All ship inside context-engine so every client
+  renders byte-identical prompts.
 
 ## 5. Budget and truncation
 
@@ -220,7 +238,7 @@ files, else null), `sha256`, `bytes`, `estTokens`. Each exclusion records `ref` 
 `renderedPromptSha256` is sha256 of the UTF-8 prompt.
 
 `manifestSha256` = `"sha256:" + hex(sha256(JCS(manifest without manifestSha256)))`, where JCS is RFC 8785
-canonical JSON (`canonicalSha256` in context-engine; the same function hashes agent-run records and
+canonical JSON (`canonicalSha256` from `@waronsaas/contracts/canonical`, rules C-1..C-7; the same function hashes agent-run records and
 provenance records).
 
 Server checks on `POST /v1/leases/:id/manifest`:

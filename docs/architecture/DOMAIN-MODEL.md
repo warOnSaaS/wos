@@ -2,7 +2,7 @@
 
 Status: frozen at contracts 1.0.0. Owner: Lead Architect. Ground truth:
 `packages/contracts/src/state-machines.ts` (machines), `packages/contracts/src/domain.ts` (read models),
-`packages/db/migrations/0001_init.sql` (tables). The transition tables below are generated from the
+`packages/db/migrations/0001_init.sql` (tables) and `0002_backstops.sql` (contracts 2.0.0: review binding, one-way bootstrap flag via trigger `bootstrap_one_way`, private events visible only to privileged actors and the account concerned, raw Ed25519 device keys). The transition tables below are generated from the
 code and must be regenerated if it changes.
 
 ## 1. Vocabulary
@@ -85,7 +85,7 @@ for every role, and `wos_app` has only SELECT, INSERT); P = private (RLS restric
 | `agent_runs` | A | Every signed `AgentRunRecord`, with `signature_valid` computed by the server. |
 | `changesets` | A | Every submission's file manifest (paths, modes, sha256, bytes; never contents), `parent_sha`, `manifest_sha256`, `submission_sha256`, `signature_valid`, validation result, summary. |
 | `candidate_commits` | A | Commit the App built from a changeset (one per changeset). |
-| `reviews` | A, P | One per (round, slot) and one per (round, account). Bound to the round's head and submission hash (trigger `check_review_independence` also rejects an author reviewing their own subject unless labelled `bootstrap_self`). Sealed: visible only to its author and privileged actors until the round is revealed. |
+| `reviews` | A, P | One per (round, slot); distinct accounts per round except two `bootstrap_self` reviews. Trigger `check_review_independence` (rewritten in `0002_backstops.sql`) binds it to the round's head and submission hash, to the review task of that round and slot, to that task's active lease held by the reviewer, and to a manifest of that lease; rejects an author reviewing their own subject unless `bootstrap_self`; accepts `bootstrap_self`/`bootstrap_maintainer` only while bootstrap mode is on and only from a maintainer. Sealed: visible only to its author and privileged actors until the round is revealed. |
 | `findings` | M, P | One per verdict finding; state `open, resolved, disputed, upheld, overruled`; `dispute_rounds`. Written only by privileged actors; readable after reveal. |
 | `finding_responses` | A | Every author response, reviewer re-check, ruling and maintainer confirmation. |
 | `rulings` | M | Conflict Resolver output; `awaiting_maintainer -> confirmed/rejected`. |
@@ -120,6 +120,18 @@ In ONE transaction:
    `update wos.<table> set state = $to, row_version = row_version + 1, ... where id = $id and state = $from and row_version = $v`.
 3. If zero rows: roll back, respond `409 CONFLICT`. The client re-reads.
 4. Insert exactly one `wos.events` row for the transition (type per `events.ts`, `contracts_version`).
+   Creation is not a transition: inserting an aggregate in an initial state writes `<aggregate>.created`
+   (`attempt.created`, `task.created`, `lease.issued`, `document.opened`, ...), never a `state_changed` from
+   a pseudo-state "none". Every transition of every machine has an event type since contracts 3.0.0
+   (`document.state_changed`, `round.cancelled`, `contribution.state_changed`, `proposal.state_changed`,
+   `blocker.state_changed`, `inventory_version.state_changed`; B-0002-control-plane).
+
+Work subjects (contracts 3.0.0): roadmap work belongs to one app (`target`); contract, build and
+implementation-review work belongs to one catalog feature and serves every app in `relevantTo`. Views and
+plans never pick a representative app. Every document, catalog feature and ABU records its
+`repo_full_name` (migration 0003): the product repo, or the platform repo for TGT-00. Catalogs are per
+repository: a roadmap may reference only catalog features of its own repository. `reviews.agent_run_id`
+binds a verdict to the signed run that produced it (same lease, same manifest, valid signature).
 5. Insert or update the rows the transition implies (listed per machine below).
 
 Consumers (`progress`, `rewards`, `task_unlocker`, `github_sync`, `public_feed`) run from

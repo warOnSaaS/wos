@@ -52,6 +52,10 @@ import { AbuKey, Cursor, FeatureKey, GitSha, Page, Sha256, TargetSlug, Timestamp
  * The server stores (key, contributor, route, sha256(body)) -> response for 24h. Same key +
  * same body replays the stored response; same key + different body -> 422 IDEMPOTENCY_MISMATCH.
  *
+ * Implicit errors (never listed per route): UNAUTHENTICATED and GITHUB_REQUIRED where the auth mode
+ * requires them, RATE_LIMITED and INTERNAL everywhere, IDEMPOTENCY_MISMATCH on every idempotent route,
+ * VALIDATION_FAILED for any request that fails its zod schema.
+ *
  * Concurrency: state-changing routes return 409 CONFLICT when a guarded transition lost a race;
  * clients re-read and decide. They never blind-retry a 409.
  */
@@ -289,7 +293,7 @@ export const Routes = {
       email: z.email().max(254),
       clientKind: z.enum(["web", "desktop", "cli"]),
       deviceName: z.string().max(100).nullable(),
-      /** Desktop/CLI only: Ed25519 public key (base64) generated on first run, private key in the OS keychain. */
+      /** Desktop/CLI only: Ed25519 public key as base64 of the raw 32 bytes (canonical.ts C-5), generated on first run; private key stays in the OS keychain. */
       devicePublicKey: z.string().max(100).nullable(),
     }),
     /**
@@ -513,7 +517,7 @@ export const Routes = {
     query: None,
     body: z.object({ deviceId: Uuid }),
     response: ClaimResponse,
-    errors: ["NOT_FOUND", "NOT_ELIGIBLE", "RESOURCE_LOCKED", "LIMIT_REACHED", "CONFLICT"],
+    errors: ["NOT_FOUND", "NOT_ELIGIBLE", "RESOURCE_LOCKED", "LIMIT_REACHED", "CONFLICT", "UPSTREAM_GITHUB"],
     summary: "LEASE: creates the attempt, leases the abu_build task, takes resource locks, pins the base commit. (wos build <abu-id>)",
   }),
   claimReview: route({
@@ -538,7 +542,7 @@ export const Routes = {
     auth: "contributor",
     idempotent: false,
     params: None,
-    query: z.object({ kind: TaskKind.optional(), target: TargetSlug.optional() }),
+    query: z.object({ kind: TaskKind.optional(), target: TargetSlug.optional(), feature: FeatureKey.optional() }),
     body: None,
     response: z.object({ items: z.array(TaskView) }),
     errors: [],
@@ -553,7 +557,7 @@ export const Routes = {
     query: None,
     body: z.object({ deviceId: Uuid }),
     response: ClaimResponse,
-    errors: ["NOT_FOUND", "NOT_ELIGIBLE", "LIMIT_REACHED", "CONFLICT"],
+    errors: ["NOT_FOUND", "NOT_ELIGIBLE", "LIMIT_REACHED", "CONFLICT", "UPSTREAM_GITHUB"],
     summary: "Claims a roadmap_author / feature_author / abu_revision / conflict_resolution task. (wos roadmap, wos resolve)",
   }),
 
@@ -592,7 +596,22 @@ export const Routes = {
     body: ContextManifest,
     response: z.object({ accepted: z.literal(true), manifestId: Uuid }),
     errors: ["LEASE_NOT_HELD", "LEASE_EXPIRED", "MANIFEST_REJECTED"],
-    summary: "Immutable Context Manifest for this invocation; must match the plan. Moves attempt leased->building.",
+    summary:
+      "Immutable Context Manifest for one agent invocation; must match the plan. The first one moves the attempt leased->building. A local repair run posts a new manifest (same plan, new local:verification-output hash); a submission must cite the manifest of the run that produced it.",
+  }),
+  getLeaseDocument: route({
+    method: "GET",
+    path: "/v1/leases/:id/documents",
+    auth: "contributor",
+    idempotent: false,
+    params: IdParams,
+    /** The ref goes in the query string (refs contain '/' and '@'; B-0003-control-plane). */
+    query: z.object({ ref: z.string().min(5).max(300) }),
+    body: None,
+    response: z.object({ ref: z.string(), sha256: Sha256, contentBase64: z.string() }),
+    errors: ["LEASE_NOT_HELD", "LEASE_EXPIRED", "NOT_FOUND", "FORBIDDEN"],
+    summary:
+      "Serves a server_document of the caller's active lease (B-0004-github-build). FORBIDDEN for any ref not in that lease's plan (so a sealed wos:verdict/... ref can never be fetched). sha256 always equals the plan's.",
   }),
   postAgentRun: route({
     method: "POST",

@@ -82,6 +82,7 @@ Run on every revision before a round opens. Any error returns the document to `r
 | `PARALLEL_WRITE_OVERLAP` | two ABUs with no dependency path between them (in either direction) must have non-overlapping write scopes (`verification.scopesOverlap`) |
 | `PARALLEL_EXCLUSIVE_RESOURCE` | two such ABUs must not both claim the same resource key when either claim is exclusive |
 | `LOCKFILE_WITHOUT_RESOURCE` | an ABU writing a `wos.json` lockfile path must claim `lockfile:<path>` exclusive |
+| `TOOLCHAIN_WITHOUT_RESOURCE` | an ABU writing a `wos.json` `toolchainPaths` file (package.json, tsconfig, test/lint configs, `.npmrc`, `wos.json`...) must claim `toolchain:<path>` exclusive; such ABUs are flagged in the contract PR and their implementation PRs need a maintainer's CODEOWNERS approval (contracts 2.0.0, SECURITY.md S-33). Feature authors should isolate toolchain changes in their own small ABU. |
 | `MIGRATION_WITHOUT_RESOURCE` | an ABU writing under `migrationsDir` must claim `db:migrations` exclusive |
 | `TEST_OUTSIDE_SCOPE` | `acceptance.tests` inside `scope.write` |
 | `OVER_CONTEXT_BUDGET` | the context engine's estimate of the builder context for the ABU exceeds the builder role's `contextBudgetTokens` (120000); such an ABU must be decomposed further (spec Agent 5) |
