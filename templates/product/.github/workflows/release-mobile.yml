@@ -1,0 +1,50 @@
+# Store builds of the suite's iOS and Android apps (D13, SECURITY.md S-35). Template owned by the verification
+# workstream (platform repo templates/product/); changed in the product repo only by a maintainer PR.
+#
+# The ONLY workflow in the product repo that reads a secret, and only in the protected `release` environment
+# (required reviewer: a maintainer; deployment policy: tags mobile-v* only). It never runs on candidate
+# branches, pull requests or the merge queue, so candidate code can never reach it. It runs only for a
+# maintainer-pushed tag `mobile-v*` (tag ruleset in RULESETS.md) that points at a commit already on the default
+# branch, i.e. code that passed wos-verify, two independent reviews and the merge queue.
+#
+# Signing credentials (Apple distribution certificate, App Store Connect API key, Google Play upload key)
+# are EAS-managed credentials of the warOnSaaS Expo account; EXPO_TOKEN in this environment is the only
+# key to them. None of it is available to contributors, to wos-verify, or to wOS Desktop's Developer ID
+# signing (which lives in the platform repo's own `release` environment).
+name: release-mobile
+
+on:
+  push:
+    tags: ["mobile-v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-mobile
+  cancel-in-progress: false
+
+jobs:
+  eas:
+    name: release-mobile
+    runs-on: ubuntu-latest
+    environment: release
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: the tag must point at a commit on the default branch
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: git merge-base --is-ancestor "$GITHUB_SHA" "origin/$DEFAULT_BRANCH"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci --ignore-scripts
+      - name: build in EAS and submit to the App Store and Google Play
+        working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: npx --yes eas-cli@24.8.0 build --platform all --profile production --non-interactive --wait --auto-submit

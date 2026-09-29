@@ -15,13 +15,23 @@
 //   profiles                      prints matrix=<json> of every profile acceptance suite per surface at HEAD
 //   acceptance <feature> <target> <surface>
 //                                 runs that profile's acceptance command for one surface
-//                                 (check wos-acceptance/<f>/<t>/<surface>, contracts 4.0.0, D13); the web
-//                                 browser matrix is passed to the command as WOS_BROWSERS
+//                                 (check wos-acceptance/<f>/<t>/<surface>, contracts 4.0.0, D13). The command
+//                                 gets WOS_SURFACE, WOS_SUITE_DIR and WOS_REPORT; web also WOS_BROWSERS
+//                                 and WOS_PLAYWRIGHT_CONFIG (the wOS-owned project matrix). Afterwards
+//                                 the report must prove every browser (Playwright JSON) or the platform
+//                                 flows (Maestro JUnit) ran and passed; macOS only for native iOS.
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import {
   AbuSpec,
   BuildGraph,
+  checkJUnitReport,
+  checkPlaywrightReport,
+  playwrightEngines,
+  requiredBrowsers,
+  runnerProblems,
   parseYaml,
   picomatch,
   RepoManifest,
@@ -46,9 +56,10 @@ const minimalEnv = () => ({
   CI: "true",
 });
 
-function run(id, argv, timeoutSeconds) {
+function run(id, argv, timeoutSeconds, extraEnv = {}) {
   console.log(`::group::${id}: ${argv.join(" ")}`);
-  const r = spawnSync(argv[0], argv.slice(1), { stdio: "inherit", env: minimalEnv(), shell: false, timeout: timeoutSeconds * 1000 });
+  const env = { ...minimalEnv(), ...extraEnv };
+  const r = spawnSync(argv[0], argv.slice(1), { stdio: "inherit", env, shell: false, timeout: timeoutSeconds * 1000 });
   console.log("::endgroup::");
   if (r.error) fail(`${id} could not run: ${r.error.message}`);
   if (r.status !== 0) fail(`${id} failed with exit ${r.status ?? r.signal}`);
@@ -180,18 +191,62 @@ function readProfiles() {
 
 function surfaceSuites() {
   return readProfiles().flatMap(({ feature, target, acceptance }) =>
-    acceptance.map((a) => ({ feature, target, surface: a.surface, runner: a.runner, browsers: a.browsers, run: a.run })),
+    acceptance.map((a) => ({ feature, target, surface: a.surface, runner: a.runner, browsers: a.browsers, dir: a.dir, run: a.run })),
   );
+}
+
+/** Every suite's runner placement is checked before any job is scheduled (macOS only for native iOS). */
+function profiles() {
+  const suites = surfaceSuites();
+  const bad = suites.flatMap((x) => runnerProblems(x).map((p) => `${x.feature}/${x.target}/${x.surface}: ${p}`));
+  if (bad.length) fail(bad.join("; "));
+  console.log(`matrix=${JSON.stringify(suites.map(({ feature, target, surface, runner }) => ({ feature, target, surface, runner })))}`);
 }
 
 function acceptance(feature, target, surface) {
   const suite = surfaceSuites().find((p) => p.feature === feature && p.target === target && p.surface === surface);
   if (!suite) fail(`no ${surface} acceptance for profile ${feature}/${target} at HEAD`);
+  const placement = runnerProblems(suite);
+  if (placement.length) fail(placement.join("; "));
   const manifest = RepoManifest.parse(JSON.parse(readFileSync("wos.json", "utf8")));
   assertInstallIsSafe(manifest.install);
   run("install", manifest.install, 1800);
-  process.env.WOS_BROWSERS = suite.browsers.join(",");
-  run(`wos-acceptance/${feature}/${target}/${surface}`, suite.run, 1800);
+
+  const web = surface === "web";
+  const mobile = surface === "ios" || surface === "android";
+  const report = join(tmpdir(), `wos-report-${process.pid}-${surface}.${web ? "json" : "xml"}`);
+  rmSync(report, { force: true });
+  const env = { WOS_SURFACE: surface, WOS_SUITE_DIR: resolve(suite.dir), WOS_REPORT: report };
+  // Toolchain locations (never credentials) that native builds need beyond the minimal environment.
+  if (mobile) {
+    for (const k of ["JAVA_HOME", "ANDROID_HOME", "ANDROID_SDK_ROOT", "DEVELOPER_DIR"]) if (process.env[k]) env[k] = process.env[k];
+  }
+  const browsers = web ? requiredBrowsers(suite, manifest) : [];
+  if (web) {
+    env.WOS_BROWSERS = browsers.join(",");
+    env.WOS_PLAYWRIGHT_CONFIG = resolve(".github/wos/playwright.wos.config.mjs");
+    // Test seam for the fixture repos in the platform repo's tests; never set in the workflow.
+    if (process.env.WOS_SKIP_BROWSER_INSTALL !== "1") {
+      run("playwright browsers", ["npx", "--no-install", "playwright", "install", "--with-deps", ...playwrightEngines(browsers)], 1800);
+    }
+  }
+  run(`wos-acceptance/${feature}/${target}/${surface}`, suite.run, 3600, env);
+
+  if (!web && !mobile) return console.log(`${surface} acceptance passed (exit code only)`);
+  if (!existsSync(report))
+    fail(
+      `${surface} acceptance wrote no report at WOS_REPORT: ${web ? "run Playwright with --config $WOS_PLAYWRIGHT_CONFIG" : "run the flows with .github/wos/maestro.mjs"}`,
+    );
+  const text = readFileSync(report, "utf8");
+  let check;
+  try {
+    check = web ? checkPlaywrightReport(JSON.parse(text), browsers) : checkJUnitReport(text);
+  } catch (e) {
+    fail(`unreadable ${surface} report: ${e.message}`);
+  }
+  for (const p of check.problems) console.error(`::error::${surface}: ${p}`);
+  if (!check.ok) fail(`${surface} acceptance did not cover its matrix: ${check.problems.join("; ")}`);
+  console.log(`${surface} acceptance passed${web ? ` on ${browsers.join(", ")}` : ""}`);
 }
 
 const [command, ...args] = process.argv.slice(2);
@@ -199,10 +254,7 @@ if (command === "scope") scope();
 else if (command === "restore-toolchain") restoreToolchain();
 else if (command === "verify") verify(args.includes("--candidate-toolchain"));
 else if (command === "touches-toolchain") console.log(`touched=${toolchainChanges(baseCommit()).changed.length > 0}`);
-else if (command === "profiles")
-  console.log(
-    `matrix=${JSON.stringify(surfaceSuites().map(({ feature, target, surface, runner }) => ({ feature, target, surface, runner })))}`,
-  );
+else if (command === "profiles") profiles();
 else if (command === "acceptance") acceptance(args[0], args[1], args[2]);
 else
   fail(

@@ -25,3 +25,6 @@ eslint.config.*           @waronsaas/maintainers
 .prettierrc*              @waronsaas/maintainers
 /.npmrc                   @waronsaas/maintainers
 /.nvmrc                   @waronsaas/maintainers
+
+# mobile release configuration (S-35): EAS build/submit profiles
+/apps/mobile/eas.json      @waronsaas/maintainers

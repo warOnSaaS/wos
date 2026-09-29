@@ -3,10 +3,14 @@ import { cpSync, existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DEFAULT_TOOLCHAIN_PATHS, profileAcceptanceCheckName, RepoManifest } from "@waronsaas/contracts";
 import { VERIFY_CHECK_NAME } from "@waronsaas/github";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { parse as parseYaml } from "yaml";
 import { lintProductWorkflow, validateChangeset } from "../src/index.js";
 import { REPO_ROOT, TempRepo } from "./support/git-fixture.js";
+
+// These tests spawn git, npm and Postgres work; under a cold full-suite run (all files in parallel) the
+// 5 s default was too short (Wave 2a gate: two files failed under load, passed alone).
+vi.setConfig({ testTimeout: 60_000, hookTimeout: 120_000 });
 
 const SUITE = join(REPO_ROOT, "templates/product");
 const read = (p: string) => readFileSync(join(REPO_ROOT, p), "utf8");
@@ -105,12 +109,34 @@ describe("templates/product: workflows (S-20)", () => {
   });
   it("per-profile acceptance check runs are named by profileAcceptanceCheckName and run only on the default branch", () => {
     const job = wf.jobs.acceptance!;
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub expression, not a JS template
-    expect(job.name).toBe(
-      profileAcceptanceCheckName("${{ matrix.profile.feature }}", "${{ matrix.profile.target }}", "${{ matrix.profile.surface }}"),
-    );
+    const expr = (k: string) => `\${{ matrix.profile.${k} }}`;
+    expect(job.name).toBe(profileAcceptanceCheckName(expr("feature"), expr("target"), expr("surface")));
     expect(job.needs).toBe("profiles");
     expect(wf.jobs.profiles!.if).toContain("github.event.repository.default_branch");
+  });
+
+  it("S-35: release-mobile is the only workflow that reads a secret, only in the release environment, only for tags on the default branch", () => {
+    const withSecrets = files.filter((f) => /\bsecrets\./.test(readFileSync(join(dir, f), "utf8").replace(/^\s*#.*$/gm, "")));
+    expect(withSecrets).toEqual(["release-mobile.yml"]);
+    const rel = parseYaml(readFileSync(join(dir, "release-mobile.yml"), "utf8")) as Wf & { jobs: Record<string, { environment?: string }> };
+    expect(rel.on).toEqual({ push: { tags: ["mobile-v*"] } });
+    const job = rel.jobs.eas!;
+    expect(job.environment).toBe("release");
+    const runs = job.steps.map((st) => st.run ?? "");
+    expect(runs).toContain('git merge-base --is-ancestor "$GITHUB_SHA" "origin/$DEFAULT_BRANCH"');
+    expect(runs.findIndex((r) => r.startsWith("git merge-base"))).toBeLessThan(runs.findIndex((r) => r.includes("eas-cli")));
+    expect(runs.find((r) => r.includes("eas-cli"))).toMatch(/eas-cli@\d+\.\d+\.\d+ build/);
+    for (const f of files.filter((x) => x !== "release-mobile.yml")) {
+      const wf = parseYaml(readFileSync(join(dir, f), "utf8")) as { jobs: Record<string, { environment?: unknown }> };
+      for (const j of Object.values(wf.jobs)) expect(j.environment, f).toBeUndefined();
+    }
+  });
+
+  it("uses the Node 24 majors of actions/checkout and actions/setup-node everywhere", () => {
+    const all = [...files.map((f) => readFileSync(join(dir, f), "utf8")), read(".github/workflows/ci.yml")].join("\n");
+    expect(all).not.toMatch(/actions\/(checkout|setup-node)@v[1-6]\b/);
+    expect(all).toMatch(/actions\/checkout@v7/);
+    expect(all).toMatch(/actions\/setup-node@v7/);
   });
 
   it("the vendored validator bundle is current with packages/verification", () => {
@@ -265,21 +291,54 @@ abus:
     expect(r.run(process.execPath, [".github/wos/wos-ci.mjs", "touches-toolchain"]).out).toContain("touched=false");
   });
 
-  it("profiles lists one matrix entry per profile; acceptance runs exactly that profile's command", () => {
+  /**
+   * A stand-in for Playwright and Maestro: writes the report the real runner would, shaped by its argv
+   * (drop=<browser>, skip=<browser>, fail=<n>, cases=<n>, noreport). Lives outside .github like a real suite.
+   */
+  const FAKE_SUITE = `import { writeFileSync } from "node:fs";
+const args = Object.fromEntries(process.argv.slice(2).map((a) => a.split("=")));
+writeFileSync("ACC_" + (args.target ?? "x"), process.env.WOS_BROWSERS ?? process.env.WOS_SURFACE ?? "");
+if ("noreport" in args) process.exit(0);
+if (process.env.WOS_SURFACE === "web") {
+  const browsers = process.env.WOS_BROWSERS.split(",").filter((b) => b !== args.drop);
+  const tests = browsers.map((b) => ({ projectName: b, status: b === args.skip ? "skipped" : "expected" }));
+  writeFileSync(process.env.WOS_REPORT, JSON.stringify({ config: { projects: browsers.map((name) => ({ name })) }, suites: [{ specs: [{ tests }] }] }));
+} else {
+  const n = Number(args.cases ?? 2), f = Number(args.fail ?? 0);
+  const cases = Array.from({ length: n }, (_, i) => i < f ? '<testcase name="t' + i + '"><failure/></testcase>' : '<testcase name="t' + i + '"/>').join("");
+  writeFileSync(process.env.WOS_REPORT, '<testsuites><testsuite name="' + process.env.WOS_SURFACE + '" tests="' + n + '">' + cases + "</testsuite></testsuites>");
+}
+`;
+  type Suite = { surface: string; runner: string; args?: string[]; browsers?: string };
+  const ALL = "[chromium, edge, webkit, firefox, mobile_safari, mobile_chrome]";
+  function surfaceRepo(suites: Suite[], targets = ["salesforce"]) {
     const r = suiteRepo();
     const profile = (target: string) => `  - target: ${target}
     requirements: [R-001]
     acceptance:
-      - surface: web
-        dir: features/contacts/acceptance/${target}
-        run: ["node", "-e", "require('fs').writeFileSync('ACC_${target}','')"]
-        browsers: [chromium, edge, webkit, firefox, mobile_safari, mobile_chrome]
-        runner: linux
-`;
-    r.write(
-      "features/contacts/CONTRACT.yaml",
-      `schema: wos-feature-contract.v1\nfeature: contacts\nprofiles:\n${profile("salesforce")}${profile("hubspot")}`,
-    ).commit("contract");
+${suites
+  .map(
+    (x) => `      - surface: ${x.surface}
+        dir: features/contacts/acceptance/${target}/${x.surface}
+        run: ["node", "tools/fake-suite.mjs", "target=${target}"${(x.args ?? []).map((a) => `, "${a}"`).join("")}]
+        browsers: ${x.browsers ?? (x.surface === "web" ? ALL : "[]")}
+        runner: ${x.runner}
+`,
+  )
+  .join("")}`;
+    r.write("tools/fake-suite.mjs", FAKE_SUITE)
+      .write(
+        "features/contacts/CONTRACT.yaml",
+        `schema: wos-feature-contract.v1\nfeature: contacts\nprofiles:\n${targets.map(profile).join("")}`,
+      )
+      .commit("contract");
+    return r;
+  }
+  const acceptance = (r: TempRepo, target: string, surface: string) =>
+    r.run(process.execPath, [".github/wos/wos-ci.mjs", "acceptance", "contacts", target, surface], { WOS_SKIP_BROWSER_INSTALL: "1" });
+
+  it("profiles lists one matrix entry per profile and surface; acceptance runs exactly that suite", () => {
+    const r = surfaceRepo([{ surface: "web", runner: "linux" }], ["salesforce", "hubspot"]);
     const list = r.run(process.execPath, [".github/wos/wos-ci.mjs", "profiles"]);
     expect(list.status, list.out).toBe(0);
     const matrix = JSON.parse(list.out.trim().replace(/^matrix=/, ""));
@@ -290,10 +349,100 @@ abus:
     expect(
       matrix.map((m: { feature: string; target: string; surface: string }) => profileAcceptanceCheckName(m.feature, m.target, m.surface)),
     ).toEqual(["wos-acceptance/contacts/salesforce/web", "wos-acceptance/contacts/hubspot/web"]);
-    const acc = r.run(process.execPath, [".github/wos/wos-ci.mjs", "acceptance", "contacts", "hubspot", "web"]);
+    const acc = acceptance(r, "hubspot", "web");
     expect(acc.status, acc.out).toBe(0);
     expect(existsSync(join(r.dir, "ACC_hubspot"))).toBe(true);
     expect(existsSync(join(r.dir, "ACC_salesforce"))).toBe(false);
-    expect(r.run(process.execPath, [".github/wos/wos-ci.mjs", "acceptance", "contacts", "zoom", "web"]).status).toBe(1);
+    expect(acceptance(r, "zoom", "web").status).toBe(1);
   }, 60_000);
+
+  it("web: the wOS matrix (Chrome, Edge, WebKit, Firefox, iPhone and Android phones) reaches the suite and every browser must report", () => {
+    const r = surfaceRepo([
+      { surface: "web", runner: "linux", browsers: "[chromium, edge, webkit, firefox, mobile_safari, mobile_chrome]" },
+    ]);
+    const res = acceptance(r, "salesforce", "web");
+    expect(res.status, res.out).toBe(0);
+    expect(readFileSync(join(r.dir, "ACC_salesforce"), "utf8")).toBe("chromium,edge,webkit,firefox,mobile_safari,mobile_chrome");
+    expect(res.out).toContain("web acceptance passed on chromium, edge, webkit, firefox, mobile_safari, mobile_chrome");
+  }, 60_000);
+
+  it.each([
+    ["a browser missing from the report", ["drop=webkit"], /browser webkit did not run/],
+    ["a browser whose tests were all skipped", ["skip=firefox"], /browser firefox ran no test/],
+    ["a run that never loaded the wOS config (no report)", ["noreport"], /wrote no report/],
+  ])(
+    "web acceptance fails for %s",
+    (_, args, message) => {
+      const res = acceptance(surfaceRepo([{ surface: "web", runner: "linux", args }]), "salesforce", "web");
+      expect(res.status).toBe(1);
+      expect(res.out).toMatch(message);
+    },
+    60_000,
+  );
+
+  it.each([
+    ["ios", "macos"],
+    ["android", "linux"],
+  ])(
+    "%s: Maestro JUnit report with passing flows passes on a %s runner",
+    (surface, runner) => {
+      const res = acceptance(surfaceRepo([{ surface, runner }]), "salesforce", surface);
+      expect(res.status, res.out).toBe(0);
+      expect(res.out).toContain(`${surface} acceptance passed`);
+    },
+    60_000,
+  );
+
+  it.each([
+    ["a failing flow", ["fail=1"], /1 test case\(s\) failed/],
+    ["no flows", ["cases=0"], /no test case ran/],
+  ])(
+    "android acceptance fails for %s",
+    (_, args, message) => {
+      const res = acceptance(surfaceRepo([{ surface: "android", runner: "linux", args }]), "salesforce", "android");
+      expect(res.status).toBe(1);
+      expect(res.out).toMatch(message);
+    },
+    60_000,
+  );
+
+  it.each([
+    ["ios on linux", "ios", "linux", /ios acceptance needs a macos runner/],
+    ["android on macos", "android", "macos", /may not use a macos runner/],
+    ["web on macos", "web", "macos", /may not use a macos runner/],
+  ])(
+    "macOS only for native iOS: profiles refuses %s",
+    (_, surface, runner, message) => {
+      const r = surfaceRepo([{ surface, runner }]);
+      const res = r.run(process.execPath, [".github/wos/wos-ci.mjs", "profiles"]);
+      expect(res.status).toBe(1);
+      expect(res.out).toMatch(message);
+      expect(acceptance(r, "salesforce", surface).status).toBe(1);
+    },
+    60_000,
+  );
+
+  it("maestro.mjs plans an unsigned Simulator build on iOS and a KVM emulator on Android, both ending in a JUnit Maestro run", () => {
+    const r = suiteRepo();
+    const plan = (surface: string) => {
+      const res = r.run(process.execPath, [".github/wos/maestro.mjs", "--dry-run"], {
+        WOS_SURFACE: surface,
+        WOS_SUITE_DIR: "flows",
+        WOS_REPORT: "/tmp/r.xml",
+      });
+      expect(res.status, res.out).toBe(0);
+      return JSON.parse(res.out) as { steps: { id: string; argv: string[]; cwd: string }[] };
+    };
+    const ios = plan("ios").steps.map((s) => s.argv.join(" "));
+    expect(ios.join("\n")).toMatch(/xcodebuild .*-sdk iphonesimulator .*CODE_SIGNING_ALLOWED=NO/);
+    expect(ios.join("\n")).toMatch(/xcrun simctl install booted/);
+    const android = plan("android").steps.map((s) => s.argv.join(" "));
+    expect(android.join("\n")).toMatch(/gradlew assembleRelease/);
+    expect(android.join("\n")).toMatch(/emulator -avd wos -no-window/);
+    for (const steps of [ios, android]) expect(steps.at(-1)).toBe("maestro test --format junit --output /tmp/r.xml flows");
+    expect(plan("ios").steps[0]!.cwd).toBe("apps/mobile");
+    expect(
+      r.run(process.execPath, [".github/wos/maestro.mjs", "--dry-run"], { WOS_SURFACE: "web", WOS_SUITE_DIR: "f", WOS_REPORT: "r" }).status,
+    ).toBe(1);
+  });
 });
