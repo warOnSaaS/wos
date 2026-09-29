@@ -1,0 +1,20 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist-types/renderer",
+    "tsBuildInfoFile": "dist-types/renderer/.tsbuildinfo",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": [],
+    "jsx": "react-jsx",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "emitDeclarationOnly": true
+  },
+  "include": ["src/renderer", "src/shared"],
+  "references": [
+    {
+      "path": "../../packages/contracts"
+    }
+  ]
+}

@@ -1,0 +1,1523 @@
+{
+  "schema": "wos-roadmap-bundle.v1",
+  "status": "PROPOSED",
+  "targetCode": "TGT-00",
+  "note": "PROPOSED by the Lead Architect on 2026-09-29 as the V1 roadmap of wOS itself (dogfood). It has NOT been through Astra/Fable review; weights and requirements are the architect's first reasoning, not consensus. The V1 build is tracked against it exactly like a target (docs/architecture/WORKSTREAMS.md).",
+  "inventory": {
+    "schema": "wos-inventory.v1",
+    "target": "waronsaas",
+    "version": 1,
+    "sources": [
+      {
+        "title": "warOnSaaS V1 specification",
+        "url": "https://github.com/waronsaas/waronsaas/blob/main/docs/V1-SPEC.md",
+        "retrievedOn": "2026-09-29"
+      },
+      {
+        "title": "warOnSaaS founder decisions",
+        "url": "https://github.com/waronsaas/waronsaas/blob/main/docs/DECISIONS.md",
+        "retrievedOn": "2026-09-29"
+      }
+    ],
+    "items": [
+      {
+        "key": "INV-0001",
+        "area": "Accounts",
+        "title": "Email magic-link sign-in",
+        "description": "Anyone signs in with a single-use email link or code; accounts are created by verified email (D8).",
+        "source": 1,
+        "weight": 1
+      },
+      {
+        "key": "INV-0002",
+        "area": "Accounts",
+        "title": "GitHub identity link",
+        "description": "A contributor links one GitHub account, required before any lease, review, proposal or resolution (D8).",
+        "source": 1,
+        "weight": 1
+      },
+      {
+        "key": "INV-0003",
+        "area": "Accounts",
+        "title": "Desktop and CLI sessions",
+        "description": "Short-lived wOS sessions held in the OS keychain on Desktop and CLI; no model credentials ever handled (D1, D5).",
+        "source": 1,
+        "weight": 1
+      },
+      {
+        "key": "INV-0004",
+        "area": "Accounts",
+        "title": "Contributor profile and settings",
+        "description": "A contributor sees their history, settings and leaderboard opt-in.",
+        "source": 0,
+        "weight": 1
+      },
+      {
+        "key": "INV-0005",
+        "area": "Planning",
+        "title": "Sniper Targets",
+        "description": "Real targets exist in the control plane with their public status.",
+        "source": 0,
+        "weight": 1
+      },
+      {
+        "key": "INV-0006",
+        "area": "Planning",
+        "title": "Global Feature Catalog",
+        "description": "One app-independent catalog of features referenced by many roadmaps (D10).",
+        "source": 1,
+        "weight": 1
+      },
+      {
+        "key": "INV-0007",
+        "area": "Planning",
+        "title": "Canonical Application Roadmap PR",
+        "description": "One canonical active roadmap PR per application; contributors propose into it.",
+        "source": 0,
+        "weight": 1
+      },
+      {
+        "key": "INV-0008",
+        "area": "Planning",
+        "title": "Roadmap Astra and Fable review rounds",
+        "description": "Both reviewers independently try to prove the roadmap incomplete until NO MATERIAL GAPS, then ROADMAP CONSENSUS.",
+        "source": 0,
+        "weight": 1
+      },
+      {
+        "key": "INV-0009",
+        "area": "Planning",
+        "title": "Reasoned feature weights",
+        "description": "Every capability and feature carries a reasoned weight frozen with the roadmap version (D12).",
+        "source": 1,
+        "weight": 1
+      },
+      {
+        "key": "INV-0010",
+        "area": "Planning",
+        "title": "Feature Contract consensus",
+        "description": "Feature Contracts reach consensus through the same independent review loop.",
+        "source": 0,
+        "weight": 1
+      },
+      {
+        "key": "INV-0011",
+        "area": "Planning",
+        "title": "Build Graph of Atomic Build Units",
+        "description": "A merged Feature Contract yields a dependency-aware Build Graph of ABUs sized for one Opus agent.",
+        "source": 0,
+        "weight": 1
+      },
+      {
+        "key": "INV-0012",
+        "area": "Planning",
+        "title": "Proposals (wos propose)",
+        "description": "Contributors propose roadmap or contract changes through wOS.",
+        "source": 0,
+        "weight": 1
+      },
+      {
+        "key": "INV-0013",
+        "area": "Planning",
+        "title": "Architecture conflict resolution (wos resolve)",
+        "description": "Escalated disputes and blockers are ruled on by the Architecture Conflict Resolver.",
+        "source": 0,
+        "weight": 1
+      },
+      {
+        "key": "INV-0014",
+        "area": "Build pipeline",
+        "title": "Agent and model eligibility",
+        "description": "wOS checks agent/model eligibility before issuing work (step 8).",
+        "source": 0,
+        "weight": 1
+      },
+      {
+        "key": "INV-0015",
+        "area": "Build pipeline",
+        "title": "Leases and logical locks",
+        "description": "Leases with heartbeats; ABUs from one feature leased simultaneously without overlapping write or logical ownership.",
+        "source": 0,
+        "weight": 1
+      },
+      {
+        "key": "INV-0016",
+        "area": "Build pipeline",
+        "title": "Isolated worktrees on immutable base commits",
+        "description": "Each lease builds in its own git worktree pinned to an immutable base commit.",
+        "source": 0,
+        "weight": 1
+      },
+      {
+        "key": "INV-0017",
+        "area": "Build pipeline",
+        "title": "Deterministic role-specific context",
+        "description": "Every invocation gets its own context and an immutable Context Manifest; context budgets reject oversize ABUs.",
+        "source": 0,
+        "weight": 1
+      },
+      {
+        "key": "INV-0018",
+        "area": "Build pipeline",
+        "title": "Machine-readable Agent Policies",
+        "description": "Reviewer and builder requirements live in Agent Policy data, including max reasoning per provider.",
+        "source": 0,
+        "weight": 1
+      },
+      {
+        "key": "INV-0019",
+        "area": "Build pipeline",
+        "title": "Local Claude Code and Codex launch",
+        "description": "wOS launches the contributor's own claude and codex CLIs with the policy's model and reasoning (D1).",
+        "source": 1,
+        "weight": 1
+      },
+      {
+        "key": "INV-0020",
+        "area": "Build pipeline",
+        "title": "Scope enforcement and diff validation",
+        "description": "Allowed and forbidden paths enforced; symlinks, workflows, lockfiles and generated files rejected.",
+        "source": 0,
+        "weight": 1
+      },
+      {
+        "key": "INV-0021",
+        "area": "Build pipeline",
+        "title": "Deterministic verification",
+        "description": "Typecheck, lint, tests and acceptance checks locally and again in CI (D2).",
+        "source": 1,
+        "weight": 1
+      },
+      {
+        "key": "INV-0022",
+        "area": "Build pipeline",
+        "title": "Independent implementation reviews",
+        "description": "Astra and Fable review each contribution on other contributors' machines at maximum reasoning (D2).",
+        "source": 1,
+        "weight": 1
+      },
+      {
+        "key": "INV-0023",
+        "area": "Build pipeline",
+        "title": "Qualification",
+        "description": "Machine-checked qualification before any official PR (D9).",
+        "source": 1,
+        "weight": 1
+      },
+      {
+        "key": "INV-0024",
+        "area": "Build pipeline",
+        "title": "Gated PRs by the GitHub App",
+        "description": "Only the wOS GitHub App opens PRs, after qualification; contributors never push (D9).",
+        "source": 1,
+        "weight": 1
+      },
+      {
+        "key": "INV-0025",
+        "area": "Build pipeline",
+        "title": "Contribution provenance",
+        "description": "Every PR records who built and reviewed it, with which model, context and checks.",
+        "source": 0,
+        "weight": 1
+      },
+      {
+        "key": "INV-0026",
+        "area": "Build pipeline",
+        "title": "Merge handling and unlocking",
+        "description": "Merge updates build progress and unlocks dependent ABUs.",
+        "source": 0,
+        "weight": 1
+      },
+      {
+        "key": "INV-0027",
+        "area": "Clients",
+        "title": "wOS Desktop",
+        "description": "Electron app: sign in, browse the Sniper List, drill down, press BUILD, watch agents, history, settings.",
+        "source": 0,
+        "weight": 1
+      },
+      {
+        "key": "INV-0028",
+        "area": "Clients",
+        "title": "Desktop security boundary",
+        "description": "Renderer without Node; secure IPC and context isolation; signed and notarised in CI (D7).",
+        "source": 1,
+        "weight": 1
+      },
+      {
+        "key": "INV-0029",
+        "area": "Clients",
+        "title": "wOS CLI",
+        "description": "wos build, roadmap, propose, resolve, review and status on the same orchestration as Desktop.",
+        "source": 0,
+        "weight": 1
+      },
+      {
+        "key": "INV-0030",
+        "area": "Public web",
+        "title": "Sniper List with real progress",
+        "description": "Homepage lists targets with MAPPED, SPECIFIED and BUILT, 0% when nothing exists.",
+        "source": 0,
+        "weight": 1
+      },
+      {
+        "key": "INV-0031",
+        "area": "Public web",
+        "title": "Drilldown pages",
+        "description": "Application -> capability -> feature -> requirement -> ABU -> contribution/PR pages.",
+        "source": 0,
+        "weight": 1
+      },
+      {
+        "key": "INV-0032",
+        "area": "Public web",
+        "title": "Latest activity",
+        "description": "Public activity feed from real events.",
+        "source": 0,
+        "weight": 1
+      },
+      {
+        "key": "INV-0033",
+        "area": "Public web",
+        "title": "Contributor profiles and opt-in leaderboard",
+        "description": "Public profiles, reward history and an opt-in leaderboard.",
+        "source": 0,
+        "weight": 1
+      },
+      {
+        "key": "INV-0034",
+        "area": "Public web",
+        "title": "Hosted and self-hosted status",
+        "description": "Each application shows whether it is hosted and whether it can be self-hosted.",
+        "source": 0,
+        "weight": 1
+      },
+      {
+        "key": "INV-0035",
+        "area": "Rewards",
+        "title": "Append-only WOS token ledger",
+        "description": "One unit, append-only, balances derived, debits supported (D3).",
+        "source": 1,
+        "weight": 1
+      },
+      {
+        "key": "INV-0036",
+        "area": "Rewards",
+        "title": "Reward rules for accepted work",
+        "description": "Rewards for accepted roadmap, contract, resolution, implementation, review and security work; none for opening a PR.",
+        "source": 0,
+        "weight": 1
+      },
+      {
+        "key": "INV-0037",
+        "area": "Rewards",
+        "title": "Completion pools",
+        "description": "Feature and application completion pools.",
+        "source": 0,
+        "weight": 1
+      },
+      {
+        "key": "INV-0038",
+        "area": "Operations",
+        "title": "Migration ledger and ship gate",
+        "description": "Schema migrations applied only by a ship gate with a ledger (D7).",
+        "source": 1,
+        "weight": 1
+      },
+      {
+        "key": "INV-0039",
+        "area": "Operations",
+        "title": "Integration waves and end-to-end tests",
+        "description": "Integration tests across workstreams, simultaneous builders, leases and concurrency.",
+        "source": 0,
+        "weight": 1
+      },
+      {
+        "key": "INV-0040",
+        "area": "Operations",
+        "title": "Security hardening",
+        "description": "Adversarial tests of the gate, the ledger, reviews and scope.",
+        "source": 0,
+        "weight": 1
+      },
+      {
+        "key": "INV-0041",
+        "area": "Operations",
+        "title": "Transactional email",
+        "description": "Sign-in and notification mail from a sending subdomain (D5, D8).",
+        "source": 1,
+        "weight": 1
+      }
+    ]
+  },
+  "roadmap": {
+    "schema": "wos-roadmap.v1",
+    "target": "waronsaas",
+    "version": 1,
+    "inventoryVersion": 1,
+    "productName": "wOS",
+    "summary": "wOS V1: the platform that lets contributors build open-source replacements with their own AI agents, from roadmap consensus to gated, reviewed, rewarded pull requests, with a public website of honest progress.",
+    "architecture": {
+      "overview": "Monorepo waronsaas/waronsaas: control plane (Hono on Vercel, Postgres on Supabase), Electron Desktop and a CLI over one shared orchestrator package, and the Next.js public site. See docs/architecture/ARCHITECTURE.md.",
+      "composition": "Shared packages (contracts, db, agent-policy, context-engine, verification, github, planning, rewards, orchestrator) composed by services/control-plane, apps/desktop, apps/cli and apps/web.",
+      "appSpecificData": "Everything lives in the wos Postgres schema defined by packages/db/migrations.",
+      "selfHosting": "Not a V1 goal for wOS itself; the control plane is one Vercel project plus one Supabase database."
+    },
+    "capabilities": [
+      {
+        "key": "identity",
+        "title": "Identity and sessions",
+        "summary": "Email sign-in for everyone, GitHub linking for contributors, device sessions.",
+        "weightBp": 700,
+        "weightRationale": "Small and well understood (magic link, OAuth link, sessions), but every other capability depends on it; below planning and the pipeline, above rewards in risk.",
+        "inventoryItems": [
+          "INV-0001",
+          "INV-0002",
+          "INV-0003",
+          "INV-0004"
+        ],
+        "features": [
+          {
+            "feature": "magic-link-sign-in",
+            "weightBp": 4000,
+            "weightRationale": "The front door for every user; security-sensitive (single use, rate limits, no enumeration) so it carries the largest share of this capability.",
+            "inventoryItems": [
+              "INV-0001"
+            ],
+            "appNotes": "",
+            "phase": "core"
+          },
+          {
+            "feature": "github-identity-link",
+            "weightBp": 3500,
+            "weightRationale": "Gate for all contribution; reservation and relink rules make it nearly as heavy as sign-in, slightly less user-facing.",
+            "inventoryItems": [
+              "INV-0002"
+            ],
+            "appNotes": "",
+            "phase": "core"
+          },
+          {
+            "feature": "device-sessions",
+            "weightBp": 1500,
+            "weightRationale": "Rotating refresh and keychain storage are standard patterns with little product surface; smaller than sign-in or linking.",
+            "inventoryItems": [
+              "INV-0003"
+            ],
+            "appNotes": "",
+            "phase": "core"
+          },
+          {
+            "feature": "contributor-profile",
+            "weightBp": 1000,
+            "weightRationale": "Mostly read views over data other features produce; the lightest item in the capability.",
+            "inventoryItems": [
+              "INV-0004"
+            ],
+            "appNotes": "",
+            "phase": "core"
+          }
+        ]
+      },
+      {
+        "key": "planning",
+        "title": "Roadmaps, catalog and contracts",
+        "summary": "The consensus machinery: canonical roadmaps, the global catalog, feature contracts and build graphs.",
+        "weightBp": 2200,
+        "weightRationale": "The part of wOS nobody else offers and the V1 test depends on (roadmap consensus, contract consensus, a build graph); second only to the build pipeline.",
+        "inventoryItems": [
+          "INV-0005",
+          "INV-0006",
+          "INV-0007",
+          "INV-0008",
+          "INV-0009",
+          "INV-0010",
+          "INV-0011",
+          "INV-0012",
+          "INV-0013"
+        ],
+        "features": [
+          {
+            "feature": "feature-catalog",
+            "weightBp": 1400,
+            "weightRationale": "Cross-app reuse (D10) is the lever that makes ten targets feasible; moderate code, high consequence.",
+            "inventoryItems": [
+              "INV-0005",
+              "INV-0006"
+            ],
+            "appNotes": "",
+            "phase": "core"
+          },
+          {
+            "feature": "roadmap-consensus",
+            "weightBp": 2600,
+            "weightRationale": "Canonical PR, versioning, rounds, escalation and reasoned weights: the most states and the most user-visible outcome in planning.",
+            "inventoryItems": [
+              "INV-0007",
+              "INV-0008",
+              "INV-0009"
+            ],
+            "appNotes": "",
+            "phase": "core"
+          },
+          {
+            "feature": "feature-contract-consensus",
+            "weightBp": 2200,
+            "weightRationale": "Same loop as roadmaps plus per-app profiles and shared-contract versioning; slightly smaller because it reuses the roadmap loop.",
+            "inventoryItems": [
+              "INV-0010"
+            ],
+            "appNotes": "",
+            "phase": "core"
+          },
+          {
+            "feature": "build-graph-validation",
+            "weightBp": 2000,
+            "weightRationale": "Deterministic validator (cycles, scope algebra, resources, budgets) is what makes parallel builders safe; large and correctness-critical.",
+            "inventoryItems": [
+              "INV-0011"
+            ],
+            "appNotes": "",
+            "phase": "core"
+          },
+          {
+            "feature": "proposals-and-resolution",
+            "weightBp": 1800,
+            "weightRationale": "wos propose and wos resolve plus maintainer rulings; necessary for the loop to terminate but narrower than the main loops.",
+            "inventoryItems": [
+              "INV-0012",
+              "INV-0013"
+            ],
+            "appNotes": "",
+            "phase": "core"
+          }
+        ]
+      },
+      {
+        "key": "pipeline",
+        "title": "Build pipeline",
+        "summary": "LEASE -> BUILD -> VERIFY -> REVIEW -> QUALIFY -> PR, shared by Desktop and CLI.",
+        "weightBp": 3200,
+        "weightRationale": "The core of the product and of the V1 integration test (steps 8 to 26); the most code, the most risk and the most security surface, so it carries the largest share.",
+        "inventoryItems": [
+          "INV-0014",
+          "INV-0015",
+          "INV-0016",
+          "INV-0017",
+          "INV-0018",
+          "INV-0019",
+          "INV-0020",
+          "INV-0021",
+          "INV-0022",
+          "INV-0023",
+          "INV-0024",
+          "INV-0025",
+          "INV-0026"
+        ],
+        "features": [
+          {
+            "feature": "agent-policy",
+            "weightBp": 900,
+            "weightRationale": "Data plus a pure evaluator; small, but every role and launch depends on it.",
+            "inventoryItems": [
+              "INV-0014",
+              "INV-0018"
+            ],
+            "appNotes": "",
+            "phase": "core"
+          },
+          {
+            "feature": "leases-and-locks",
+            "weightBp": 1500,
+            "weightRationale": "Concurrency-critical: leases, heartbeats, expiry and path/logical locks are where parallel builders collide if wrong.",
+            "inventoryItems": [
+              "INV-0015"
+            ],
+            "appNotes": "",
+            "phase": "core"
+          },
+          {
+            "feature": "context-engine",
+            "weightBp": 1400,
+            "weightRationale": "Deterministic manifests and budgets for ten roles; the spec calls it critical; comparable to leases in size.",
+            "inventoryItems": [
+              "INV-0017"
+            ],
+            "appNotes": "",
+            "phase": "core"
+          },
+          {
+            "feature": "local-orchestrator",
+            "weightBp": 1800,
+            "weightRationale": "Worktrees, CLI launches, local verification and resume logic shared by two clients; the largest single feature here.",
+            "inventoryItems": [
+              "INV-0016",
+              "INV-0019"
+            ],
+            "appNotes": "",
+            "phase": "core"
+          },
+          {
+            "feature": "scope-verification",
+            "weightBp": 1000,
+            "weightRationale": "Pure changeset validator shared by client, server and CI; contained but must be exhaustive.",
+            "inventoryItems": [
+              "INV-0020",
+              "INV-0021"
+            ],
+            "appNotes": "",
+            "phase": "core"
+          },
+          {
+            "feature": "review-rounds",
+            "weightBp": 1200,
+            "weightRationale": "Sealed verdicts, independence rules, reveal and gap ledger for implementation reviews; reuses planning's round logic.",
+            "inventoryItems": [
+              "INV-0022"
+            ],
+            "appNotes": "",
+            "phase": "core"
+          },
+          {
+            "feature": "gated-pull-requests",
+            "weightBp": 1500,
+            "weightRationale": "The GitHub App side: Git Data API commits, qualification, PRs, statuses, webhooks (D9); high consequence and many external edge cases.",
+            "inventoryItems": [
+              "INV-0023",
+              "INV-0024"
+            ],
+            "appNotes": "",
+            "phase": "core"
+          },
+          {
+            "feature": "provenance-and-merge",
+            "weightBp": 700,
+            "weightRationale": "Records and a merge handler that unlocks dependents; mostly bookkeeping on top of the gated PR flow.",
+            "inventoryItems": [
+              "INV-0025",
+              "INV-0026"
+            ],
+            "appNotes": "",
+            "phase": "core"
+          }
+        ]
+      },
+      {
+        "key": "clients",
+        "title": "Desktop and CLI",
+        "summary": "The two contributor front ends over one orchestration.",
+        "weightBp": 1500,
+        "weightRationale": "Two full clients are required by the spec and Desktop carries signing and IPC security; large UI surface but thin logic, so below the pipeline and planning.",
+        "inventoryItems": [
+          "INV-0027",
+          "INV-0028",
+          "INV-0029"
+        ],
+        "features": [
+          {
+            "feature": "wos-desktop",
+            "weightBp": 6500,
+            "weightRationale": "Electron app with sign-in, drilldown, BUILD flow, agent terminal, history and settings, plus signing/notarisation in CI: most of the client work.",
+            "inventoryItems": [
+              "INV-0027",
+              "INV-0028"
+            ],
+            "appNotes": "",
+            "phase": "core"
+          },
+          {
+            "feature": "wos-cli",
+            "weightBp": 3500,
+            "weightRationale": "Six commands over the shared orchestrator and a keychain session; thin by design, about half the desktop's effort.",
+            "inventoryItems": [
+              "INV-0029"
+            ],
+            "appNotes": "",
+            "phase": "core"
+          }
+        ]
+      },
+      {
+        "key": "web",
+        "title": "Public website",
+        "summary": "The Sniper List and every public drilldown, from real data only.",
+        "weightBp": 1300,
+        "weightRationale": "A major V1 product per the spec, but it reads data the control plane already computes; the static site already exists, so the remaining work is switching to the API.",
+        "inventoryItems": [
+          "INV-0030",
+          "INV-0031",
+          "INV-0032",
+          "INV-0033",
+          "INV-0034"
+        ],
+        "features": [
+          {
+            "feature": "sniper-list-site",
+            "weightBp": 3000,
+            "weightRationale": "The homepage and target pages already exist statically; switching to live progress with honest zeros is the headline deliverable.",
+            "inventoryItems": [
+              "INV-0030",
+              "INV-0034"
+            ],
+            "appNotes": "",
+            "phase": "core"
+          },
+          {
+            "feature": "progress-drilldown",
+            "weightBp": 4000,
+            "weightRationale": "Five drilldown levels with weights and traceable numbers (D11) are the largest remaining web work.",
+            "inventoryItems": [
+              "INV-0031"
+            ],
+            "appNotes": "",
+            "phase": "core"
+          },
+          {
+            "feature": "activity-and-profiles",
+            "weightBp": 3000,
+            "weightRationale": "Activity feed, profiles, reward history and leaderboard are several simple read-only pages.",
+            "inventoryItems": [
+              "INV-0032",
+              "INV-0033"
+            ],
+            "appNotes": "",
+            "phase": "core"
+          }
+        ]
+      },
+      {
+        "key": "rewards",
+        "title": "Rewards and ledger",
+        "summary": "The append-only WOS token ledger and the rules that write to it.",
+        "weightBp": 600,
+        "weightRationale": "Correctness matters (append-only, hash chain) but the surface is small and nothing is transferable in V1, so it carries a small share.",
+        "inventoryItems": [
+          "INV-0035",
+          "INV-0036",
+          "INV-0037"
+        ],
+        "features": [
+          {
+            "feature": "token-ledger",
+            "weightBp": 4500,
+            "weightRationale": "Append-only ledger, derived balances and the public hash chain; the foundation the rules write into.",
+            "inventoryItems": [
+              "INV-0035"
+            ],
+            "appNotes": "",
+            "phase": "core"
+          },
+          {
+            "feature": "reward-rules",
+            "weightBp": 5500,
+            "weightRationale": "Rules per category, holds, reversals and per-app completion pools (D10): more cases than the ledger itself.",
+            "inventoryItems": [
+              "INV-0036",
+              "INV-0037"
+            ],
+            "appNotes": "",
+            "phase": "core"
+          }
+        ]
+      },
+      {
+        "key": "operations",
+        "title": "Operations and verification",
+        "summary": "Migrations, CI, integration waves, adversarial testing and mail.",
+        "weightBp": 500,
+        "weightRationale": "Essential but mostly configuration and tests around other capabilities' code; the smallest share by product value.",
+        "inventoryItems": [
+          "INV-0038",
+          "INV-0039",
+          "INV-0040",
+          "INV-0041"
+        ],
+        "features": [
+          {
+            "feature": "ship-gate-and-migrations",
+            "weightBp": 2500,
+            "weightRationale": "Migration runner with a ledger and a ship gate that refuses dirty or red deploys (D7); small and well specified.",
+            "inventoryItems": [
+              "INV-0038"
+            ],
+            "appNotes": "",
+            "phase": "core"
+          },
+          {
+            "feature": "integration-and-e2e",
+            "weightBp": 4000,
+            "weightRationale": "Integration waves and end-to-end tests of simultaneous builders are the largest verification effort.",
+            "inventoryItems": [
+              "INV-0039"
+            ],
+            "appNotes": "",
+            "phase": "core"
+          },
+          {
+            "feature": "security-hardening",
+            "weightBp": 2500,
+            "weightRationale": "Adversarial tests of the gate, ledger, reviews and scope; bounded but must be thorough.",
+            "inventoryItems": [
+              "INV-0040"
+            ],
+            "appNotes": "",
+            "phase": "core"
+          },
+          {
+            "feature": "transactional-email",
+            "weightBp": 1000,
+            "weightRationale": "One sender integration on a subdomain with SPF/DKIM/DMARC; the smallest item.",
+            "inventoryItems": [
+              "INV-0041"
+            ],
+            "appNotes": "",
+            "phase": "core"
+          }
+        ]
+      }
+    ],
+    "excluded": [],
+    "newCatalogFeatures": [
+      "activity-and-profiles",
+      "agent-policy",
+      "build-graph-validation",
+      "context-engine",
+      "contributor-profile",
+      "device-sessions",
+      "feature-catalog",
+      "feature-contract-consensus",
+      "gated-pull-requests",
+      "github-identity-link",
+      "integration-and-e2e",
+      "leases-and-locks",
+      "local-orchestrator",
+      "magic-link-sign-in",
+      "progress-drilldown",
+      "proposals-and-resolution",
+      "provenance-and-merge",
+      "review-rounds",
+      "reward-rules",
+      "roadmap-consensus",
+      "scope-verification",
+      "security-hardening",
+      "ship-gate-and-migrations",
+      "sniper-list-site",
+      "token-ledger",
+      "transactional-email",
+      "wos-cli",
+      "wos-desktop"
+    ],
+    "proposals": []
+  },
+  "catalog": [
+    {
+      "schema": "wos-catalog-entry.v1",
+      "key": "activity-and-profiles",
+      "title": "Activity and profiles",
+      "summary": "Public activity feed, contributor profiles, reward history and opt-in leaderboard.",
+      "aliasOf": null
+    },
+    {
+      "schema": "wos-catalog-entry.v1",
+      "key": "agent-policy",
+      "title": "Agent policy",
+      "summary": "Machine-readable rules for which agent, model and reasoning level may perform each role.",
+      "aliasOf": null
+    },
+    {
+      "schema": "wos-catalog-entry.v1",
+      "key": "build-graph-validation",
+      "title": "Build graph validation",
+      "summary": "Deterministic validation that a build graph of atomic units is acyclic, covered, parallel-safe and within budget.",
+      "aliasOf": null
+    },
+    {
+      "schema": "wos-catalog-entry.v1",
+      "key": "context-engine",
+      "title": "Context engine",
+      "summary": "Deterministic, role-specific agent context with immutable manifests and budgets.",
+      "aliasOf": null
+    },
+    {
+      "schema": "wos-catalog-entry.v1",
+      "key": "contributor-profile",
+      "title": "Contributor profile",
+      "summary": "A person's public profile, contribution history and settings.",
+      "aliasOf": null
+    },
+    {
+      "schema": "wos-catalog-entry.v1",
+      "key": "device-sessions",
+      "title": "Device sessions",
+      "summary": "Short-lived access and rotating refresh sessions per device, stored in the OS keychain.",
+      "aliasOf": null
+    },
+    {
+      "schema": "wos-catalog-entry.v1",
+      "key": "feature-catalog",
+      "title": "Feature catalog",
+      "summary": "A global, app-independent catalog of features that many application roadmaps reference.",
+      "aliasOf": null
+    },
+    {
+      "schema": "wos-catalog-entry.v1",
+      "key": "feature-contract-consensus",
+      "title": "Feature contract consensus",
+      "summary": "A canonical, versioned feature contract with per-app requirement profiles reviewed to consensus.",
+      "aliasOf": null
+    },
+    {
+      "schema": "wos-catalog-entry.v1",
+      "key": "gated-pull-requests",
+      "title": "Gated pull requests",
+      "summary": "Pull requests opened only by an app, only after machine-checked qualification.",
+      "aliasOf": null
+    },
+    {
+      "schema": "wos-catalog-entry.v1",
+      "key": "github-identity-link",
+      "title": "GitHub identity link",
+      "summary": "Link, unlink and reserve one GitHub identity per account for contribution and provenance.",
+      "aliasOf": null
+    },
+    {
+      "schema": "wos-catalog-entry.v1",
+      "key": "integration-and-e2e",
+      "title": "Integration and end-to-end tests",
+      "summary": "Cross-workstream integration waves and end-to-end tests including simultaneous builders.",
+      "aliasOf": null
+    },
+    {
+      "schema": "wos-catalog-entry.v1",
+      "key": "leases-and-locks",
+      "title": "Leases and locks",
+      "summary": "Time-bounded exclusive work leases with path and logical resource locks.",
+      "aliasOf": null
+    },
+    {
+      "schema": "wos-catalog-entry.v1",
+      "key": "local-orchestrator",
+      "title": "Local orchestrator",
+      "summary": "The shared local driver of lease, build, verify, review, qualify and PR steps.",
+      "aliasOf": null
+    },
+    {
+      "schema": "wos-catalog-entry.v1",
+      "key": "magic-link-sign-in",
+      "title": "Email magic-link sign-in",
+      "summary": "Passwordless sign-in by a single-use emailed link or code, bound to the client that started it.",
+      "aliasOf": null
+    },
+    {
+      "schema": "wos-catalog-entry.v1",
+      "key": "progress-drilldown",
+      "title": "Progress drilldown",
+      "summary": "Public pages from application to capability, feature, requirement, unit and PR, with traceable numbers.",
+      "aliasOf": null
+    },
+    {
+      "schema": "wos-catalog-entry.v1",
+      "key": "proposals-and-resolution",
+      "title": "Proposals and resolution",
+      "summary": "Proposals into canonical documents and rulings on escalated disputes and blockers.",
+      "aliasOf": null
+    },
+    {
+      "schema": "wos-catalog-entry.v1",
+      "key": "provenance-and-merge",
+      "title": "Provenance and merge",
+      "summary": "Provenance records for every accepted change and merge handling that unlocks dependents.",
+      "aliasOf": null
+    },
+    {
+      "schema": "wos-catalog-entry.v1",
+      "key": "review-rounds",
+      "title": "Review rounds",
+      "summary": "Sealed, independent two-reviewer rounds with a finding ledger and atomic reveal.",
+      "aliasOf": null
+    },
+    {
+      "schema": "wos-catalog-entry.v1",
+      "key": "reward-rules",
+      "title": "Reward rules",
+      "summary": "Rules that turn accepted contributions into ledger entries, holds, reversals and pools.",
+      "aliasOf": null
+    },
+    {
+      "schema": "wos-catalog-entry.v1",
+      "key": "roadmap-consensus",
+      "title": "Roadmap consensus",
+      "summary": "A canonical, versioned roadmap per application reviewed independently until no material gaps remain.",
+      "aliasOf": null
+    },
+    {
+      "schema": "wos-catalog-entry.v1",
+      "key": "scope-verification",
+      "title": "Scope verification",
+      "summary": "Deterministic validation of a submission against allowed and forbidden paths and resources.",
+      "aliasOf": null
+    },
+    {
+      "schema": "wos-catalog-entry.v1",
+      "key": "security-hardening",
+      "title": "Security hardening",
+      "summary": "Adversarial testing of gates, ledgers, reviews and scope enforcement.",
+      "aliasOf": null
+    },
+    {
+      "schema": "wos-catalog-entry.v1",
+      "key": "ship-gate-and-migrations",
+      "title": "Ship gate and migrations",
+      "summary": "A migration runner with a ledger, applied only by a gate that refuses unsafe deploys.",
+      "aliasOf": null
+    },
+    {
+      "schema": "wos-catalog-entry.v1",
+      "key": "sniper-list-site",
+      "title": "Sniper List site",
+      "summary": "The public list of targets with honest progress.",
+      "aliasOf": null
+    },
+    {
+      "schema": "wos-catalog-entry.v1",
+      "key": "token-ledger",
+      "title": "Token ledger",
+      "summary": "An append-only, hash-chained ledger of in-app credits with derived balances.",
+      "aliasOf": null
+    },
+    {
+      "schema": "wos-catalog-entry.v1",
+      "key": "transactional-email",
+      "title": "Transactional email",
+      "summary": "Sign-in and notification email from a sending subdomain with SPF, DKIM and DMARC.",
+      "aliasOf": null
+    },
+    {
+      "schema": "wos-catalog-entry.v1",
+      "key": "wos-cli",
+      "title": "wOS CLI",
+      "summary": "The command-line contributor client.",
+      "aliasOf": null
+    },
+    {
+      "schema": "wos-catalog-entry.v1",
+      "key": "wos-desktop",
+      "title": "wOS Desktop",
+      "summary": "The Electron contributor application.",
+      "aliasOf": null
+    }
+  ],
+  "requirements": [
+    {
+      "feature": "activity-and-profiles",
+      "requirements": [
+        {
+          "key": "R-001",
+          "kind": "ui",
+          "statement": "Activity MUST show only public events and profiles MUST show scores only for opted-in contributors.",
+          "acceptance": [
+            "A contributor who did not opt in has no score on their profile."
+          ]
+        }
+      ]
+    },
+    {
+      "feature": "agent-policy",
+      "requirements": [
+        {
+          "key": "R-001",
+          "kind": "data",
+          "statement": "Each role MUST specify allowed models, required reasoning, sandbox, tools, budget, lease timing, independence and obligations as data.",
+          "acceptance": [
+            "The policy document parses against its schema."
+          ]
+        },
+        {
+          "key": "R-002",
+          "kind": "functional",
+          "statement": "Eligibility MUST refuse a reviewer who authored the subject or holds the other slot of the round, except under labelled bootstrap rules.",
+          "acceptance": [
+            "An author claiming a review of their own attempt is refused."
+          ]
+        }
+      ]
+    },
+    {
+      "feature": "build-graph-validation",
+      "requirements": [
+        {
+          "key": "R-001",
+          "kind": "functional",
+          "statement": "The validator MUST reject cycles, uncovered requirements, parallel ABUs with overlapping write scopes or exclusive resources, and ABUs over the builder context budget.",
+          "acceptance": [
+            "Each rejection is reported with its error code and ABU key."
+          ]
+        }
+      ]
+    },
+    {
+      "feature": "context-engine",
+      "requirements": [
+        {
+          "key": "R-001",
+          "kind": "functional",
+          "statement": "The same context plan and snapshot MUST produce a byte-identical prompt and manifest.",
+          "acceptance": [
+            "Two runs over the same inputs produce the same manifest sha256."
+          ]
+        },
+        {
+          "key": "R-002",
+          "kind": "security",
+          "statement": "A reviewer's context MUST NOT include the other slot's verdict for the current round.",
+          "acceptance": [
+            "Manifests of both reviewers of a round contain no reference to the other's verdict."
+          ]
+        }
+      ]
+    },
+    {
+      "feature": "contributor-profile",
+      "requirements": [
+        {
+          "key": "R-001",
+          "kind": "ui",
+          "statement": "A contributor MUST be able to see their contributions, token history and leaderboard opt-in, and change the opt-in.",
+          "acceptance": [
+            "Toggling opt-in adds or removes the contributor from the public leaderboard."
+          ]
+        }
+      ]
+    },
+    {
+      "feature": "device-sessions",
+      "requirements": [
+        {
+          "key": "R-001",
+          "kind": "security",
+          "statement": "Refresh tokens MUST rotate on use and reuse of a rotated token MUST revoke the whole session family.",
+          "acceptance": [
+            "Replaying an old refresh token revokes every session in the family."
+          ]
+        },
+        {
+          "key": "R-002",
+          "kind": "security",
+          "statement": "Desktop and CLI MUST store the session only in the OS keychain.",
+          "acceptance": [
+            "No session material is written to plain files."
+          ]
+        }
+      ]
+    },
+    {
+      "feature": "feature-catalog",
+      "requirements": [
+        {
+          "key": "R-001",
+          "kind": "data",
+          "statement": "Every roadmap feature reference MUST resolve to exactly one active catalog feature.",
+          "acceptance": [
+            "A roadmap referencing an unknown or aliased feature fails validation."
+          ]
+        },
+        {
+          "key": "R-002",
+          "kind": "functional",
+          "statement": "A duplicate catalog feature MUST be mergeable into another by an alias change that carries its requirements and profiles.",
+          "acceptance": [
+            "After an alias merge, apps that referenced the duplicate show the target feature."
+          ]
+        }
+      ]
+    },
+    {
+      "feature": "feature-contract-consensus",
+      "requirements": [
+        {
+          "key": "R-001",
+          "kind": "functional",
+          "statement": "A feature contract MUST contain one requirement profile per app that references the feature and has been specified.",
+          "acceptance": [
+            "Salesforce and HubSpot profiles can list different requirement ids of one contract."
+          ]
+        },
+        {
+          "key": "R-002",
+          "kind": "functional",
+          "statement": "A new version of a shared contract MUST list every impacted app, and reviewers MUST receive those apps' profiles.",
+          "acceptance": [
+            "A version without impactedTargets fails validation."
+          ]
+        }
+      ]
+    },
+    {
+      "feature": "gated-pull-requests",
+      "requirements": [
+        {
+          "key": "R-001",
+          "kind": "security",
+          "statement": "Only the wOS GitHub App MUST open official PRs, and only after qualification succeeded.",
+          "acceptance": [
+            "A PR opened by any other author is closed automatically."
+          ]
+        },
+        {
+          "key": "R-002",
+          "kind": "functional",
+          "statement": "The App MUST build commits from validated submissions via the Git Data API with a Co-authored-by trailer for the contributor.",
+          "acceptance": [
+            "The PR commit's tree equals the reviewed candidate tree."
+          ]
+        }
+      ]
+    },
+    {
+      "feature": "github-identity-link",
+      "requirements": [
+        {
+          "key": "R-001",
+          "kind": "functional",
+          "statement": "An account MUST link at most one GitHub identity, and a GitHub identity MUST be linked to at most one account.",
+          "acceptance": [
+            "Linking a GitHub already linked elsewhere returns GITHUB_LINKED_ELSEWHERE."
+          ]
+        },
+        {
+          "key": "R-002",
+          "kind": "security",
+          "statement": "Unlinking MUST be refused while the account holds an active lease, live attempt or sealed review, and the unlinked identity MUST stay reserved to the account for 90 days.",
+          "acceptance": [
+            "Unlink during an active lease returns 409.",
+            "Linking a reserved identity to another account returns GITHUB_RESERVED."
+          ]
+        }
+      ]
+    },
+    {
+      "feature": "integration-and-e2e",
+      "requirements": [
+        {
+          "key": "R-001",
+          "kind": "functional",
+          "statement": "The end-to-end suite MUST run two builders on independent ABUs of one feature at the same time without conflicts.",
+          "acceptance": [
+            "Both attempts reach pr_open and merge cleanly."
+          ]
+        }
+      ]
+    },
+    {
+      "feature": "leases-and-locks",
+      "requirements": [
+        {
+          "key": "R-001",
+          "kind": "functional",
+          "statement": "A task MUST have at most one active lease, and leases MUST expire when heartbeats stop.",
+          "acceptance": [
+            "A lease without heartbeats expires after its TTL and the task reopens."
+          ]
+        },
+        {
+          "key": "R-002",
+          "kind": "functional",
+          "statement": "Two ABUs MUST NOT be in progress at once when their write scopes overlap or they claim the same exclusive resource.",
+          "acceptance": [
+            "Claiming an ABU whose scope overlaps a live attempt returns RESOURCE_LOCKED."
+          ]
+        }
+      ]
+    },
+    {
+      "feature": "local-orchestrator",
+      "requirements": [
+        {
+          "key": "R-001",
+          "kind": "functional",
+          "statement": "Desktop and CLI MUST drive every workflow through the same orchestrator interface.",
+          "acceptance": [
+            "The CLI and Desktop produce identical event streams for the same fake run."
+          ]
+        },
+        {
+          "key": "R-002",
+          "kind": "functional",
+          "statement": "The orchestrator MUST launch claude and codex with the model, reasoning and restrictions the Agent Policy requires.",
+          "acceptance": [
+            "describeInvocation output matches the policy for every role."
+          ]
+        }
+      ]
+    },
+    {
+      "feature": "magic-link-sign-in",
+      "requirements": [
+        {
+          "key": "R-001",
+          "kind": "security",
+          "statement": "A sign-in token MUST be single-use, expire within 15 minutes and be stored only as a sha256 hash.",
+          "acceptance": [
+            "Redeeming the same link twice fails the second time.",
+            "A token older than 15 minutes is rejected."
+          ]
+        },
+        {
+          "key": "R-002",
+          "kind": "security",
+          "statement": "Redemption MUST require the poll secret held by the client that started the sign-in.",
+          "acceptance": [
+            "A link opened by a different client cannot complete another client's sign-in."
+          ]
+        },
+        {
+          "key": "R-003",
+          "kind": "security",
+          "statement": "The start endpoint MUST return the same response whether or not the email has an account, and MUST rate-limit per email and per IP.",
+          "acceptance": [
+            "Responses for known and unknown emails are byte-identical apart from ids.",
+            "The sixth start for one email within an hour is refused."
+          ]
+        }
+      ]
+    },
+    {
+      "feature": "progress-drilldown",
+      "requirements": [
+        {
+          "key": "R-001",
+          "kind": "ui",
+          "statement": "Every percentage MUST link to the weights and records it was computed from.",
+          "acceptance": [
+            "From any app percentage a visitor can reach the PRs behind it."
+          ]
+        }
+      ]
+    },
+    {
+      "feature": "proposals-and-resolution",
+      "requirements": [
+        {
+          "key": "R-001",
+          "kind": "functional",
+          "statement": "wos propose MUST record a proposal that the next author round sees and answers.",
+          "acceptance": [
+            "An accepted proposal appears in the next revision's proposals list."
+          ]
+        },
+        {
+          "key": "R-002",
+          "kind": "functional",
+          "statement": "An escalated finding MUST be ruled upheld or overruled by a resolver and confirmed by a maintainer before the workflow continues.",
+          "acceptance": [
+            "An unconfirmed ruling keeps the document escalated."
+          ]
+        }
+      ]
+    },
+    {
+      "feature": "provenance-and-merge",
+      "requirements": [
+        {
+          "key": "R-001",
+          "kind": "data",
+          "statement": "Every official PR MUST have a provenance record naming builders, reviewers, models, reasoning, manifests and CI results.",
+          "acceptance": [
+            "The provenance record hash is shown in the PR body."
+          ]
+        },
+        {
+          "key": "R-002",
+          "kind": "functional",
+          "statement": "A merge MUST mark the ABU merged, unlock dependents and trigger progress recomputation.",
+          "acceptance": [
+            "A dependent ABU becomes ready after its last dependency merges."
+          ]
+        }
+      ]
+    },
+    {
+      "feature": "review-rounds",
+      "requirements": [
+        {
+          "key": "R-001",
+          "kind": "security",
+          "statement": "Verdicts MUST stay sealed until both slots have submitted, then be revealed atomically.",
+          "acceptance": [
+            "A reviewer cannot read the other slot's verdict before reveal."
+          ]
+        },
+        {
+          "key": "R-002",
+          "kind": "functional",
+          "statement": "Verdicts MUST be bound to the reviewed head sha and submission hash.",
+          "acceptance": [
+            "A verdict for a different head sha is rejected."
+          ]
+        }
+      ]
+    },
+    {
+      "feature": "reward-rules",
+      "requirements": [
+        {
+          "key": "R-001",
+          "kind": "functional",
+          "statement": "Accepted work MUST earn tokens exactly once per unit, never for merely opening a PR.",
+          "acceptance": [
+            "Replaying the same acceptance event writes no second award."
+          ]
+        },
+        {
+          "key": "R-002",
+          "kind": "functional",
+          "statement": "A per-app completion pool MUST fire when that app's profile of a feature is complete.",
+          "acceptance": [
+            "Completing HubSpot's profile of a shared feature does not fire Salesforce's pool."
+          ]
+        }
+      ]
+    },
+    {
+      "feature": "roadmap-consensus",
+      "requirements": [
+        {
+          "key": "R-001",
+          "kind": "functional",
+          "statement": "There MUST be at most one open roadmap workflow per application.",
+          "acceptance": [
+            "Opening a second roadmap for the same app returns 409."
+          ]
+        },
+        {
+          "key": "R-002",
+          "kind": "functional",
+          "statement": "A roadmap MUST reach consensus only when both reviewer slots return NO_MATERIAL_GAPS on the same head sha in the same round.",
+          "acceptance": [
+            "One MATERIAL_GAPS verdict sends the roadmap back to revision."
+          ]
+        },
+        {
+          "key": "R-003",
+          "kind": "data",
+          "statement": "Every capability and feature MUST carry a weight with a written rationale, and weights MUST sum to 10000 at each level.",
+          "acceptance": [
+            "A roadmap missing a rationale or with wrong sums fails schema validation."
+          ]
+        }
+      ]
+    },
+    {
+      "feature": "scope-verification",
+      "requirements": [
+        {
+          "key": "R-001",
+          "kind": "security",
+          "statement": "Submissions touching protected, generated, workflow or symlink paths, or lockfiles and migrations without the declared resource, MUST be rejected.",
+          "acceptance": [
+            "Each forbidden case is rejected with its error code."
+          ]
+        }
+      ]
+    },
+    {
+      "feature": "security-hardening",
+      "requirements": [
+        {
+          "key": "R-001",
+          "kind": "security",
+          "statement": "The test suite MUST attempt modified-client submissions, fabricated verdicts, self-review and path escapes, and each MUST be refused.",
+          "acceptance": [
+            "Every adversarial case in SECURITY.md has a test that fails if the defence is removed."
+          ]
+        }
+      ]
+    },
+    {
+      "feature": "ship-gate-and-migrations",
+      "requirements": [
+        {
+          "key": "R-001",
+          "kind": "operability",
+          "statement": "Production MUST be migrated only by the ship gate, which refuses a dirty tree, an unpushed commit or red CI.",
+          "acceptance": [
+            "Running the gate with a dirty tree exits non-zero before migrating."
+          ]
+        }
+      ]
+    },
+    {
+      "feature": "sniper-list-site",
+      "requirements": [
+        {
+          "key": "R-001",
+          "kind": "ui",
+          "statement": "The site MUST show MAPPED, SPECIFIED and BUILT for every target from live data, and 0% when nothing exists.",
+          "acceptance": [
+            "No target shows a number that the API does not return."
+          ]
+        }
+      ]
+    },
+    {
+      "feature": "token-ledger",
+      "requirements": [
+        {
+          "key": "R-001",
+          "kind": "data",
+          "statement": "Ledger entries MUST be append-only and hash-chained, and balances MUST be derived, never stored.",
+          "acceptance": [
+            "UPDATE and DELETE on the ledger fail for every role."
+          ]
+        }
+      ]
+    },
+    {
+      "feature": "transactional-email",
+      "requirements": [
+        {
+          "key": "R-001",
+          "kind": "operability",
+          "statement": "Mail MUST be sent from a subdomain with SPF, DKIM and DMARC, leaving the apex MX untouched.",
+          "acceptance": [
+            "Sign-in mail passes DMARC alignment in a Gmail inbox."
+          ]
+        }
+      ]
+    },
+    {
+      "feature": "wos-cli",
+      "requirements": [
+        {
+          "key": "R-001",
+          "kind": "functional",
+          "statement": "The CLI MUST provide wos build, roadmap, propose, resolve, review and status over the shared orchestrator.",
+          "acceptance": [
+            "Each command appears in wos --help and calls the orchestrator."
+          ]
+        }
+      ]
+    },
+    {
+      "feature": "wos-desktop",
+      "requirements": [
+        {
+          "key": "R-001",
+          "kind": "security",
+          "statement": "The renderer MUST run sandboxed with context isolation and no Node access; privileged work MUST happen in the main process.",
+          "acceptance": [
+            "window.require and process are undefined in the renderer."
+          ]
+        },
+        {
+          "key": "R-002",
+          "kind": "functional",
+          "statement": "A contributor MUST be able to sign in, pick Salesforce -> CRM -> a feature -> an eligible ABU, and press BUILD.",
+          "acceptance": [
+            "The BUILD button starts the shared orchestrator and streams its events."
+          ]
+        }
+      ]
+    }
+  ]
+}

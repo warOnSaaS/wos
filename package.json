@@ -1,0 +1,41 @@
+{
+  "name": "waronsaas",
+  "private": true,
+  "type": "module",
+  "description": "warOnSaaS monorepo: wOS (Desktop, CLI, control plane, shared packages) and the public website.",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22.12 <23",
+    "npm": ">=10.9"
+  },
+  "packageManager": "npm@10.9.8",
+  "workspaces": [
+    "packages/contracts",
+    "packages/db",
+    "packages/agent-policy",
+    "packages/context-engine",
+    "packages/verification",
+    "packages/github",
+    "packages/planning",
+    "packages/rewards",
+    "packages/orchestrator",
+    "services/control-plane",
+    "apps/cli",
+    "apps/desktop"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b && tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "lint": "biome check .",
+    "check": "npm run typecheck && npm run lint && npm run test",
+    "db:test": "bash packages/db/scripts/test-migrations.sh",
+    "clean": "tsc -b --clean"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.14",
+    "@types/node": "^22.19.0",
+    "typescript": "7.0.2",
+    "vitest": "^5.0.2"
+  }
+}

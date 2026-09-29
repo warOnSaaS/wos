@@ -1,0 +1,28 @@
+{
+  "name": "@waronsaas/desktop",
+  "productName": "wOS",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "UNLICENSED",
+  "description": "wOS Desktop: the contributor build environment. Electron main process owns processes, git and the filesystem; the renderer is sandboxed.",
+  "main": "dist/main/index.js",
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b"
+  },
+  "dependencies": {
+    "@waronsaas/contracts": "*",
+    "@waronsaas/orchestrator": "*",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "electron": "^44.4.5",
+    "electron-builder": "^26.15.3",
+    "vite": "^8.3.1"
+  }
+}

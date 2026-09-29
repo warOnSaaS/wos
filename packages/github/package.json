@@ -1,0 +1,34 @@
+{
+  "name": "@waronsaas/github",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "UNLICENSED",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./app": {
+      "types": "./dist/app/index.d.ts",
+      "default": "./dist/app/index.js"
+    },
+    "./local": {
+      "types": "./dist/local/index.d.ts",
+      "default": "./dist/local/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b"
+  },
+  "dependencies": {
+    "@waronsaas/contracts": "*",
+    "@octokit/rest": "^22.0.1",
+    "@octokit/auth-app": "^8.3.1",
+    "@octokit/webhooks-methods": "^6.0.0"
+  }
+}
