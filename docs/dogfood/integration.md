@@ -91,3 +91,4 @@ Merged onto main 4cd94c1 (4.3.0) plus the architect's 4.4.0 commit 3aca13f, in d
 | Date | Context at start | Scope | Merge conflicts | Glue edits | Repair loops | Result |
 |---|---|---|---|---|---|---|
 | 2026-09-29 | carried architect session | 11 rulings (4.4.0), 8 merges, gate run | blocker files only | 16 (above) | 10 (mirror lock, pack test, events test, goldens, three API-attack causes, omitted-model drift, route-error wiring, toolchain matcher, surfaces fixtures) | gate PASS; see WAVE-2-REPORT.md |
+| 2026-09-29 | coordinator | services/control-plane/vercel.json | Production database is Neon free (100 compute-hours/month, sleeps after 5 min idle). Every-minute crons would keep it awake 24/7 and exhaust the free hours mid-month, so sweep and dispatch run every 15 minutes until paid. Cost: an abandoned lease reopens up to 15 minutes later. Revert to every minute when the database moves to a paid plan. |
