@@ -91,14 +91,20 @@ export const del = (path: string): ChangesetFile => ({ op: "delete", path });
 /** Builds a correctly hashed and signed changeset; `tamper` runs after signing (a modified client). */
 export function signedChangeset(
   files: ChangesetFile[],
-  opts: { parent?: string; key?: typeof VECTOR_DEVICE_KEY; tamper?: (c: Changeset) => void } = {},
+  opts: {
+    parent?: string;
+    key?: typeof VECTOR_DEVICE_KEY;
+    tamper?: (c: Changeset) => void;
+    manifestSha256?: string;
+    ids?: { taskId: string; leaseId: string; deviceId: string };
+  } = {},
 ): Changeset {
   const parent = opts.parent ?? PARENT;
   const c: Changeset = {
     schema: "wos-changeset.v1",
-    ...IDS,
+    ...(opts.ids ?? IDS),
     parentCommit: parent,
-    manifestSha256: MANIFEST_SHA,
+    manifestSha256: opts.manifestSha256 ?? MANIFEST_SHA,
     submissionSha256: computeSubmissionSha256(parent, files),
     files,
     summary: {
