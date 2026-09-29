@@ -32,6 +32,9 @@ export const HTTP_STATUS: Record<ApiErrorCode, number> = {
   GITHUB_RESERVED: 409,
   UPSTREAM_GITHUB: 502,
   INTERNAL: 500,
+  NOT_ENTITLED: 403,
+  DEPENDENCY_NOT_ENABLED: 409,
+  DEPENDENT_ENABLED: 409,
 };
 
 export const fail = (code: ApiErrorCode, message: string, details?: unknown): never => {

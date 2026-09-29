@@ -20,6 +20,7 @@ const baseRoadmap = (): RoadmapT => ({
   version: 1,
   inventoryVersion: 1,
   productName: "Pipeline",
+  apps: ["crm"],
   summary: "An open-source CRM.",
   architecture: { overview: "o", composition: "c", appSpecificData: "d", selfHosting: "s" },
   surfaces: [
@@ -293,5 +294,25 @@ describe("other contracts", () => {
     expect(Changeset.safeParse({ ...base, files: [{ ...file, mode: "100644" }] }).success).toBe(true);
     expect(Changeset.safeParse({ ...base, files: [{ ...file, mode: "120000" }] }).success).toBe(false);
     expect(Changeset.safeParse({ ...base, files: [{ ...file, mode: "160000" }] }).success).toBe(false);
+  });
+});
+
+describe("product surfaces in roadmaps (contracts 5.0.0)", () => {
+  it("a product-repo roadmap cannot put a vendor-only surface in scope; excluding it is fine", () => {
+    const r = baseRoadmap();
+    r.surfaces.push({ surface: "browser_extension", status: "in_scope", reason: null, repo: "waronsaas/product", path: "apps/web" });
+    expect(
+      Roadmap.safeParse(r)
+        .error?.issues.map((i) => i.message)
+        .join(" "),
+    ).toMatch(/not a wOS product surface/);
+    r.surfaces[r.surfaces.length - 1] = {
+      surface: "browser_extension",
+      status: "excluded",
+      reason: "Post-V1: wOS ships no extension yet.",
+      repo: null,
+      path: null,
+    };
+    expect(Roadmap.safeParse(r).success).toBe(true);
   });
 });

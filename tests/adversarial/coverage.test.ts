@@ -97,6 +97,23 @@ const COVERAGE: Record<string, { status: Status; where: string }> = {
       "primitives.test lint: secrets only in a release job of a tag-only workflow; templates.test release-mobile is the only secret reader, tag on default branch",
   },
   "S-36": { status: "now", where: "surfaces.adversarial: all six reviewer roles carry the trade-dress material rule" },
+  // Added by the architect with contracts 5.0.0 (Amendment 01, D16, D17); Wave 3 owners in WORKSTREAMS section 12.
+  "S-37": {
+    status: "now",
+    where:
+      "contracts wos-app.test: pinned-key, tamper and swapped-manifest vectors (Desktop installer and module-release workflow: Wave 3)",
+  },
+  "S-38": {
+    status: "none",
+    where: "Wave 3: desktop module loader CSP/origin tests, mobile screen schema (contracts test covers the data)",
+  },
+  "S-39": {
+    status: "now",
+    where: "db-assertions: older release refused, published release immutable, un-yank refused (Desktop rollback: Wave 3)",
+  },
+  "S-40": { status: "none", where: "Wave 3: desktop IPC fuzz with Build off; control-plane claim without the build entitlement -> 403" },
+  "S-41": { status: "none", where: "Wave 3: V1 proof step 8, self-hosted Core with no route to wOS Cloud" },
+  "S-42": { status: "none", where: "Wave 3: release workflow refuses an unsigned Windows artefact; github/local on windows-latest" },
 };
 
 describe("security-hardening: every SECURITY.md control is mapped", () => {

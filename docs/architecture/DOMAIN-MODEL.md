@@ -10,7 +10,12 @@ code and must be regenerated if it changes.
 | Term | Meaning |
 |---|---|
 | Target (application) | A rented product we replace, e.g. Salesforce. One row in `wos.targets`. The spec uses "Sniper Target" and "application" for the same thing; wOS has one entity. TGT-00 is warOnSaaS itself (rank 0). |
-| Replacement product | The ONE modular suite in `waronsaas/product` (D14). A target's roadmap `productName` names how we present the replacement for that target (e.g. on its website page); there is no per-target codebase or store listing. |
+| Replacement product | The ONE modular suite in `waronsaas/product` (D14): ONE wOS (Amendment 01). A target's roadmap `productName` names how we present the replacement for that target (e.g. on its website page); there is no per-target codebase or store listing. |
+| Application | A WOS-APP an organization enables: `crm`, `chat`, `build`... (`app_registry`, kind `app`). A target maps to one or more applications (`target_apps`); the Sniper List tracks the TARGET, the application is the PRODUCT. |
+| Module / Core | A module is a shared business module apps require (`contacts`, kind `module`; never entitled). Core is `core`: identity, organizations, permissions, registries, events (WOS-APP-PROTOCOL section 4). |
+| Organization | wOS Cloud tenancy (`organizations`, `memberships`). Every account has one personal organization; team organizations have owners, admins and members. |
+| Entitlement | Whether an organization has an application enabled on wOS Cloud (`app_entitlements`, EntitlementMachine). Never consulted by self-hosted wOS. |
+| Environment | The server a wOS client talks to: wOS Cloud or a self-hosted wOS Core (`EnvironmentDescriptor`). |
 | Inventory | The enumerated public surface of the target (`roadmaps/<target>/INVENTORY.yaml`). Completeness evidence reviewers check the roadmap against. Items weigh 1 and do not drive progress. |
 | Roadmap | Per target, versioned. Lists ALL capabilities with reasoned weights (D12); mapped capabilities list catalog features with reasoned weights. |
 | Capability | A grouping inside one app's roadmap, e.g. `crm` for Salesforce. Keys are per app. |
@@ -470,3 +475,46 @@ Initial: `open`. Terminal: `resolved,rejected`.
 | `toolchain_attestations` | Append-only device toolchain reports used for path-based toolchain eligibility. |
 
 Migration 0005 also moves every product target to `waronsaas/product`.
+
+## 8. One product (Amendment 01, migration 0006, contracts 5.0.0)
+
+| Table | Kind | Purpose |
+|---|---|---|
+| `organizations` | M, P | Tenancy. `kind` personal (exactly one per account, created by the trigger `accounts_personal_organization`; its kind and owner never change) or team (created through `wos.create_team_organization`, whose caller becomes owner). |
+| `memberships` | M, P | (organization, account, role owner/admin/member). A personal org has only its account, as owner; every org keeps an owner. Visible to members (RLS through `wos.org_role`). |
+| `app_registry` | M | One row per application, module or core: kind, billing, `current_version` (the highest published, non-yanked release, maintained by trigger). Public. |
+| `app_releases` | A except yank | One row per (app, version): signed manifest and hash, surfaces, desktop package, source tag and commit. Versions only increase; rows are immutable except `published -> yanked`. |
+| `app_entitlements` | M, P | EntitlementMachine per (organization, kind-app application). Never deleted; core and modules refused. |
+| `target_apps` | M | Target -> application mapping (Salesforce -> crm). No foreign key to the registry: an app is named before it is released. |
+| `environments` | M | wOS Cloud environments the control plane mints tokens for (seed: `wOS Cloud`, `https://core.waronsaas.com`). Self-hosted environments never register. |
+
+Migration 0006 also adds `api` to every surface CHECK. It seeds `core` and `build` in the registry, and creates a personal organization with Build enabled for every account that existed before it.
+
+### 4.12 Entitlement
+
+| From | Event | To | Actor | Guard |
+|---|---|---|---|---|
+| available (no row) | enable | enabled | account (owner/admin), maintainer | app is kind app, hosted-compatible, in the registry; required apps enabled (DEPENDENCY_NOT_ENABLED) |
+| disabled | enable | enabled | account (owner/admin), maintainer | as above; data kept while disabled reappears |
+| enabled | disable | disabled | account (owner/admin), maintainer | no enabled app of the org requires it (DEPENDENT_ENABLED); data never deleted |
+| enabled | suspend | suspended | system, maintainer | hosted service suspended (reason recorded) |
+| suspended | resume | enabled | system, maintainer | reason cleared |
+| suspended | disable | disabled | account (owner/admin), maintainer | dependent check |
+
+Each transition writes `entitlement.changed` (private) in the same transaction and bumps `row_version`. The enable and disable routes take `expectedRowVersion`, and a stale version gets 409.
+
+### 4.13 App release
+
+`published -> yanked` (maintainer, reason recorded). Clients never install a yanked version; one that is active rolls back to `previous`.
+
+### 4.14 Module install (client-local, Desktop main process)
+
+| State | Meaning |
+|---|---|
+| `staged` | Downloaded and verified: signature (pinned key), hashes, manifest, compatibility. |
+| `active` | Loaded in the renderer. At most one per app. |
+| `previous` | The last active version, kept for rollback. At most one per app. |
+| `failed` | Verification or first load failed. |
+| `removed` | Files deleted (terminal). |
+
+Transitions: `activate` (staged → active), `fail` (staged → failed, active → failed), `supersede` (active → previous), `rollback` (previous → active), and `remove` (previous, active or failed → removed).

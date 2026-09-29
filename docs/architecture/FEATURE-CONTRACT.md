@@ -98,6 +98,30 @@ Run on every revision before a round opens. Any error returns the document to `r
 - Keep JS/TS-only mobile work in ABUs separate from native changes (`ios/`, `android/`, config plugins, native modules): only the latter need a macOS + Xcode or Android SDK machine (path-based `toolchainRequirements` in `wos.json`).
 - New validator codes: `ABU_REPO_UNKNOWN`, `SHARED_API_MISSING`, `JOURNEY_UNCOVERED`, `REQUIREMENT_SURFACE_NOT_IN_SCOPE`, `NATIVE_CAPABILITY_UNPLANNED`.
 
+### Required surfaces and per-surface capabilities (Amendment 01, contracts 5.0.0)
+
+Every contract declares `surfaces`: for each surface it covers, `required` and the `capabilities` that make up the accepted end state on that surface. Parity does not mean identical UX:
+
+```yaml
+surfaces:
+  web:     { required: true,  capabilities: [view_contact, edit_contact, create_contact, bulk_edit] }
+  desktop: { required: true,  capabilities: [view_contact, edit_contact, create_contact, bulk_import, bulk_edit] }
+  ios:     { required: true,  capabilities: [view_contact, edit_contact, create_contact, call_contact] }
+  android: { required: true,  capabilities: [view_contact, edit_contact, create_contact, call_contact] }
+  api:     { required: true,  capabilities: [list_contacts, get_contact, upsert_contact] }
+```
+
+- **Surface names.** Product-family contracts use product surfaces only: `web`, `desktop`, `ios`, `android`, `api`. Planning enforces this by repository family and reports `SURFACE_NOT_PRODUCT`. Platform contracts (TGT-00) may use `cli`.
+- **Consistency with requirements and journeys.** The schema refuses:
+  - a required surface without capabilities;
+  - a requirement tagged with a surface the contract does not require;
+  - a required surface with no requirement;
+  - a required UI surface (anything but `api`) with no journey;
+  - a journey on a surface that is not required.
+- **Completeness.** A feature is BUILT for an app only when every required surface's requirements in that app's profile are merged and each surface's acceptance passed (`wos-acceptance/<feature>/<target>/<surface>`). A desktop implementation alone never completes a feature that also requires web, mobile and API (ROADMAP-PROTOCOL section 6).
+- **Desktop.** Desktop-surface code is renderer code in `applications/<app>/desktop` and `modules/<feature>/desktop`, shipped as a signed module (WOS-APP-PROTOCOL section 6). It never reaches the Desktop main process.
+- **API.** API-surface requirements are served under `/apps/<app>/` by Core, and acceptance runs against the API directly.
+
 ## 4. Lifecycle
 
 Same `DocumentMachine` and transitions as roadmaps (ROADMAP-PROTOCOL.md section 3) with `kind = 'feature_contract'`, `catalog_feature_id` set, `target_id` null, branch `wos/feature/<key>/v<n>`, PR title `<title> Feature Contract v<n>`, round limit 5 (`featureContractMaxRounds`), author role `feature_author` (Fable or Opus, `max` floor), reviewer roles `feature_reviewer_astra` / `feature_reviewer_fable`.

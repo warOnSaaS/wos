@@ -2,7 +2,8 @@ import { z } from "zod";
 import { ReviewerSlot } from "./agent-policy.js";
 import { ReviewIndependence, TaskKind } from "./agent-io.js";
 import { DocumentKind } from "./domain.js";
-import { AbuKey, FeatureKey, GitSha, Sha256, TargetSlug, Uuid, BasisPoints } from "./primitives.js";
+import { AbuKey, FeatureKey, GitSha, Sha256, TargetSlug, Uuid, BasisPoints, SemVer } from "./primitives.js";
+import { AppId, OrganizationKind, OrgRole, ProductSurface } from "./wos-app.js";
 import { RewardCategory } from "./rewards.js";
 
 /**
@@ -116,6 +117,18 @@ export const DomainEventBody = z.discriminatedUnion("type", [
   e("account.github_linked", "public", { accountId: Uuid, handle: z.string(), githubUserId: z.number().int() }),
   e("account.github_unlinked", "private", { accountId: Uuid, githubUserId: z.number().int() }),
   e("account.suspended", "private", { accountId: Uuid, reason: z.string() }),
+
+  // One product (Amendment 01, contracts 5.0.0). Organization data is private; the registry is public.
+  e("organization.created", "private", { organizationId: Uuid, kind: OrganizationKind, ownerAccountId: Uuid }),
+  e("organization.member_changed", "private", { organizationId: Uuid, accountId: Uuid, role: OrgRole.nullable() }),
+  e("entitlement.changed", "private", {
+    organizationId: Uuid,
+    app: AppId,
+    from: z.enum(["available", "enabled", "disabled", "suspended"]),
+    to: z.enum(["enabled", "disabled", "suspended"]),
+  }),
+  e("app.release_published", "public", { app: AppId, version: SemVer, surfaces: z.array(ProductSurface) }),
+  e("app.release_yanked", "public", { app: AppId, version: SemVer, reason: z.string() }),
 ]);
 export type DomainEventBody = z.infer<typeof DomainEventBody>;
 export type DomainEventType = DomainEventBody["type"];

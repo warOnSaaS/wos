@@ -116,7 +116,7 @@ export const Page = <T extends z.ZodType>(item: T) => z.object({ items: z.array(
  * Client surfaces a product ships (D13). "ios" covers iPhone and iPad; "desktop" covers the vendor's
  * desktop apps (platforms listed in the inventory); "cli" exists for TGT-00 (wOS ships a CLI).
  */
-export const Surface = z.enum(["web", "ios", "android", "desktop", "cli", "browser_extension", "email_addin", "other"]);
+export const Surface = z.enum(["web", "ios", "android", "desktop", "api", "cli", "browser_extension", "email_addin", "other"]);
 export type Surface = z.infer<typeof Surface>;
 
 /**

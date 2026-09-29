@@ -64,6 +64,7 @@ export function roadmap(): Roadmap {
     version: 1,
     inventoryVersion: 1,
     productName: "Open CRM",
+    apps: ["crm"],
     summary: "A CRM parity profile.",
     architecture: { overview: "modules", composition: "suite modules", appSpecificData: "none", selfHosting: "one suite" },
     surfaces: [
@@ -244,6 +245,11 @@ export function contract(): FeatureContract {
     interfaces: { data: [], api: [], ui: [], events: [] },
     dependsOnFeatures: [],
     openQuestions: [],
+    surfaces: {
+      web: { required: true, capabilities: ["view_contact", "search_contacts"] },
+      ios: { required: true, capabilities: ["view_contact", "call_contact"] },
+      android: { required: true, capabilities: ["view_contact", "call_contact"] },
+    },
   };
 }
 

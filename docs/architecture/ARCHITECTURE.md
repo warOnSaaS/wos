@@ -4,7 +4,7 @@ Status: frozen at contracts 1.0.0 (Phase 0, 2026-09-29). Owner: Lead Architect.
 Changes go through an ARCHITECTURE_BLOCKER (see WORKSTREAMS.md). Where this document and the code
 disagree, the code in `packages/contracts` and `packages/db/migrations` wins and this document is a bug.
 
-Founder decisions D1-D12 in `docs/DECISIONS.md` override `docs/V1-SPEC.md`. This document applies them.
+Founder decisions D1-D17 and Amendment 01 in `docs/DECISIONS.md` override `docs/V1-SPEC.md`. This document applies them. Production database: **Neon** Postgres (the coordinator moved it from Supabase, whose free-project limit was reached); where this document says Supabase, read Neon.
 
 ## 1. What the system is
 
@@ -325,3 +325,57 @@ The product is ONE web app and ONE mobile app: a modular suite in the spirit of 
 Two steps, so the live site keeps building exactly as deployed:
 1. **Now:** `apps/web` is in the root workspaces. Root `npm ci` installs it, root tests and checks run it, and `npm run build -w @waronsaas/web` builds it from the root install. `apps/web/package-lock.json` STAYS for now: the Vercel project `waronsaas-web` (root directory `apps/web`) still installs from it. The `generated/` copy of the contracts' progress code and the path alias stay too, so the Vercel build does not need the monorepo.
 2. **When the founder switches the Vercel project** (FOUNDER-CHECKLIST section 11) to install from the repo root (Root Directory `apps/web`, "Include files outside the root directory" on, Install Command `cd ../.. && npm ci --ignore-scripts`), the web workstream deletes `apps/web/package-lock.json`, the `generated/` copy, the path alias and `ignoreBuildErrors`, and imports `@waronsaas/contracts` directly.
+
+## 14. One product with modular applications (Amendment 01, D16, D17, contracts 5.0.0)
+
+The protocol is `WOS-APP-PROTOCOL.md`. These are the architecture decisions applying the amendment. None of them needed founder input.
+
+```
+  wOS Desktop (waronsaas/wos, signed; macOS, Windows, Linux)      wOS Mobile (waronsaas/product apps/mobile; 1 listing)
+    main process: environments, sessions, module installer,         bundled app modules + declarative screens,
+      Build (opt-in, D16): orchestrator, git, agents                 activated by ActiveApps
+    renderer: wOS shell + signed app modules (sandboxed)          wOS Web  app.waronsaas.com (product apps/web)
+          |  environment session                                      |
+          v                                                           v
+  Environment = wOS Core (product apps/api) ------------------ wOS Cloud: core.waronsaas.com (own Neon DB)
+    /.well-known/wos-environment, /v1/core/apps, /apps/<id>/**    or self-hosted: wos.example.com (own Postgres)
+          |  (wOS Cloud only) environment tokens, registry
+          v
+  Control plane api.waronsaas.com (platform DB `wos`): accounts, organizations, AppRegistry, AppEntitlements,
+    environment tokens, and everything contributing (Build).       Public Sniper List: waronsaas.com (wos apps/web)
+```
+
+- **A1. Surfaces.** The product surfaces are `web`, `desktop`, `ios`, `android` and `api` (`ProductSurface`).
+  - D13's per-surface journeys, acceptance and reasoned weights apply to all five. `desktop` is now a product surface of the suite, and `api` is a surface of its own because the vendors' public APIs are part of what customers rent.
+  - Vendor surfaces wOS does not ship (browser extensions, e-mail add-ins, CLIs) are excluded with a reason on product roadmaps; the schema refuses them in scope for `waronsaas/product`.
+  - TGT-00 (platform family) keeps `cli`.
+- **A2. Where the Desktop shell lives: `waronsaas/wos apps/desktop`.** There is one Electron app, signed only by the platform release job (D7).
+  - The product repo contributes each app's desktop UI as renderer code (`applications/<id>/desktop`, built by product `apps/desktop`), delivered as signed module packages.
+  - Rejected: the shell in the product repo. The privileged main process (processes, git, filesystem, keychain) would become contributor-built code merged by the App, and signing would need secrets in the product repo, against S-20.
+  - Rejected: two Electron apps (one for business, one for contributing). D16 says one.
+- **A3. Module flow.** A product tag `<app>@<version>` triggers the wos `module-release` workflow, which builds, hashes and signs with a key held only in the wos `release` environment. It publishes the package on a wos GitHub Release, then calls `publishAppRelease`, which verifies and records the release. Desktop verifies against keys pinned in its binary (WOS-APP-PROTOCOL section 6, S-37..S-39).
+- **A4. Core primitives versus app data.** Core owns identity, organizations, memberships, roles and permissions, notifications, search, files, audit, entitlements, the app and navigation registries, and events. Shared business entities are **modules** (Contacts: kind `module`, required by CRM, Helpdesk and Marketing, free, never entitled). App-specific data lives in `app_<id>`. Cross-app access goes only through APIs and events. This is D10 unchanged: a module is a catalog feature built once.
+- **A5. Two planes, two databases.**
+  - The control plane (platform DB `wos`) holds accounts, organizations, memberships, the registry, entitlements and all contribution records.
+  - wOS Core (the product's API server) holds product data in its own database: wOS Cloud's is a separate Neon project; self-hosted Cores use the operator's Postgres. Core never gets platform-DB credentials.
+  - Hosted Core learns org, role and active apps from environment tokens.
+- **A6. Entitlements** are organization-level, hosted-only and a state machine (`EntitlementMachine`, table `app_entitlements`, event `entitlement.changed`). They never gate self-hosted execution (S-41). Pricing is architecture only: base membership plus a per-addon-app price; no production billing in V1.
+- **A7. AppRegistry** is `app_registry` + `app_releases` (immutable and monotonic, one-way yank), served publicly by `listApps` and `getApp`. The installed desktop version is client-local state (`ModuleInstallMachine`); the registry knows the current version, surfaces, dependencies, capabilities and the self-host and hosted flags.
+- **A8. Environments and authentication.**
+  - `/.well-known/wos-environment` describes an environment, and clients keep sessions per environment.
+  - wOS Cloud uses the wOS account plus 15-minute environment tokens (EdDSA, audience = environment).
+  - Self-hosted environments use `local` sign-in or `oidc`, with activation from operator configuration.
+  - Build always uses the wOS account against `api.waronsaas.com`.
+- **A9. Mobile.** One app; app modules are bundled in the store build; activation comes from `ActiveApps`; screens are declarative (`wos-screen.v1`: list, detail and form, with a fixed action set). Nothing executable is downloaded.
+- **A10. Web.** Authenticated wOS Web is `waronsaas/product apps/web` at `app.waronsaas.com`. The public Sniper List is `waronsaas/wos apps/web` at `waronsaas.com`. They are separate projects and origins with no shared cookies. In V1 app code is compiled in and runtime-gated; independent web module deploys come after V1.
+- **A11. Targets versus products.** `target_apps` / `Roadmap.apps` map targets to apps (Salesforce → crm). Target progress stays profile-based; application progress is derived from the same records (WOS-APP-PROTOCOL section 11). Neither reads entitlements or installs.
+- **A12. Build (D16).** Build is a first-party app bundled in Desktop, free, and off by default for new accounts; existing accounts have it enabled on their personal organization.
+  - The server refuses claims with `NOT_ENTITLED` without it.
+  - Desktop registers Build's privileged IPC only while Build is entitled and turned on for the device (S-40).
+  - `wos` is Build's CLI surface.
+- **A13. Windows (D17).** Desktop ships an NSIS installer for Windows (x64 and arm64), signed in the release job with Azure Trusted Signing (or an OV certificate), alongside the macOS dmg and the Linux AppImage.
+  - Build on Windows needs `core.longpaths=true` and `core.autocrlf=false` in every worktree.
+  - Changeset paths are always `/`-separated, and case collisions are refused (the validator already does this).
+  - Worktrees live under a short root (`%LOCALAPPDATA%\wOS\w`).
+  - The claude and codex CLIs must be on PATH.
+  - `packages/github` local, the orchestrator and Desktop packaging tests run on `windows-latest` in CI (verification, Wave 3).

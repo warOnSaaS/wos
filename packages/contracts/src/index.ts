@@ -4,6 +4,7 @@
  */
 export * from "./version.js";
 export * from "./primitives.js";
+export * from "./wos-app.js";
 export * from "./state-machines.js";
 export * from "./agent-policy.js";
 export * from "./artifacts.js";

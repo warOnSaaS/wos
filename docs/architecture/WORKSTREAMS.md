@@ -23,7 +23,7 @@ The V1 build of wOS is itself TGT-00 warOnSaaS: every workstream is mapped to fe
 | 0 | architect | this commit: contracts, schema, policy, docs; `npm run check` and `npm run db:test` green |
 | 1 | control-plane, github-build (App + local git), context-policy, verification | Migrations apply via the runner in Docker; control plane serves auth (email code), GitHub link, claim → heartbeat → expire → release against Postgres with a fake GitHub; scope validator passes the shared vector suite; `buildInvocation` snapshots match the policy for all ten roles; CI workflow `wos-verify` runs in the platform repo |
 | 2 | planning, rewards, orchestrator (github-build continues), cli, desktop, web | A fake end-to-end run: CLI and Desktop both drive the orchestrator through LEASE → … → PR against the control plane with a fake GitHub and fake agent CLIs; a roadmap document goes through two fake rounds to consensus; rewards written for a fake merge; the web renders real API data with 0% everywhere |
-| 3 | all (end to end), led by verification | The spec's FINAL V1 INTEGRATION TEST with real accounts, the real App on `waronsaas/product`, real Claude Code and Codex, the Salesforce roadmap v1 mapping the CRM capability, one Feature Contract at consensus, two ABUs of one feature built in parallel |
+| 3 | all, plus two new workstreams (suite-shell, mobile-runtime), led by verification; re-planned for Amendment 01 in section 12 | The V1 proof steps 1–9 of Amendment 01 (section 12.2) AND the spec's FINAL V1 INTEGRATION TEST with real accounts, the real App on `waronsaas/product`, real Claude Code and Codex, the Salesforce roadmap v1 mapping the CRM capability, one Feature Contract at consensus, two ABUs of one feature built in parallel |
 
 After every wave the architect: runs the full suite, inspects contract violations, merges `ws/*` branches into `integration` in dependency order (contracts consumers after providers), resolves conflicts on purpose, updates the constitution, bumps contracts if a blocker was accepted, then starts the next wave.
 
@@ -331,3 +331,46 @@ Start from the merged `integration-2a` (contracts 4.2.0). Use the REAL packages,
 | github-build | D15: model choice in `build()` (and the claim body), `provider` in agent-run provenance. Review glue items in `docs/dogfood/integration.md`. |
 | rewards | Nothing blocking; support the control-plane loader with fixtures. |
 | web | Integrate `ws/web` at the Wave 2b gate; sections 8 to 10 (per-surface pages, "built with", D14 copy and URLs). |
+
+## 12. Wave 3 re-plan for Amendment 01 (contracts 5.0.0)
+
+Amendment 01 lands before any Wave 3 work sets module boundaries. Every workstream merges `main` at 5.0.0 first.
+
+Migration 0006 is applied to production by the coordinator. Nothing in Wave 3 applies migrations to production.
+
+### 12.1 Who builds what
+
+| Workstream | Wave 3 scope (new or changed) |
+|---|---|
+| control-plane | Serve `AppRoutes`: the registry (list, get, publish, yank with signature re-verification), organizations, `listOrgApps`, `enableApp`/`disableApp` (EntitlementMachine with dependency checks, `entitlement.changed`), `issueEnvironmentToken` (EdDSA, 15 min, keys at `/v1/public/environment-keys`, `environments` table). Add `:app` to the route-contract sample paths and serve `{ ...Routes, ...AppRoutes }`. Build gate: claims return `NOT_ENTITLED` without the `build` entitlement (S-40); test-harness contributors get Build enabled. `computeApplicationProgress` in public views once the architect adds it to `progress.ts` (MINOR, first thing in Wave 3). Serve `target_apps` in `TargetDetail`. |
+| desktop | ONE wOS Desktop (D16). Environments (Settings → Environment, sessions per environment, `/.well-known/wos-environment`); Your Apps / Available Apps with enable/disable; the module installer (`ModuleInstallMachine`, pinned keys, `wos-module://` origin, host bridge, rollback; S-37..S-39); today's UI moved into the built-in **Build** app, registered only under S-40; Windows NSIS build and Windows path handling (D17, S-42). |
+| cli | `wos` is Build's CLI surface: explains `NOT_ENTITLED`; `wos apps` (list) and `wos apps enable build` on the personal org; `wos orgs`. |
+| github-build | `packages/github` local and the orchestrator on Windows: `core.longpaths`, `core.autocrlf=false`, short worktree root, `/` paths in capture; tests on `windows-latest`. |
+| **suite-shell** (new) | Owns `templates/product/apps/api/**`, `templates/product/apps/web/**`, `templates/product/applications/**` and `templates/product/modules/core*/**`. The product repo is seeded from this template (FOUNDER-CHECKLIST section 13); after the seed commit every product change goes through wOS (D9). Scope: minimal wOS Core (environment descriptor; environment-token verification; `local` sign-in for self-host; `ActiveApps` from token claims (cloud) or `WOS_APPS` (self-hosted); navigation registry; per-app schema migrations with a ledger; `/apps/<id>` mounting with declared permissions); the authenticated web shell (`app.waronsaas.com`: Your Apps / Available Apps, navigation from active manifests); docker compose for self-host; manifests for `core`, `contacts` (module) and `crm` whose screens show only what is really built (0% states, no fake CRM). |
+| **mobile-runtime** (new) | Owns `templates/product/apps/mobile/**`: the ONE Expo app, environment and sign-in, `ActiveApps`, the renderer for `wos-screen.v1` (list, detail, form, fixed actions), and bundled app modules. |
+| verification | `module-release.yml` (build, hash, sign in the wos `release` environment, publish, call `publishAppRelease`); the Windows installer in `desktop-release.yml` with Azure Trusted Signing; a `windows-latest` CI job; `desktop` and `api` acceptance runners in `templates/product`; adversarial tests for S-37..S-42 (update the coverage map from `none`); the V1 proof as an end-to-end test; then the spec's final integration test. |
+| planning | `SURFACE_NOT_PRODUCT` for product-family contracts and roadmaps; the contract `surfaces` consistency rules inside `validateBuildGraph` context; `Roadmap.apps` names apps known to the registry or listed in `target_apps`. |
+| context-policy | Author and reviewer prompts carry required surfaces and capabilities. New material rule: a remote-code loader on any surface (S-38). The builder may write `applications/**` only inside its scope. |
+| web (public site) | Show each target's mapped applications and link to wOS Web. Never show business navigation. Copy: one wOS; Windows download (D17). |
+| rewards | No change. |
+| architect | `computeApplicationProgress` in contracts; gate reviews; the Build manifest in `apps/desktop/src/apps/build/wos-app.json` together with desktop. |
+
+### 12.2 V1 proof (Amendment 01): each step and who proves it
+
+1. CRM exists in the AppRegistry: a signed `crm@0.1.0` release published through `module-release` (verification, control-plane, suite-shell).
+2. An organization enables CRM: `enableApp` from wOS Web and from Desktop (control-plane, suite-shell, desktop).
+3. The entitlement synchronizes: the environment token and `ActiveApps` on hosted Core show `crm` and `contacts` within 60 s on every client (control-plane, suite-shell).
+4. CRM appears in Desktop navigation: the installer verifies and activates the signed package (desktop).
+5. CRM appears in Web navigation (suite-shell).
+6. CRM appears in Mobile navigation and runtime: a declarative screen renders from the CRM API (mobile-runtime).
+7. Disabling CRM removes it from hosted-product navigation on all three within the token lifetime; its data is kept (all three).
+8. Self-hosted CRM runs independently of hosted entitlement: `docker compose` Core with `WOS_APPS=crm`, no route to warOnSaaS; web and Desktop pointed at it show CRM (suite-shell, desktop; S-41).
+9. The Sniper List tracks Salesforce progress independently of CRM entitlement or install state: a test toggles CRM and asserts the target's progress snapshot is unchanged (control-plane, web).
+
+CRM functionality is whatever the roadmap has really built. The proof shows the modular architecture, never fake CRM screens.
+
+### 12.3 Order
+
+1. control-plane AppRoutes, the Build gate, and suite-shell's Core descriptor and `ActiveApps` come first. Their contracts are frozen, so desktop, mobile-runtime and the web shell build against them in parallel.
+2. verification's `module-release` follows once desktop's installer can verify a test-key package.
+3. The spec's final integration test runs after proof steps 1–9 pass, contributing through the Build app.

@@ -285,4 +285,105 @@ select wos_test.expect_error($$insert into wos.reviews (round_id, task_id, lease
           repeat('a', 40), 'sha256:' || repeat('1', 64), 'NO_MATERIAL_GAPS', '{}', '00000000-0000-0000-0000-0000000000a4', 'bootstrap_self', '00000000-0000-0000-0000-00000000e0a4')$$,
   'bootstrap_self after bootstrap ended', 'outside bootstrap mode');
 
+-- ---- 0006 one product (Amendment 01, contracts 5.0.0) ---------------------------------------------
+reset role;
+do $$ begin
+  if (select count(*) from wos.organizations o join wos.memberships m on m.organization_id = o.id and m.role = 'owner'
+       where o.kind = 'personal' and o.personal_account_id in ('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-00000000000b')) <> 2 then
+    raise exception 'every new account gets a personal organization with itself as owner';
+  end if;
+  if exists (select 1 from wos.app_entitlements e join wos.organizations o on o.id = e.organization_id
+              where o.personal_account_id = '00000000-0000-0000-0000-00000000000a') then
+    raise exception 'Build is off by default for new accounts (D16)';
+  end if;
+  raise notice 'ok: personal organizations, Build off by default';
+end $$;
+select wos_test.expect_error($$insert into wos.memberships (organization_id, account_id, role)
+  select id, '00000000-0000-0000-0000-00000000000b', 'member' from wos.organizations where personal_account_id = '00000000-0000-0000-0000-00000000000a'$$,
+  'a second member in a personal organization', 'personal');
+select wos_test.expect_error($$delete from wos.memberships where account_id = '00000000-0000-0000-0000-00000000000a'
+  and organization_id = (select id from wos.organizations where personal_account_id = '00000000-0000-0000-0000-00000000000a')$$,
+  'removing the owner of a personal organization', 'personal');
+
+-- registry: core and modules are never entitled; entitlement transitions follow EntitlementMachine
+insert into wos.app_registry (app_id, name, kind, billing) values ('crm', 'wOS CRM', 'app', 'addon'), ('contacts', 'Contacts', 'module', 'free');
+select wos_test.expect_error($$insert into wos.app_registry (app_id, name, kind, billing) values ('shop', 'x', 'module', 'addon')$$, 'a priced module');
+select wos_test.expect_error($$insert into wos.app_entitlements (organization_id, app_id, state)
+  select id, 'core', 'enabled' from wos.organizations where personal_account_id = '00000000-0000-0000-0000-00000000000a'$$, 'entitling core', 'only kind app');
+select wos_test.expect_error($$insert into wos.app_entitlements (organization_id, app_id, state)
+  select id, 'contacts', 'enabled' from wos.organizations where personal_account_id = '00000000-0000-0000-0000-00000000000a'$$, 'entitling a module', 'only kind app');
+insert into wos.app_entitlements (organization_id, app_id, state)
+select id, 'crm', 'enabled' from wos.organizations where personal_account_id = '00000000-0000-0000-0000-00000000000a';
+update wos.app_entitlements set state = 'disabled' where app_id = 'crm';
+select wos_test.expect_error($$update wos.app_entitlements set state = 'suspended', suspended_reason = 'x' where app_id = 'crm'$$,
+  'disabled -> suspended', 'illegal entitlement transition');
+select wos_test.expect_error($$delete from wos.app_entitlements where app_id = 'crm'$$, 'deleting an entitlement');
+
+-- releases: immutable, monotonic, one-way yank; current_version follows
+insert into wos.app_releases (app_id, version, manifest, manifest_sha256, surfaces, source_repo, source_tag, source_commit)
+values ('crm', '0.2.0', '{}', 'sha256:' || repeat('a', 64), array['web', 'api'], 'waronsaas/product', 'crm@0.2.0', repeat('b', 40));
+select wos_test.expect_error($$insert into wos.app_releases (app_id, version, manifest, manifest_sha256, surfaces, source_repo, source_tag, source_commit)
+  values ('crm', '0.1.9', '{}', 'sha256:' || repeat('a', 64), array['web'], 'waronsaas/product', 'crm@0.1.9', repeat('b', 40))$$,
+  'an older release (downgrade)', 'not newer');
+select wos_test.expect_error($$insert into wos.app_releases (app_id, version, manifest, manifest_sha256, surfaces, source_repo, source_tag, source_commit)
+  values ('crm', '0.3.0', '{}', 'sha256:' || repeat('a', 64), array['desktop'], 'waronsaas/product', 'crm@0.3.0', repeat('b', 40))$$,
+  'a desktop release without a signed package');
+select wos_test.expect_error($$update wos.app_releases set manifest = '{"x": 1}' where app_id = 'crm'$$, 'editing a published release', 'immutable');
+select wos_test.expect_error($$delete from wos.app_releases where app_id = 'crm'$$, 'deleting a release', 'never deleted');
+do $$ begin
+  if (select current_version from wos.app_registry where app_id = 'crm') is distinct from '0.2.0' then
+    raise exception 'current_version follows the latest release';
+  end if;
+end $$;
+update wos.app_releases set state = 'yanked', yanked_at = now(), yank_reason = 'broken' where app_id = 'crm' and version = '0.2.0';
+do $$ begin
+  if (select current_version from wos.app_registry where app_id = 'crm') is not null then
+    raise exception 'a yanked release is not current';
+  end if;
+  raise notice 'ok: releases immutable, monotonic, yank updates current_version';
+end $$;
+select wos_test.expect_error($$update wos.app_releases set state = 'published', yanked_at = null, yank_reason = null where app_id = 'crm'$$,
+  'un-yanking a release', 'illegal release transition');
+
+-- RLS: organizations and entitlements are visible to members only; the registry is public
+set role wos_app;
+select set_config('wos.actor_kind', 'contributor', false);
+select set_config('wos.actor_id', '00000000-0000-0000-0000-00000000000b', false);
+do $$ begin
+  if exists (select 1 from wos.organizations where personal_account_id = '00000000-0000-0000-0000-00000000000a') then
+    raise exception 'bob sees alice''s personal organization';
+  end if;
+  if exists (select 1 from wos.app_entitlements where app_id = 'crm') then
+    raise exception 'bob sees alice''s entitlements';
+  end if;
+  if not exists (select 1 from wos.app_registry where app_id = 'crm') then
+    raise exception 'the registry is public';
+  end if;
+  raise notice 'ok: tenancy is private, the registry is public';
+end $$;
+do $$
+declare n int;
+begin
+  update wos.app_entitlements set state = 'enabled' where app_id = 'crm';
+  get diagnostics n = row_count;
+  if n <> 0 then raise exception 'bob changed alice''s entitlement'; end if;
+end $$;
+select wos_test.expect_error($$insert into wos.app_registry (app_id, name, kind, billing) values ('evil', 'x', 'app', 'addon')$$,
+  'a non-privileged registry write');
+select set_config('wos.actor_id', '00000000-0000-0000-0000-00000000000a', false);
+do $$
+declare oid uuid;
+begin
+  if not exists (select 1 from wos.organizations where personal_account_id = '00000000-0000-0000-0000-00000000000a') then
+    raise exception 'alice cannot see her own organization';
+  end if;
+  update wos.app_entitlements set state = 'enabled' where app_id = 'crm';
+  oid := wos.create_team_organization('acme', 'Acme');
+  if (select role from wos.memberships where organization_id = oid and account_id = '00000000-0000-0000-0000-00000000000a') <> 'owner' then
+    raise exception 'the creator owns a new team organization';
+  end if;
+  raise notice 'ok: members manage their organization; team organizations get their creator as owner';
+end $$;
+reset role;
+
 \echo 'all db assertions passed'

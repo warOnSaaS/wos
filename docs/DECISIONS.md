@@ -117,3 +117,17 @@ These override `docs/V1-SPEC.md` where they differ. Date: 2026-09-29.
 - A contributor may hold one build lease per provider at a time, so one person with both subscriptions can run an Opus builder and an Astra builder in parallel on different ABUs.
 - Provenance records which provider and model built each unit; the site can show it.
 - Addition (founder): GPT-6-Sol (`gpt-6-sol`, "Previous generation workhorse model") is also permitted for builders only, never for reviews or rulings. The builder model list is policy data; provenance records the model so throughput and quality can be compared per model.
+
+## Amendment 01. wOS is one product with modular applications (founder, 2026-09-29)
+- Verbatim in `docs/AMENDMENT-01-ONE-PRODUCT.md`. It supersedes any architecture that treats CRM, Chat, Meet and the rest as separate end-user applications. Users install ONE wOS Desktop and ONE wOS Mobile and may use ONE wOS Web; an organization enables applications, and the same set appears on every surface. The architect's decisions applying it are in `docs/architecture/ARCHITECTURE.md` section 14 and `docs/architecture/WOS-APP-PROTOCOL.md` (contracts 5.0.0, migration 0006).
+
+## D16. One wOS Desktop; contributing is the opt-in application "Build"
+- Founder: ONE wOS Desktop app. Contributing becomes an opt-in wOS application called **Build**, off by default and enabled like CRM. Build covers everything the current `apps/desktop` does: Sniper List browse, BUILD, reviews, agents, git and worktrees.
+- Business users never get agent or git tooling unless their organization, or they themselves, enable Build. The privileged main-process capabilities Build needs are gated behind that entitlement and are still bounded by the existing S-controls.
+- The CLI `wos` stays the contributor CLI: it is Build's CLI surface.
+- The public Sniper List site stays separate from authenticated wOS Web (the amendment's boundary rule).
+
+## D17. Desktop V1 platforms are macOS, Windows and Linux
+- Founder: wOS Desktop V1 ships on macOS, Windows and Linux. This supersedes the G-18 recommendation of "macOS + Linux; Windows later".
+- Windows code signing uses Azure Trusted Signing or an OV certificate (FOUNDER-CHECKLIST section 12).
+- Windows paths and worktrees need test coverage.

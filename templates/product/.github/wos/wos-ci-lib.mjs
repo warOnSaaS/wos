@@ -77,6 +77,24 @@ function floatSafeRemainder(val, step) {
 	if (Math.abs(ratio - roundedRatio) < tolerance) return 0;
 	return ratio - roundedRatio;
 }
+const EVALUATING = /* @__PURE__*/ Symbol("evaluating");
+function defineLazy(object, key, getter) {
+	let value = void 0;
+	Object.defineProperty(object, key, {
+		get() {
+			if (value === EVALUATING) return;
+			if (value === void 0) {
+				value = EVALUATING;
+				value = getter();
+			}
+			return value;
+		},
+		set(v) {
+			Object.defineProperty(object, key, { value: v });
+		},
+		configurable: true
+	});
+}
 function assignProp(target, prop, value) {
 	Object.defineProperty(target, prop, {
 		value,
@@ -2747,6 +2765,21 @@ function handleReadonlyResult(payload) {
 	if (!payload.memo) payload.value = Object.freeze(payload.value);
 	return payload;
 }
+const $ZodLazy = /*@__PURE__*/ $constructor("$ZodLazy", (inst, def) => {
+	$ZodType.init(inst, def);
+	defineLazy(inst._zod, "innerType", () => {
+		const d = def;
+		if (!d._cachedInner) d._cachedInner = def.getter();
+		return d._cachedInner;
+	});
+	defineLazyInternal(inst, "pattern", (zod) => zod.innerType?._zod?.pattern);
+	defineLazyInternal(inst, "propValues", (zod) => zod.innerType?._zod?.propValues);
+	defineLazyInternal(inst, "optin", (zod) => zod.innerType?._zod?.optin ?? void 0);
+	defineLazyInternal(inst, "optout", (zod) => zod.innerType?._zod?.optout ?? void 0);
+	inst._zod.parse = (payload, ctx) => {
+		return inst._zod.innerType._zod.run(payload, ctx);
+	};
+});
 const $ZodCustom = /*@__PURE__*/ $constructor("$ZodCustom", (inst, def) => {
 	$ZodCheck.init(inst, def);
 	$ZodType.init(inst, def);
@@ -4551,6 +4584,12 @@ const optionalProcessor = (schema, ctx, _json, params) => {
 	const seen = ctx.seen.get(schema);
 	seen.ref = def.innerType;
 };
+const lazyProcessor = (schema, ctx, _json, params) => {
+	const innerType = schema._zod.innerType;
+	processSchema(innerType, ctx, params);
+	const seen = ctx.seen.get(schema);
+	seen.ref = innerType;
+};
 
 //#endregion
 //#region node_modules/zod/v4/classic/errors.js
@@ -5284,6 +5323,15 @@ function record(keyType, valueType, params) {
 		...normalizeParams(params)
 	});
 }
+function partialRecord(keyType, valueType, params) {
+	return new ZodRecord({
+		type: "record",
+		keyType,
+		valueType,
+		...normalizeParams(params),
+		partial: true
+	});
+}
 const ZodEnum = /*@__PURE__*/ $constructor("ZodEnum", (inst, def) => {
 	$ZodEnum.init(inst, def);
 	ZodType.init(inst, def);
@@ -5492,6 +5540,18 @@ function readonly(innerType) {
 		innerType
 	});
 }
+const ZodLazy = /*@__PURE__*/ $constructor("ZodLazy", (inst, def) => {
+	$ZodLazy.init(inst, def);
+	ZodType.init(inst, def);
+	inst._zod.processJSONSchema = (ctx, json, params) => lazyProcessor(inst, ctx, json, params);
+	inst.unwrap = () => inst._zod.def.getter();
+});
+function lazy(getter) {
+	return new ZodLazy({
+		type: "lazy",
+		getter
+	});
+}
 const ZodCustom = /*@__PURE__*/ $constructor("ZodCustom", (inst, def) => {
 	$ZodCustom.init(inst, def);
 	ZodType.init(inst, def);
@@ -5532,6 +5592,7 @@ const RequirementKey = string().regex(/^R-\d{3}$/);
 const AbuKey = string().regex(/^[a-z][a-z0-9-]{1,48}[a-z0-9]#\d{2}$/);
 const InventoryItemKey = string().regex(/^INV-\d{4}$/);
 const RepoFullName = string().regex(/^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/);
+const PRODUCT_REPO = "waronsaas/product";
 const GithubLogin = string().regex(/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/);
 const RepoPath = string().min(1).max(400).refine((p) => !p.startsWith("/"), "must be relative").refine((p) => !p.includes("\\"), "POSIX separators only").refine((p) => !p.includes("\0"), "no NUL").refine((p) => p.split("/").every((seg) => seg !== ".." && seg !== "." && seg !== ""), "no empty, '.' or '..' segments").refine((p) => p.split("/").every((seg) => seg.toLowerCase() !== ".git"), "no .git segment");
 const WriteScope = string().refine((s) => {
@@ -5552,6 +5613,7 @@ const Surface = _enum([
 	"ios",
 	"android",
 	"desktop",
+	"api",
 	"cli",
 	"browser_extension",
 	"email_addin",
@@ -5578,6 +5640,463 @@ const MINIMUM_BROWSERS = [
 	"mobile_safari",
 	"mobile_chrome"
 ];
+
+//#endregion
+//#region packages/contracts/dist/wos-app.js
+const WOS_APP_PROTOCOL = "wos-app/v1";
+const AppId = string().regex(/^[a-z][a-z0-9-]{1,30}[a-z0-9]$/, "lowercase app id, 3-32 chars");
+const CORE_APP_ID = "core";
+const BUILD_APP_ID = "build";
+const SemVerRange = string().regex(/^\s*(?:(?:>=|<=|>|<|=|\^|~)?\d+\.\d+\.\d+\s*)+$/, "semver range of comparators like >=1.2.0 or ^1.2.0");
+const ProductSurface = _enum([
+	"web",
+	"desktop",
+	"ios",
+	"android",
+	"api"
+]);
+const UI_SURFACES = [
+	"web",
+	"desktop",
+	"ios",
+	"android"
+];
+const AppRelativePath = string().regex(/^\.\/[A-Za-z0-9._/-]+$/).refine((p) => !p.split("/").includes(".."), "no '..' segments");
+const PermissionKey = string().regex(/^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9_]*){1,3}$/);
+const AppEventName = string().regex(/^[a-z][a-z0-9-]*\.[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/);
+const AppCapability = string().regex(/^[a-z][a-z0-9_-]{1,40}$/);
+const AppKind = _enum([
+	"core",
+	"app",
+	"module"
+]);
+const AppBilling = _enum([
+	"base",
+	"addon",
+	"free"
+]);
+const DEFAULT_MEMBER_ROLES = [
+	"owner",
+	"admin",
+	"member"
+];
+const OrgRole = _enum(DEFAULT_MEMBER_ROLES);
+const SurfaceSupport = object({ supported: boolean() });
+const WosAppManifest = object({
+	protocol: literal(WOS_APP_PROTOCOL),
+	app: object({
+		id: AppId,
+		name: string().min(3).max(60),
+		version: SemVer,
+		kind: AppKind,
+		billing: AppBilling,
+		summary: string().min(10).max(280)
+	}),
+	requires: object({
+		wos: SemVerRange,
+		apps: array(object({
+			id: AppId,
+			version: SemVerRange
+		})).default([])
+	}),
+	provides: array(AppCapability).default([]),
+	features: array(FeatureKey).default([]),
+	replaces: array(TargetSlug).default([]),
+	surfaces: object({
+		web: SurfaceSupport.extend({ entry: AppRelativePath.optional() }),
+		desktop: SurfaceSupport.extend({ entry: AppRelativePath.optional() }),
+		ios: SurfaceSupport,
+		android: SurfaceSupport,
+		api: SurfaceSupport
+	}),
+	mobile: object({ screens: AppRelativePath }).nullable().default(null),
+	data: object({
+		schema: string().regex(/^(?:core|app_[a-z][a-z0-9_]*)$/),
+		migrations: AppRelativePath.nullable(),
+		owns: array(string().regex(/^[a-z][a-z0-9_]*$/)).default([])
+	}),
+	permissions: array(object({
+		key: PermissionKey,
+		description: string().min(5),
+		grantedTo: array(OrgRole).default(["owner", "admin"])
+	})).default([]),
+	events: object({
+		publishes: array(AppEventName).default([]),
+		consumes: array(AppEventName).default([])
+	}),
+	routes: object({
+		ui: string().regex(/^\/[a-z][a-z0-9-]*$/),
+		api: string().regex(/^\/apps\/[a-z][a-z0-9-]*$/).nullable()
+	}),
+	navigation: array(object({
+		id: string().regex(/^[a-z][a-z0-9-]*\.[a-z][a-z0-9_.-]*$/),
+		title: string().min(1).max(40),
+		route: string().regex(/^\/[a-z0-9/_-]*$/),
+		surfaces: array(_enum(UI_SURFACES)).min(1),
+		permission: PermissionKey.nullable(),
+		order: number$1().int().min(0).max(1e3)
+	})).default([]),
+	hosting: object({
+		selfHost: object({
+			supported: boolean(),
+			services: array(_enum([
+				"postgres",
+				"object_storage",
+				"smtp",
+				"turn"
+			])).default([])
+		}),
+		hosted: object({ supported: boolean() })
+	})
+}).superRefine((m, ctx) => {
+	const id = m.app.id;
+	const issue = (path, message) => ctx.addIssue({
+		code: "custom",
+		path,
+		message
+	});
+	if (m.app.kind === "core" !== (id === "core")) issue(["app", "kind"], "kind core is exactly the app id core");
+	if (m.app.kind === "core" && m.app.billing !== "base") issue(["app", "billing"], "core is billed as the base membership");
+	if (m.app.kind === "module" && m.app.billing !== "free") issue(["app", "billing"], "modules are never priced");
+	if (m.app.kind !== "core" && m.app.billing === "base") issue(["app", "billing"], "only core is billing base");
+	if (id === "build" && m.app.billing !== "free") issue(["app", "billing"], "Build (contributing) is free (D16)");
+	const schema = id === "core" ? "core" : `app_${id.replace(/-/g, "_")}`;
+	if (m.data.schema !== schema) issue(["data", "schema"], `data schema must be ${schema}`);
+	for (const [k, p] of m.permissions.entries()) if (!p.key.startsWith(`${id}.`)) issue([
+		"permissions",
+		k,
+		"key"
+	], `must start with ${id}.`);
+	for (const [k, e] of m.events.publishes.entries()) if (!e.startsWith(`${id}.`)) issue([
+		"events",
+		"publishes",
+		k
+	], `an app publishes only ${id}.* events`);
+	for (const [k, e] of m.events.consumes.entries()) if (e.startsWith(`${id}.`)) issue([
+		"events",
+		"consumes",
+		k
+	], "an app does not consume its own events");
+	for (const [k, r] of m.requires.apps.entries()) if (r.id === id) issue([
+		"requires",
+		"apps",
+		k
+	], "an app cannot require itself");
+	if (m.surfaces.web.supported && !m.surfaces.web.entry) issue([
+		"surfaces",
+		"web",
+		"entry"
+	], "a supported web surface needs an entry");
+	if (m.surfaces.desktop.supported && !m.surfaces.desktop.entry) issue([
+		"surfaces",
+		"desktop",
+		"entry"
+	], "a supported desktop surface needs an entry");
+	if ((m.surfaces.ios.supported || m.surfaces.android.supported) && !m.mobile) issue(["mobile"], "a supported mobile surface needs mobile.screens");
+	if (m.surfaces.api.supported !== (m.routes.api !== null)) issue(["routes", "api"], "routes.api is set exactly when the api surface is supported");
+	if (m.routes.api !== null && m.routes.api !== `/apps/${id}`) issue(["routes", "api"], `api prefix must be /apps/${id}`);
+	const perms = new Set(m.permissions.map((p) => p.key));
+	for (const [k, n] of m.navigation.entries()) {
+		if (!n.id.startsWith(`${id}.`)) issue([
+			"navigation",
+			k,
+			"id"
+		], `must start with ${id}.`);
+		if (!(n.route === m.routes.ui || n.route.startsWith(`${m.routes.ui}/`))) issue([
+			"navigation",
+			k,
+			"route"
+		], `must be under ${m.routes.ui}`);
+		if (n.permission && !perms.has(n.permission)) issue([
+			"navigation",
+			k,
+			"permission"
+		], "undeclared permission");
+		for (const s of n.surfaces) if (!m.surfaces[s].supported) issue([
+			"navigation",
+			k,
+			"surfaces"
+		], `surface ${s} is not supported`);
+	}
+});
+const ModuleSignature = object({
+	alg: literal("ed25519"),
+	keyId: string().regex(/^wos-module-\d{4}(?:-[a-z0-9]+)?$/),
+	value: string().min(80).max(100)
+});
+const ModulePackage = object({
+	schema: literal("wos-module-package.v1"),
+	app: AppId,
+	version: SemVer,
+	surface: literal("desktop"),
+	manifest: WosAppManifest,
+	manifestSha256: Sha256,
+	entry: string().regex(/^[A-Za-z0-9._/-]+\.html$/),
+	files: array(object({
+		path: string().regex(/^[A-Za-z0-9._/-]+$/),
+		sha256: Sha256,
+		bytes: number$1().int().positive()
+	})).min(1).refine((fs) => fs.every((f) => !/\.(?:node|exe|dll|dylib|so|sh|bat|cmd|ps1)$/i.test(f.path)), "native or script executables are never packaged").refine((fs) => fs.every((f) => !f.path.split("/").includes("..")), "no '..' segments"),
+	source: object({
+		repo: RepoFullName,
+		tag: string().regex(/^v\d+\.\d+\.\d+$|^[a-z0-9-]+@\d+\.\d+\.\d+$/),
+		commit: string().regex(/^[0-9a-f]{40}$/)
+	}),
+	builtAt: Timestamp,
+	signature: ModuleSignature
+}).superRefine((p, ctx) => {
+	if (p.manifest.app.id !== p.app || p.manifest.app.version !== p.version) ctx.addIssue({
+		code: "custom",
+		path: ["manifest"],
+		message: "package app/version must equal the manifest's"
+	});
+	if (!p.manifest.surfaces.desktop.supported) ctx.addIssue({
+		code: "custom",
+		path: ["manifest"],
+		message: "the app does not support desktop"
+	});
+	if (!p.files.some((f) => f.path === p.entry)) ctx.addIssue({
+		code: "custom",
+		path: ["entry"],
+		message: "entry is not in files"
+	});
+});
+const Availability = object({
+	available: boolean(),
+	version: SemVer.nullable()
+});
+const AppRegistryEntry = object({
+	id: AppId,
+	name: string(),
+	kind: AppKind,
+	billing: AppBilling,
+	summary: string(),
+	currentVersion: SemVer,
+	protocol: literal(WOS_APP_PROTOCOL),
+	capabilities: array(AppCapability),
+	dependencies: array(object({
+		id: AppId,
+		version: SemVerRange
+	})),
+	features: array(FeatureKey),
+	replaces: array(TargetSlug),
+	surfaces: object({
+		web: Availability,
+		desktop: Availability.extend({ package: object({
+			url: url(),
+			sha256: Sha256,
+			keyId: string()
+		}).nullable() }),
+		ios: Availability,
+		android: Availability,
+		api: Availability
+	}),
+	selfHost: object({ compatible: boolean() }),
+	hosted: object({ compatible: boolean() }),
+	publishedAt: Timestamp
+});
+const OrganizationKind = _enum(["personal", "team"]);
+const OrganizationSlug = string().regex(/^[a-z0-9](?:[a-z0-9-]{1,38}[a-z0-9])$/);
+const Organization = object({
+	id: Uuid,
+	slug: OrganizationSlug,
+	name: string().min(1).max(80),
+	kind: OrganizationKind,
+	createdAt: Timestamp
+});
+const OrganizationView = Organization.extend({ role: OrgRole });
+const EntitlementState = _enum([
+	"available",
+	"enabled",
+	"disabled",
+	"suspended"
+]);
+const AppEntitlement = object({
+	organizationId: Uuid,
+	app: AppId,
+	state: EntitlementState,
+	changedAt: Timestamp.nullable(),
+	rowVersion: number$1().int().min(0)
+});
+const OrgAppView = object({
+	app: AppRegistryEntry,
+	entitlement: AppEntitlement
+});
+const OrgApps = object({
+	organizationId: Uuid,
+	yourApps: array(OrgAppView),
+	availableApps: array(OrgAppView)
+});
+const EnvironmentAuth = discriminatedUnion("kind", [
+	object({
+		kind: literal("wos_cloud"),
+		issuer: url()
+	}),
+	object({ kind: literal("local") }),
+	object({
+		kind: literal("oidc"),
+		issuer: url(),
+		clientId: string().min(1)
+	})
+]);
+const EnvironmentDescriptor = object({
+	schema: literal("wos-environment.v1"),
+	environmentId: Uuid,
+	name: string().min(1).max(80),
+	kind: _enum(["cloud", "self_hosted"]),
+	protocol: literal(WOS_APP_PROTOCOL),
+	coreVersion: SemVer,
+	apiBase: url(),
+	auth: EnvironmentAuth
+});
+const EnvironmentTokenClaims = object({
+	iss: url(),
+	aud: Uuid,
+	sub: Uuid,
+	org: Uuid,
+	role: OrgRole,
+	apps: array(AppId),
+	iat: number$1().int(),
+	exp: number$1().int()
+});
+const ActivationSource = _enum([
+	"core",
+	"entitlement",
+	"dependency",
+	"self_host_config"
+]);
+const ActiveApps = object({
+	environmentId: Uuid,
+	organizationId: Uuid,
+	apps: array(object({
+		id: AppId,
+		version: SemVer,
+		source: ActivationSource,
+		manifest: WosAppManifest
+	}))
+});
+const CoreRoutes = {
+	environment: {
+		method: "GET",
+		path: "/.well-known/wos-environment",
+		auth: "public",
+		response: EnvironmentDescriptor
+	},
+	activeApps: {
+		method: "GET",
+		path: "/v1/core/apps",
+		auth: "environment_session",
+		response: ActiveApps
+	},
+	screens: {
+		method: "GET",
+		path: "/v1/core/apps/:app/screens",
+		auth: "environment_session",
+		response: object({
+			app: AppId,
+			version: SemVer,
+			screens: lazy(() => array(MobileScreen))
+		})
+	}
+};
+const FieldName = string().regex(/^[a-z][a-z0-9_]*$/);
+const ScreenId = string().regex(/^[a-z][a-z0-9-]*\.[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/);
+const ScreenAction = discriminatedUnion("kind", [
+	object({
+		kind: literal("call"),
+		id: string(),
+		field: FieldName
+	}),
+	object({
+		kind: literal("email"),
+		id: string(),
+		field: FieldName
+	}),
+	object({
+		kind: literal("open_screen"),
+		id: string(),
+		screen: ScreenId
+	}),
+	object({
+		kind: literal("create"),
+		id: string(),
+		screen: ScreenId,
+		permission: PermissionKey
+	}),
+	object({
+		kind: literal("edit"),
+		id: string(),
+		screen: ScreenId,
+		permission: PermissionKey
+	}),
+	object({
+		kind: literal("delete"),
+		id: string(),
+		permission: PermissionKey
+	}),
+	object({
+		kind: literal("invoke"),
+		id: string(),
+		endpoint: string().regex(/^\/apps\/[a-z][a-z0-9-]*\/[a-z0-9/_:-]+$/),
+		permission: PermissionKey
+	})
+]);
+const FieldSpec = object({
+	field: FieldName,
+	label: string().max(60).optional(),
+	input: _enum([
+		"text",
+		"email",
+		"phone",
+		"number",
+		"date",
+		"select",
+		"readonly"
+	]).default("readonly"),
+	required: boolean().default(false)
+});
+const ScreenSection = discriminatedUnion("type", [object({
+	type: literal("fields"),
+	fields: array(FieldSpec).min(1)
+}), object({
+	type: literal("related_list"),
+	relationship: FieldName,
+	screen: ScreenId
+})]);
+const MobileScreen = object({
+	schema: literal("wos-screen.v1"),
+	id: ScreenId,
+	app: AppId,
+	kind: _enum([
+		"list",
+		"detail",
+		"form"
+	]),
+	resource: string().regex(/^\/apps\/[a-z][a-z0-9-]*\/[a-z0-9/_:-]+$/),
+	title: union([object({ field: FieldName }), object({ text: string().min(1).max(60) })]),
+	permission: PermissionKey,
+	list: object({
+		fields: array(FieldName).min(1).max(4),
+		search: boolean().default(false),
+		onTap: ScreenId.nullable()
+	}).nullable().default(null),
+	sections: array(ScreenSection).default([]),
+	actions: array(ScreenAction).default([])
+}).superRefine((s, ctx) => {
+	const issue = (path, message) => ctx.addIssue({
+		code: "custom",
+		path,
+		message
+	});
+	if (!s.id.startsWith(`${s.app}.`)) issue(["id"], `must start with ${s.app}.`);
+	if (!s.resource.startsWith(`/apps/${s.app}/`)) issue(["resource"], `must be under /apps/${s.app}/`);
+	if (!s.permission.startsWith(`${s.app}.`)) issue(["permission"], `must be a ${s.app} permission`);
+	if (s.kind === "list" !== (s.list !== null)) issue(["list"], "list screens (and only they) have `list`");
+	if (s.kind !== "list" && s.sections.length === 0) issue(["sections"], "detail and form screens need sections");
+	if (s.kind === "form") {
+		for (const sec of s.sections) if (sec.type === "fields" && sec.fields.every((f) => f.input === "readonly")) issue(["sections"], "a form needs at least one input field");
+	}
+});
 
 //#endregion
 //#region packages/contracts/dist/state-machines.js
@@ -6390,6 +6909,147 @@ const BlockerMachine = machine({
 		}
 	]
 });
+const EntitlementStates = [
+	"available",
+	"enabled",
+	"disabled",
+	"suspended"
+];
+const EntitlementMachine = machine({
+	name: "entitlement",
+	states: EntitlementStates,
+	initial: ["available"],
+	terminal: [],
+	transitions: [
+		{
+			from: "available",
+			to: "enabled",
+			event: "enable",
+			actor: ["account", "maintainer"],
+			guard: "caller is owner or admin of the org; the app is kind app, hosted-compatible and in the registry; every app it requires is enabled (DEPENDENCY_NOT_ENABLED otherwise); modules it requires activate implicitly"
+		},
+		{
+			from: "disabled",
+			to: "enabled",
+			event: "enable",
+			actor: ["account", "maintainer"],
+			guard: "same as the first enable; the app's data was kept while disabled and becomes visible again"
+		},
+		{
+			from: "enabled",
+			to: "disabled",
+			event: "disable",
+			actor: ["account", "maintainer"],
+			guard: "caller is owner or admin; no other enabled app of this org requires it (DEPENDENT_ENABLED otherwise); data is never deleted"
+		},
+		{
+			from: "enabled",
+			to: "suspended",
+			event: "suspend",
+			actor: ["system", "maintainer"],
+			guard: "hosted service suspended for this org (billing lapse or abuse, reason recorded); self-hosted copies are unaffected"
+		},
+		{
+			from: "suspended",
+			to: "enabled",
+			event: "resume",
+			actor: ["system", "maintainer"],
+			guard: "the suspension reason is cleared"
+		},
+		{
+			from: "suspended",
+			to: "disabled",
+			event: "disable",
+			actor: ["account", "maintainer"],
+			guard: "caller is owner or admin; same dependent check as disable"
+		}
+	]
+});
+const AppReleaseStates = ["published", "yanked"];
+const AppReleaseMachine = machine({
+	name: "app_release",
+	states: AppReleaseStates,
+	initial: ["published"],
+	terminal: ["yanked"],
+	transitions: [{
+		from: "published",
+		to: "yanked",
+		event: "yank",
+		actor: ["maintainer"],
+		guard: "reason recorded; clients never install a yanked version and roll back to their previous one if it is active"
+	}]
+});
+const ModuleInstallStates = [
+	"staged",
+	"active",
+	"previous",
+	"failed",
+	"removed"
+];
+const ModuleInstallMachine = machine({
+	name: "module_install",
+	states: ModuleInstallStates,
+	initial: ["staged"],
+	terminal: ["removed"],
+	transitions: [
+		{
+			from: "staged",
+			to: "active",
+			event: "activate",
+			actor: ["client"],
+			guard: "package signature verified against a pinned key, every file hash matches, WOS-APP compatible with this Desktop, version newer than the active one, not yanked, and the app is active for the org"
+		},
+		{
+			from: "staged",
+			to: "failed",
+			event: "fail",
+			actor: ["client"],
+			guard: "verification or first load failed; the reason is shown and logged"
+		},
+		{
+			from: "active",
+			to: "previous",
+			event: "supersede",
+			actor: ["client"],
+			guard: "a newer version of the same app became active; the older one is kept for rollback"
+		},
+		{
+			from: "active",
+			to: "failed",
+			event: "fail",
+			actor: ["client"],
+			guard: "the module failed to load or crashed repeatedly; the previous version is re-activated if present"
+		},
+		{
+			from: "previous",
+			to: "active",
+			event: "rollback",
+			actor: ["client"],
+			guard: "the newer version failed or was yanked; the previous package still verifies (never a download of an older version)"
+		},
+		{
+			from: "previous",
+			to: "removed",
+			event: "remove",
+			actor: ["client"],
+			guard: "a newer previous exists (keep one) or the app is no longer active"
+		},
+		{
+			from: "active",
+			to: "removed",
+			event: "remove",
+			actor: ["client"],
+			guard: "the app is no longer active for any org on this machine; files deleted"
+		},
+		{
+			from: "failed",
+			to: "removed",
+			event: "remove",
+			actor: ["client"],
+			guard: "cleanup of a failed package"
+		}
+	]
+});
 
 //#endregion
 //#region packages/contracts/dist/agent-policy.js
@@ -6668,6 +7328,7 @@ const Roadmap = object({
 	inventoryVersion: number$1().int().positive(),
 	productName: string().min(1),
 	summary: string().min(1),
+	apps: array(AppId).default([]),
 	architecture: object({
 		overview: string().min(1),
 		composition: string().min(1),
@@ -6705,6 +7366,15 @@ const Roadmap = object({
 			message: `in-scope surface ${s.surface} needs repo and path`
 		});
 	}
+	for (const [k, s] of r.surfaces.entries()) if (s.status === "in_scope" && s.repo === "waronsaas/product" && !ProductSurface.safeParse(s.surface).success) ctx.addIssue({
+		code: "custom",
+		path: [
+			"surfaces",
+			k,
+			"surface"
+		],
+		message: `${s.surface} is not a wOS product surface (web, desktop, ios, android, api); exclude it with a reason`
+	});
 	const inScope = new Set(r.surfaces.filter((s) => s.status === "in_scope").map((s) => s.surface));
 	const capTotal = sum(r.capabilities);
 	if (capTotal !== 1e4) ctx.addIssue({
@@ -6794,6 +7464,10 @@ const RequirementProfile = object({
 	requirements: array(RequirementKey).min(1),
 	acceptance: array(SurfaceAcceptance).min(1).refine((xs) => xs.filter((x) => x.surface === "web").every((x) => MINIMUM_BROWSERS.every((b) => x.browsers.includes(b))), "web acceptance must run every MINIMUM_BROWSERS entry")
 });
+const ContractSurface = object({
+	required: boolean(),
+	capabilities: array(string().regex(/^[a-z][a-z0-9_]{1,60}$/)).default([])
+});
 const FeatureContract = object({
 	schema: literal("wos-feature-contract.v1"),
 	feature: FeatureKey,
@@ -6824,7 +7498,35 @@ const FeatureContract = object({
 		})).default([])
 	}),
 	dependsOnFeatures: array(FeatureKey).default([]),
-	openQuestions: array(string()).default([])
+	openQuestions: array(string()).default([]),
+	surfaces: partialRecord(Surface, ContractSurface)
+}).superRefine((c, ctx) => {
+	const issue = (path, message) => ctx.addIssue({
+		code: "custom",
+		path,
+		message
+	});
+	const required = new Set(Object.entries(c.surfaces).filter(([, v]) => v?.required).map(([k]) => k));
+	if (required.size === 0) issue(["surfaces"], "at least one surface is required");
+	for (const [k, v] of Object.entries(c.surfaces)) if (v?.required && v.capabilities.length === 0) issue([
+		"surfaces",
+		k,
+		"capabilities"
+	], `required surface ${k} lists its capabilities`);
+	for (const [i, r] of c.requirements.entries()) for (const s of r.surfaces) if (!required.has(s)) issue([
+		"requirements",
+		i,
+		"surfaces"
+	], `${s} is not a required surface of this contract`);
+	for (const s of required) {
+		if (!c.requirements.some((r) => r.surfaces.includes(s))) issue(["surfaces", s], `required surface ${s} has no requirement`);
+		if (s !== "api" && !c.journeys.some((j) => j.surface === s)) issue(["surfaces", s], `required surface ${s} has no journey`);
+	}
+	for (const [i, j] of c.journeys.entries()) if (!required.has(j.surface)) issue([
+		"journeys",
+		i,
+		"surface"
+	], `${j.surface} is not a required surface`);
 });
 const ResourceKey = string().regex(/^(db|api|schema|lockfile|toolchain|config|event|ui|dep):[A-Za-z0-9 ._/:{}*-]+$/);
 const ResourceClaim = object({
@@ -7902,6 +8604,41 @@ const DomainEventBody = discriminatedUnion("type", [
 	e("account.suspended", "private", {
 		accountId: Uuid,
 		reason: string()
+	}),
+	e("organization.created", "private", {
+		organizationId: Uuid,
+		kind: OrganizationKind,
+		ownerAccountId: Uuid
+	}),
+	e("organization.member_changed", "private", {
+		organizationId: Uuid,
+		accountId: Uuid,
+		role: OrgRole.nullable()
+	}),
+	e("entitlement.changed", "private", {
+		organizationId: Uuid,
+		app: AppId,
+		from: _enum([
+			"available",
+			"enabled",
+			"disabled",
+			"suspended"
+		]),
+		to: _enum([
+			"enabled",
+			"disabled",
+			"suspended"
+		])
+	}),
+	e("app.release_published", "public", {
+		app: AppId,
+		version: SemVer,
+		surfaces: array(ProductSurface)
+	}),
+	e("app.release_yanked", "public", {
+		app: AppId,
+		version: SemVer,
+		reason: string()
 	})
 ]);
 const DomainEvent = intersection(object({
@@ -7947,7 +8684,10 @@ const ApiErrorCode = _enum([
 	"GITHUB_LINKED_ELSEWHERE",
 	"GITHUB_RESERVED",
 	"UPSTREAM_GITHUB",
-	"INTERNAL"
+	"INTERNAL",
+	"NOT_ENTITLED",
+	"DEPENDENCY_NOT_ENABLED",
+	"DEPENDENT_ENABLED"
 ]);
 const ApiError = object({ error: object({
 	code: ApiErrorCode,
@@ -8402,6 +9142,7 @@ const Routes = {
 		errors: [
 			"NOT_FOUND",
 			"NOT_ELIGIBLE",
+			"NOT_ENTITLED",
 			"RESOURCE_LOCKED",
 			"LIMIT_REACHED",
 			"CONFLICT",
@@ -8426,7 +9167,11 @@ const Routes = {
 			])).min(1)
 		}),
 		response: ClaimResponse.nullable(),
-		errors: ["NOT_ELIGIBLE", "LIMIT_REACHED"],
+		errors: [
+			"NOT_ELIGIBLE",
+			"NOT_ENTITLED",
+			"LIMIT_REACHED"
+		],
 		summary: "Server ASSIGNS the oldest eligible review task for the slot (reviewers cannot pick subjects). Null when none. (wos review)"
 	}),
 	listOpenTasks: route({
@@ -8460,6 +9205,7 @@ const Routes = {
 		errors: [
 			"NOT_FOUND",
 			"NOT_ELIGIBLE",
+			"NOT_ENTITLED",
 			"LIMIT_REACHED",
 			"CONFLICT",
 			"UPSTREAM_GITHUB"
@@ -8837,6 +9583,181 @@ const Routes = {
 		summary: "Every minute: run event consumers (progress, rewards, task_unlocker, github_sync) over unconsumed events."
 	})
 };
+const AppParams = object({ app: AppId });
+const OrgAppParams = object({
+	id: Uuid,
+	app: AppId
+});
+const EntitlementBody = object({ expectedRowVersion: number$1().int().min(0).nullable() });
+const AppRoutes = {
+	listApps: route({
+		method: "GET",
+		path: "/v1/public/apps",
+		auth: "public",
+		idempotent: false,
+		params: None,
+		query: None,
+		body: None,
+		response: object({ items: array(AppRegistryEntry) }),
+		errors: [],
+		summary: "The AppRegistry: every published wOS application and module at its current version."
+	}),
+	getApp: route({
+		method: "GET",
+		path: "/v1/public/apps/:app",
+		auth: "public",
+		idempotent: false,
+		params: AppParams,
+		query: None,
+		body: None,
+		response: AppRegistryEntry,
+		errors: ["NOT_FOUND"],
+		summary: "One registry entry."
+	}),
+	getEnvironmentKeys: route({
+		method: "GET",
+		path: "/v1/public/environment-keys",
+		auth: "public",
+		idempotent: false,
+		params: None,
+		query: None,
+		body: None,
+		response: object({ keys: array(object({
+			kid: string(),
+			alg: literal("EdDSA"),
+			publicKey: string()
+		})) }),
+		errors: [],
+		summary: "Public keys hosted wOS Core uses to verify environment tokens (current and next, for rotation)."
+	}),
+	listMyOrganizations: route({
+		method: "GET",
+		path: "/v1/orgs",
+		auth: "account",
+		idempotent: false,
+		params: None,
+		query: None,
+		body: None,
+		response: object({ items: array(OrganizationView) }),
+		errors: [],
+		summary: "The caller's organizations with their role (the personal one always first)."
+	}),
+	createOrganization: route({
+		method: "POST",
+		path: "/v1/orgs",
+		auth: "account",
+		idempotent: true,
+		params: None,
+		query: None,
+		body: object({
+			name: string().min(1).max(80),
+			slug: OrganizationSlug
+		}),
+		response: OrganizationView,
+		errors: ["CONFLICT", "LIMIT_REACHED"],
+		summary: "Creates a team organization with the caller as owner."
+	}),
+	listOrgApps: route({
+		method: "GET",
+		path: "/v1/orgs/:id/apps",
+		auth: "account",
+		idempotent: false,
+		params: IdParams,
+		query: None,
+		body: None,
+		response: OrgApps,
+		errors: ["NOT_FOUND", "FORBIDDEN"],
+		summary: "Your Apps and Available Apps for one organization (members only)."
+	}),
+	enableApp: route({
+		method: "POST",
+		path: "/v1/orgs/:id/apps/:app/enable",
+		auth: "account",
+		idempotent: true,
+		params: OrgAppParams,
+		query: None,
+		body: EntitlementBody,
+		response: OrgAppView,
+		errors: [
+			"NOT_FOUND",
+			"FORBIDDEN",
+			"CONFLICT",
+			"DEPENDENCY_NOT_ENABLED",
+			"VALIDATION_FAILED"
+		],
+		summary: "EntitlementMachine enable (owner/admin). Writes entitlement.changed; every surface picks it up."
+	}),
+	disableApp: route({
+		method: "POST",
+		path: "/v1/orgs/:id/apps/:app/disable",
+		auth: "account",
+		idempotent: true,
+		params: OrgAppParams,
+		query: None,
+		body: EntitlementBody,
+		response: OrgAppView,
+		errors: [
+			"NOT_FOUND",
+			"FORBIDDEN",
+			"CONFLICT",
+			"DEPENDENT_ENABLED"
+		],
+		summary: "EntitlementMachine disable (owner/admin). Hides the app on hosted surfaces; never deletes data."
+	}),
+	issueEnvironmentToken: route({
+		method: "POST",
+		path: "/v1/environments/:id/token",
+		auth: "account",
+		idempotent: false,
+		params: IdParams,
+		query: None,
+		body: object({ organizationId: Uuid }),
+		response: object({
+			token: string().min(20),
+			expiresAt: Timestamp,
+			claims: EnvironmentTokenClaims
+		}),
+		errors: ["NOT_FOUND", "FORBIDDEN"],
+		summary: "Mints a 15-minute environment token for a wOS Cloud environment and one of the caller's orgs."
+	}),
+	publishAppRelease: route({
+		method: "POST",
+		path: "/v1/admin/app-releases",
+		auth: "maintainer",
+		idempotent: true,
+		params: None,
+		query: None,
+		body: object({
+			manifest: WosAppManifest,
+			desktopPackage: ModulePackage.nullable(),
+			desktopPackageUrl: url().nullable(),
+			source: object({
+				repo: string(),
+				tag: string(),
+				commit: GitSha
+			})
+		}),
+		response: AppRegistryEntry,
+		errors: ["VALIDATION_FAILED", "CONFLICT"],
+		summary: "Registers a released app version (versions only increase). Called by the wos module-release workflow."
+	}),
+	yankAppRelease: route({
+		method: "POST",
+		path: "/v1/admin/app-releases/yank",
+		auth: "maintainer",
+		idempotent: true,
+		params: None,
+		query: None,
+		body: object({
+			app: AppId,
+			version: string(),
+			reason: string().min(5)
+		}),
+		response: Ok,
+		errors: ["NOT_FOUND", "CONFLICT"],
+		summary: "AppReleaseMachine yank; clients roll back to their previous version."
+	})
+};
 
 //#endregion
 //#region packages/contracts/dist/blocker.js
@@ -8880,7 +9801,7 @@ const ArchitectureBlocker = object({
 //#region packages/contracts/dist/data/agent-policy.v1.json
 var agent_policy_v1_default = {
 	policyVersion: "agent-policy.v1",
-	contractsVersion: "4.4.0",
+	contractsVersion: "5.0.0",
 	effectiveFrom: "2026-09-29",
 	providers: [{
 		"id": "claude_cli",

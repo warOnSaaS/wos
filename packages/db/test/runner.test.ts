@@ -30,7 +30,15 @@ async function query<T extends Record<string, unknown>>(url: string, text: strin
 
 const silent = { log: () => {}, error: () => {} };
 // Integration glue: the list follows the migrations directory (0004 was added at the Wave 1 gate).
-const ALL = ["0000_meta", "0001_init", "0002_backstops", "0003_subjects_and_runs", "0004_manifest_per_lease", "0005_surfaces"];
+const ALL = [
+  "0000_meta",
+  "0001_init",
+  "0002_backstops",
+  "0003_subjects_and_runs",
+  "0004_manifest_per_lease",
+  "0005_surfaces",
+  "0006_one_product",
+];
 
 describe("migration files", () => {
   it("are named NNNN_name.sql and checksummed as sha256", async () => {

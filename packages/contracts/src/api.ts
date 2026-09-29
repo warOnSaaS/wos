@@ -32,6 +32,17 @@ import {
   Handle,
 } from "./domain.js";
 import { DomainEvent } from "./events.js";
+import {
+  AppId,
+  AppRegistryEntry,
+  EnvironmentTokenClaims,
+  ModulePackage,
+  OrganizationSlug,
+  OrganizationView,
+  OrgApps,
+  OrgAppView,
+  WosAppManifest,
+} from "./wos-app.js";
 import { AbuKey, Cursor, FeatureKey, GitSha, Page, Sha256, TargetSlug, Timestamp, Uuid } from "./primitives.js";
 
 /**
@@ -84,6 +95,10 @@ export const ApiErrorCode = z.enum([
   "GITHUB_RESERVED",
   "UPSTREAM_GITHUB",
   "INTERNAL",
+  // contracts 5.0.0 (Amendment 01)
+  "NOT_ENTITLED",
+  "DEPENDENCY_NOT_ENABLED",
+  "DEPENDENT_ENABLED",
 ]);
 export type ApiErrorCode = z.infer<typeof ApiErrorCode>;
 
@@ -544,7 +559,7 @@ export const Routes = {
       model: ModelRef.optional(),
     }),
     response: ClaimResponse,
-    errors: ["NOT_FOUND", "NOT_ELIGIBLE", "RESOURCE_LOCKED", "LIMIT_REACHED", "CONFLICT", "UPSTREAM_GITHUB"],
+    errors: ["NOT_FOUND", "NOT_ELIGIBLE", "NOT_ENTITLED", "RESOURCE_LOCKED", "LIMIT_REACHED", "CONFLICT", "UPSTREAM_GITHUB"],
     summary: "LEASE: creates the attempt, leases the abu_build task, takes resource locks, pins the base commit. (wos build <abu-id>)",
   }),
   claimReview: route({
@@ -560,7 +575,7 @@ export const Routes = {
       kinds: z.array(z.enum(["roadmap_review", "feature_review", "implementation_review"])).min(1),
     }),
     response: ClaimResponse.nullable(),
-    errors: ["NOT_ELIGIBLE", "LIMIT_REACHED"],
+    errors: ["NOT_ELIGIBLE", "NOT_ENTITLED", "LIMIT_REACHED"],
     summary: "Server ASSIGNS the oldest eligible review task for the slot (reviewers cannot pick subjects). Null when none. (wos review)",
   }),
   listOpenTasks: route({
@@ -594,7 +609,7 @@ export const Routes = {
       model: ModelRef.optional(),
     }),
     response: ClaimResponse,
-    errors: ["NOT_FOUND", "NOT_ELIGIBLE", "LIMIT_REACHED", "CONFLICT", "UPSTREAM_GITHUB"],
+    errors: ["NOT_FOUND", "NOT_ELIGIBLE", "NOT_ENTITLED", "LIMIT_REACHED", "CONFLICT", "UPSTREAM_GITHUB"],
     summary: "Claims a roadmap_author / feature_author / abu_revision / conflict_resolution task. (wos roadmap, wos resolve)",
   }),
 
@@ -878,8 +893,171 @@ export type RouteBody<N extends RouteName> = z.infer<RouteOf<N>["body"]>;
 export type RouteParams<N extends RouteName> = z.infer<RouteOf<N>["params"]>;
 export type RouteQuery<N extends RouteName> = z.infer<RouteOf<N>["query"]>;
 
+/**
+ * One-product routes (Amendment 01, contracts 5.0.0), served by the control plane from Wave 3.
+ * The control plane's handler table covers `Routes` today; the Wave 3 control-plane brief adds these handlers
+ * and serves `{ ...Routes, ...AppRoutes }` (WORKSTREAMS section 12). Frozen now so Desktop, Web, CLI and the
+ * product's Core build against one shape.
+ *
+ * Build gate (D16): from Wave 3 claimBuild, claimTask and claimReview return 403 NOT_ENTITLED unless the
+ * `build` app is enabled for an organization the caller belongs to (migration 0006 enables it on the personal
+ * organization of every account that existed before it).
+ */
+const AppParams = z.object({ app: AppId });
+const OrgAppParams = z.object({ id: Uuid, app: AppId });
+const EntitlementBody = z.object({
+  /** Optimistic concurrency: the entitlement rowVersion the caller saw (null = no row yet). 409 CONFLICT if stale. */
+  expectedRowVersion: z.number().int().min(0).nullable(),
+});
+
+export const AppRoutes = {
+  listApps: route({
+    method: "GET",
+    path: "/v1/public/apps",
+    auth: "public",
+    idempotent: false,
+    params: None,
+    query: None,
+    body: None,
+    response: z.object({ items: z.array(AppRegistryEntry) }),
+    errors: [],
+    summary: "The AppRegistry: every published wOS application and module at its current version.",
+  }),
+  getApp: route({
+    method: "GET",
+    path: "/v1/public/apps/:app",
+    auth: "public",
+    idempotent: false,
+    params: AppParams,
+    query: None,
+    body: None,
+    response: AppRegistryEntry,
+    errors: ["NOT_FOUND"],
+    summary: "One registry entry.",
+  }),
+  getEnvironmentKeys: route({
+    method: "GET",
+    path: "/v1/public/environment-keys",
+    auth: "public",
+    idempotent: false,
+    params: None,
+    query: None,
+    body: None,
+    response: z.object({ keys: z.array(z.object({ kid: z.string(), alg: z.literal("EdDSA"), publicKey: z.string() })) }),
+    errors: [],
+    summary: "Public keys hosted wOS Core uses to verify environment tokens (current and next, for rotation).",
+  }),
+  listMyOrganizations: route({
+    method: "GET",
+    path: "/v1/orgs",
+    auth: "account",
+    idempotent: false,
+    params: None,
+    query: None,
+    body: None,
+    response: z.object({ items: z.array(OrganizationView) }),
+    errors: [],
+    summary: "The caller's organizations with their role (the personal one always first).",
+  }),
+  createOrganization: route({
+    method: "POST",
+    path: "/v1/orgs",
+    auth: "account",
+    idempotent: true,
+    params: None,
+    query: None,
+    body: z.object({ name: z.string().min(1).max(80), slug: OrganizationSlug }),
+    response: OrganizationView,
+    errors: ["CONFLICT", "LIMIT_REACHED"],
+    summary: "Creates a team organization with the caller as owner.",
+  }),
+  listOrgApps: route({
+    method: "GET",
+    path: "/v1/orgs/:id/apps",
+    auth: "account",
+    idempotent: false,
+    params: IdParams,
+    query: None,
+    body: None,
+    response: OrgApps,
+    errors: ["NOT_FOUND", "FORBIDDEN"],
+    summary: "Your Apps and Available Apps for one organization (members only).",
+  }),
+  enableApp: route({
+    method: "POST",
+    path: "/v1/orgs/:id/apps/:app/enable",
+    auth: "account",
+    idempotent: true,
+    params: OrgAppParams,
+    query: None,
+    body: EntitlementBody,
+    response: OrgAppView,
+    errors: ["NOT_FOUND", "FORBIDDEN", "CONFLICT", "DEPENDENCY_NOT_ENABLED", "VALIDATION_FAILED"],
+    summary: "EntitlementMachine enable (owner/admin). Writes entitlement.changed; every surface picks it up.",
+  }),
+  disableApp: route({
+    method: "POST",
+    path: "/v1/orgs/:id/apps/:app/disable",
+    auth: "account",
+    idempotent: true,
+    params: OrgAppParams,
+    query: None,
+    body: EntitlementBody,
+    response: OrgAppView,
+    errors: ["NOT_FOUND", "FORBIDDEN", "CONFLICT", "DEPENDENT_ENABLED"],
+    summary: "EntitlementMachine disable (owner/admin). Hides the app on hosted surfaces; never deletes data.",
+  }),
+  issueEnvironmentToken: route({
+    method: "POST",
+    path: "/v1/environments/:id/token",
+    auth: "account",
+    idempotent: false,
+    params: IdParams,
+    query: None,
+    body: z.object({ organizationId: Uuid }),
+    response: z.object({ token: z.string().min(20), expiresAt: Timestamp, claims: EnvironmentTokenClaims }),
+    errors: ["NOT_FOUND", "FORBIDDEN"],
+    summary: "Mints a 15-minute environment token for a wOS Cloud environment and one of the caller's orgs.",
+  }),
+  publishAppRelease: route({
+    method: "POST",
+    path: "/v1/admin/app-releases",
+    auth: "maintainer",
+    idempotent: true,
+    params: None,
+    query: None,
+    body: z.object({
+      manifest: WosAppManifest,
+      /** Required when the manifest supports desktop; the control plane verifies it like Desktop does (S-37). */
+      desktopPackage: ModulePackage.nullable(),
+      desktopPackageUrl: z.url().nullable(),
+      source: z.object({ repo: z.string(), tag: z.string(), commit: GitSha }),
+    }),
+    response: AppRegistryEntry,
+    errors: ["VALIDATION_FAILED", "CONFLICT"],
+    summary: "Registers a released app version (versions only increase). Called by the wos module-release workflow.",
+  }),
+  yankAppRelease: route({
+    method: "POST",
+    path: "/v1/admin/app-releases/yank",
+    auth: "maintainer",
+    idempotent: true,
+    params: None,
+    query: None,
+    body: z.object({ app: AppId, version: z.string(), reason: z.string().min(5) }),
+    response: Ok,
+    errors: ["NOT_FOUND", "CONFLICT"],
+    summary: "AppReleaseMachine yank; clients roll back to their previous version.",
+  }),
+} as const;
+export type AppRouteName = keyof typeof AppRoutes;
+
 /** Public web host and API host, fixed by D5. */
 export const HOSTS = {
   web: "https://waronsaas.com",
   api: "https://api.waronsaas.com",
+  /** Authenticated wOS Web (waronsaas/product apps/web), separate from the public Sniper List site (Amendment 01). */
+  app: "https://app.waronsaas.com",
+  /** wOS Cloud's hosted wOS Core (waronsaas/product apps/api): the environment wOS clients talk to by default. */
+  core: "https://core.waronsaas.com",
 } as const;
