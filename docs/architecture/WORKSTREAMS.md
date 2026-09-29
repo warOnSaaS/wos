@@ -187,15 +187,65 @@ Continue with unaffected work. Do not implement around the blocker by changing a
 
 A feature of TGT-00 counts as BUILT when every requirement listed for it in the roadmap file has a passing test named after the requirement id (e.g. `it("magic-link-sign-in R-001 ...")`), merged at a wave gate.
 
-## 7. Contracts 2.0.0 (Wave 1 gate) — what each workstream must change
+## 7. Wave 1 gate: rebase briefs (contracts 3.0.0)
 
-Rulings are in `blockers/B-*.md` (the `decision` field). Rebase onto the architect commit that carries contracts 2.0.0, then:
+Every Wave 1 workstream rebases ONCE onto the architect commit carrying contracts 3.0.0 (2.0.0 was never merged; its changes are included). Rulings with reasons: `blockers/B-*.md` (`decision` field). Changelog: `docs/architecture/CHANGELOG-CONTRACTS.md`. After rebasing, `npm run check` and `npm run db:test` must be green at the root, plus the proving tests listed per brief.
 
-| Workstream | Must change |
-|---|---|
-| github-build | Implement `Orchestrator.signIn` (email, code or `wos://auth?r=&t=` deep link, poll secret in memory only) and `linkGithub` (device flow); delete `login`. Delete `packages/github/src/internal/hash.ts` and the orchestrator's own `submissionSha256`/signing code: import `@waronsaas/contracts/canonical` (`canonicalJson`, `sha256Of`, `gitBlobOid`, `submissionSha256`, `signChangeset`, `encodeDevicePublicKey`, `provenanceSha256`). Fetch server documents with `getLeaseDocument`. Put `local:verification-output` into repair-run manifests and post a new manifest per run. Set `ContextPlan.taskKind` handling to trust the plan. Comment `WorktreeHandle.branch = "HEAD"` for detached worktrees. |
-| context-policy | Make `EligibilityInput.now` required (keep `excludedAccountIds`, `restrictedToAccountId`); count the author lease family with `maxConcurrentAuthorLeasesPerContributor`; exempt `bootstrap_self` from the same-author cap when `exemptSelfReviewFromSameAuthorCap`; use `ContextPlan.taskKind` (drop `taskKindForPlan` inference); support `local_document`; reject `wos:verdict/` refs and any server_document ref not in the plan; replace the context-engine JCS with a re-export from `@waronsaas/contracts/canonical`; apply `trailingArgs` and the drop-empty-flag rule in `buildInvocation`; render the new builder obligation and implementation-reviewer rule verbatim. |
-| verification | Delete `src/jcs.ts` and the local `computeSubmissionSha256` / `changesetSigningPayload` / key parsing: import from `@waronsaas/contracts/canonical` (PEM/SPKI keys are no longer accepted). Add `TOOLCHAIN_WITHOUT_RESOURCE` to `validateChangeset` using `RepoManifest.toolchainPaths`. Update `templates/suite/wos.json` (`toolchainPaths` must include `DEFAULT_TOOLCHAIN_PATHS`) and `wos-verify.yml` (restore toolchain paths and read verify steps from the base; add the non-required candidate-toolchain job). Remove the `it.fails` markers from the five B-0003 tests and give their fixtures real task/lease/manifest bindings and a maintainer role for bootstrap cases. Move suites to `tests/**` if wanted (now included). |
-| control-plane | Apply `0002_backstops.sql`; implement `getLeaseDocument`; accept several manifests per lease; pass `now`, `excludedAccountIds`, `restrictedToAccountId` to `checkEligibility`; store device keys in the C-5 encoding; hash and verify only via `@waronsaas/contracts/canonical`; set `taskKind` in every plan; qualification requests maintainer review when a toolchain path changed. |
-| planning (Wave 2) | Build-graph rule `TOOLCHAIN_WITHOUT_RESOURCE`; planning-role templates now in `packages/context-engine/templates/`. |
-| cli, desktop (Wave 2) | Call `signIn` / `linkGithub`; the desktop registers `wos://` and forwards deep links to `SignInPrompt.deepLinks`. |
+### 7.1 github-build (ws/github-build)
+
+What changed in contracts: `Orchestrator.login` removed, `signIn` + `linkGithub` + `SignInPrompt` + events `sign_in`/`github_link` added; `@waronsaas/contracts/canonical` is the only hashing/signing code; `ContextPlan.taskKind` required, `source.commit` = submission parent, `local_document` artifacts; `getLeaseDocument` route (`GET /v1/leases/:id/documents?ref=`); views: `AttemptView`/`TaskView` use `feature` + `relevantTo` + `repo`; `ProvenanceRecord.prNumber` rule; github/app additions ratified.
+
+You must:
+1. Replace `login` with `signIn(input, prompt, observer)`: `startEmailSignIn` with the device public key from `encodeDevicePublicKey`, keep the poll secret in memory only, race `prompt.code()` against `prompt.deepLinks` (accept only `wos://auth?r=<requestId>&t=<token>` whose `r` matches), `redeemEmailSignIn`, store session + device id in `SecretStore`. Add `linkGithub(observer, openUrl)` over `startGithubLink` (flow `device`) and `pollGithubLink`, surfacing `GITHUB_LINKED_ELSEWHERE` / `GITHUB_RESERVED`.
+2. Delete `packages/github/src/internal/hash.ts` and the orchestrator's `submissionSha256` / `signChangeset`; import `canonicalJson`, `sha256Of`, `gitBlobOid`, `submissionSha256`, `signChangeset`, `provenanceSha256`, `encodeDevicePublicKey` from `@waronsaas/contracts/canonical`.
+3. Implement `SnapshotReader.readServerDocument` with `getLeaseDocument` (query `ref`) and check the returned sha256 against the plan.
+4. Repair runs: add the `local:verification-output` local document and post a new manifest per agent run; cite the producing run's manifest in the changeset.
+5. Use `plan.taskKind` and `plan.source.commit` as given (no inference).
+6. Add to `@waronsaas/github/app`: `getBranchHead`, `readFileAt`, `listTreePaths`, `moveBranch(creds, repo, branch, sha, {expectedHeadSha} | {force: true})`, `compareDiff`, `webAuthorizeUrl(creds, {state, redirectUri})`; keep the 2.0.0 additions. All repo operations take the repo from the ABU/document (`repo`), never a constant.
+7. Comment `WorktreeHandle.branch` = `"HEAD"` for detached worktrees.
+
+Proving tests: canonical vectors reproduce through the orchestrator (sign a fixture changeset and compare with `packages/contracts/test/canonical.test.ts` values); `signIn` via code, via deep link, and with a deep link for a different request id (ignored); `linkGithub` refused path; fake-API run fetching server documents by query ref; repair run posts two manifests; each new App function against the content-addressed fake.
+
+### 7.2 context-policy (ws/context-policy)
+
+What changed: `ContextPlan.taskKind` (required), `target` nullable (feature work), `local_document` selector and manifest kind, reserved `wos:verdict/` refs, template ownership by file, canonical module, policy data (`trailingArgs`, drop-empty-flag rule, `maintainersExempt`, `waiveMinAcceptedContributions`, `exemptSelfReviewFromSameAuthorCap`, `maxConcurrentAuthorLeasesPerContributor`, new builder obligation and implementation-reviewer material rule).
+
+You must:
+1. `EligibilityInput.now` REQUIRED; keep `excludedAccountIds`, `restrictedToAccountId`; add the author lease family (`roadmap_author` + `feature_author` + `conflict_resolution`, limit 1); do not count or cap `bootstrap_self` reviews for the same-author rule; apply `maintainersExempt` and `waiveMinAcceptedContributions`.
+2. Remove `taskKindForPlan`; copy `plan.taskKind` into the manifest. Handle `target: null`.
+3. `checkManifestAgainstPlan`: reject any `server_document` ref not in the plan, any `wos:verdict/` ref (exact prefix, no loose variants), and `wos:findings/<subject>@k` in a reviewer plan unless k <= round - 1; accept `local_document` only for `local:verification-output`.
+4. Replace the context-engine JCS with a re-export of `canonicalJson` / `canonicalSha256` / `computeManifestSha256` from `@waronsaas/contracts/canonical`.
+5. `buildInvocation`: argv = base + mode + reasoning + outputSchema + `trailingArgs`; drop a flag whose list placeholder is empty.
+6. Templates stay in `packages/context-engine/templates/`; the planning workstream will own `tpl.roadmap_*`, `tpl.feature_*`, `tpl.conflict_resolver*` from Wave 2 (leave your current drafts in place for them).
+
+Proving tests: invocation snapshots for all ten roles (codex `-` last, no dangling `--allowedTools`); eligibility table rows for no-clock (fails closed), author family limit, bootstrap_self beyond 5/week allowed, maintainer and bootstrap waivers; manifest checks rejecting `wos:verdict/`, an unplanned ref and a current-round findings ref; manifest hashes equal `computeManifestSha256` from contracts.
+
+### 7.3 verification (ws/verification)
+
+What changed: canonical module; `RepoManifest.toolchainPaths` + `DEFAULT_TOOLCHAIN_PATHS`; `toolchain:` resources and `TOOLCHAIN_WITHOUT_RESOURCE`; migrations 0002 and 0003; `profileAcceptanceCheckName`; `tests/**` now included.
+
+You must:
+1. Delete `src/jcs.ts`, the local `computeSubmissionSha256`, `changesetSigningPayload`, `ed25519Key`; use `@waronsaas/contracts/canonical` (`submissionSha256`, `verifyChangesetSignature`). PEM/SPKI keys are now invalid.
+2. `validateChangeset`: emit `TOOLCHAIN_WITHOUT_RESOURCE` for any path matching `repoManifest.toolchainPaths` (picomatch) unless the ABU holds exclusive `toolchain:<path>`.
+3. `templates/suite/wos.json`: `toolchainPaths` includes every `DEFAULT_TOOLCHAIN_PATHS` entry. `wos-verify.yml`: (a) the required job restores every toolchain path from the base commit and reads install/verify steps from the base `wos.json`; (b) a non-required `wos-verify-candidate-toolchain` job when the candidate touches toolchain paths; (c) on push to the default branch, one check run per profile named `wos-acceptance/<feature>/<target>` running that profile's acceptance command.
+4. Adversarial DB suite: drop the five `it.fails` markers (B-0003 is closed by 0002); give fixtures real task/lease/manifest/agent-run bindings (`reviews.agent_run_id` is now required), `repo_full_name` on documents/catalog features/ABUs, and the maintainer role for bootstrap cases. Add: review citing another lease's agent run is rejected; TGT-00 roadmap outside the platform repo is rejected. Move suites to `tests/**` if you want.
+
+Proving tests: vector suite passes via contracts canonical; one test per toolchain case (package.json edit with and without the resource); workflow lint asserting the base-restore step and acceptance check names; the five former KNOWN GAP tests green as plain `it`; mutation check: removing the 0002/0003 triggers turns them red.
+
+### 7.4 control-plane (ws/control-plane)
+
+What changed: everything above plus the events and route changes from your blockers.
+
+You must:
+1. Apply migrations 0002 and 0003 (runner). Write `repo_full_name` on catalog features, documents and ABUs from their parent (TGT-00 = `waronsaas/waronsaas`); pass it to every GitHub call.
+2. Views and plans: `TaskView`/`AttemptView` with `target | feature`, `relevantTo`, `repo`; `ContextPlan.target` null for feature work; `taskKind` in every plan; `listOpenTasks` `feature` filter. Remove the lowest-rank-app workaround.
+3. Serve `getLeaseDocument` at `GET /v1/leases/:id/documents?ref=` from your existing renderer; 403 for refs outside the lease plan. Accept several manifests per lease.
+4. Events: `attempt.created` on attempt creation (no state_changed from "none"); your six workaround events become the contract types and PUBLIC; `verification.recorded` when you store any `verification_runs` row.
+5. Submissions: keep commit-inside-the-request; one transaction records changeset, candidate commit, `verifying -> submitted -> candidate_pushed`; replace `changesetSigningBytes` with `changesetSigningPayload`/`verifyChangesetSignature` from `@waronsaas/contracts/canonical`; store device keys only in the raw 32-byte base64 form.
+6. Reviews: persist `agent_run_id` from `submitVerdict`; qualification check 7 uses exactly that run.
+7. Profile acceptance: on `check_run` completed with name `wos-acceptance/<feature>/<target>`, insert `verification_runs` (subject `profile_acceptance`) and recompute progress with `profileAcceptancePassed` per ROADMAP-PROTOCOL section 6.
+8. Eligibility: pass `now`, `excludedAccountIds`, `restrictedToAccountId`. Qualification: request maintainer review when a toolchain path changed.
+9. Map your `GithubPort` 1:1 onto the ratified github/app names (`startDeviceAuthorization`, `webAuthorizeUrl`, `getBranchHead`, `readFileAt`, `listTreePaths`, `createBranchAt`, `moveBranch`, `deleteBranch`, `closePullRequest`, `compareDiff`).
+10. Token hashing stays HMAC-SHA256 with `SESSION_TOKEN_PEPPER` (now normative).
+
+Proving tests: the "every 2xx parses with its route schema" scenario on the new shapes; server-document fetch by query ref and 403 for an unplanned ref; a feature-work task view with `target: null` and two `relevantTo` apps; submit with a failing fake App commit records nothing and a retry with the same key succeeds; a verdict whose agent run belongs to another lease is refused; a profile-acceptance check run moves a feature to BUILT 10000 in the fake end-to-end run; every emitted event parses as `DomainEvent`.

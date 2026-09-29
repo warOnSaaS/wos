@@ -120,6 +120,18 @@ In ONE transaction:
    `update wos.<table> set state = $to, row_version = row_version + 1, ... where id = $id and state = $from and row_version = $v`.
 3. If zero rows: roll back, respond `409 CONFLICT`. The client re-reads.
 4. Insert exactly one `wos.events` row for the transition (type per `events.ts`, `contracts_version`).
+   Creation is not a transition: inserting an aggregate in an initial state writes `<aggregate>.created`
+   (`attempt.created`, `task.created`, `lease.issued`, `document.opened`, ...), never a `state_changed` from
+   a pseudo-state "none". Every transition of every machine has an event type since contracts 3.0.0
+   (`document.state_changed`, `round.cancelled`, `contribution.state_changed`, `proposal.state_changed`,
+   `blocker.state_changed`, `inventory_version.state_changed`; B-0002-control-plane).
+
+Work subjects (contracts 3.0.0): roadmap work belongs to one app (`target`); contract, build and
+implementation-review work belongs to one catalog feature and serves every app in `relevantTo`. Views and
+plans never pick a representative app. Every document, catalog feature and ABU records its
+`repo_full_name` (migration 0003): the product repo, or the platform repo for TGT-00. Catalogs are per
+repository: a roadmap may reference only catalog features of its own repository. `reviews.agent_run_id`
+binds a verdict to the signed run that produced it (same lease, same manifest, valid signature).
 5. Insert or update the rows the transition implies (listed per machine below).
 
 Consumers (`progress`, `rewards`, `task_unlocker`, `github_sync`, `public_feed`) run from

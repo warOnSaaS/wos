@@ -19,3 +19,16 @@ MAJOR. Rulings in `blockers/B-*.md`.
 - Additive `@waronsaas/github/app` exports ratified (createBranchAt, deleteBranch, closePullRequest, startDeviceAuthorization, configureGithubApp/resetGithubAppConfig, GithubAppError, renderPullRequestBody, renderProvenanceSection; local: configureLocalGit, isBlockingRejection, CaptureRejectReason). (B-0001-github-build)
 
 Affected workstreams: github-build, context-policy, verification, control-plane (all must rebase; WORKSTREAMS.md section 7), planning, cli, desktop (Wave 2 briefs).
+
+## 3.0.0 — 2026-09-29 (Wave 1 gate, control-plane findings)
+
+MAJOR (2.0.0 was never merged by any workstream, so every workstream rebases once, onto 3.0.0). Rulings in `blockers/B-*-control-plane.md` and `blockers/B-*-architect.md`.
+
+- Work subject model: `TaskView.target`, `ContextPlan.target`, `ContextManifest.target` nullable (set only for roadmap work); `TaskView.feature/relevantTo/repo`; `AttemptView.target` replaced by `feature`, `relevantTo`, `repo`; `AbuSummary.repo`; `listOpenTasks` gains a `feature` filter. (B-0001-architect)
+- `getLeaseDocument` moves the ref to the query string: `GET /v1/leases/:id/documents?ref=`. `UPSTREAM_GITHUB` added to `claimBuild`, `claimTask`; implicit errors documented. (B-0003-control-plane)
+- Events: `attempt.created`, `document.state_changed`, `round.cancelled`, `contribution.state_changed`, `proposal.state_changed`, `blocker.state_changed`, `inventory_version.state_changed`, `verification.recorded` (all public). (B-0002-control-plane, B-0006-architect, B-0007-architect)
+- Submissions are committed inside the request; guards reworded; no retry-later path. (B-0004-control-plane, B-0008-architect)
+- `profileAcceptanceCheckName(feature, target)` and the acceptance recording rule. (B-0007-architect)
+- Migration `0003_subjects_and_runs.sql`: `repo_full_name` on catalog_features, documents, abus with a consistency trigger; `reviews.agent_run_id` bound to a valid signed run of the same lease and manifest; `inventory_versions.row_version`; profile-acceptance index. (B-0002/B-0003/B-0005-architect)
+- Docs: token hashes are HMAC-SHA256 with `SESSION_TOKEN_PEPPER`. (B-0004-architect)
+- github/app additions ratified: `getBranchHead`, `readFileAt`, `listTreePaths`, `moveBranch`, `compareDiff`, `webAuthorizeUrl` (plus the 2.0.0 set). (B-0001-control-plane)

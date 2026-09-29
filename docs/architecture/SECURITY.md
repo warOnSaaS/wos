@@ -32,8 +32,9 @@ Trust boundaries:
 
 **S-1 Magic-link and code tokens.** `POST /v1/auth/email/start` creates an `email_signin_requests` row
 with: a 32-byte random link token, an 8-character code from the alphabet `A-H J-N P-Z 2-9` formatted
-`XXXX-XXXX`, a 32-byte poll secret. Only sha256 hashes are stored (`link_token_hash`,
-`code_hash` = sha256(requestId || code), `poll_secret_hash`). TTL 15 minutes (CHECK). Single use: redeem
+`XXXX-XXXX`, a 32-byte poll secret. Only keyed hashes are stored: HMAC-SHA256 with the server secret
+`SESSION_TOKEN_PEPPER` (`link_token_hash` = HMAC(pepper, token), `code_hash` = HMAC(pepper, requestId ||
+code), `poll_secret_hash` = HMAC(pepper, secret)), so a database leak alone cannot test guesses offline. TTL 15 minutes (CHECK). Single use: redeem
 is one guarded UPDATE `where redeemed_at is null and expires_at > now() and attempts < 5`. Each failed
 code try increments `attempts`; the fifth failure kills the request. The email contains the link
 `https://waronsaas.com/auth/verify?r=<requestId>&t=<linkToken>` and the code; nothing else. Workstream:
@@ -54,7 +55,7 @@ email per hour, 20 per IP per hour (IP hashed with a daily salt), 5 code tries p
 authenticated requests per minute per account on write routes. Exceeding returns `429 RATE_LIMITED`.
 Workstream: control-plane. Tests: response equality, limit boundaries.
 
-**S-4 Sessions.** Opaque random tokens; only hashes stored. Access token 1 hour, refresh 30 days,
+**S-4 Sessions.** Opaque random 32-byte tokens; only HMAC-SHA256(`SESSION_TOKEN_PEPPER`, token) is stored (the same keyed hash as S-1; the `bytea` columns named `*_hash` hold these HMACs). Access token 1 hour, refresh 30 days,
 rotating: each refresh issues a new pair and marks the old refresh `rotated_at`; presenting a rotated
 refresh token revokes every session in the family (theft signal). Logout revokes the family.
 Desktop stores tokens with Electron `safeStorage`; CLI with `@napi-rs/keyring`; never plain files.

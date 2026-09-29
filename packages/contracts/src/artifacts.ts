@@ -54,6 +54,16 @@ export const VerifyStep = z.object({
   timeoutSeconds: z.number().int().positive().max(3600),
 });
 
+/**
+ * Profile acceptance results (D10/D11, contracts 3.0.0). The wos-verify workflow, on every push to the
+ * default branch, runs each profile's acceptance suite as its own check run named by this function. The
+ * control plane records each concluded check run as verification_runs(subject 'profile_acceptance',
+ * catalog_feature_id, profile_target_id, head_sha, conclusion) and emits verification.recorded.
+ * ProgressFeatureInput.contract.profileAcceptancePassed = the latest recorded run for (feature, target)
+ * on a default-branch commit that contains the last merged relevant ABU concluded "success".
+ */
+export const profileAcceptanceCheckName = (feature: string, target: string) => `wos-acceptance/${feature}/${target}`;
+
 /** The minimum toolchain set every wos.json must list (it may add more). */
 export const DEFAULT_TOOLCHAIN_PATHS = [
   "wos.json",

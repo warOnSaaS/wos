@@ -128,11 +128,11 @@ Server validation (`verification.validateChangeset` plus server-only checks). An
 | `DELETE_MISSING_FILE` | delete of a path absent at the parent |
 | `EMPTY_DIFF` | nothing changes |
 
-On success, in one transaction: insert `changesets` (file manifest without content, validation, `ok = true`, summary), lease `-> completed`, task `leased -> submitted`, attempt `verifying -> submitted`. Idempotency: same `Idempotency-Key` + same body replays the stored response.
+Commit inside the request (contracts 3.0.0): changeset content is never stored, so the App commit (section 7) is made FIRST, inside the submit request. Only if it succeeds does ONE transaction insert `changesets` (file manifest without content, validation, `ok = true`, summary) and `candidate_commits`, complete the lease and the task, move the attempt `verifying -> submitted -> candidate_pushed` (two events) and set `attempts.head_sha`. If GitHub fails, nothing is recorded: the client receives `502 UPSTREAM_GITHUB` with its lease still active and retries with the same `Idempotency-Key`; a retry creates a fresh commit and force-moves the candidate ref, and only the recorded head is ever reviewed. Idempotency: same key + same body replays the stored response.
 
 ## 7. Candidate commit (App)
 
-Right after the transaction (and retried by the dispatcher if it fails):
+Inside the submit request, before anything is recorded:
 
 1. Create blobs, a tree (`base_tree` = parent tree; deletions as null-sha entries) and a commit via the Git Data API. No git binary, no contributor push.
 2. Commit author: `waronsaas-wos[bot]`. Message: ABU key and title, then trailers:
@@ -145,8 +145,7 @@ Right after the transaction (and retried by the dispatcher if it fails):
    Co-authored-by: <login> <githubUserId+login@users.noreply.github.com>
    ```
 3. Create or fast-forward `refs/heads/wos/candidate/<attemptId>` (expected head check). Candidate refs are App-only by ruleset, never a PR, and deleted after the PR opens.
-4. Insert `candidate_commits`; `attempts.head_sha`, `candidate_branch`; task `-> completed`; attempt `-> candidate_pushed`.
-5. If GitHub fails after retries: task `submitted -> open` is NOT used for builds; the attempt stays `submitted` and the dispatcher retries until success or a maintainer fails the attempt.
+4. Return the commit sha to the handler, which records it as described in section 6. Every repository operation uses the ABU's `repo_full_name` (the product repo, or the platform repo for TGT-00).
 
 ## 8. CI (trusted verification)
 

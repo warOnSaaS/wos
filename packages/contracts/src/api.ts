@@ -52,6 +52,10 @@ import { AbuKey, Cursor, FeatureKey, GitSha, Page, Sha256, TargetSlug, Timestamp
  * The server stores (key, contributor, route, sha256(body)) -> response for 24h. Same key +
  * same body replays the stored response; same key + different body -> 422 IDEMPOTENCY_MISMATCH.
  *
+ * Implicit errors (never listed per route): UNAUTHENTICATED and GITHUB_REQUIRED where the auth mode
+ * requires them, RATE_LIMITED and INTERNAL everywhere, IDEMPOTENCY_MISMATCH on every idempotent route,
+ * VALIDATION_FAILED for any request that fails its zod schema.
+ *
  * Concurrency: state-changing routes return 409 CONFLICT when a guarded transition lost a race;
  * clients re-read and decide. They never blind-retry a 409.
  */
@@ -513,7 +517,7 @@ export const Routes = {
     query: None,
     body: z.object({ deviceId: Uuid }),
     response: ClaimResponse,
-    errors: ["NOT_FOUND", "NOT_ELIGIBLE", "RESOURCE_LOCKED", "LIMIT_REACHED", "CONFLICT"],
+    errors: ["NOT_FOUND", "NOT_ELIGIBLE", "RESOURCE_LOCKED", "LIMIT_REACHED", "CONFLICT", "UPSTREAM_GITHUB"],
     summary: "LEASE: creates the attempt, leases the abu_build task, takes resource locks, pins the base commit. (wos build <abu-id>)",
   }),
   claimReview: route({
@@ -538,7 +542,7 @@ export const Routes = {
     auth: "contributor",
     idempotent: false,
     params: None,
-    query: z.object({ kind: TaskKind.optional(), target: TargetSlug.optional() }),
+    query: z.object({ kind: TaskKind.optional(), target: TargetSlug.optional(), feature: FeatureKey.optional() }),
     body: None,
     response: z.object({ items: z.array(TaskView) }),
     errors: [],
@@ -553,7 +557,7 @@ export const Routes = {
     query: None,
     body: z.object({ deviceId: Uuid }),
     response: ClaimResponse,
-    errors: ["NOT_FOUND", "NOT_ELIGIBLE", "LIMIT_REACHED", "CONFLICT"],
+    errors: ["NOT_FOUND", "NOT_ELIGIBLE", "LIMIT_REACHED", "CONFLICT", "UPSTREAM_GITHUB"],
     summary: "Claims a roadmap_author / feature_author / abu_revision / conflict_resolution task. (wos roadmap, wos resolve)",
   }),
 
@@ -597,11 +601,12 @@ export const Routes = {
   }),
   getLeaseDocument: route({
     method: "GET",
-    path: "/v1/leases/:id/documents/:ref",
+    path: "/v1/leases/:id/documents",
     auth: "contributor",
     idempotent: false,
-    params: z.object({ id: Uuid, ref: z.string().min(5).max(300).describe("URL-encoded server_document ref from the lease's plan") }),
-    query: None,
+    params: IdParams,
+    /** The ref goes in the query string (refs contain '/' and '@'; B-0003-control-plane). */
+    query: z.object({ ref: z.string().min(5).max(300) }),
     body: None,
     response: z.object({ ref: z.string(), sha256: Sha256, contentBase64: z.string() }),
     errors: ["LEASE_NOT_HELD", "LEASE_EXPIRED", "NOT_FOUND", "FORBIDDEN"],

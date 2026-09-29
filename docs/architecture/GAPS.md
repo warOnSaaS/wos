@@ -226,3 +226,7 @@ Sources: `docs/V1-SPEC.md` (the spec), `docs/DECISIONS.md` (D1–D12 and the nam
 
 ### G-53 The secret-pattern list is now normative
 - `packages/verification/src/secrets.ts` is the list `SECRET_DETECTED` uses (B-0004-verification). False positives block honest submissions; false negatives publish secrets in a public repo. Changes go through the architect. No founder decision unless you want a stricter policy (e.g. blocking any high-entropy string).
+
+### G-54 One catalog per repository (contracts 3.0.0)
+- **Gap.** TGT-00's features (sign-in, leases...) live in the platform repo; the replacement apps' features live in the product repo. A single global catalog would let a Salesforce roadmap reference code that lives in another repository.
+- **Resolution.** `catalog_features`, `documents` and `abus` carry `repo_full_name` (migration 0003, consistency trigger); a roadmap may reference only catalog features of its own repository (planning's `validateRoadmap`). If the product suite later needs e.g. magic-link sign-in, it gets its own catalog feature in the product repo. No founder decision.

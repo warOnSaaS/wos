@@ -58,7 +58,8 @@ export const ContextPlan = z.object({
   reasoning: ReasoningLevel,
   policyVersion: z.string(),
   contextFormatVersion: z.string(),
-  target: TargetSlug,
+  /** Exactly one of target (roadmap work) and feature (feature work) is set (contracts 3.0.0, see TaskView). */
+  target: TargetSlug.nullable(),
   feature: FeatureKey.nullable(),
   abu: AbuKey.nullable(),
   attemptId: Uuid.nullable(),
@@ -112,7 +113,7 @@ export const ContextManifest = z.object({
   provider: ProviderId,
   model: z.object({ ref: ModelRef, modelId: z.string() }),
   reasoning: ReasoningLevel,
-  target: TargetSlug,
+  target: TargetSlug.nullable(),
   feature: FeatureKey.nullable(),
   task: z.object({ id: Uuid, kind: TaskKind }),
   abu: AbuKey.nullable(),

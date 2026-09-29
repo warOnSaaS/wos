@@ -51,10 +51,12 @@ do $$ begin
 end $$;
 
 -- one canonical open roadmap per target -------------------------------------------------------
-insert into wos.documents (id, kind, target_id, version, state, branch)
-select '00000000-0000-0000-0000-0000000000d1', 'roadmap', id, 1, 'drafting', 'wos/roadmap/salesforce/v1' from wos.targets where slug = 'salesforce';
-select wos_test.expect_error($$insert into wos.documents (kind, target_id, version, state, branch)
-  select 'roadmap', id, 2, 'drafting', 'x' from wos.targets where slug = 'salesforce'$$, 'second open roadmap for same target');
+insert into wos.documents (id, kind, target_id, version, state, branch, repo_full_name)
+select '00000000-0000-0000-0000-0000000000d1', 'roadmap', id, 1, 'drafting', 'wos/roadmap/salesforce/v1', 'waronsaas/suite' from wos.targets where slug = 'salesforce';
+select wos_test.expect_error($$insert into wos.documents (kind, target_id, version, state, branch, repo_full_name)
+  select 'roadmap', id, 1, 'drafting', 'x', 'waronsaas/suite' from wos.targets where slug = 'waronsaas'$$, 'TGT-00 roadmap outside the platform repo', 'parent is in');
+select wos_test.expect_error($$insert into wos.documents (kind, target_id, version, state, branch, repo_full_name)
+  select 'roadmap', id, 2, 'drafting', 'x', 'waronsaas/suite' from wos.targets where slug = 'salesforce'$$, 'second open roadmap for same target');
 
 -- rounds, tasks, leases -----------------------------------------------------------------------
 insert into wos.rounds (id, subject_kind, document_id, round_number, head_sha, submission_sha256, state)
@@ -77,20 +79,22 @@ select wos_test.expect_error($$insert into wos.leases (task_id, account_id, devi
 insert into wos.context_manifests (id, lease_id, task_id, account_id, role, model_id, reasoning, context_format_version, manifest, manifest_sha256)
 values ('00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000f1',
         '00000000-0000-0000-0000-00000000000b', 'roadmap_reviewer_fable', 'claude-fable-5-1', 'max', 'ctx-1', '{}', 'sha256:' || repeat('2', 64));
+insert into wos.agent_runs (id, lease_id, manifest_id, account_id, device_id, record, signature_valid)
+values ('00000000-0000-0000-0000-00000000e0a1', '00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000a1', '00000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-0000000000db', '{}', true);
 
 -- reviews bind to the round's head + submission hash --------------------------------------------
 select wos_test.expect_error($$insert into wos.reviews (round_id, task_id, lease_id, account_id, github_user_id, slot, provider, model_id, reasoning,
-  head_sha, submission_sha256, verdict, body, manifest_id, independence)
+  head_sha, submission_sha256, verdict, body, manifest_id, independence, agent_run_id)
   values ('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000f1', '00000000-0000-0000-0000-0000000000c1',
           '00000000-0000-0000-0000-00000000000b', 1002, 'fable', 'claude_cli', 'claude-fable-5-1', 'max',
-          repeat('b', 40), 'sha256:' || repeat('1', 64), 'NO_MATERIAL_GAPS', '{}', '00000000-0000-0000-0000-0000000000a1', 'independent')$$,
+          repeat('b', 40), 'sha256:' || repeat('1', 64), 'NO_MATERIAL_GAPS', '{}', '00000000-0000-0000-0000-0000000000a1', 'independent', '00000000-0000-0000-0000-00000000e0a1')$$,
   'review bound to a different head sha');
 
 insert into wos.reviews (id, round_id, task_id, lease_id, account_id, github_user_id, slot, provider, model_id, reasoning,
-  head_sha, submission_sha256, verdict, body, manifest_id, independence)
+  head_sha, submission_sha256, verdict, body, manifest_id, independence, agent_run_id)
 values ('00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000f1',
         '00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-00000000000b', 1002, 'fable', 'claude_cli', 'claude-fable-5-1', 'max',
-        repeat('a', 40), 'sha256:' || repeat('1', 64), 'MATERIAL_GAPS', '{}', '00000000-0000-0000-0000-0000000000a1', 'independent');
+        repeat('a', 40), 'sha256:' || repeat('1', 64), 'MATERIAL_GAPS', '{}', '00000000-0000-0000-0000-0000000000a1', 'independent', '00000000-0000-0000-0000-00000000e0a1');
 select wos_test.expect_error($$update wos.reviews set verdict = 'NO_MATERIAL_GAPS'$$, 'reviews are append-only');
 
 -- distinct reviewers per round: bob cannot also take the astra slot (independent review) --------
@@ -103,12 +107,22 @@ values ('00000000-0000-0000-0000-0000000000c2', '00000000-0000-0000-0000-0000000
 insert into wos.context_manifests (id, lease_id, task_id, account_id, role, model_id, reasoning, context_format_version, manifest, manifest_sha256)
 values ('00000000-0000-0000-0000-0000000000a2', '00000000-0000-0000-0000-0000000000c2', '00000000-0000-0000-0000-0000000000f2',
         '00000000-0000-0000-0000-00000000000b', 'roadmap_reviewer_astra', 'gpt-6-astra', 'max', 'ctx-1', '{}', 'sha256:' || repeat('4', 64));
+insert into wos.agent_runs (id, lease_id, manifest_id, account_id, device_id, record, signature_valid)
+values ('00000000-0000-0000-0000-00000000e0a2', '00000000-0000-0000-0000-0000000000c2', '00000000-0000-0000-0000-0000000000a2', '00000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-0000000000db', '{}', true);
 select wos_test.expect_error($$insert into wos.reviews (round_id, task_id, lease_id, account_id, github_user_id, slot, provider, model_id, reasoning,
-  head_sha, submission_sha256, verdict, body, manifest_id, independence)
+  head_sha, submission_sha256, verdict, body, manifest_id, independence, agent_run_id)
   values ('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000f2', '00000000-0000-0000-0000-0000000000c2',
           '00000000-0000-0000-0000-00000000000b', 1002, 'astra', 'codex_cli', 'gpt-6-astra', 'max',
-          repeat('a', 40), 'sha256:' || repeat('1', 64), 'NO_MATERIAL_GAPS', '{}', '00000000-0000-0000-0000-0000000000a2', 'independent')$$,
+          repeat('a', 40), 'sha256:' || repeat('1', 64), 'NO_MATERIAL_GAPS', '{}', '00000000-0000-0000-0000-0000000000a2', 'independent', '00000000-0000-0000-0000-00000000e0a2')$$,
   'same account in both slots of a round', 'distinct reviewers');
+
+-- a review must cite a signed run of its own lease and manifest (0003)
+select wos_test.expect_error($$insert into wos.reviews (round_id, task_id, lease_id, account_id, github_user_id, slot, provider, model_id, reasoning,
+  head_sha, submission_sha256, verdict, body, manifest_id, independence, agent_run_id)
+  values ('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000f2', '00000000-0000-0000-0000-0000000000c2',
+          '00000000-0000-0000-0000-00000000000b', 1002, 'astra', 'codex_cli', 'gpt-6-astra', 'max',
+          repeat('a', 40), 'sha256:' || repeat('1', 64), 'NO_MATERIAL_GAPS', '{}', '00000000-0000-0000-0000-0000000000a2', 'independent', '00000000-0000-0000-0000-00000000e0a1')$$,
+  'review citing another lease''s agent run', 'agent run');
 
 -- RLS: sealed review invisible to others until revealed ---------------------------------------
 grant usage on schema wos_test to wos_app;
@@ -212,10 +226,10 @@ insert into wos.rounds (id, subject_kind, document_id, round_number, head_sha, s
 values ('00000000-0000-0000-0000-0000000000e2', 'roadmap', '00000000-0000-0000-0000-0000000000d1', 2,
         repeat('a', 40), 'sha256:' || repeat('1', 64), 'awaiting_reviews');
 select wos_test.expect_error($$insert into wos.reviews (round_id, task_id, lease_id, account_id, github_user_id, slot, provider, model_id, reasoning,
-  head_sha, submission_sha256, verdict, body, manifest_id, independence)
+  head_sha, submission_sha256, verdict, body, manifest_id, independence, agent_run_id)
   values ('00000000-0000-0000-0000-0000000000e2', '00000000-0000-0000-0000-0000000000f1', '00000000-0000-0000-0000-0000000000c1',
           '00000000-0000-0000-0000-00000000000b', 1002, 'fable', 'claude_cli', 'claude-fable-5-1', 'max',
-          repeat('a', 40), 'sha256:' || repeat('1', 64), 'NO_MATERIAL_GAPS', '{}', '00000000-0000-0000-0000-0000000000a1', 'independent')$$,
+          repeat('a', 40), 'sha256:' || repeat('1', 64), 'NO_MATERIAL_GAPS', '{}', '00000000-0000-0000-0000-0000000000a1', 'independent', '00000000-0000-0000-0000-00000000e0a1')$$,
   'lease for round 1 posting into round 2 (same head and hash)', 'is not the fable review task');
 
 insert into wos.tasks (id, kind, state, role, reviewer_slot, target_id, document_id, round_id)
@@ -227,24 +241,26 @@ values ('00000000-0000-0000-0000-0000000000c3', '00000000-0000-0000-0000-0000000
 insert into wos.context_manifests (id, lease_id, task_id, account_id, role, model_id, reasoning, context_format_version, manifest, manifest_sha256)
 values ('00000000-0000-0000-0000-0000000000a3', '00000000-0000-0000-0000-0000000000c3', '00000000-0000-0000-0000-0000000000f3',
         '00000000-0000-0000-0000-00000000000c', 'roadmap_reviewer_astra', 'gpt-6-astra', 'max', 'ctx-1', '{}', 'sha256:' || repeat('5', 64));
+insert into wos.agent_runs (id, lease_id, manifest_id, account_id, device_id, record, signature_valid)
+values ('00000000-0000-0000-0000-00000000e0a3', '00000000-0000-0000-0000-0000000000c3', '00000000-0000-0000-0000-0000000000a3', '00000000-0000-0000-0000-00000000000c', '00000000-0000-0000-0000-0000000000dc', '{}', true);
 select wos_test.expect_error($$insert into wos.reviews (round_id, task_id, lease_id, account_id, github_user_id, slot, provider, model_id, reasoning,
-  head_sha, submission_sha256, verdict, body, manifest_id, independence)
+  head_sha, submission_sha256, verdict, body, manifest_id, independence, agent_run_id)
   values ('00000000-0000-0000-0000-0000000000e2', '00000000-0000-0000-0000-0000000000f3', '00000000-0000-0000-0000-0000000000c3',
           '00000000-0000-0000-0000-00000000000c', 1003, 'fable', 'claude_cli', 'claude-fable-5-1', 'max',
-          repeat('a', 40), 'sha256:' || repeat('1', 64), 'MATERIAL_GAPS', '{}', '00000000-0000-0000-0000-0000000000a3', 'independent')$$,
+          repeat('a', 40), 'sha256:' || repeat('1', 64), 'MATERIAL_GAPS', '{}', '00000000-0000-0000-0000-0000000000a3', 'independent', '00000000-0000-0000-0000-00000000e0a3')$$,
   'review slot differs from its task slot', 'is not the fable review task');
 select wos_test.expect_error($$insert into wos.reviews (round_id, task_id, lease_id, account_id, github_user_id, slot, provider, model_id, reasoning,
-  head_sha, submission_sha256, verdict, body, manifest_id, independence)
+  head_sha, submission_sha256, verdict, body, manifest_id, independence, agent_run_id)
   values ('00000000-0000-0000-0000-0000000000e2', '00000000-0000-0000-0000-0000000000f3', '00000000-0000-0000-0000-0000000000c3',
           '00000000-0000-0000-0000-00000000000c', 1003, 'astra', 'codex_cli', 'gpt-6-astra', 'max',
-          repeat('a', 40), 'sha256:' || repeat('1', 64), 'NO_MATERIAL_GAPS', '{}', '00000000-0000-0000-0000-0000000000a3', 'bootstrap_self')$$,
+          repeat('a', 40), 'sha256:' || repeat('1', 64), 'NO_MATERIAL_GAPS', '{}', '00000000-0000-0000-0000-0000000000a3', 'bootstrap_self', '00000000-0000-0000-0000-00000000e0a3')$$,
   'bootstrap_self by a non-maintainer', 'non-maintainer');
 insert into wos.account_roles (account_id, role) values ('00000000-0000-0000-0000-00000000000c', 'maintainer');
 insert into wos.reviews (round_id, task_id, lease_id, account_id, github_user_id, slot, provider, model_id, reasoning,
-  head_sha, submission_sha256, verdict, body, manifest_id, independence)
+  head_sha, submission_sha256, verdict, body, manifest_id, independence, agent_run_id)
 values ('00000000-0000-0000-0000-0000000000e2', '00000000-0000-0000-0000-0000000000f3', '00000000-0000-0000-0000-0000000000c3',
         '00000000-0000-0000-0000-00000000000c', 1003, 'astra', 'codex_cli', 'gpt-6-astra', 'max',
-        repeat('a', 40), 'sha256:' || repeat('1', 64), 'NO_MATERIAL_GAPS', '{}', '00000000-0000-0000-0000-0000000000a3', 'bootstrap_maintainer');
+        repeat('a', 40), 'sha256:' || repeat('1', 64), 'NO_MATERIAL_GAPS', '{}', '00000000-0000-0000-0000-0000000000a3', 'bootstrap_maintainer', '00000000-0000-0000-0000-00000000e0a3');
 
 -- bootstrap mode is one-way, and bootstrap labels stop working once it is off
 update wos.platform_settings set value = '{"enabled": false, "since": null}' where key = 'bootstrap_mode';
@@ -260,11 +276,13 @@ values ('00000000-0000-0000-0000-0000000000c4', '00000000-0000-0000-0000-0000000
 insert into wos.context_manifests (id, lease_id, task_id, account_id, role, model_id, reasoning, context_format_version, manifest, manifest_sha256)
 values ('00000000-0000-0000-0000-0000000000a4', '00000000-0000-0000-0000-0000000000c4', '00000000-0000-0000-0000-0000000000f4',
         '00000000-0000-0000-0000-00000000000c', 'roadmap_reviewer_fable', 'claude-fable-5-1', 'max', 'ctx-1', '{}', 'sha256:' || repeat('6', 64));
+insert into wos.agent_runs (id, lease_id, manifest_id, account_id, device_id, record, signature_valid)
+values ('00000000-0000-0000-0000-00000000e0a4', '00000000-0000-0000-0000-0000000000c4', '00000000-0000-0000-0000-0000000000a4', '00000000-0000-0000-0000-00000000000c', '00000000-0000-0000-0000-0000000000dc', '{}', true);
 select wos_test.expect_error($$insert into wos.reviews (round_id, task_id, lease_id, account_id, github_user_id, slot, provider, model_id, reasoning,
-  head_sha, submission_sha256, verdict, body, manifest_id, independence)
+  head_sha, submission_sha256, verdict, body, manifest_id, independence, agent_run_id)
   values ('00000000-0000-0000-0000-0000000000e2', '00000000-0000-0000-0000-0000000000f4', '00000000-0000-0000-0000-0000000000c4',
           '00000000-0000-0000-0000-00000000000c', 1003, 'fable', 'claude_cli', 'claude-fable-5-1', 'max',
-          repeat('a', 40), 'sha256:' || repeat('1', 64), 'NO_MATERIAL_GAPS', '{}', '00000000-0000-0000-0000-0000000000a4', 'bootstrap_self')$$,
+          repeat('a', 40), 'sha256:' || repeat('1', 64), 'NO_MATERIAL_GAPS', '{}', '00000000-0000-0000-0000-0000000000a4', 'bootstrap_self', '00000000-0000-0000-0000-00000000e0a4')$$,
   'bootstrap_self after bootstrap ended', 'outside bootstrap mode');
 
 \echo 'all db assertions passed'
