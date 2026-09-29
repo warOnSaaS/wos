@@ -242,7 +242,7 @@ async function dispatch(c: Context, name: RouteName, route: RouteDef, handler: H
         { kind: "contributor", accountId: caller.accountId },
         (tx) =>
           tx`insert into wos.idempotency_keys (account_id, route, key, request_sha256, response_status, response_body)
-           values (${caller!.accountId}, ${name}, ${idem!.key}, ${idem!.requestSha}, ${ctx.status}, ${JSON.stringify(checked.data ?? null)}::jsonb)
+           values (${caller!.accountId}, ${name}, ${idem!.key}, ${idem!.requestSha}, ${ctx.status}, ${checked.data === null || checked.data === undefined ? tx`'null'::jsonb` : tx.json(checked.data as never)})
            on conflict (account_id, route, key) do nothing`,
       );
     }
