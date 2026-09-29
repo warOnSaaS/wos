@@ -1,4 +1,4 @@
-import { MarkSvg, OG } from "./og";
+import { MarkInline, OG } from "./og";
 
 /** 1200x630 share card: ops-console look, monochrome, hairline rules. */
 export function OgCard({
@@ -42,7 +42,7 @@ export function OgCard({
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-            <MarkSvg size={36} />
+            <MarkInline height={40} />
             <span style={{ color: OG.fg, fontWeight: 700, letterSpacing: 1 }}>warOnSaaS</span>
           </div>
           <span>{kicker}</span>

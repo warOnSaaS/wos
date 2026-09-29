@@ -7,7 +7,19 @@
 import { SIGN_IN, TOKEN_DISCLAIMER } from "./site";
 
 export const OBJECTIVE =
-  "Build open-source replacements for the biggest rented business software. One feature at a time. Built by AI coding agents that contributors run on their own subscriptions. Every app will be self-hostable.";
+  "Build one open-source suite that replaces the biggest rented business software: one account, one navigation, one data model, one web app and one phone app for iPhone and Android. One feature at a time. Built by AI coding agents that contributors run on their own subscriptions. Self-hostable.";
+
+/** D14: one suite, not an app per product. */
+export const SUITE = {
+  summary:
+    "The replacements are modules of ONE open-source suite: one account, one navigation, one data model, one web app and one phone app (iPhone and Android). A workspace turns modules on or off.",
+  profile:
+    "Each target on the Sniper List is a parity profile: the definition of what the suite must do to fully replace that product. It is not a separate app or codebase.",
+  parity:
+    "Parity means features AND experience, on every surface the product ships: the web app in current browsers, iPhone and Android. It never means copying their look. The suite has its own design.",
+  repos:
+    "The wOS platform lives in the waronsaas/wos repository. The suite's code lives in waronsaas/product.",
+};
 
 export const PROGRESS_METRICS = [
   { key: "mapped", label: "Mapped", means: "Share of the product written down on the public roadmap." },
@@ -21,7 +33,7 @@ export const STEPS: Step[] = [
   {
     title: "One roadmap per target",
     summary:
-      "Each target gets one public roadmap, e.g. “Zoom Replacement Roadmap”. Anyone can propose changes to it. Nobody starts a competing one.",
+      "Each target gets one public roadmap, e.g. “Zoom Replacement Roadmap”. It maps what the suite must do to fully replace that product, on web, iPhone and Android. Anyone can propose changes to it. Nobody starts a competing one.",
     detail: "The roadmap is a single canonical GitHub pull request. Changes are proposed against it. Forks of the roadmap are not used.",
   },
   {
@@ -90,14 +102,14 @@ export const TOKENS = {
 
 export const ABOUT = {
   mission:
-    "Businesses rent the software they run on, monthly, on the vendor’s terms. warOnSaaS builds open-source replacements for the biggest of those products so a business can own and run its own.",
+    "Businesses rent the software they run on, monthly, on the vendor’s terms. warOnSaaS builds one open-source suite that replaces the biggest of those products, so a business can own and run its own.",
   why: [
     "Rented software sets its own prices, holds your data and can change or remove features.",
     "AI coding agents can build working software when given a precise plan and strict checks.",
     "Many people already pay for an AI subscription. Pointed at one shared plan, that capacity can build large products.",
   ],
   how: "Work is public and goes one feature at a time. Two independent AI reviewers from two labs must agree on every plan before it is built. Every change is checked by someone other than its author.",
-  selfHost: "Every app will be self-hostable. Hosted status is shown per app.",
+  selfHost: "The suite will be self-hostable: you deploy it with the modules you enable. Hosted status is shown per target.",
   zero: "Nothing has started. No roadmap is open. Nothing is built. There are no contributors. Every number on this site is real, and every number is zero.",
 };
 
@@ -106,7 +118,19 @@ export type Faq = { q: string; a: string };
 export const FAQ: Faq[] = [
   {
     q: "What is warOnSaaS?",
-    a: "An open-source project building replacements for rented business software. First ten targets: Salesforce, HubSpot, Slack, Zoom, Shopify, QuickBooks, Jira, Zendesk, DocuSign, NetSuite. Work is done one feature at a time by AI coding agents that contributors run on their own subscriptions.",
+    a: "An open-source project building one suite that replaces rented business software. First ten targets: Salesforce, HubSpot, Slack, Zoom, Shopify, QuickBooks, Jira, Zendesk, DocuSign, NetSuite. Work is done one feature at a time by AI coding agents that contributors run on their own subscriptions.",
+  },
+  {
+    q: "Is there a separate app for each product?",
+    a: "No. The replacements are modules of one open-source suite: one account, one navigation, one data model, one web app and one phone app for iPhone and Android. Each target is a parity profile: what the suite must do to fully replace that product.",
+  },
+  {
+    q: "What does parity mean?",
+    a: "Features and experience, on every surface the product ships: the web app in current browsers, iPhone and Android. It never means copying their look. The suite has its own design.",
+  },
+  {
+    q: "Where is the code?",
+    a: "The wOS platform is in the waronsaas/wos repository on GitHub. The suite is in waronsaas/product. Both are public.",
   },
   {
     q: "Why is everything at 0%?",
@@ -134,7 +158,7 @@ export const FAQ: Faq[] = [
     a: `In-app credits earned for accepted work: roadmaps, contracts, code, reviews, security work, and bonuses when a feature or app reaches 100%. Opening a pull request earns nothing. ${TOKEN_DISCLAIMER}`,
   },
   { q: "Are WOS tokens cryptocurrency?", a: `No. They cannot be transferred or sold. ${TOKEN_DISCLAIMER}` },
-  { q: "Can I host the apps myself?", a: "Every app will be self-hostable. Hosted status is shown per app." },
+  { q: "Can I host it myself?", a: "Yes, once it exists. The suite will be self-hostable: you deploy it with the modules you enable. Hosted status is shown per target." },
   {
     q: "Is warOnSaaS affiliated with the companies on the list?",
     a: "No. Product names are trademarks of their owners and are used only to say what each replacement is for.",

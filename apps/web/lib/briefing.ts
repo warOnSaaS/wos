@@ -9,6 +9,7 @@
  * characters wide so they fit a 360px screen.
  */
 
+import { SUITE } from "./content";
 import { SIGN_IN, TOKEN_DISCLAIMER } from "./site";
 
 export type Block =
@@ -29,16 +30,44 @@ export const BRIEFING: BriefingSection[] = [
     id: "mission",
     title: "Mission",
     blocks: [
-      { type: "p", text: "Businesses rent the software they run on. warOnSaaS builds open-source replacements for the biggest of those products, so a business can own and run its own." },
+      { type: "p", text: "Businesses rent the software they run on. warOnSaaS builds one open-source suite that replaces the biggest of those products, so a business can own and run its own." },
       { type: "p", text: "The work is done by AI coding agents. Contributors run them on their own machines, on their own Claude and ChatGPT subscriptions. wOS, the warOnSaaS operating system, coordinates the work: what to build, in what order, by whom, and whether it is good enough to merge." },
-      { type: "p", text: "Every app will be self-hostable. Hosted status is shown per app." },
+      { type: "p", text: "The suite will be self-hostable: you deploy it with the modules you enable. Hosted status is shown per target." },
+    ],
+  },
+  {
+    id: "one-suite",
+    title: "One suite",
+    blocks: [
+      { type: "p", text: SUITE.summary },
+      { type: "diagram", label: "One suite: one account, navigation and data model; modules shared by every target profile", lines: [
+        "ONE SUITE",
+        "  one account, one navigation,",
+        "  one data model",
+        "  |",
+        "  +- WEB APP       all browsers",
+        "  +- PHONE APP     iPhone, Android",
+        "  |",
+        "  `- MODULES  Contacts, Tickets,",
+        "              Invoices, Meetings ...",
+        "",
+        "TARGET = PARITY PROFILE",
+        "  which modules and requirements",
+        "  replace that product in full",
+      ] },
+      { type: "p", text: SUITE.profile },
+      { type: "p", text: "The app shell itself (workspace modules, navigation, accounts, tenancy) is made of catalog features every target references." },
+      { type: "kv", rows: [
+        ["waronsaas/wos", "The wOS platform: control plane, Desktop, CLI, shared packages, this website."],
+        ["waronsaas/product", "The suite: the web app, the phone app (React Native with Expo), the feature modules, the catalog, roadmaps and feature contracts."],
+      ] },
     ],
   },
   {
     id: "sniper-list",
     title: "The Sniper List",
     blocks: [
-      { type: "p", text: "The public list of targets. Ten to start, in this order: Salesforce, HubSpot, Slack, Zoom, Shopify, QuickBooks, Jira, Zendesk, DocuSign, NetSuite." },
+      { type: "p", text: "The public list of targets. Ten to start, in this order: Salesforce, HubSpot, Slack, Zoom, Shopify, QuickBooks, Jira, Zendesk, DocuSign, NetSuite. Each is a parity profile for the one suite, not a separate app." },
       { type: "p", text: "TGT-00 is warOnSaaS itself. The system is built with its own process, so its feature list is written in the same format as every other target." },
       { type: "p", text: "Each target reports three numbers, measured separately:" },
       { type: "kv", rows: [
@@ -46,6 +75,7 @@ export const BRIEFING: BriefingSection[] = [
         ["Specified", "How much has consensus Feature Contracts."],
         ["Built", "How much is merged."],
       ] },
+      { type: "p", text: "Each measure is also reported per surface: web, iPhone and Android." },
       { type: "p", text: "No mock data. If a number is 0%, the site shows 0%. Today every number is 0%." },
     ],
   },
@@ -54,8 +84,8 @@ export const BRIEFING: BriefingSection[] = [
     title: "How a product is broken down",
     blocks: [
       { type: "p", text: "Every target is broken down the same way, from the whole product to a single change:" },
-      { type: "diagram", label: "Breakdown: application, capability, feature, requirement, atomic build unit, contribution", lines: [
-        "APPLICATION        e.g. Zoom",
+      { type: "diagram", label: "Breakdown: target, capability, feature, requirement, atomic build unit, contribution", lines: [
+        "TARGET             e.g. Zoom",
         "  `- CAPABILITY    e.g. Meetings",
         "      `- FEATURE   e.g. Video meeting",
         "          `- REQUIREMENT",
@@ -138,22 +168,38 @@ export const BRIEFING: BriefingSection[] = [
     ],
   },
   {
+    id: "surfaces",
+    title: "Surfaces and experience",
+    blocks: [
+      { type: "p", text: SUITE.parity },
+      { type: "list", items: [
+        "Every roadmap lists the surfaces the rented product ships, with public evidence. A shipped surface is in scope unless it is excluded with a reason.",
+        "Roadmaps and Feature Contracts describe the key user journeys on each surface, and acceptance tests those journeys.",
+        "Each requirement is tagged with the surfaces it applies to. A feature counts as specified or built for a target only when every requirement on every in-scope surface is.",
+        "Web acceptance runs in current Chrome and Edge, Safari on macOS and iOS, and Firefox, at phone and desktop sizes.",
+        "iPhone and Android are built together from the same code, with separate acceptance for each.",
+      ] },
+      { type: "p", text: "Most phone-app work is TypeScript and builds on any computer. Work that touches native iPhone or Android code needs a Mac with Xcode or the Android SDK; wOS only offers those tasks to contributors whose machine has them." },
+    ],
+  },
+  {
     id: "tracking",
     title: "From merged roadmap to tracked features",
     blocks: [
       { type: "p", text: "When a roadmap version merges, every feature it references becomes a tracked record for that app. Each feature opens, or links to, its Feature Contract workflow." },
-      { type: "p", text: "Every feature shows its own progress. Feature progress rolls up to the capability, and capability progress rolls up to the app." },
+      { type: "p", text: "Every feature shows its own progress, per surface. Feature progress rolls up to the capability, and capability progress rolls up to the target." },
       { type: "diagram", label: "Progress rolls up from features to capability to application", lines: [
         "FEATURE  %  -+",
         "FEATURE  %  -+-> CAPABILITY %",
         "FEATURE  %  -+        |",
         "                      v",
-        "            APPLICATION %",
+        "                 TARGET %",
         "   (mapped, specified, built)",
       ] },
       { type: "list", items: [
         "Progress is computed by fixed, tested functions.",
-        "Weighting is fixed per roadmap version and published.",
+        "Weights are reasoned by the roadmap agent, with a written rationale for every capability, feature and surface. Both reviewers treat a wrong weight as a material gap.",
+        "Weights freeze with the merged roadmap version and are published.",
         "Every number traces back to the records behind it.",
         "Numbers are recomputed when a merge happens on GitHub.",
       ] },
@@ -331,13 +377,14 @@ export const BRIEFING: BriefingSection[] = [
     title: "Status today",
     blocks: [
       { type: "kv", rows: [
-        ["Architecture", "Phase 0 in progress. Nothing merged."],
-        ["Public website", "This site. Static v0, data from a file."],
-        ["Everything else", "Not started."],
+        ["Architecture", "Contracts, database schema and protocols written."],
+        ["Wave 1", "Control plane, GitHub integration, context and policy, and verification pass their tests locally. Not deployed, not on GitHub yet."],
+        ["Wave 2", "In progress: planning, rewards, orchestrator, CLI, Desktop and this website."],
+        ["Public website", "This site. Static, data from files, every number 0%."],
         ["All targets", "Mapped 0%, specified 0%, built 0%."],
         ["Contributors", "0."],
       ] },
-      { type: "p", text: "warOnSaaS is its own first target, TGT-00. Its proposed feature list is on its dossier page." },
+      { type: "p", text: "warOnSaaS is its own first target, TGT-00. Its proposed roadmap, with every weight and rationale, is on its dossier page. None of the work above counts toward it yet: its roadmap is not merged and nothing has gone through wOS." },
     ],
   },
 ];

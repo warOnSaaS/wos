@@ -10,8 +10,9 @@ export function Header() {
         <span>OPEN SOURCE</span>
       </div>
       <div className="masthead">
-        <Link href="/" className="wordmark" aria-label="warOnSaaS home">
-          warOnSaaS
+        <Link href="/" className="brand" aria-label="warOnSaaS home">
+          <span className="mark" aria-hidden="true">wOS</span>
+          <span className="wordmark brand__name" aria-hidden="true">warOnSaaS</span>
         </Link>
         <nav aria-label="Main">
           <ul className="nav">

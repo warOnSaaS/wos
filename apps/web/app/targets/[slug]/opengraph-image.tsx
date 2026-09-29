@@ -1,5 +1,6 @@
 import { ImageResponse } from "next/og";
 import { getTarget, targetStatus, targets } from "@/data/targets";
+import { formatPercent, getTarget as getDetail } from "@/lib/data-source";
 import { ogFont } from "@/lib/og";
 import { OgCard } from "@/lib/ogCard";
 
@@ -14,6 +15,7 @@ export function generateStaticParams() {
 export default async function Image({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const t = getTarget(slug)!;
+  const p = getDetail(slug)!.data.progress;
   return new ImageResponse(
     <OgCard
       kicker={`TARGET DOSSIER // ${targetStatus(t)}`}
@@ -21,9 +23,9 @@ export default async function Image({ params }: { params: Promise<{ slug: string
       title={`Open-source ${t.name} alternative`}
       subtitle={t.whatItIs}
       rows={[
-        { label: "MAPPED", value: `${t.mapped}%` },
-        { label: "SPECIFIED", value: `${t.specified}%` },
-        { label: "BUILT", value: `${t.built}%` },
+        { label: "MAPPED", value: formatPercent(p.mappedBp) },
+        { label: "SPECIFIED", value: formatPercent(p.specifiedBp) },
+        { label: "BUILT", value: formatPercent(p.builtBp) },
       ]}
     />,
     { ...size, fonts: await ogFont() },

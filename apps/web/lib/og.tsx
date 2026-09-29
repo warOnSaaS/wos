@@ -4,13 +4,15 @@ import { join } from "node:path";
 /** JetBrains Mono (SIL OFL, see assets/OFL-JetBrainsMono.txt). Read at build time for next/og. */
 export async function ogFont() {
   const dir = join(process.cwd(), "assets");
-  const [regular, bold] = await Promise.all([
+  const [regular, bold, heavy] = await Promise.all([
     readFile(join(dir, "JetBrainsMono-400.ttf")),
     readFile(join(dir, "JetBrainsMono-700.ttf")),
+    readFile(join(dir, "JetBrainsMono-800.ttf")),
   ]);
   return [
     { name: "JetBrains Mono", data: regular, style: "normal" as const, weight: 400 as const },
     { name: "JetBrains Mono", data: bold, style: "normal" as const, weight: 700 as const },
+    { name: "JetBrains Mono", data: heavy, style: "normal" as const, weight: 800 as const },
   ];
 }
 
@@ -22,28 +24,68 @@ export const OG = {
   rule: "#3d3d3b",
 };
 
+/** Weight-800 cut of the same face, used only for the wOS mark at icon sizes. */
+export async function markFont() {
+  const data = await readFile(join(process.cwd(), "assets", "JetBrainsMono-800.ttf"));
+  return [{ name: "JetBrains Mono", data, style: "normal" as const, weight: 800 as const }];
+}
+
+export const MARK_TEXT = "wOS";
+
 /**
- * The mark: a solid square with a stencil-cut W. Monochrome, geometric,
- * legible at 16px. A horizontal stencil bridge crosses the W at larger sizes.
- * Coordinates are on a 100 x 100 grid; `inset` is the dark margin around the square.
+ * The mark: the letters wOS, exact casing, in JetBrains Mono ExtraBold, off-white on near-black.
+ * No other art. Proportions tighten at small sizes so all three letters stay legible at 16px.
  */
-export function MarkSvg({ size, fg = OG.fg, bg = OG.bg, inset = 12 }: { size: number; fg?: string; bg?: string; inset?: number }) {
-  const bridge = size >= 48; // the bridge is lost below ~48px, so leave it out there
+export function markMetrics(size: number) {
+  if (size <= 16) return { fontSize: size * 0.6, letterSpacing: -size * 0.045 };
+  if (size <= 32) return { fontSize: size * 0.54, letterSpacing: -size * 0.035 };
+  return { fontSize: size * 0.4, letterSpacing: -size * 0.02 };
+}
+
+/** Full-bleed mark for icon routes and exports. */
+export function Mark({ size, fg = OG.fg, bg = OG.bg }: { size: number; fg?: string; bg?: string }) {
+  const m = markMetrics(size);
   return (
-    <svg width={size} height={size} viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-      <rect x="0" y="0" width="100" height="100" fill={bg} />
-      <rect x={inset} y={inset} width={100 - 2 * inset} height={100 - 2 * inset} fill={fg} />
-      <polygon points="20,26 30,26 36,58 45,26 55,26 64,58 70,26 80,26 70,76 59,76 50,44 41,76 30,76" fill={bg} />
-      {bridge ? <rect x={inset} y="47" width={100 - 2 * inset} height="4" fill={fg} /> : null}
-    </svg>
+    <div
+      style={{
+        width: "100%",
+        height: "100%",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: bg,
+        color: fg,
+        fontFamily: "JetBrains Mono",
+        fontWeight: 800,
+        fontSize: m.fontSize,
+        letterSpacing: m.letterSpacing,
+        lineHeight: 1,
+      }}
+    >
+      {MARK_TEXT}
+    </div>
   );
 }
 
-/** Full-bleed mark for icon routes. Tighter margin at favicon size. */
-export function Mark({ size }: { size: number }) {
+/** The mark as a small bordered box inside OG cards. */
+export function MarkInline({ height }: { height: number }) {
   return (
-    <div style={{ width: "100%", height: "100%", display: "flex" }}>
-      <MarkSvg size={size} inset={size <= 32 ? 6 : 12} />
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        height,
+        padding: `0 ${Math.round(height * 0.22)}px`,
+        border: `2px solid ${OG.fg}`,
+        color: OG.fg,
+        fontFamily: "JetBrains Mono",
+        fontWeight: 800,
+        fontSize: Math.round(height * 0.55),
+        letterSpacing: -1,
+      }}
+    >
+      {MARK_TEXT}
     </div>
   );
 }

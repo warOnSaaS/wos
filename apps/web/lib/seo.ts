@@ -83,7 +83,7 @@ export const desktopAppLd = {
   "@id": `${SITE_URL}/#wos-desktop`,
   name: "wOS Desktop",
   applicationCategory: "DeveloperApplication",
-  operatingSystem: "macOS, Windows, Linux",
+  operatingSystem: "macOS, Linux",
   description:
     "The warOnSaaS desktop app. Pick a target, a feature and a build unit, press BUILD, and your local Claude Code builds it under wOS’s checks.",
   url: abs("/download"),

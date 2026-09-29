@@ -8,7 +8,7 @@ import { CLI, TOKEN_DISCLAIMER } from "@/lib/site";
 export const metadata = pageMetadata({
   title: "Download wOS Desktop and the wOS CLI",
   description:
-    "Download wOS Desktop for macOS, Windows or Linux, or install the wOS CLI with npm. Sign in with your email; link GitHub to contribute.",
+    "Download wOS Desktop for macOS or Linux, or install the wOS CLI with npm; Windows is coming later. Sign in with your email; link GitHub to contribute.",
   path: "/download",
 });
 
@@ -35,7 +35,7 @@ export default function Download() {
             <div>
               <h3>Install wOS</h3>
               <p>
-                Download wOS Desktop for your system, or run <code>{CLI.install}</code>.
+                Download wOS Desktop for macOS or Linux (Windows is coming later), or run <code>{CLI.install}</code>.
               </p>
             </div>
           </li>

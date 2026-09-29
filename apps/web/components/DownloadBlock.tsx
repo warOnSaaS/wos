@@ -6,14 +6,21 @@ export function DownloadBlock() {
     <div className="equip">
       <div>
         <h3>wOS Desktop</h3>
-        <p>Pick a target, a feature and a task. Press BUILD.</p>
+        <p>Pick a target, a feature and a task. Press BUILD. macOS and Linux in V1.</p>
         <ul className="dl">
           {DOWNLOADS.map((d) => (
             <li key={d.os}>
-              <a className="cmd" href={d.href}>
-                <span>[ {d.label} ]</span>
-                <span className="dim">{d.file}</span>
-              </a>
+              {d.href ? (
+                <a className="cmd" href={d.href}>
+                  <span>[ {d.label} ]</span>
+                  <span className="dim">{d.file}</span>
+                </a>
+              ) : (
+                <span className="cmd cmd--off">
+                  <span>{d.label}</span>
+                  <span className="dim">{d.file}</span>
+                </span>
+              )}
             </li>
           ))}
         </ul>

@@ -1,18 +1,20 @@
 import Link from "next/link";
-import { roadmapState, targetStatus, type Target } from "@/data/targets";
+import type { TargetSummary } from "@contracts/domain";
+import { roadmapState, targetStatus } from "@/data/targets";
+import { siteFields } from "@/lib/data-source";
 import { Bar } from "./Bar";
 
 /**
- * The Sniper List as a table. `self` (TGT-00, warOnSaaS) is shown first and marked.
- * Stacks into records below 900px (CSS only). Headers are written in capitals.
+ * The Sniper List as a table, from listTargets() (GET /v1/public/targets shape).
+ * Rank 0 (warOnSaaS itself) is shown first and marked. Stacks into records below 900px (CSS only).
  */
-export function TargetTable({ targets, self }: { targets: Target[]; self?: Target }) {
-  const rows = self ? [self, ...targets] : targets;
+export function TargetTable({ items }: { items: TargetSummary[] }) {
+  const last = items[items.length - 1]?.rank ?? 0;
   return (
     <table className="tbl">
       <caption>
-        {self ? "TGT-00 is warOnSaaS itself, built with its own process. " : ""}
-        TGT-01 to TGT-{String(targets.length).padStart(2, "0")} are the targets, in order. Each row links to its dossier.
+        TGT-00 is warOnSaaS itself, built with its own process. TGT-01 to TGT-{String(last).padStart(2, "0")} are the
+        targets, in order. Each row links to its dossier.
       </caption>
       <thead>
         <tr>
@@ -27,20 +29,23 @@ export function TargetTable({ targets, self }: { targets: Target[]; self?: Targe
         </tr>
       </thead>
       <tbody>
-        {rows.map((t) => (
-          <tr key={t.slug} className={t === self ? "row--self" : undefined}>
-            <td data-label="ID">{t.id}</td>
-            <th scope="row" data-label="TARGET">
-              <Link href={`/targets/${t.slug}`}>{t.name}</Link>
-            </th>
-            <td data-label="CATEGORY">{t.category}</td>
-            <td data-label="MAPPED"><Bar value={t.mapped} /></td>
-            <td data-label="SPECIFIED"><Bar value={t.specified} /></td>
-            <td data-label="BUILT"><Bar value={t.built} /></td>
-            <td data-label="ROADMAP">{roadmapState(t)}</td>
-            <td data-label="STATUS">{targetStatus(t)}</td>
-          </tr>
-        ))}
+        {items.map((t) => {
+          const site = siteFields(t.slug)!;
+          return (
+            <tr key={t.slug} className={t.rank === 0 ? "row--self" : undefined}>
+              <td data-label="ID">{site.id}</td>
+              <th scope="row" data-label="TARGET">
+                <Link href={`/targets/${t.slug}`}>{site.name}</Link>
+              </th>
+              <td data-label="CATEGORY">{site.category}</td>
+              <td data-label="MAPPED"><Bar bp={t.progress.mappedBp} /></td>
+              <td data-label="SPECIFIED"><Bar bp={t.progress.specifiedBp} /></td>
+              <td data-label="BUILT"><Bar bp={t.progress.builtBp} /></td>
+              <td data-label="ROADMAP">{t.roadmap ? "OPEN" : roadmapState(site)}</td>
+              <td data-label="STATUS">{targetStatus(site)}</td>
+            </tr>
+          );
+        })}
       </tbody>
     </table>
   );

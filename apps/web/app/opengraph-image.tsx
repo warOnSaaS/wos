@@ -1,5 +1,5 @@
 import { ImageResponse } from "next/og";
-import { overall, roadmapsOpen, targets } from "@/data/targets";
+import { formatPercent, sniperListTotals } from "@/lib/data-source";
 import { ogFont } from "@/lib/og";
 import { OgCard } from "@/lib/ogCard";
 
@@ -8,15 +8,16 @@ export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
 export default async function Image() {
+  const totals = sniperListTotals();
   return new ImageResponse(
     <OgCard
       kicker="OPERATION ORDER"
       title="Open-source replacements for the software you rent"
-      subtitle={`${targets.length} targets. ${roadmapsOpen()} roadmaps open. The war starts at zero.`}
+      subtitle={`${totals.targets} targets. One suite. ${totals.roadmapsOpen} roadmaps open. The war starts at zero.`}
       rows={[
-        { label: "MAPPED", value: `${overall("mapped")}%` },
-        { label: "SPECIFIED", value: `${overall("specified")}%` },
-        { label: "BUILT", value: `${overall("built")}%` },
+        { label: "MAPPED", value: formatPercent(totals.mappedBp) },
+        { label: "SPECIFIED", value: formatPercent(totals.specifiedBp) },
+        { label: "BUILT", value: formatPercent(totals.builtBp) },
       ]}
     />,
     { ...size, fonts: await ogFont() },

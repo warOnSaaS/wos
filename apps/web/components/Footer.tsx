@@ -8,7 +8,10 @@ export function Footer() {
     <footer>
       <div className="foot">
         <div>
-          <p className="wordmark">warOnSaaS</p>
+          <p className="brand">
+            <span className="mark" aria-hidden="true">wOS</span>
+            <span className="wordmark">warOnSaaS</span>
+          </p>
           <p className="fine">Open-source replacements for rented business software. One feature at a time.</p>
         </div>
         <nav aria-label="Targets">
