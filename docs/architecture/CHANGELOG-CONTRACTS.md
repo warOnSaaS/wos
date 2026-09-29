@@ -79,3 +79,10 @@ MINOR (additive for consumers; the one implementer of `Orchestrator`, github-bui
 - `PROMPT_TEMPLATE_BY_ROLE` moves to contracts; `FeatureContractErrorCode`; `BuildGraphErrorCode.CONTRACT_VERSION_MISMATCH` (B-0001/B-0002-planning).
 - `picomatch` dependency for `@waronsaas/planning`.
 - Protocol text: REWARD-PROTOCOL section 8, REVIEW-PROTOCOL section 11, FEATURE-CONTRACT section 9.
+
+## 4.3.0 — 2026-09-29 (B-0010-github-build)
+
+MINOR, additive.
+- `claimBuild` and `claimTask` bodies: optional `model: ModelRef`. The server checks it is in the role's `allowedModels` and attested by the device (`NOT_ELIGIBLE` otherwise; a second build lease on the same provider is `LIMIT_REACHED`). When omitted, the server uses the first entry of the role's `allowedModels` (in policy order) that the device attests: Opus for builders. The plan's model, modelId, provider, reasoning and budget (with `budgetOverrides`) follow the chosen model, and the manifest must match the plan. For `conflict_resolution` the only model is Fable.
+- `BuildOptions.model?: ModelRef`. `AuthorOptions.model` is now documented as sent in the `claimTask` body.
+- For implementers: the control plane passes the requested model to eligibility (`EligibilityInput.requestedModel?: ModelRef`, which the context-policy workstream adds to `@waronsaas/agent-policy`), and the orchestrator sends the field.

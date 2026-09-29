@@ -75,6 +75,8 @@ export interface LocalStatus {
 export interface BuildOptions {
   /** ABU id (uuid) or "<target>/<abuKey>". */
   abu: string;
+  /** D15 (4.3.0): builder model; sent as claimBuild `model`. Omitted = the policy default (Opus when attested). */
+  model?: ModelRef;
   /** Stop after local VERIFY + submission instead of waiting for reviews/PR. Default false for CLI, true for Desktop. */
   detachAfterSubmit?: boolean;
   signal?: AbortSignal;
@@ -89,6 +91,7 @@ export interface ReviewOptions {
 export interface AuthorOptions {
   /** Task id of a roadmap_author / feature_author / abu_revision / conflict_resolution task. */
   taskId: string;
+  /** D15 (4.3.0): sent as claimTask `model` (authors, revisions; ignored by the server for conflict_resolution, which is Fable only). */
   model?: ModelRef;
   signal?: AbortSignal;
 }

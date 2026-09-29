@@ -8392,7 +8392,10 @@ const Routes = {
 		idempotent: true,
 		params: IdParams,
 		query: None,
-		body: object({ deviceId: Uuid }),
+		body: object({
+			deviceId: Uuid,
+			model: ModelRef.optional()
+		}),
 		response: ClaimResponse,
 		errors: [
 			"NOT_FOUND",
@@ -8447,7 +8450,10 @@ const Routes = {
 		idempotent: true,
 		params: IdParams,
 		query: None,
-		body: object({ deviceId: Uuid }),
+		body: object({
+			deviceId: Uuid,
+			model: ModelRef.optional()
+		}),
 		response: ClaimResponse,
 		errors: [
 			"NOT_FOUND",
@@ -8872,7 +8878,7 @@ const ArchitectureBlocker = object({
 //#region packages/contracts/dist/data/agent-policy.v1.json
 var agent_policy_v1_default = {
 	policyVersion: "agent-policy.v1",
-	contractsVersion: "4.2.0",
+	contractsVersion: "4.3.0",
 	effectiveFrom: "2026-09-29",
 	providers: [{
 		"id": "claude_cli",
