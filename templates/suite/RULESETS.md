@@ -101,13 +101,18 @@ The App is the only bypass actor, so it alone creates candidate refs, force-move
 - The platform repo lints every product workflow with `lintProductWorkflow` (`secrets.`, permissions,
   triggers, environments, pinned third-party actions, `persist-credentials: false`).
 
-## 5. What `wos.json` adds to the rulesets
+## 5. Trusted verification and the toolchain (B-0005, contracts 3.0.0)
 
-`templates/suite/wos.json` protects more than the always-protected `.github/**` and `wos.json`:
-the toolchain configs (`.npmrc`, `.nvmrc`, `tsconfig*.json`, `vitest.config.ts`, `biome.json`) and the
-document directories. It lists `package.json` as a lockfile, so a change to it needs an ABU holding
-`lockfile:package.json` exclusively. Reason: `wos-verify` runs `npm run typecheck`, `npm run lint` and
-`npm test`, whose meaning is the candidate's own `package.json` scripts. Without this a submission could
-replace `"test": "vitest run"` with `"test": "true"` inside its own scope and CI would report success
-(blocker B-0005-verification). The CODEOWNERS rule on `/package.json` then requires a maintainer's
-review for any PR that changes it.
+`wos-verify` runs `npm run typecheck`, `npm run lint` and `npm test`, whose meaning is defined by
+`package.json` scripts and tool configs. So `templates/suite/wos.json` lists every
+`DEFAULT_TOOLCHAIN_PATHS` entry in `toolchainPaths`, and:
+
+- a submission may change a toolchain file only when its ABU holds the exclusive resource
+  `toolchain:<path>` (`TOOLCHAIN_WITHOUT_RESOURCE` otherwise), and CODEOWNERS then requires a maintainer;
+- the REQUIRED job `wos-verify` restores every toolchain path from the base commit (deleting toolchain
+  files the candidate added) and runs the BASE `wos.json` install and verify steps;
+- the non-required job `wos-verify-candidate-toolchain` runs the candidate's own toolchain when it
+  touches toolchain paths, so reviewers and the maintainer can see how it fares;
+- on pushes to the default branch every feature profile's acceptance suite runs as its own check run
+  `wos-acceptance/<feature>/<target>` (`profileAcceptanceCheckName`). These are not required checks;
+  the control plane records them for progress.

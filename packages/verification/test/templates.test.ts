@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { RepoManifest } from "@waronsaas/contracts";
+import { DEFAULT_TOOLCHAIN_PATHS, profileAcceptanceCheckName, RepoManifest } from "@waronsaas/contracts";
 import { VERIFY_CHECK_NAME } from "@waronsaas/github";
 import { afterAll, describe, expect, it } from "vitest";
 import { parse as parseYaml } from "yaml";
@@ -13,7 +13,7 @@ const read = (p: string) => readFileSync(join(REPO_ROOT, p), "utf8");
 type Wf = {
   on: Record<string, unknown>;
   permissions: unknown;
-  jobs: Record<string, { name?: string; steps: { run?: string; uses?: string }[] }>;
+  jobs: Record<string, { name?: string; if?: string; needs?: string; steps: { run?: string; uses?: string; if?: string }[] }>;
 };
 
 describe("templates/suite: wos.json", () => {
@@ -22,14 +22,16 @@ describe("templates/suite: wos.json", () => {
   it("parses as RepoManifest and never runs lifecycle scripts on install (S-7)", () => {
     expect(manifest.install).toEqual(["npm", "ci", "--ignore-scripts"]);
   });
-  it("protects .github/**, wos.json, the document directories and the toolchain configs (S-17)", () => {
-    for (const p of [".github/**", "wos.json", "catalog/**", "roadmaps/**", "features/**", ".npmrc", "vitest.config.ts"])
-      expect(manifest.protectedPaths).toContain(p);
+  it("protects .github/**, wos.json and the document directories (S-17)", () => {
+    for (const p of [".github/**", "wos.json", "catalog/**", "roadmaps/**", "features/**"]) expect(manifest.protectedPaths).toContain(p);
   });
-  it("treats package.json as a lockfile so CI's own commands cannot be redefined in scope (B-0005)", () => {
-    expect(manifest.lockfiles).toEqual(expect.arrayContaining(["package-lock.json", "package.json"]));
+  it("lists every DEFAULT_TOOLCHAIN_PATHS entry in toolchainPaths (B-0005)", () => {
+    for (const p of DEFAULT_TOOLCHAIN_PATHS) expect(manifest.toolchainPaths).toContain(p);
+  });
+
+  const pkgEdit = (resources: { key: string; mode: "exclusive" | "shared" }[]) => {
     const scripts = Buffer.from(JSON.stringify({ scripts: { test: "true" } }));
-    const r = validateChangeset(
+    return validateChangeset(
       {
         parentCommit: "a".repeat(40),
         submissionSha256: "",
@@ -46,13 +48,18 @@ describe("templates/suite: wos.json", () => {
       } as never,
       {
         kind: "abu",
-        abu: { scope: { write: ["package.json", "modules/x/**"], read: [] }, resources: [] } as never,
+        abu: { scope: { write: ["package.json", "modules/x/**"], read: [] }, resources } as never,
         documentPaths: [],
         repoManifest: manifest,
         existingPaths: new Set(["package.json"]),
       },
-    );
-    expect(r.errors.map((e) => e.code)).toContain("LOCKFILE_WITHOUT_RESOURCE");
+    ).errors.map((e) => e.code);
+  };
+  it("a package.json edit without toolchain:package.json is TOOLCHAIN_WITHOUT_RESOURCE", () => {
+    expect(pkgEdit([])).toContain("TOOLCHAIN_WITHOUT_RESOURCE");
+  });
+  it("a package.json edit with exclusive toolchain:package.json passes the toolchain rule", () => {
+    expect(pkgEdit([{ key: "toolchain:package.json", mode: "exclusive" }])).not.toContain("TOOLCHAIN_WITHOUT_RESOURCE");
   });
 });
 
@@ -80,6 +87,30 @@ describe("templates/suite: workflows (S-20)", () => {
     expect(runs).toContain("node .github/wos/wos-ci.mjs verify");
   });
 
+  const wf = parseYaml(readFileSync(join(dir, "wos-verify.yml"), "utf8")) as Wf;
+  it("the required job restores the toolchain from the base BEFORE running the base verify steps (B-0005)", () => {
+    const required = Object.values(wf.jobs).find((j) => j.name === VERIFY_CHECK_NAME)!;
+    const runs = required.steps.map((s) => s.run ?? "");
+    const restore = runs.indexOf("node .github/wos/wos-ci.mjs restore-toolchain");
+    expect(restore).toBeGreaterThanOrEqual(0);
+    expect(restore).toBeLessThan(runs.indexOf("node .github/wos/wos-ci.mjs verify"));
+    expect(runs.some((r) => r.includes("--candidate-toolchain"))).toBe(false);
+  });
+  it("a separate, non-required job runs the candidate toolchain only when toolchain paths changed", () => {
+    const job = wf.jobs["wos-verify-candidate-toolchain"]!;
+    expect(job.name).toBe("wos-verify-candidate-toolchain");
+    expect(job.name).not.toBe(VERIFY_CHECK_NAME);
+    const step = job.steps.find((s) => s.run?.includes("--candidate-toolchain"))!;
+    expect(step.if).toBe("steps.toolchain.outputs.touched == 'true'");
+  });
+  it("per-profile acceptance check runs are named by profileAcceptanceCheckName and run only on the default branch", () => {
+    const job = wf.jobs.acceptance!;
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub expression, not a JS template
+    expect(job.name).toBe(profileAcceptanceCheckName("${{ matrix.profile.feature }}", "${{ matrix.profile.target }}"));
+    expect(job.needs).toBe("profiles");
+    expect(wf.jobs.profiles!.if).toContain("github.event.repository.default_branch");
+  });
+
   it("the vendored validator bundle is current with packages/verification", () => {
     execFileSync(process.execPath, [join(REPO_ROOT, "packages/verification/ci/bundle.mjs"), "--check"], { stdio: "pipe" });
   }, 60_000);
@@ -88,7 +119,7 @@ describe("templates/suite: workflows (S-20)", () => {
 describe("templates/suite: CODEOWNERS and rulesets", () => {
   it("CODEOWNERS owns the gate's files", () => {
     const owners = read("templates/suite/.github/CODEOWNERS");
-    for (const p of ["/.github/", "/wos.json", "/package.json", "/db/migrations/"])
+    for (const p of ["/.github/", "/wos.json", "package.json", "tsconfig*.json", "/db/migrations/"])
       expect(owners).toMatch(new RegExp(`^${p.replace(/[.*/]/g, "\\$&")}\\s+@`, "m"));
   });
 
@@ -164,7 +195,7 @@ abus:
   it.each([
     ["SYMLINK_OR_SPECIAL_FILE", (x: TempRepo) => x.symlink("modules/contacts/escape", "../../../../etc/passwd")],
     ["WORKFLOW_FILE", (x: TempRepo) => x.write(".github/workflows/evil.yml", "on: push\n")],
-    ["LOCKFILE_WITHOUT_RESOURCE", (x: TempRepo) => x.write("package.json", JSON.stringify({ name: "fx", scripts: { test: "true" } }))],
+    ["TOOLCHAIN_WITHOUT_RESOURCE", (x: TempRepo) => x.write("package.json", JSON.stringify({ name: "fx", scripts: { test: "true" } }))],
     ["OUT_OF_SCOPE", (x: TempRepo) => x.write("modules/billing/x.ts", "x")],
     ["PROTECTED_PATH", (x: TempRepo) => x.write("features/contacts/BUILD-GRAPH.yaml", graph.replace("modules/contacts/**", "**"))],
   ])("scope rejects %s", (code, change) => {
@@ -195,4 +226,69 @@ abus:
     expect(res.out).toContain("--ignore-scripts");
     expect(existsSync(join(r.dir, "PWNED"))).toBe(false);
   });
+  it("restore-toolchain + verify run the BASE package.json scripts and drop configs the candidate added (B-0005)", () => {
+    const r = suiteRepo({ verify: [{ id: "test", run: ["npm", "test"], timeoutSeconds: 120 }] });
+    const pkg = (marker: string) =>
+      JSON.stringify({ name: "fx", version: "1.0.0", scripts: { test: `node -e "require('fs').writeFileSync('${marker}','')"` } });
+    r.write("package.json", pkg("BASE_RAN")).commit("base scripts");
+    r.write("package.json", pkg("CANDIDATE_RAN")).write("modules/contacts/vitest.config.ts", "export default {};\n");
+    r.commit("contacts#04: List endpoint\n\nwOS-Abu: contacts#04");
+    expect(r.run(process.execPath, [".github/wos/wos-ci.mjs", "touches-toolchain"]).out).toContain("touched=true");
+    const restore = r.run(process.execPath, [".github/wos/wos-ci.mjs", "restore-toolchain"]);
+    expect(restore.status, restore.out).toBe(0);
+    expect(existsSync(join(r.dir, "modules/contacts/vitest.config.ts"))).toBe(false);
+    const res = r.run(process.execPath, [".github/wos/wos-ci.mjs", "verify"]);
+    expect(res.status, res.out).toBe(0);
+    expect(existsSync(join(r.dir, "BASE_RAN"))).toBe(true);
+    expect(existsSync(join(r.dir, "CANDIDATE_RAN"))).toBe(false);
+  }, 60_000);
+
+  it("the required verify reads the base wos.json even if the candidate's differs", () => {
+    const r = suiteRepo();
+    const evil = {
+      ...JSON.parse(readFileSync(join(r.dir, "wos.json"), "utf8")),
+      verify: [{ id: "x", run: ["node", "-e", "process.exit(0)"], timeoutSeconds: 5 }],
+    };
+    evil.verify = [{ id: "evil", run: ["node", "-e", "require('fs').writeFileSync('EVIL','')"], timeoutSeconds: 5 }];
+    r.write("wos.json", JSON.stringify(evil)).commit("contacts#04: x\n\nwOS-Abu: contacts#04");
+    const res = r.run(process.execPath, [".github/wos/wos-ci.mjs", "verify"]);
+    expect(res.status, res.out).toBe(0);
+    expect(existsSync(join(r.dir, "EVIL"))).toBe(false);
+  }, 60_000);
+
+  it("touches-toolchain is false for an ordinary module change", () => {
+    const r = suiteRepo();
+    r.write("modules/contacts/list.ts", "export const x = 2;\n").commit("contacts#04: x\n\nwOS-Abu: contacts#04");
+    expect(r.run(process.execPath, [".github/wos/wos-ci.mjs", "touches-toolchain"]).out).toContain("touched=false");
+  });
+
+  it("profiles lists one matrix entry per profile; acceptance runs exactly that profile's command", () => {
+    const r = suiteRepo();
+    const profile = (target: string) => `  - target: ${target}
+    requirements: [R-001]
+    acceptance:
+      dir: features/contacts/acceptance/${target}
+      run: ["node", "-e", "require('fs').writeFileSync('ACC_${target}','')"]
+`;
+    r.write(
+      "features/contacts/CONTRACT.yaml",
+      `schema: wos-feature-contract.v1\nfeature: contacts\nprofiles:\n${profile("salesforce")}${profile("hubspot")}`,
+    ).commit("contract");
+    const list = r.run(process.execPath, [".github/wos/wos-ci.mjs", "profiles"]);
+    expect(list.status, list.out).toBe(0);
+    const matrix = JSON.parse(list.out.trim().replace(/^matrix=/, ""));
+    expect(matrix).toEqual([
+      { feature: "contacts", target: "salesforce" },
+      { feature: "contacts", target: "hubspot" },
+    ]);
+    expect(matrix.map((m: { feature: string; target: string }) => profileAcceptanceCheckName(m.feature, m.target))).toEqual([
+      "wos-acceptance/contacts/salesforce",
+      "wos-acceptance/contacts/hubspot",
+    ]);
+    const acc = r.run(process.execPath, [".github/wos/wos-ci.mjs", "acceptance", "contacts", "hubspot"]);
+    expect(acc.status, acc.out).toBe(0);
+    expect(existsSync(join(r.dir, "ACC_hubspot"))).toBe(true);
+    expect(existsSync(join(r.dir, "ACC_salesforce"))).toBe(false);
+    expect(r.run(process.execPath, [".github/wos/wos-ci.mjs", "acceptance", "contacts", "zoom"]).status).toBe(1);
+  }, 60_000);
 });

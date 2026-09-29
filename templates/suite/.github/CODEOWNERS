@@ -1,18 +1,27 @@
 # wOS product repo code owners (template: platform repo templates/suite/.github/CODEOWNERS).
 #
 # Only the files that define the gate are owned. Implementation PRs opened by the wOS App touch
-# modules/** and products/** only (the validator rejects everything below), so they need no code owner;
-# any PR that touches one of these paths needs a maintainer's review (ruleset: require code owner review).
+# modules/** and products/** only, so they need no code owner. Any PR that touches one of these paths
+# needs a maintainer's review (ruleset: require code owner review). The toolchain block mirrors
+# wos.json toolchainPaths (DEFAULT_TOOLCHAIN_PATHS, B-0005): changing how verification runs needs both an
+# exclusive toolchain:<path> resource and a maintainer.
 /.github/                 @waronsaas/maintainers
 /wos.json                 @waronsaas/maintainers
-/package.json             @waronsaas/maintainers
+/db/migrations/           @waronsaas/maintainers
+.gitattributes            @waronsaas/maintainers
+.gitmodules               @waronsaas/maintainers
+
+# toolchain (anywhere in the tree where the pattern has no leading slash)
+package.json              @waronsaas/maintainers
 /package-lock.json        @waronsaas/maintainers
+tsconfig*.json            @waronsaas/maintainers
+/biome.json               @waronsaas/maintainers
+/biome.jsonc              @waronsaas/maintainers
+vitest.config.*           @waronsaas/maintainers
+vitest.workspace.*        @waronsaas/maintainers
+vite.config.*             @waronsaas/maintainers
+eslint.config.*           @waronsaas/maintainers
+.eslintrc*                @waronsaas/maintainers
+.prettierrc*              @waronsaas/maintainers
 /.npmrc                   @waronsaas/maintainers
 /.nvmrc                   @waronsaas/maintainers
-/tsconfig.json            @waronsaas/maintainers
-/tsconfig.base.json       @waronsaas/maintainers
-/vitest.config.ts         @waronsaas/maintainers
-/biome.json               @waronsaas/maintainers
-/db/migrations/           @waronsaas/maintainers
-/.gitattributes           @waronsaas/maintainers
-/.gitmodules              @waronsaas/maintainers
