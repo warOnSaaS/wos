@@ -1,0 +1,23 @@
+$ wos review --slot astra
+LEASE    started  asking for a astra review
+lease    active   0192ab3c-0000-7000-8000-000000000009 expires 2026-09-29T12:30:00.000Z
+LEASE    passed   review lease 0192ab3c-0000-7000-8000-000000000009
+worktree ready    <reviewers>/worktrees/r-0192ab3c0000 @ dcaa56d5feea
+REVIEW   started  reviewing contacts#04 at dcaa56d5feea
+context  built    7 artifacts, 1849/150000 tokens, manifest ef9ef9a73176
+agent    started  implementation_reviewer_astra on gpt-6-astra (codex_cli, reasoning max) pid 4343
+agent    exited   code 0 after 7ms
+REVIEW   passed   NO_MATERIAL_GAPS (sealed until the other slot is in)
+result   ok       implementation_review | attempt in_review | NO_MATERIAL_GAPS, 0 findings
+
+$ wos review --slot fable
+LEASE    started  asking for a fable review
+lease    active   0192ab3c-0000-7000-8000-000000000014 expires 2026-09-29T12:30:00.000Z
+LEASE    passed   review lease 0192ab3c-0000-7000-8000-000000000014
+worktree ready    <reviewers>/worktrees/r-0192ab3c0000 @ dcaa56d5feea
+REVIEW   started  reviewing contacts#04 at dcaa56d5feea
+context  built    7 artifacts, 1849/150000 tokens, manifest 479263822c8e
+agent    started  implementation_reviewer_fable on claude-fable-5-1 (claude_cli, reasoning max) pid 4343
+agent    exited   code 0 after 7ms
+REVIEW   passed   NO_MATERIAL_GAPS (sealed until the other slot is in)
+result   ok       implementation_review | attempt in_review | NO_MATERIAL_GAPS, 0 findings

@@ -1,0 +1,12 @@
+Usage: wos build [options] <abu>
+
+LEASE, BUILD, VERIFY, submit, then wait through CI, REVIEW, QUALIFY and PR
+
+Arguments:
+  abu              ABU id, or <target>/<abu-key> (e.g. salesforce/contacts#04)
+
+Options:
+  --model <model>  builder model (D15), default opus (choices: "opus", "astra",
+                   "sol")
+  --detach         stop after local verify and submit; `wos resume` re-attaches
+  -h, --help       display help for command

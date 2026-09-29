@@ -1,0 +1,10 @@
+wOS status
+account    dev@example.com (octo-dev), github octo-dev
+git        2.47.1
+claude     2.1.284, signed in (claude.ai), models fable opus
+codex      0.155.0, signed in (ChatGPT), models astra sol
+toolchain  linux 6.8.0-85-generic, node 22.23.1, android-sdk 12.0 (attested)
+roles      roadmap_author roadmap_reviewer_astra roadmap_reviewer_fable feature_author feature_reviewer_astra feature_reviewer_fable builder implementation_reviewer_astra implementation_reviewer_fable conflict_resolver
+leases     none active
+work       0 leases, 0 tasks, 0 attempts
+workspace  <root>

@@ -1,19 +1,25 @@
 {
   "name": "@waronsaas/cli",
   "version": "0.0.0",
+  "description": "wOS CLI: build warOnSaaS with your own Claude Code and Codex CLIs.",
   "type": "module",
   "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22.12"
+  },
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
+      "types": "./dist/cli.d.ts",
+      "default": "./dist/cli.js"
     }
   },
   "bin": {
     "wos": "./dist/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "!dist/.tsbuildinfo",
+    "!dist/**/*.map"
   ],
   "scripts": {
     "build": "tsc -b",

@@ -1,0 +1,11 @@
+$ wos abus
+ABU                     STATE  SIZE  CLAIMABLE  ID                                    TITLE
+salesforce/contacts#04  ready  3     yes        0192ab3c-0000-7000-8000-000000000001  Contact list endpoint
+
+$ wos tasks
+TASK                                  KIND            SUBJECT     SLOT  CREATED
+0192ab3c-0000-7000-8000-000000000002  roadmap_author  salesforce  -     2026-09-29T12:00:00.000Z
+
+$ wos work
+KIND  STATE  ID                                    DETAIL
+task  open   0192ab3c-0000-7000-8000-000000000002  roadmap_author salesforce
