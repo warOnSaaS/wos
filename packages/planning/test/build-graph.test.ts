@@ -184,7 +184,13 @@ describe("validateBuildGraph", () => {
 
   it("multi-repo-products R-001 an ABU in another registered family is rejected, same family is accepted", () => {
     expect(codes(run({ g: (g) => (g.abus[2]!.repo = "waronsaas/wos") }))).toEqual(["ABU_REPO_UNKNOWN"]);
-    expect(run({ g: (g) => g.abus.forEach((a) => (a.repo = "waronsaas/product")) })).toEqual([]);
+    expect(
+      run({
+        g: (g) => {
+          for (const a of g.abus) a.repo = "waronsaas/product";
+        },
+      }),
+    ).toEqual([]);
   });
 
   it("REQUIREMENT_SURFACE_NOT_IN_SCOPE also when wos.json has no app shell for the surface", () => {
