@@ -5,3 +5,8 @@ out
 .env*
 !.env.example
 .DS_Store
+dist
+dist-types
+*.tsbuildinfo
+coverage
+release

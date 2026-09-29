@@ -1,0 +1,27 @@
+{
+  "name": "@waronsaas/verification",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "UNLICENSED",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b"
+  },
+  "dependencies": {
+    "@waronsaas/contracts": "*",
+    "picomatch": "^4.0.7"
+  },
+  "devDependencies": {
+    "@types/picomatch": "^4.0.3"
+  }
+}

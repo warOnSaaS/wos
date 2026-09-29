@@ -1,0 +1,28 @@
+{
+  "name": "@waronsaas/cli",
+  "version": "0.0.0",
+  "type": "module",
+  "license": "UNLICENSED",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "wos": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b"
+  },
+  "dependencies": {
+    "@waronsaas/contracts": "*",
+    "@waronsaas/orchestrator": "*",
+    "commander": "^15.0.0",
+    "@napi-rs/keyring": "^2.1.0"
+  }
+}

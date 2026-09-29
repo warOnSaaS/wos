@@ -1,0 +1,17 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/contracts" },
+    { "path": "packages/db" },
+    { "path": "packages/agent-policy" },
+    { "path": "packages/verification" },
+    { "path": "packages/context-engine" },
+    { "path": "packages/github" },
+    { "path": "packages/planning" },
+    { "path": "packages/rewards" },
+    { "path": "packages/orchestrator" },
+    { "path": "services/control-plane" },
+    { "path": "apps/cli" },
+    { "path": "apps/desktop" }
+  ]
+}
