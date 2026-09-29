@@ -10,6 +10,7 @@ import {
   type OrchestratorEvent,
 } from "@waronsaas/contracts";
 import { configureLocalGit } from "@waronsaas/github/local";
+import { vi } from "vitest";
 import { createOrchestrator, type Engines, type ProcessRunner, type SecretStore } from "../../src/index.js";
 import { SESSION_KEY } from "../../src/session.js";
 import { ABU_KEY, FakeControlPlane, FIXED_DATE, makeUpstream } from "./fake-control-plane.js";
@@ -28,6 +29,9 @@ export class MemorySecrets implements SecretStore {
     this.map.delete(k);
   }
 }
+
+// Every scenario does real git work (mirrors, worktrees, candidate commits); 5 s is too tight under full-suite load.
+vi.setConfig({ testTimeout: 30_000 });
 
 export type Machine = "macos" | "linux";
 

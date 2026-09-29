@@ -287,7 +287,7 @@ export class OrchestratorImpl {
   /**
    * D13 ToolchainAttestation: os and os version, then the tools wOS knows how to detect. Tool names:
    * "node", "xcode" (macOS only, `xcodebuild -version`), "android-sdk" (`sdkmanager --version`).
-   * The shared vocabulary for tool names is not yet in the contracts (blockers/B-0007-github-build.md).
+   * The shared vocabulary for tool names is not yet in the contracts (blockers/B-0006-github-build.md).
    */
   async collectToolchain(): Promise<ToolchainAttestation> {
     const platform = this.deps.platform ?? process.platform;
