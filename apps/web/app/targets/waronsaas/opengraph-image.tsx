@@ -10,7 +10,7 @@ export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
 export default async function Image() {
-  const p = getTarget(t.slug)!.data.progress;
+  const p = (await getTarget(t.slug))!.data.progress;
   return new ImageResponse(
     <OgCard
       mark={await markDataUrl()}

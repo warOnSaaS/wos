@@ -2,6 +2,7 @@ import Link from "next/link";
 import { programme, targets } from "@/data/targets";
 import { formatPercent, listTargets, sniperListTotals } from "@/lib/data-source";
 import { desktopAppLd, pageMetadata, targetListLd } from "@/lib/seo";
+import { lastShipped } from "@/lib/build-log";
 import { SITE_DESCRIPTION, SITE_NAME } from "@/lib/site";
 import { Section } from "@/components/Section";
 import { TargetTable } from "@/components/TargetTable";
@@ -15,8 +16,12 @@ export const metadata = pageMetadata({
   absoluteTitle: true,
 });
 
-export default function Home() {
-  const totals = sniperListTotals();
+export const revalidate = 60;
+
+export default async function Home() {
+  const totals = await sniperListTotals();
+  const items = await listTargets();
+  const shipped = lastShipped();
   const sitrep: [string, string][] = [
     ["TARGETS", String(totals.targets)],
     ["ROADMAPS OPEN", String(totals.roadmapsOpen)],
@@ -55,10 +60,16 @@ export default function Home() {
           ))}
         </dl>
         <p>Nothing has started. The numbers are real. The war starts at zero.</p>
+        {shipped ? (
+          <p className="fine">
+            LAST SHIPPED: {shipped.day} — <a href={shipped.url}>{shipped.short}</a> <code data-verbatim="">{shipped.subject}</code>.{" "}
+            <Link href="/log">Build log</Link>.
+          </p>
+        ) : null}
       </Section>
 
       <Section n="02" title="THE SNIPER LIST" id="targets" aside="TGT-00 TO TGT-10">
-        <TargetTable items={listTargets()} />
+        <TargetTable items={items} />
         <p className="fine">
           Each target is a parity profile: what the suite must do to fully replace that product, on web, iPhone and
           Android. Mapped: share on its roadmap. Specified: share with an agreed Feature Contract. Built: share merged.

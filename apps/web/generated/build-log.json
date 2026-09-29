@@ -1,0 +1,386 @@
+{
+  "ref": "main",
+  "head": "a08523ff67d12cf36b56ecdedec4a97aa6c48db3",
+  "complete": true,
+  "count": 44,
+  "commits": [
+    {
+      "sha": "a08523ff67d12cf36b56ecdedec4a97aa6c48db3",
+      "short": "a08523f",
+      "date": "2026-09-29T18:47:32-04:00",
+      "day": "2026-09-29",
+      "subject": "Commit the API function entry so git builds detect it",
+      "url": "https://github.com/warOnSaaS/wos/commit/a08523ff67d12cf36b56ecdedec4a97aa6c48db3"
+    },
+    {
+      "sha": "d5ce0d0561fd0df57ce228d0aae63287ba87c0ba",
+      "short": "d5ce0d0",
+      "date": "2026-09-29T18:45:53-04:00",
+      "day": "2026-09-29",
+      "subject": "Align apps/web engines with the root Node range",
+      "url": "https://github.com/warOnSaaS/wos/commit/d5ce0d0561fd0df57ce228d0aae63287ba87c0ba"
+    },
+    {
+      "sha": "c84e27626ff9fc5015f84b44ff3dfb65358d7bbb",
+      "short": "c84e276",
+      "date": "2026-09-29T18:45:17-04:00",
+      "day": "2026-09-29",
+      "subject": "Add AGENTS.md handoff (Codex/Claude) and Amendment 01 text",
+      "url": "https://github.com/warOnSaaS/wos/commit/c84e27626ff9fc5015f84b44ff3dfb65358d7bbb"
+    },
+    {
+      "sha": "d8f9821e3e850719bbc523492fec1105f4801039",
+      "short": "d8f9821",
+      "date": "2026-09-29T18:44:40-04:00",
+      "day": "2026-09-29",
+      "subject": "Merge branch 'ws/web2'",
+      "url": "https://github.com/warOnSaaS/wos/commit/d8f9821e3e850719bbc523492fec1105f4801039"
+    },
+    {
+      "sha": "6fb6344d86499f3e06b7cedd886c024fae5fa0f2",
+      "short": "6fb6344",
+      "date": "2026-09-29T18:22:16-04:00",
+      "day": "2026-09-29",
+      "subject": "Serve a disallow-all robots.txt from the API",
+      "url": "https://github.com/warOnSaaS/wos/commit/6fb6344d86499f3e06b7cedd886c024fae5fa0f2"
+    },
+    {
+      "sha": "1a6b7238e035507aacd315262fcc96df22820649",
+      "short": "1a6b723",
+      "date": "2026-09-29T18:21:42-04:00",
+      "day": "2026-09-29",
+      "subject": "Give the API deploy an empty static output directory",
+      "url": "https://github.com/warOnSaaS/wos/commit/1a6b7238e035507aacd315262fcc96df22820649"
+    },
+    {
+      "sha": "34b5648258060abd0339fecb12b61e81c4cf126e",
+      "short": "34b5648",
+      "date": "2026-09-29T18:21:08-04:00",
+      "day": "2026-09-29",
+      "subject": "Deploy the control plane as a single bundled function",
+      "url": "https://github.com/warOnSaaS/wos/commit/34b5648258060abd0339fecb12b61e81c4cf126e"
+    },
+    {
+      "sha": "a8ec92ea627df266238f0c2916cf1fcb4142801b",
+      "short": "a8ec92e",
+      "date": "2026-09-29T18:17:51-04:00",
+      "day": "2026-09-29",
+      "subject": "Run control-plane crons every 15 minutes on the Neon free plan",
+      "url": "https://github.com/warOnSaaS/wos/commit/a8ec92ea627df266238f0c2916cf1fcb4142801b"
+    },
+    {
+      "sha": "40150f02a75108898727c014c3c7860e45dd43a4",
+      "short": "40150f0",
+      "date": "2026-09-29T17:21:11-04:00",
+      "day": "2026-09-29",
+      "subject": "Wave 2 integration gate: glue on contracts 4.4.0, gate PASS",
+      "url": "https://github.com/warOnSaaS/wos/commit/40150f02a75108898727c014c3c7860e45dd43a4"
+    },
+    {
+      "sha": "f32a2b8d72566a97bff94acf3574665385efedf5",
+      "short": "f32a2b8",
+      "date": "2026-09-29T16:59:45-04:00",
+      "day": "2026-09-29",
+      "subject": "Merge branch 'ws/web' into integration-2b",
+      "url": "https://github.com/warOnSaaS/wos/commit/f32a2b8d72566a97bff94acf3574665385efedf5"
+    },
+    {
+      "sha": "98a53bc8458d808d0a123e10cdf3671893f01de7",
+      "short": "98a53bc",
+      "date": "2026-09-29T16:59:45-04:00",
+      "day": "2026-09-29",
+      "subject": "Merge branch 'ws/desktop' into integration-2b",
+      "url": "https://github.com/warOnSaaS/wos/commit/98a53bc8458d808d0a123e10cdf3671893f01de7"
+    },
+    {
+      "sha": "00f38f652745de7ac2687644e2657fa0bf1210ee",
+      "short": "00f38f6",
+      "date": "2026-09-29T16:59:44-04:00",
+      "day": "2026-09-29",
+      "subject": "Merge branch 'ws/cli' into integration-2b",
+      "url": "https://github.com/warOnSaaS/wos/commit/00f38f652745de7ac2687644e2657fa0bf1210ee"
+    },
+    {
+      "sha": "282aec0acc6331a4f67d8f360cc5813921b3d127",
+      "short": "282aec0",
+      "date": "2026-09-29T16:59:44-04:00",
+      "day": "2026-09-29",
+      "subject": "Merge branch 'ws/control-plane' into integration-2b",
+      "url": "https://github.com/warOnSaaS/wos/commit/282aec0acc6331a4f67d8f360cc5813921b3d127"
+    },
+    {
+      "sha": "823918da315cd9e48cf8f71f4979911c4c1cd535",
+      "short": "823918d",
+      "date": "2026-09-29T16:59:44-04:00",
+      "day": "2026-09-29",
+      "subject": "Merge branch 'ws/github-build' into integration-2b",
+      "url": "https://github.com/warOnSaaS/wos/commit/823918da315cd9e48cf8f71f4979911c4c1cd535"
+    },
+    {
+      "sha": "fa8c04282dd5469ea624dfdb81dbadf7675e32e4",
+      "short": "fa8c042",
+      "date": "2026-09-29T16:59:43-04:00",
+      "day": "2026-09-29",
+      "subject": "Merge branch 'ws/verification' into integration-2b",
+      "url": "https://github.com/warOnSaaS/wos/commit/fa8c04282dd5469ea624dfdb81dbadf7675e32e4"
+    },
+    {
+      "sha": "0d3ee5155fb28fbefb8f42bd3a878a0c4d5e81f8",
+      "short": "0d3ee51",
+      "date": "2026-09-29T16:59:43-04:00",
+      "day": "2026-09-29",
+      "subject": "Merge branch 'ws/planning' into integration-2b",
+      "url": "https://github.com/warOnSaaS/wos/commit/0d3ee5155fb28fbefb8f42bd3a878a0c4d5e81f8"
+    },
+    {
+      "sha": "93478abbdf9329283ca4b76089b6a45b7d645678",
+      "short": "93478ab",
+      "date": "2026-09-29T16:59:43-04:00",
+      "day": "2026-09-29",
+      "subject": "Merge branch 'ws/context-policy' into integration-2b",
+      "url": "https://github.com/warOnSaaS/wos/commit/93478abbdf9329283ca4b76089b6a45b7d645678"
+    },
+    {
+      "sha": "3aca13f69d07df108b360c2990d4503754fe3b8b",
+      "short": "3aca13f",
+      "date": "2026-09-29T16:59:36-04:00",
+      "day": "2026-09-29",
+      "subject": "Contracts 4.4.0: Wave 2 gate rulings on eleven blockers",
+      "url": "https://github.com/warOnSaaS/wos/commit/3aca13f69d07df108b360c2990d4503754fe3b8b"
+    },
+    {
+      "sha": "4cd94c1379f1d679e1367fb3c6451be8c11cdab5",
+      "short": "4cd94c1",
+      "date": "2026-09-29T16:28:16-04:00",
+      "day": "2026-09-29",
+      "subject": "Contracts 4.3.0: model choice at claim (B-0010-github-build)",
+      "url": "https://github.com/warOnSaaS/wos/commit/4cd94c1379f1d679e1367fb3c6451be8c11cdab5"
+    },
+    {
+      "sha": "37760e4580f73edaaab06c17b370ce06f1d6ca59",
+      "short": "37760e4",
+      "date": "2026-09-29T16:19:56-04:00",
+      "day": "2026-09-29",
+      "subject": "Wave 2a integration gate: glue, real planning, orchestrator reviews against the real control plane",
+      "url": "https://github.com/warOnSaaS/wos/commit/37760e4580f73edaaab06c17b370ce06f1d6ca59"
+    },
+    {
+      "sha": "8726ec9311c3eb2a510402203415c39617137539",
+      "short": "8726ec9",
+      "date": "2026-09-29T16:12:05-04:00",
+      "day": "2026-09-29",
+      "subject": "Merge branch 'ws/github-build' into integration-2a",
+      "url": "https://github.com/warOnSaaS/wos/commit/8726ec9311c3eb2a510402203415c39617137539"
+    },
+    {
+      "sha": "c4f3a0ca3c2db479547ec40a7203d656f88c4456",
+      "short": "c4f3a0c",
+      "date": "2026-09-29T16:12:05-04:00",
+      "day": "2026-09-29",
+      "subject": "Merge branch 'ws/planning' into integration-2a",
+      "url": "https://github.com/warOnSaaS/wos/commit/c4f3a0ca3c2db479547ec40a7203d656f88c4456"
+    },
+    {
+      "sha": "81568d06810fffe3b7f04f92e9f75cf564a148eb",
+      "short": "81568d0",
+      "date": "2026-09-29T16:12:05-04:00",
+      "day": "2026-09-29",
+      "subject": "Merge branch 'ws/rewards' into integration-2a",
+      "url": "https://github.com/warOnSaaS/wos/commit/81568d06810fffe3b7f04f92e9f75cf564a148eb"
+    },
+    {
+      "sha": "07ee8c2de87345d870a24e88a8ace26afc4c3042",
+      "short": "07ee8c2",
+      "date": "2026-09-29T16:11:59-04:00",
+      "day": "2026-09-29",
+      "subject": "Contracts 4.2.0: rulings on eight Wave 2a blockers",
+      "url": "https://github.com/warOnSaaS/wos/commit/07ee8c2de87345d870a24e88a8ace26afc4c3042"
+    },
+    {
+      "sha": "feee87e91cbf65fe72196ce648479036dcb6c634",
+      "short": "feee87e",
+      "date": "2026-09-29T16:00:19-04:00",
+      "day": "2026-09-29",
+      "subject": "Fix CI-only false positive in the context leak test",
+      "url": "https://github.com/warOnSaaS/wos/commit/feee87e91cbf65fe72196ce648479036dcb6c634"
+    },
+    {
+      "sha": "c737cb94fb62825d80f47247f35e573fb02b4adf",
+      "short": "c737cb9",
+      "date": "2026-09-29T15:56:25-04:00",
+      "day": "2026-09-29",
+      "subject": "Contracts 4.1.0: D15 two agents per contributor, Sol for builders",
+      "url": "https://github.com/warOnSaaS/wos/commit/c737cb94fb62825d80f47247f35e573fb02b4adf"
+    },
+    {
+      "sha": "9da907f022cd21b9270cb95b6a683d2bb1d7f326",
+      "short": "9da907f",
+      "date": "2026-09-29T15:50:50-04:00",
+      "day": "2026-09-29",
+      "subject": "Contracts 4.0.0: D13 surfaces and experience, D14 one suite",
+      "url": "https://github.com/warOnSaaS/wos/commit/9da907f022cd21b9270cb95b6a683d2bb1d7f326"
+    },
+    {
+      "sha": "94ee1e74f6f24778722bec3b04d2211ee91b4e2a",
+      "short": "94ee1e7",
+      "date": "2026-09-29T15:13:15-04:00",
+      "day": "2026-09-29",
+      "subject": "Wave 1 integration gate: glue, real packages in tests, report",
+      "url": "https://github.com/warOnSaaS/wos/commit/94ee1e74f6f24778722bec3b04d2211ee91b4e2a"
+    },
+    {
+      "sha": "68e729972a757f6e4e86827b6512ba037c0a17ed",
+      "short": "68e7299",
+      "date": "2026-09-29T15:08:03-04:00",
+      "day": "2026-09-29",
+      "subject": "Merge branch 'architect' into integration",
+      "url": "https://github.com/warOnSaaS/wos/commit/68e729972a757f6e4e86827b6512ba037c0a17ed"
+    },
+    {
+      "sha": "428c2c8c7f70029ff85913686ad91d36d692853a",
+      "short": "428c2c8",
+      "date": "2026-09-29T15:07:58-04:00",
+      "day": "2026-09-29",
+      "subject": "Integration glue (Wave 1 gate, part 1): wire real packages together",
+      "url": "https://github.com/warOnSaaS/wos/commit/428c2c8c7f70029ff85913686ad91d36d692853a"
+    },
+    {
+      "sha": "470dc187ebfffe4cd2ef8241963345a6908be1bd",
+      "short": "470dc18",
+      "date": "2026-09-29T14:57:39-04:00",
+      "day": "2026-09-29",
+      "subject": "Merge branch 'ws/control-plane' into integration",
+      "url": "https://github.com/warOnSaaS/wos/commit/470dc187ebfffe4cd2ef8241963345a6908be1bd"
+    },
+    {
+      "sha": "0c4db0fe2eba9a87a65363f00a8a995828ce38dc",
+      "short": "0c4db0f",
+      "date": "2026-09-29T14:57:39-04:00",
+      "day": "2026-09-29",
+      "subject": "Merge branch 'ws/github-build' into integration",
+      "url": "https://github.com/warOnSaaS/wos/commit/0c4db0fe2eba9a87a65363f00a8a995828ce38dc"
+    },
+    {
+      "sha": "58ffca0cd3728414ab7550b0b51e9e5a0ff58e88",
+      "short": "58ffca0",
+      "date": "2026-09-29T14:57:39-04:00",
+      "day": "2026-09-29",
+      "subject": "Merge branch 'ws/verification' into integration",
+      "url": "https://github.com/warOnSaaS/wos/commit/58ffca0cd3728414ab7550b0b51e9e5a0ff58e88"
+    },
+    {
+      "sha": "3bc81008dfd730c7bd151c9b54b3d3a89e8cea7d",
+      "short": "3bc8100",
+      "date": "2026-09-29T14:57:39-04:00",
+      "day": "2026-09-29",
+      "subject": "Merge branch 'ws/context-policy' into integration",
+      "url": "https://github.com/warOnSaaS/wos/commit/3bc81008dfd730c7bd151c9b54b3d3a89e8cea7d"
+    },
+    {
+      "sha": "5728f7300dd021b35e9d6b95be009eefbc46eac1",
+      "short": "5728f73",
+      "date": "2026-09-29T14:57:26-04:00",
+      "day": "2026-09-29",
+      "subject": "Contracts 3.1.0: rulings on the four rebase blockers",
+      "url": "https://github.com/warOnSaaS/wos/commit/5728f7300dd021b35e9d6b95be009eefbc46eac1"
+    },
+    {
+      "sha": "615930d0e8a7642989c54e4ba175267773b76d6d",
+      "short": "615930d",
+      "date": "2026-09-29T14:42:18-04:00",
+      "day": "2026-09-29",
+      "subject": "Contracts 3.0.0: control-plane rulings and Wave 1 rebase briefs",
+      "url": "https://github.com/warOnSaaS/wos/commit/615930d0e8a7642989c54e4ba175267773b76d6d"
+    },
+    {
+      "sha": "e0fd95fa05d5e111b0837f1ce662e0897243cf3a",
+      "short": "e0fd95f",
+      "date": "2026-09-29T14:30:46-04:00",
+      "day": "2026-09-29",
+      "subject": "Contracts 2.0.0: Wave 1 gate rulings on eleven blockers",
+      "url": "https://github.com/warOnSaaS/wos/commit/e0fd95fa05d5e111b0837f1ce662e0897243cf3a"
+    },
+    {
+      "sha": "cd2c59d6ad658a6a805b4a9845dbb33830322179",
+      "short": "cd2c59d",
+      "date": "2026-09-29T13:47:34-04:00",
+      "day": "2026-09-29",
+      "subject": "Merge Phase 0: architecture constitution, contracts, schema, scaffold",
+      "url": "https://github.com/warOnSaaS/wos/commit/cd2c59d6ad658a6a805b4a9845dbb33830322179"
+    },
+    {
+      "sha": "9b99dd6a450dd6c3fd13da2313222cada9e36f85",
+      "short": "9b99dd6",
+      "date": "2026-09-29T13:39:58-04:00",
+      "day": "2026-09-29",
+      "subject": "Add briefing, TGT-00 feature proposal, FAQ page; fix name casing",
+      "url": "https://github.com/warOnSaaS/wos/commit/9b99dd6a450dd6c3fd13da2313222cada9e36f85"
+    },
+    {
+      "sha": "f848b9de7358dbbe0d36038c6fa930c36311fbc5",
+      "short": "f848b9d",
+      "date": "2026-09-29T13:23:48-04:00",
+      "day": "2026-09-29",
+      "subject": "Redesign site as a monochrome operations document",
+      "url": "https://github.com/warOnSaaS/wos/commit/f848b9de7358dbbe0d36038c6fa930c36311fbc5"
+    },
+    {
+      "sha": "f9d07c3d059d5e353ef20fbb9527819308b6f9a0",
+      "short": "f9d07c3",
+      "date": "2026-09-29T12:58:19-04:00",
+      "day": "2026-09-29",
+      "subject": "Give every non-target page the site share image",
+      "url": "https://github.com/warOnSaaS/wos/commit/f9d07c3d059d5e353ef20fbb9527819308b6f9a0"
+    },
+    {
+      "sha": "e71d6e9baed6fc5888fc78c7061626e6771408d6",
+      "short": "e71d6e9",
+      "date": "2026-09-29T12:55:58-04:00",
+      "day": "2026-09-29",
+      "subject": "Ignore Vercel env files in apps/web",
+      "url": "https://github.com/warOnSaaS/wos/commit/e71d6e9baed6fc5888fc78c7061626e6771408d6"
+    },
+    {
+      "sha": "55f6f57bfe00d7611ab68686235599f98f055f13",
+      "short": "55f6f57",
+      "date": "2026-09-29T12:55:30-04:00",
+      "day": "2026-09-29",
+      "subject": "Add V1 spec, founder decisions and gitignore",
+      "url": "https://github.com/warOnSaaS/wos/commit/55f6f57bfe00d7611ab68686235599f98f055f13"
+    },
+    {
+      "sha": "82b8b53f539aa88dfa70215ae4185a541ad2dfb5",
+      "short": "82b8b53",
+      "date": "2026-09-29T12:55:23-04:00",
+      "day": "2026-09-29",
+      "subject": "Add warOnSaaS public website (apps/web)",
+      "url": "https://github.com/warOnSaaS/wos/commit/82b8b53f539aa88dfa70215ae4185a541ad2dfb5"
+    }
+  ],
+  "reports": [
+    {
+      "file": "WAVE-1-REPORT.md",
+      "title": "Wave 1 report — integration gate",
+      "date": "2026-09-29",
+      "results": {
+        "pass": 7,
+        "partial": 1,
+        "pending": 1,
+        "fail": 0
+      },
+      "url": "https://github.com/warOnSaaS/wos/blob/94ee1e74f6f24778722bec3b04d2211ee91b4e2a/docs/architecture/WAVE-1-REPORT.md"
+    },
+    {
+      "file": "WAVE-2-REPORT.md",
+      "title": "Wave 2 report: integration gate",
+      "date": "2026-09-29",
+      "results": {
+        "pass": 8,
+        "partial": 0,
+        "pending": 0,
+        "fail": 0
+      },
+      "url": "https://github.com/warOnSaaS/wos/blob/40150f02a75108898727c014c3c7860e45dd43a4/docs/architecture/WAVE-2-REPORT.md"
+    }
+  ]
+}

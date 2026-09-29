@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { roadmapState, roadmapStatus, roadmapTitle, targetStatus, targets } from "@/data/targets";
+import { roadmapState, roadmapStatus, roadmapTitle, targetStatus } from "@/data/targets";
 import { PROGRESS_METRICS, SUITE } from "@/lib/content";
-import { formatPercent, getTarget, SURFACE_LABEL, siteFields, suiteSurfaceProgress } from "@/lib/data-source";
+import { formatPercent, getTarget, listTargets, SURFACE_LABEL, siteFields, suiteSurfaceProgress } from "@/lib/data-source";
 import { breadcrumbLd, pageMetadata } from "@/lib/seo";
 import { LINKS, TOKEN_DISCLAIMER } from "@/lib/site";
 import { Section } from "@/components/Section";
@@ -11,9 +11,11 @@ import { JsonLd } from "@/components/JsonLd";
 
 export const dynamicParams = false;
 
-export function generateStaticParams() {
-  return targets.map((t) => ({ slug: t.slug }));
+export async function generateStaticParams() {
+  return (await listTargets()).filter((t) => t.rank > 0).map((t) => ({ slug: t.slug }));
 }
+
+export const revalidate = 60;
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -21,7 +23,7 @@ const KEY = { mapped: "mappedBp", specified: "specifiedBp", built: "builtBp" } a
 
 export async function generateMetadata({ params }: Props) {
   const { slug } = await params;
-  const got = getTarget(slug);
+  const got = await getTarget(slug);
   if (!got) return {};
   const t = got.data;
   return pageMetadata({
@@ -34,8 +36,8 @@ export async function generateMetadata({ params }: Props) {
 
 export default async function TargetPage({ params }: Props) {
   const { slug } = await params;
-  const got = getTarget(slug);
-  const site = siteFields(slug);
+  const got = await getTarget(slug);
+  const site = siteFields(slug, got?.data.rank);
   if (!got || !site) notFound();
   const t = got.data;
   const surfaces = suiteSurfaceProgress(t);

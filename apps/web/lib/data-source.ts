@@ -1,14 +1,15 @@
 /**
  * THE data source for every number and record the site renders.
  *
- * It returns the public API's contract types (packages/contracts/src/domain.ts), so pages are
- * written against the shapes of GET /v1/public/*. Today it reads only real sources:
- *   - data/targets.ts                      the Sniper List (names, ranks; every number 0)
- *   - generated/waronsaas.roadmap.json     TGT-00's PROPOSED roadmap bundle, copied verbatim from
- *                                          docs/roadmap/waronsaas.roadmap.json by scripts/sync-shared.mjs
- * When the control plane is live, each function body becomes a fetch of its route (named on each
- * function) with ISR; the signatures stay. Nothing here invents a number: every progress value is 0
- * because nothing has merged, and every weight is copied from the roadmap file.
+ * It returns the public API's contract types (packages/contracts/src/domain.ts). Sources:
+ *   - the live public API (API_BASE/v1/public/*), fetched with ISR (revalidate 60 s): the Sniper
+ *     List, every target's progress and detail. If the API fails at build time the build fails; at
+ *     runtime a failed revalidation keeps the last good page. There is no fallback data.
+ *   - generated/waronsaas.roadmap.json: TGT-00's PROPOSED roadmap bundle, copied verbatim from
+ *     docs/roadmap/waronsaas.roadmap.json at build by scripts/sync-shared.mjs (the API does not
+ *     serve unmerged roadmaps; blockers/B-0001-web.md).
+ *   - data/targets.ts: site-only display fields (TGT code, category, provisional outline). No numbers
+ *     from that file are rendered.
  */
 
 import type { RoadmapBundle } from "@contracts/artifacts";
@@ -35,7 +36,7 @@ export type FeatureSurface = AppFeatureSummary["surfaces"][number];
 
 /** Where a record came from. Pages print this so every number is traceable. */
 export type SourceNote = {
-  kind: "targets-file" | "roadmap-file";
+  kind: "api" | "roadmap-file";
   path: string;
   /** Human-readable status of the source, e.g. the roadmap's PROPOSED status. */
   status: string;
@@ -50,7 +51,38 @@ export const ROADMAP_SOURCE: SourceNote = {
   path: "docs/roadmap/waronsaas.roadmap.json",
   status: `${bundle.status}: not reviewed by Fable or Astra, not merged`,
 };
-const TARGETS_SOURCE: SourceNote = { kind: "targets-file", path: "apps/web/data/targets.ts", status: "No roadmap opened" };
+/** Public API base (D5). Overridable for local testing against a fake control plane. */
+export const API_BASE = process.env.WOS_API_URL ?? "https://api.waronsaas.com";
+export const REVALIDATE_SECONDS = 60;
+
+const API_SOURCE = (slug: string): SourceNote => ({
+  kind: "api",
+  path: `${API_BASE.replace(/^https?:\/\//, "")}/v1/public/targets/${slug}`,
+  status: `live, refreshed every ${REVALIDATE_SECONDS} s`,
+});
+
+/** GET a public route. Throws on any non-2xx or malformed body: never substitutes data. */
+async function apiGet<T>(path: string, check: (body: unknown) => body is T): Promise<T | null> {
+  const res = await fetch(`${API_BASE}${path}`, { next: { revalidate: REVALIDATE_SECONDS } });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`public API ${path}: HTTP ${res.status}`);
+  const body: unknown = await res.json();
+  if (!check(body)) throw new Error(`public API ${path}: response does not match the contract shape`);
+  return body;
+}
+
+const isBp = (n: unknown) => typeof n === "number" && Number.isInteger(n) && n >= 0 && n <= 10000;
+/** Minimal runtime guard for TargetSummary (full zod validation needs @waronsaas/contracts as a dependency of apps/web). */
+function isSummary(t: unknown): t is TargetSummary {
+  const x = t as TargetSummary;
+  return !!x && typeof x.slug === "string" && typeof x.name === "string" && Number.isInteger(x.rank) &&
+    !!x.progress && isBp(x.progress.mappedBp) && isBp(x.progress.specifiedBp) && isBp(x.progress.builtBp);
+}
+const isList = (b: unknown): b is { items: TargetSummary[] } =>
+  !!b && Array.isArray((b as { items: unknown }).items) && (b as { items: unknown[] }).items.every(isSummary);
+const isDetail = (b: unknown): b is TargetDetail =>
+  isSummary(b) && Array.isArray((b as TargetDetail).surfaces) && Array.isArray((b as TargetDetail).capabilities) &&
+  (b as TargetDetail).surfaces.every((s) => isBp(s.specifiedBp) && isBp(s.builtBp));
 
 /** D14: the suite is one web app and one phone app (iPhone and Android). These are the surfaces
  *  every replacement target is tracked on until its roadmap inventories the vendor's surfaces. */
@@ -67,20 +99,6 @@ export const SURFACE_LABEL: Record<Surface, string> = {
   other: "Other",
 };
 
-const ZERO: Progress = {
-  mappedBp: 0,
-  specifiedBp: 0,
-  builtBp: 0,
-  roadmapVersion: null,
-  inventoryVersion: null,
-  inventoryItems: null,
-  excludedItems: 0,
-  computedAt: null,
-};
-
-/** Whole percent (targets.ts) to basis points. */
-const bp = (pct: number) => Math.round(pct * 100);
-
 /**
  * Display-only casing fix for three generated phrases in the roadmap file that break the naming
  * rule ("wos CLI", "wos cli", "wos desktop"). Raised as blockers/B-0001-web.md; remove when the file is fixed.
@@ -89,46 +107,18 @@ export function displayCasing(s: string): string {
   return s.replace(/\bwos CLI\b/g, "wOS CLI").replace(/\bwos cli\b/g, "wOS CLI").replace(/\bwos desktop\b/g, "wOS Desktop");
 }
 
-function summaryOf(t: Target, rank: number): TargetSummary {
-  return {
-    slug: t.slug,
-    name: t.name,
-    rank,
-    whatItIs: t.whatItIs,
-    productName: null,
-    repo: "waronsaas/product",
-    progress: { ...ZERO, mappedBp: bp(t.mapped), specifiedBp: bp(t.specified), builtBp: bp(t.built) },
-    roadmap: null,
-    hosted: { available: t.hosted, url: null },
-    selfHostable: t.selfHosted,
-  };
+/** GET /v1/public/targets — rank 0 is warOnSaaS itself, then the Sniper List in order. */
+export async function listTargets(): Promise<TargetSummary[]> {
+  const body = await apiGet("/v1/public/targets", isList);
+  if (!body) throw new Error("public API /v1/public/targets: 404");
+  return [...body.items].sort((a, b) => a.rank - b.rank);
 }
 
-function wosSummary(): TargetSummary {
-  return {
-    slug: wosTarget.slug,
-    name: "warOnSaaS",
-    rank: 0,
-    whatItIs: wosTarget.whatItIs,
-    productName: bundle.roadmap.productName ?? "wOS",
-    repo: "waronsaas/wos",
-    // PROPOSED roadmap: nothing merged, so no roadmap version and every number 0.
-    progress: { ...ZERO },
-    roadmap: null,
-    hosted: { available: false, url: null },
-    selfHostable: false,
-  };
-}
-
-/** GET /v1/public/targets — rank 0 is warOnSaaS itself, then the ten in order. */
-export function listTargets(): TargetSummary[] {
-  return [wosSummary(), ...targets.map((t, i) => summaryOf(t, i + 1))];
-}
-
-/** Sniper List totals over ranks 1..10 (not TGT-00): the floor of the mean of each measure, in bp. */
-export function sniperListTotals() {
-  const ten = listTargets().filter((t) => t.rank > 0);
-  const mean = (k: "mappedBp" | "specifiedBp" | "builtBp") => Math.floor(ten.reduce((n, t) => n + t.progress[k], 0) / ten.length);
+/** Sniper List totals over ranks >= 1 (not TGT-00): the floor of the mean of each measure, in bp. */
+export async function sniperListTotals() {
+  const ten = (await listTargets()).filter((t) => t.rank > 0);
+  const mean = (k: "mappedBp" | "specifiedBp" | "builtBp") =>
+    ten.length ? Math.floor(ten.reduce((n, t) => n + t.progress[k], 0) / ten.length) : 0;
   return {
     targets: ten.length,
     roadmapsOpen: ten.filter((t) => t.roadmap).length,
@@ -138,9 +128,15 @@ export function sniperListTotals() {
   };
 }
 
-/** Site-only display fields (TGT code, category, provisional outline) that the API does not carry. */
-export function siteFields(slug: string): Target | undefined {
-  return slug === wosTarget.slug ? wosTarget : targets.find((t) => t.slug === slug);
+/** Site-only display fields (TGT code, category, provisional outline) that the API does not carry.
+ *  A target the API lists but the site does not know yet still renders, with its rank as its code. */
+export function siteFields(slug: string, rank?: number): Target | undefined {
+  const known = slug === wosTarget.slug ? wosTarget : targets.find((t) => t.slug === slug);
+  if (known || rank === undefined) return known;
+  return {
+    name: slug, id: `TGT-${String(rank).padStart(2, "0")}`, slug, category: "—", whatItIs: "", replacementCovers: [],
+    mapped: 0, specified: 0, built: 0, roadmapPr: null, hosted: false, selfHosted: false,
+  };
 }
 
 function catalogEntry(key: string) {
@@ -192,10 +188,11 @@ function wosFeatures(): { cap: (typeof bundle.roadmap.capabilities)[number]; sum
   );
 }
 
-function wosDetail(): TargetDetail {
+function wosDetail(summary: TargetSummary): TargetDetail {
   const feats = wosFeatures();
   return {
-    ...wosSummary(),
+    ...summary,
+    productName: summary.productName ?? bundle.roadmap.productName ?? "wOS",
     surfaces: bundle.roadmap.surfaces.map((s) => ({
       surface: s.surface,
       status: s.status,
@@ -224,15 +221,24 @@ function wosDetail(): TargetDetail {
   };
 }
 
-/** GET /v1/public/targets/:slug */
-export function getTarget(slug: string): Sourced<TargetDetail> | null {
-  if (slug === wosTarget.slug) return { data: wosDetail(), source: ROADMAP_SOURCE };
-  const i = targets.findIndex((t) => t.slug === slug);
-  if (i < 0) return null;
-  return {
-    data: { ...summaryOf(targets[i], i + 1), surfaces: [], capabilities: [], excluded: [] },
-    source: TARGETS_SOURCE,
-  };
+/** TGT-00's proposed capabilities, straight from the roadmap file (no API call). Used by the drilldown
+ *  below the target level, where every number comes from the file. */
+export function proposedCapabilities(): TargetDetail["capabilities"] {
+  return wosDetail({
+    slug: wosTarget.slug, name: "warOnSaaS", rank: 0, whatItIs: wosTarget.whatItIs, productName: null, repo: "waronsaas/wos",
+    progress: { mappedBp: 0, specifiedBp: 0, builtBp: 0, roadmapVersion: null, inventoryVersion: null, inventoryItems: null, excludedItems: 0, computedAt: null },
+    roadmap: null, hosted: { available: false, url: null }, selfHostable: false,
+  }).capabilities;
+}
+
+/** GET /v1/public/targets/:slug. TGT-00's capabilities come from its proposed roadmap file. */
+export async function getTarget(slug: string): Promise<Sourced<TargetDetail> | null> {
+  const detail = await apiGet(`/v1/public/targets/${encodeURIComponent(slug)}`, isDetail);
+  if (!detail) return null;
+  if (slug === wosTarget.slug && detail.capabilities.length === 0) {
+    return { data: wosDetail(detail), source: ROADMAP_SOURCE };
+  }
+  return { data: detail, source: API_SOURCE(slug) };
 }
 
 /** Per-surface progress of a replacement target on the suite's surfaces (D14). Every value comes
@@ -288,12 +294,13 @@ export const ROADMAP_META = {
 };
 
 /** Everything this module returns, for the /data-source.json snapshot the number check reads. */
-export function snapshot() {
-  const list = listTargets();
+export async function snapshot() {
+  const list = await listTargets();
   return {
+    api: API_BASE,
     targets: list,
-    totals: sniperListTotals(),
-    details: list.map((t) => getTarget(t.slug)?.data),
+    totals: await sniperListTotals(),
+    details: await Promise.all(list.map(async (t) => (await getTarget(t.slug))?.data)),
     features: wosFeatures().map((f) => getFeature(wosTarget.slug, f.summary.key)?.data),
     roadmapMeta: ROADMAP_META,
   };

@@ -1,6 +1,6 @@
 import { ImageResponse } from "next/og";
 import { getTarget, targetStatus, targets } from "@/data/targets";
-import { formatPercent, getTarget as getDetail } from "@/lib/data-source";
+import { formatPercent, getTarget as getDetail, listTargets as listDetails } from "@/lib/data-source";
 import { markDataUrl, ogFont } from "@/lib/og";
 import { OgCard } from "@/lib/ogCard";
 
@@ -8,14 +8,16 @@ export const alt = "warOnSaaS target dossier: target ID, name, and mapped, speci
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
-export function generateStaticParams() {
-  return targets.map((t) => ({ slug: t.slug }));
+export async function generateStaticParams() {
+  return (await listDetails()).filter((t) => t.rank > 0).map((t) => ({ slug: t.slug }));
 }
+
+export const revalidate = 60;
 
 export default async function Image({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const t = getTarget(slug)!;
-  const p = getDetail(slug)!.data.progress;
+  const p = (await getDetail(slug))!.data.progress;
   return new ImageResponse(
     <OgCard
       mark={await markDataUrl()}

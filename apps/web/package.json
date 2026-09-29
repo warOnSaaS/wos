@@ -7,12 +7,13 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "node scripts/sync-shared.mjs && next build && node scripts/check-casing.mjs && node scripts/check-numbers.mjs",
+    "build": "node scripts/sync-shared.mjs && node scripts/gen-log.mjs && next build && node scripts/check-casing.mjs && node scripts/check-numbers.mjs",
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "check:casing": "node scripts/check-casing.mjs",
     "check:numbers": "node scripts/check-numbers.mjs",
-    "check:shared": "node scripts/sync-shared.mjs --check"
+    "check:shared": "node scripts/sync-shared.mjs --check",
+    "gen:log": "node scripts/gen-log.mjs"
   },
   "dependencies": {
     "next": "^16.3.7",

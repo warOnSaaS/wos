@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { formatPercent, getFeature, getTarget, siteFields, SURFACE_LABEL } from "@/lib/data-source";
+import { formatPercent, getFeature, proposedCapabilities, siteFields, SURFACE_LABEL } from "@/lib/data-source";
 import { pageMetadata } from "@/lib/seo";
 import { Section } from "@/components/Section";
 import { Bar } from "@/components/Bar";
@@ -11,17 +11,15 @@ import { SourceNote } from "@/components/SourceNote";
 export const dynamicParams = false;
 
 export function generateStaticParams() {
-  const t = getTarget("waronsaas")!.data;
-  return t.capabilities.flatMap((c) => c.features.map((f) => ({ slug: "waronsaas", capability: c.key, feature: f.key })));
+  return proposedCapabilities().flatMap((c) => c.features.map((f) => ({ slug: "waronsaas", capability: c.key, feature: f.key })));
 }
 
 type Props = { params: Promise<{ slug: string; capability: string; feature: string }> };
 
 function load(slug: string, capability: string, feature: string) {
   const got = getFeature(slug, feature);
-  const target = getTarget(slug);
-  const cap = target?.data.capabilities.find((c) => c.key === capability);
-  return got && target && cap && got.data.capability === capability ? { got, target: target.data, cap } : null;
+  const cap = slug === "waronsaas" ? proposedCapabilities().find((c) => c.key === capability) : undefined;
+  return got && cap && got.data.capability === capability ? { got, target: { name: "warOnSaaS" }, cap } : null;
 }
 
 export async function generateMetadata({ params }: Props) {

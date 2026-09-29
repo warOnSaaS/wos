@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { targets } from "@/data/targets";
-import { formatPercent, getTarget, siteFields, SURFACE_LABEL } from "@/lib/data-source";
+import { formatPercent, getTarget, listTargets, siteFields, SURFACE_LABEL } from "@/lib/data-source";
 import { pageMetadata } from "@/lib/seo";
 import { Section } from "@/components/Section";
 import { Bar } from "@/components/Bar";
@@ -11,15 +10,17 @@ import { SourceNote } from "@/components/SourceNote";
 
 export const dynamicParams = false;
 
-export function generateStaticParams() {
-  return [{ slug: "waronsaas" }, ...targets.map((t) => ({ slug: t.slug }))];
+export async function generateStaticParams() {
+  return (await listTargets()).map((t) => ({ slug: t.slug }));
 }
+
+export const revalidate = 60;
 
 type Props = { params: Promise<{ slug: string }> };
 
 export async function generateMetadata({ params }: Props) {
   const { slug } = await params;
-  const got = getTarget(slug);
+  const got = await getTarget(slug);
   if (!got) return {};
   const t = got.data;
   const meta = pageMetadata({
@@ -33,8 +34,8 @@ export async function generateMetadata({ params }: Props) {
 
 export default async function DrillTarget({ params }: Props) {
   const { slug } = await params;
-  const got = getTarget(slug);
-  const site = siteFields(slug);
+  const got = await getTarget(slug);
+  const site = siteFields(slug, got?.data.rank);
   if (!got || !site) notFound();
   const t = got.data;
 

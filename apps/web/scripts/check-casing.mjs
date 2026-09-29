@@ -38,7 +38,11 @@ const decode = (s) =>
 function renderedText(html) {
   const out = [];
   for (const m of html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)) out.push(m[1]);
-  const noScripts = html.replace(/<script[\s\S]*?<\/script>/g, " ").replace(/<style[\s\S]*?<\/style>/g, " ");
+  // <code data-verbatim> holds quoted facts (commit subjects on /log): shown exactly as written, not site copy.
+  const noScripts = html
+    .replace(/<script[\s\S]*?<\/script>/g, " ")
+    .replace(/<style[\s\S]*?<\/style>/g, " ")
+    .replace(/<code data-verbatim="">[\s\S]*?<\/code>/g, " ");
   for (const m of noScripts.matchAll(/\s(?:content|alt|aria-label|title|placeholder)="([^"]*)"/g)) out.push(decode(m[1]));
   for (const m of noScripts.matchAll(/<title>([^<]*)<\/title>/g)) out.push(decode(m[1]));
   out.push(decode(noScripts.replace(/<[^>]+>/g, " ")));
