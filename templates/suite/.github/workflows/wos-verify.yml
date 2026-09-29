@@ -1,0 +1,109 @@
+# wOS trusted verification for the product repo (waronsaas/suite). Template owned by the verification
+# workstream in the platform repo (templates/suite/); changed in the product repo only by a maintainer PR.
+#
+# SECURITY.md S-20: no secrets, `permissions: contents: read`, no environments, no privileged triggers.
+# B-0005: the REQUIRED job (wos-verify) restores every wos.json toolchainPaths file from the base commit
+# and runs the BASE wos.json install/verify steps, so a candidate cannot redefine what "passing" means.
+# wos-verify-candidate-toolchain (not required) shows how the candidate's own toolchain fares.
+# On pushes to the default branch every feature profile's acceptance suite runs as its own check run
+# named wos-acceptance/<feature>/<target> (profileAcceptanceCheckName, contracts 3.0.0).
+name: wos-verify
+
+on:
+  push:
+    branches: ["wos/candidate/**", main]
+  pull_request:
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wos-verify-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  wos-verify:
+    name: wos-verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      # merge_group: the queue's base; otherwise wos-ci.mjs derives the base from the commit.
+      WOS_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # For pull_request, test the exact reviewed head, not GitHub's synthetic merge commit.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: scope check (same validator as client and control plane)
+        run: node .github/wos/wos-ci.mjs scope
+      - name: restore toolchain from the base commit
+        run: node .github/wos/wos-ci.mjs restore-toolchain
+      - name: base install and verify steps, ABU acceptance checks
+        run: node .github/wos/wos-ci.mjs verify
+
+  wos-verify-candidate-toolchain:
+    name: wos-verify-candidate-toolchain
+    if: github.event_name != 'push' || github.ref_name != github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      WOS_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - id: toolchain
+        name: does the candidate touch toolchain paths?
+        run: node .github/wos/wos-ci.mjs touches-toolchain >> "$GITHUB_OUTPUT"
+      - name: verify with the candidate's own toolchain (informational)
+        if: steps.toolchain.outputs.touched == 'true'
+        run: node .github/wos/wos-ci.mjs verify --candidate-toolchain
+
+  profiles:
+    name: list profile acceptance suites
+    if: github.event_name == 'push' && github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.list.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - id: list
+        run: node .github/wos/wos-ci.mjs profiles >> "$GITHUB_OUTPUT"
+
+  acceptance:
+    name: wos-acceptance/${{ matrix.profile.feature }}/${{ matrix.profile.target }}
+    needs: profiles
+    if: needs.profiles.outputs.matrix != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: ${{ fromJSON(needs.profiles.outputs.matrix) }}
+    env:
+      FEATURE: ${{ matrix.profile.feature }}
+      TARGET: ${{ matrix.profile.target }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node .github/wos/wos-ci.mjs acceptance "$FEATURE" "$TARGET"

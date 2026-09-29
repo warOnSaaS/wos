@@ -8,6 +8,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./vectors": {
+      "types": "./dist/vectors.d.ts",
+      "default": "./dist/vectors.js"
     }
   },
   "files": [
