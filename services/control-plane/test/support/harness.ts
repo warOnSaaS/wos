@@ -627,7 +627,7 @@ export const verdict = (v: "NO_MATERIAL_GAPS" | "MATERIAL_GAPS", priorFindings: 
   priorFindings,
 });
 
-export function webhookHeaders(event: string, body: unknown, delivery = randomUUID()) {
+export function webhookHeaders(event: string, body: unknown, delivery: string = randomUUID()) {
   const raw = JSON.stringify(body);
   return {
     "x-github-event": event,
