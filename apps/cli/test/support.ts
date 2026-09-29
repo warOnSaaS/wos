@@ -15,7 +15,16 @@ export interface Run {
   asked: string[];
 }
 
-export function testIo(lines: string[] = [], opts: { isTTY?: boolean; env?: Record<string, string> } = {}) {
+export interface RunOptions {
+  /** stdin lines, answered in order; null (end of input) after the last. */
+  lines?: string[];
+  /** Or compute each answer when asked (e.g. read the emailed code once it exists). */
+  answer?: (question: string) => string | null;
+  isTTY?: boolean;
+  env?: Record<string, string>;
+}
+
+export function testIo(lines: string[] = [], opts: RunOptions = {}) {
   const out: string[] = [];
   const err: string[] = [];
   const asked: string[] = [];
@@ -24,6 +33,7 @@ export function testIo(lines: string[] = [], opts: { isTTY?: boolean; env?: Reco
     stderr: { write: (s: string) => err.push(s) },
     prompt: async (q) => {
       asked.push(q);
+      if (opts.answer) return opts.answer(q);
       return lines.length ? lines.shift()! : null;
     },
     env: opts.env ?? {},
@@ -32,11 +42,7 @@ export function testIo(lines: string[] = [], opts: { isTTY?: boolean; env?: Reco
   return { io, out: () => out.join(""), err: () => err.join(""), asked };
 }
 
-export async function wos(
-  make: () => Orchestrator,
-  argv: string[],
-  opts: { lines?: string[]; isTTY?: boolean; env?: Record<string, string> } = {},
-): Promise<Run> {
+export async function wos(make: () => Orchestrator, argv: string[], opts: RunOptions = {}): Promise<Run> {
   const t = testIo(opts.lines, opts);
   const code = await runCli(argv, t.io, { orchestrator: make, version: "0.0.0-test", hostname: "test-host" });
   return { code, out: t.out(), err: t.err(), asked: t.asked };
