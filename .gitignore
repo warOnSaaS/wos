@@ -10,3 +10,4 @@ dist-types
 *.tsbuildinfo
 coverage
 release
+services/control-plane/api/
