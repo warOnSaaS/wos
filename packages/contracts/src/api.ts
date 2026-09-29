@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ReviewerSlot } from "./agent-policy.js";
+import { ModelRef, ReviewerSlot } from "./agent-policy.js";
 import {
   AgentRunRecord,
   Changeset,
@@ -529,7 +529,17 @@ export const Routes = {
     idempotent: true,
     params: IdParams,
     query: None,
-    body: z.object({ deviceId: Uuid }),
+    body: z.object({
+      deviceId: Uuid,
+      /**
+       * D15 (contracts 4.3.0, B-0010-github-build): the model to run this lease on, a `ModelRef` from the policy.
+       * Must be in the role's `allowedModels` and attested by the device, else NOT_ELIGIBLE; a second build lease
+       * on the same provider is LIMIT_REACHED. Omitted = the first of the role's `allowedModels` (policy order)
+       * that the device attests, i.e. Opus for builders when claude is attested. The plan's model, modelId,
+       * provider, reasoning and budget are those of the chosen model; the manifest must match the plan.
+       */
+      model: ModelRef.optional(),
+    }),
     response: ClaimResponse,
     errors: ["NOT_FOUND", "NOT_ELIGIBLE", "RESOURCE_LOCKED", "LIMIT_REACHED", "CONFLICT", "UPSTREAM_GITHUB"],
     summary: "LEASE: creates the attempt, leases the abu_build task, takes resource locks, pins the base commit. (wos build <abu-id>)",
@@ -569,7 +579,17 @@ export const Routes = {
     idempotent: true,
     params: IdParams,
     query: None,
-    body: z.object({ deviceId: Uuid }),
+    body: z.object({
+      deviceId: Uuid,
+      /**
+       * D15 (contracts 4.3.0, B-0010-github-build): the model to run this lease on, a `ModelRef` from the policy.
+       * Must be in the role's `allowedModels` and attested by the device, else NOT_ELIGIBLE; a second build lease
+       * on the same provider is LIMIT_REACHED. Omitted = the first of the role's `allowedModels` (policy order)
+       * that the device attests, i.e. Opus for builders when claude is attested. The plan's model, modelId,
+       * provider, reasoning and budget are those of the chosen model; the manifest must match the plan.
+       */
+      model: ModelRef.optional(),
+    }),
     response: ClaimResponse,
     errors: ["NOT_FOUND", "NOT_ELIGIBLE", "LIMIT_REACHED", "CONFLICT", "UPSTREAM_GITHUB"],
     summary: "Claims a roadmap_author / feature_author / abu_revision / conflict_resolution task. (wos roadmap, wos resolve)",
