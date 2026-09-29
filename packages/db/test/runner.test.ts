@@ -29,12 +29,13 @@ async function query<T extends Record<string, unknown>>(url: string, text: strin
 }
 
 const silent = { log: () => {}, error: () => {} };
-const ALL = ["0000_meta", "0001_init", "0002_backstops", "0003_subjects_and_runs"];
+// Integration glue: the list follows the migrations directory (0004 was added at the Wave 1 gate).
+const ALL = ["0000_meta", "0001_init", "0002_backstops", "0003_subjects_and_runs", "0004_manifest_per_lease"];
 
 describe("migration files", () => {
   it("are named NNNN_name.sql and checksummed as sha256", async () => {
     const files = await readMigrations(MIGRATIONS_DIR);
-    expect(files.map((f) => f.version)).toEqual(["0000", "0001", "0002", "0003"]);
+    expect(files.map((f) => f.version)).toEqual(ALL.map((n) => n.slice(0, 4)));
     for (const f of files) expect(f.sha256).toMatch(/^sha256:[0-9a-f]{64}$/);
   });
 });

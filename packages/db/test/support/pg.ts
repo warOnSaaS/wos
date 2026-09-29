@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 /**
  * Scratch databases for tests that need Postgres. Tests run only when WOS_TEST_DATABASE_URL points at a
  * throwaway server's maintenance database (e.g. `postgres://postgres:test@localhost:55441/postgres`,
@@ -62,9 +63,11 @@ export interface MigratedDb extends ScratchDb {
 /** A database with every migration applied, cloned from a per-checksum template, plus wos_app able to log in. */
 export async function createMigratedDb(prefix = "wos_t"): Promise<MigratedDb> {
   const files = await readMigrations(MIGRATIONS_DIR);
-  const fingerprint = files
-    .map((f) => f.sha256.slice(7, 15))
-    .join("")
+  // Integration glue: fingerprint EVERY migration (the old slice kept only the first four, so a fifth
+  // migration silently reused a stale template database).
+  const fingerprint = createHash("sha256")
+    .update(files.map((f) => f.sha256).join(","))
+    .digest("hex")
     .slice(0, 32);
   const template = `wos_tpl_${fingerprint}`;
   const name = `${prefix}_${randomBytes(6).toString("hex")}`;

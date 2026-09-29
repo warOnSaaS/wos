@@ -146,9 +146,13 @@ export class FakeGithub implements GithubPort {
   }
   async readFileAt(repo: string, commit: string, path: string) {
     if (path === "wos.json" && !this.files.has(`${repo}@${commit}:${path}`)) return Buffer.from(JSON.stringify(REPO_MANIFEST));
-    // Integration glue: the real context engine requires the feature contract a build plan selects.
-    if (/^features\/[^/]+\/CONTRACT\.yaml$/.test(path) && !this.files.has(`${repo}@${commit}:${path}`))
-      return Buffer.from(`schema: wos-feature-contract.v1\n# fake contract for ${path}\n`);
+    // Integration glue: the real context engine requires the canonical documents a plan selects; the fake
+    // repo serves a placeholder for any that a test did not put there.
+    if (
+      /^(features\/[^/]+\/(CONTRACT|BUILD-GRAPH)\.yaml|catalog\/[^/]+\.yaml|roadmaps\/[^/]+\/(ROADMAP|INVENTORY)\.yaml)$/.test(path) &&
+      !this.files.has(`${repo}@${commit}:${path}`)
+    )
+      return Buffer.from(`# placeholder for ${path}\n`);
     return this.files.get(`${repo}@${commit}:${path}`) ?? null;
   }
   async listTreePaths(repo: string, commit: string) {

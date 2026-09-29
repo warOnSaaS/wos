@@ -597,13 +597,10 @@ export const workHandlers: Pick<
         });
       const [dupe] = await tx<
         { id: string; lease_id: string }[]
-      >`select id, lease_id from wos.context_manifests where manifest_sha256 = ${manifest.manifestSha256}`;
-      if (dupe) {
-        if (dupe.lease_id === l.id) return { accepted: true as const, manifestId: dupe.id };
-        throw new ApiFailure("MANIFEST_REJECTED", "this manifest was already recorded for another lease", {
-          reasons: ["duplicate manifest"],
-        });
-      }
+      >`select id, lease_id from wos.context_manifests where manifest_sha256 = ${manifest.manifestSha256} and lease_id = ${l.id}`;
+      // Integration glue (migration 0004): a deterministic engine gives a re-claimed task the same manifest;
+      // manifests are unique per lease, so only a repeat on THIS lease is a replay.
+      if (dupe) return { accepted: true as const, manifestId: dupe.id };
       const manifestId = uuidv7();
       await tx`
         insert into wos.context_manifests (id, lease_id, task_id, account_id, role, model_id, reasoning, context_format_version, manifest, manifest_sha256)

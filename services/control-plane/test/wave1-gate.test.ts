@@ -235,7 +235,11 @@ describe.skipIf(!HAS_DB)("Wave 1 gate: contracts 3.0.0 shapes and rulings", () =
   });
 
   it("a profile-acceptance check run moves a fully merged feature to BUILT 10000; toolchain changes are flagged on the PR", async () => {
-    const seeded = await seedFeature(h.owner, { feature: "accept", target: "zoom", abus: [{ n: "01", write: ["modules/accept/**"] }] });
+    const seeded = await seedFeature(h.owner, {
+      feature: "accept",
+      target: "zoom",
+      abus: [{ n: "01", write: ["modules/accept/**"], resources: [{ key: "toolchain:modules/accept/package.json", mode: "exclusive" }] }],
+    });
     const builder = await h.contributor("accept-builder");
     const b = await buildAndSubmit(h, builder, seeded.abus.get("01")!, [
       { path: "modules/accept/index.ts", content: "export {};" },
