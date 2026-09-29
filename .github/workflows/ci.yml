@@ -75,4 +75,4 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm run build
-      - run: npx vitest run packages/verification/test/adversarial
+      - run: npx vitest run tests/adversarial

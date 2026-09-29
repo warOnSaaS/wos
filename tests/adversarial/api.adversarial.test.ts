@@ -5,8 +5,8 @@
  */
 import { Routes } from "@waronsaas/contracts";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { scopesOverlap } from "../../src/index.js";
-import { type del, signedChangeset, upsert } from "../../src/vectors.js";
+import { scopesOverlap } from "../../packages/verification/src/index.js";
+import { type del, signedChangeset, upsert } from "../../packages/verification/src/vectors.js";
 import { type Contributor, type ControlPlaneHarness, HARNESS_REASON, loadHarness } from "./support/harness.js";
 
 const h = await loadHarness();

@@ -7,10 +7,10 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { REPO_ROOT } from "../support/git-fixture.js";
+import { REPO_ROOT } from "../../packages/verification/test/support/git-fixture.js";
 
 type Status = "now" | "pending" | "none";
-export const COVERAGE: Record<string, { status: Status; where: string }> = {
+const COVERAGE: Record<string, { status: Status; where: string }> = {
   "S-1": { status: "none", where: "control-plane DONE (3) sign-in tests (token reuse, expiry, sixth try, hash-only)" },
   "S-2": { status: "pending", where: "api.adversarial: wrong poll secret" },
   "S-3": { status: "pending", where: "api.adversarial: identical start responses" },
@@ -35,7 +35,10 @@ export const COVERAGE: Record<string, { status: Status; where: string }> = {
     status: "now",
     where: "db.adversarial self-review trigger (now); pipeline.adversarial checkEligibility, api.adversarial claimReview (pending)",
   },
-  "S-13": { status: "none", where: "control-plane: unsigned agent-run stored signature_valid=false and blocks qualification" },
+  "S-13": {
+    status: "now",
+    where: "db.adversarial: a review citing an agent run with signature_valid=false or of another lease is rejected (0003)",
+  },
   "S-14": { status: "now", where: "pipeline.adversarial policy data (now) and buildInvocation per role (pending)" },
   "S-15": {
     status: "now",
@@ -62,7 +65,20 @@ export const COVERAGE: Record<string, { status: Status; where: string }> = {
   "S-28": { status: "none", where: "control-plane/rewards audit task (GAPS.md rate decision)" },
   "S-29": { status: "none", where: "desktop workstream (Electron hardening tests)" },
   "S-30": { status: "none", where: "no release workflow exists yet (desktop + verification, Wave 2)" },
-  "S-31": { status: "none", where: "maintainer actions are control-plane; bootstrap re-entry is a KNOWN GAP test (B-0003)" },
+  "S-31": {
+    status: "now",
+    where:
+      "db.adversarial: bootstrap one-way, settings undeletable, bootstrap labels refused after exit (maintainer actions: control-plane)",
+  },
+  "S-32": {
+    status: "now",
+    where: "primitives.test no local hashing; vectors signed/verified via contracts canonical; db.adversarial device key encodings",
+  },
+  "S-33": {
+    status: "now",
+    where:
+      "vectors TOOLCHAIN_WITHOUT_RESOURCE; templates.test base-restore, base wos.json, candidate-toolchain job, acceptance check names",
+  },
 };
 
 describe("security-hardening: every SECURITY.md control is mapped", () => {

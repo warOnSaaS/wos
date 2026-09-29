@@ -19,8 +19,8 @@ import {
 import { verifyWebhookSignature } from "@waronsaas/github/app";
 import { captureChanges } from "@waronsaas/github/local";
 import { afterAll, describe, expect, it } from "vitest";
-import { TempRepo } from "../support/git-fixture.js";
-import { implemented, implementedAsync, pendingReason } from "../support/pending.js";
+import { TempRepo } from "../../packages/verification/test/support/git-fixture.js";
+import { implemented, implementedAsync, pendingReason } from "../../packages/verification/test/support/pending.js";
 
 const policy = AGENT_POLICY_V1;
 const provider = (id: string) => policy.providers.find((p) => p.id === id)!;
@@ -220,12 +220,25 @@ describe(`S-12/S-24/S-25: checkEligibility refuses every independence attack${pe
 });
 
 // ---- S-14: buildInvocation (context-policy) ------------------------------------------------------------
+const TASK_KIND: Record<AgentRole, ContextPlan["taskKind"]> = {
+  roadmap_author: "roadmap_author",
+  roadmap_reviewer_astra: "roadmap_review",
+  roadmap_reviewer_fable: "roadmap_review",
+  feature_author: "feature_author",
+  feature_reviewer_astra: "feature_review",
+  feature_reviewer_fable: "feature_review",
+  builder: "abu_build",
+  implementation_reviewer_astra: "implementation_review",
+  implementation_reviewer_fable: "implementation_review",
+  conflict_resolver: "conflict_resolution",
+};
 const planFor = (role: AgentRole): ContextPlan => {
   const rp = getRolePolicy(role);
   const model = policy.models.find((m) => m.ref === rp.allowedModels[0])!;
   return {
     schema: "wos-context-plan.v1",
     taskId: "0192ab3c-0000-7000-8000-000000000001",
+    taskKind: TASK_KIND[role],
     leaseId: "0192ab3c-0000-7000-8000-000000000002",
     role,
     model: model.ref,
@@ -234,7 +247,7 @@ const planFor = (role: AgentRole): ContextPlan => {
     reasoning: model.maxReasoning,
     policyVersion: policy.policyVersion,
     contextFormatVersion: "ctx-1",
-    target: "salesforce",
+    target: null,
     feature: "contacts",
     abu: role === "builder" ? "contacts#04" : null,
     attemptId: null,
