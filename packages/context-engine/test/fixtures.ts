@@ -1,5 +1,12 @@
 import { createHash } from "node:crypto";
-import { AGENT_POLICY_V1, type AgentRole, type ArtifactSelector, type ContextPlan, type ReasoningLevel } from "@waronsaas/contracts";
+import {
+  AGENT_POLICY_V1,
+  type AgentRole,
+  type ArtifactSelector,
+  type ContextPlan,
+  type ReasoningLevel,
+  type TaskKind,
+} from "@waronsaas/contracts";
 import picomatch from "picomatch";
 import { PROMPT_TEMPLATE_BY_ROLE, renderPolicyDocument, type SnapshotReader, sha256Of } from "../src/index.js";
 
@@ -33,7 +40,22 @@ export interface FakeSnapshot {
   docs: Record<string, string | Uint8Array>;
   /** Shuffle listFiles output (the engine must sort it itself). */
   shuffleSeed?: number;
+  /** `local:verification-output` bytes, when this is a local repair run. */
+  localOutput?: string;
 }
+
+export const TASK_KIND_BY_ROLE: Record<AgentRole, TaskKind> = {
+  roadmap_author: "roadmap_author",
+  roadmap_reviewer_astra: "roadmap_review",
+  roadmap_reviewer_fable: "roadmap_review",
+  feature_author: "feature_author",
+  feature_reviewer_astra: "feature_review",
+  feature_reviewer_fable: "feature_review",
+  builder: "abu_build",
+  implementation_reviewer_astra: "implementation_review",
+  implementation_reviewer_fable: "implementation_review",
+  conflict_resolver: "conflict_resolution",
+};
 
 export interface CountingReader extends SnapshotReader {
   reads: string[];
@@ -65,6 +87,9 @@ export function makeReader(snap: FakeSnapshot): CountingReader {
       }
       return out;
     },
+    async readLocalDocument() {
+      return snap.localOutput === undefined ? null : enc.encode(snap.localOutput);
+    },
     async readServerDocument(ref) {
       const v = snap.docs[ref];
       if (v === undefined) throw new Error(`no server document ${ref}`);
@@ -89,6 +114,7 @@ export function planFor(role: AgentRole, artifacts: ArtifactSelector[], override
   return {
     schema: "wos-context-plan.v1",
     taskId: "0190f000-0000-7000-8000-000000000001",
+    taskKind: TASK_KIND_BY_ROLE[role],
     leaseId: "0190f000-0000-7000-8000-000000000002",
     role,
     model: model.ref,
@@ -97,8 +123,9 @@ export function planFor(role: AgentRole, artifacts: ArtifactSelector[], override
     reasoning,
     policyVersion: policy.policyVersion,
     contextFormatVersion: "ctx-1",
-    target: "salesforce",
-    feature: "contacts",
+    // Roadmap work is scoped to one app; everything else to the shared feature (contracts 3.0.0).
+    target: role.startsWith("roadmap_") ? "salesforce" : null,
+    feature: role.startsWith("roadmap_") ? null : "contacts",
     abu: impl ? "contacts#04" : null,
     attemptId: impl ? "0190f000-0000-7000-8000-000000000003" : null,
     roundId: rp.reviewerSlot ? ROUND : null,
@@ -160,5 +187,6 @@ export function scenario(role: AgentRole): { plan: ContextPlan; snap: FakeSnapsh
       { kind: "repo_glob", repo: REPO, glob: "catalog/*.yaml", required: false },
     ];
   }
-  return { plan: planFor(role, artifacts), snap: { files, docs } };
+  const taskKind = role === "builder" ? "abu_revision" : TASK_KIND_BY_ROLE[role];
+  return { plan: planFor(role, artifacts, { taskKind }), snap: { files, docs } };
 }

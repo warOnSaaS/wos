@@ -14,7 +14,7 @@ describe("context-engine determinism (DONE 1)", () => {
         expect(again.prompt === first.prompt, `${role} run ${run} prompt`).toBe(true);
         expect(JSON.stringify(again.manifest), `${role} run ${run} manifest`).toBe(JSON.stringify(first.manifest));
       }
-      expect(checkManifestAgainstPlan(first.manifest, plan), role).toEqual({ ok: true });
+      expect(checkManifestAgainstPlan(first.manifest, plan, { roundNumber: 2 }), role).toEqual({ ok: true });
       expect(first.manifest.renderedPromptSha256).toBe(sha256Of(first.prompt));
       expect(first.manifest.manifestSha256).toBe(computeManifestSha256(first.manifest));
     }

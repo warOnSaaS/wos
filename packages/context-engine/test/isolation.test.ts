@@ -1,6 +1,6 @@
 import type { AgentRole, ArtifactSelector, ContextManifest } from "@waronsaas/contracts";
 import { describe, expect, it } from "vitest";
-import { buildContext, checkManifestAgainstPlan, computeManifestSha256, isCurrentRoundVerdictRef, sha256Of } from "../src/index.js";
+import { buildContext, checkManifestAgainstPlan, computeManifestSha256, isReservedVerdictRef, sha256Of } from "../src/index.js";
 import { COMMIT, docSelector, makeReader, planFor, policy, policyDoc, prng, REPO } from "./fixtures.js";
 
 const REVIEWERS: AgentRole[] = [
@@ -31,25 +31,17 @@ function generateRound(seed: number) {
   const slot = role.endsWith("astra") ? "astra" : "fable";
   const otherSlot = slot === "astra" ? "fable" : "astra";
   const roundId = uuid(r);
-  const priorRoundId = uuid(r);
+  const roundNumber = 2 + Math.floor(r() * 5);
+  const subject = uuid(r);
   const secret = `SEALED-VERDICT-${seed}-${Math.floor(r() * 1e9)}`;
   const currentVerdictText = JSON.stringify({ verdict: r() < 0.5 ? "MATERIAL_GAPS" : "NO_MATERIAL_GAPS", summary: secret });
-  const verdictRefs = [
-    `wos:verdict/${roundId}/${otherSlot}`,
-    `wos:verdicts/${roundId}@${otherSlot}`,
-    `wos:review/${roundId}/${otherSlot}`,
-    `wos:reviews/${otherSlot}/${roundId}`,
-  ];
+  // The reserved sealed-verdict form, for the other slot and (sometimes) this slot too.
+  const verdictRefs = [`wos:verdict/${roundId}/${otherSlot}`, `wos:verdict/${roundId}/${slot}`];
   const pol = policyDoc(role);
-  const task = { ref: `wos:task/${uuid(r)}`, text: `{"round":${1 + Math.floor(r() * 5)}}` };
-  const prior = { ref: `wos:findings/${uuid(r)}@1`, text: `prior revealed round ${priorRoundId}` };
-  const priorVerdict = { ref: `wos:verdict/${priorRoundId}/${otherSlot}`, text: "revealed earlier verdict" };
-  const docs: Record<string, string> = {
-    [pol.ref]: pol.text,
-    [task.ref]: task.text,
-    [prior.ref]: prior.text,
-    [priorVerdict.ref]: priorVerdict.text,
-  };
+  const task = { ref: `wos:task/${uuid(r)}`, text: `{"round":${roundNumber}}` };
+  const prior = { ref: `wos:findings/${subject}@${roundNumber - 1}`, text: `prior revealed round ${roundNumber - 1}` };
+  const current = { ref: `wos:findings/${subject}@${roundNumber}`, text: `current round ledger ${secret}` };
+  const docs: Record<string, string> = { [pol.ref]: pol.text, [task.ref]: task.text, [prior.ref]: prior.text, [current.ref]: current.text };
   const files: Record<string, string> = { "features/contacts/CONTRACT.yaml": "feature: contacts\n", "wos.json": "{}\n" };
 
   const selectors: ArtifactSelector[] = [docSelector(pol.ref, pol.text), docSelector(task.ref, task.text)];
@@ -57,7 +49,6 @@ function generateRound(seed: number) {
     { kind: "repo_file", repo: REPO, path: "features/contacts/CONTRACT.yaml", required: true },
     { kind: "repo_file", repo: REPO, path: "wos.json", required: true },
     docSelector(prior.ref, prior.text, r() < 0.5),
-    docSelector(priorVerdict.ref, priorVerdict.text, false),
   ];
   const injections = verdictRefs.filter(() => r() < 0.6);
   if (injections.length === 0) injections.push(verdictRefs[0] as string);
@@ -65,30 +56,39 @@ function generateRound(seed: number) {
     docs[ref] = currentVerdictText;
     extras.push(docSelector(ref, currentVerdictText, false));
   }
+  // A buggy or malicious plan may also carry the current round's (unrevealed) finding ledger.
+  const plansCurrentFindings = r() < 0.3;
+  if (plansCurrentFindings) extras.push(docSelector(current.ref, current.text, false));
   // Shuffle the non-policy selectors: the verdict may appear anywhere in plan order.
   for (let i = extras.length - 1; i > 0; i--) {
     const j = Math.floor(r() * (i + 1));
     [extras[i], extras[j]] = [extras[j] as ArtifactSelector, extras[i] as ArtifactSelector];
   }
-  const excludeGlobs = r() < 0.5 ? [`wos:verdict*/${roundId}/**`] : [];
+  const excludeGlobs = r() < 0.5 ? [`wos:verdict/${roundId}/**`] : [];
   const plan = planFor(role, [...selectors, ...extras], { roundId, excludeGlobs });
-  return { plan, reader: makeReader({ files, docs }), secret, roundId, injections, priorVerdictRef: priorVerdict.ref };
+  return { plan, reader: makeReader({ files, docs }), secret, roundId, roundNumber, injections, priorRef: prior.ref, plansCurrentFindings };
 }
 
 describe("context-engine reviewer isolation (DONE 2, SECURITY.md S-11)", () => {
-  it("context-engine R-isolation: a reviewer manifest never contains the other slot's current verdict (500 generated rounds)", async () => {
+  it("context-engine R-isolation: a reviewer manifest never contains the other slot's current verdict (500 generated rounds; unrevealed ledgers refused)", async () => {
     for (let seed = 1; seed <= 500; seed++) {
       const g = generateRound(seed);
       const { manifest, prompt } = await buildContext(g.plan, g.reader, policy);
       const refs = manifest.artifacts.map((a) => a.ref);
-      for (const ref of refs) expect(isCurrentRoundVerdictRef(ref, g.roundId), `seed ${seed}: ${ref}`).toBe(false);
-      expect(prompt.includes(g.secret), `seed ${seed}: sealed text leaked into the prompt`).toBe(false);
+      for (const ref of refs) expect(isReservedVerdictRef(ref), `seed ${seed}: ${ref}`).toBe(false);
       for (const ref of g.injections) {
         expect(manifest.excluded, `seed ${seed}`).toContainEqual({ ref, reason: "other_slot_current_round" });
       }
       // Earlier, revealed rounds stay visible (mayViewPriorRounds).
-      expect(refs, `seed ${seed}`).toContain(g.priorVerdictRef);
-      expect(checkManifestAgainstPlan(manifest, g.plan), `seed ${seed}`).toEqual({ ok: true });
+      expect(refs, `seed ${seed}`).toContain(g.priorRef);
+      const check = checkManifestAgainstPlan(manifest, g.plan, { roundNumber: g.roundNumber });
+      if (g.plansCurrentFindings) {
+        // The current round's ledger is unrevealed: the server refuses the manifest (CONTEXT-PROTOCOL.md section 2).
+        expect(!check.ok && check.reasons.some((x) => x.startsWith("CURRENT_ROUND_FINDINGS")), `seed ${seed}`).toBe(true);
+      } else {
+        expect(prompt.includes(g.secret), `seed ${seed}: sealed text leaked into the prompt`).toBe(false);
+        expect(check, `seed ${seed}`).toEqual({ ok: true });
+      }
     }
   });
 
@@ -115,9 +115,9 @@ describe("context-engine reviewer isolation (DONE 2, SECURITY.md S-11)", () => {
         budget: { ...manifest.budget, estimatedTokens: manifest.budget.estimatedTokens + 44 },
       };
       forged.manifestSha256 = computeManifestSha256(forged);
-      const result = checkManifestAgainstPlan(forged, g.plan);
+      const result = checkManifestAgainstPlan(forged, g.plan, { roundNumber: g.roundNumber });
       expect(result.ok, `seed ${seed}`).toBe(false);
-      expect(!result.ok && result.reasons.some((x) => x.startsWith("OTHER_SLOT_CURRENT_ROUND")), `seed ${seed}`).toBe(true);
+      expect(!result.ok && result.reasons.some((x) => x.startsWith("RESERVED_VERDICT_REF")), `seed ${seed}`).toBe(true);
     }
   });
 
@@ -136,7 +136,7 @@ describe("context-engine reviewer isolation (DONE 2, SECURITY.md S-11)", () => {
     const asked: string[] = [];
     const reader = { ...g.reader, readServerDocument: (ref: string) => (asked.push(ref), g.reader.readServerDocument(ref)) };
     await buildContext(g.plan, reader, policy);
-    for (const ref of asked) expect(isCurrentRoundVerdictRef(ref, g.roundId)).toBe(false);
+    for (const ref of asked) expect(isReservedVerdictRef(ref)).toBe(false);
   });
 
   it("both slots of one round receive the same artifact set", async () => {

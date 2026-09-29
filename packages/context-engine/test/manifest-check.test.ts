@@ -1,6 +1,7 @@
 import type { ContextManifest } from "@waronsaas/contracts";
 import { describe, expect, it } from "vitest";
 import { buildContext, checkManifestAgainstPlan, computeManifestSha256, sha256Of } from "../src/index.js";
+import { computeManifestSha256 as contractsManifestSha256 } from "@waronsaas/contracts/canonical";
 import { makeReader, policy, scenario } from "./fixtures.js";
 
 async function built(role: Parameters<typeof scenario>[0] = "builder") {
@@ -23,7 +24,7 @@ describe("context-engine checkManifestAgainstPlan (CONTEXT-PROTOCOL.md section 7
   it("accepts the manifest the engine built for every role", async () => {
     for (const role of ["builder", "roadmap_author", "feature_reviewer_astra", "conflict_resolver"] as const) {
       const { plan, manifest } = await built(role);
-      expect(checkManifestAgainstPlan(manifest, plan), role).toEqual({ ok: true });
+      expect(checkManifestAgainstPlan(manifest, plan, { roundNumber: 2 }), role).toEqual({ ok: true });
     }
   });
 
@@ -142,6 +143,101 @@ describe("context-engine checkManifestAgainstPlan (CONTEXT-PROTOCOL.md section 7
     const { plan, manifest } = await built();
     const strict = { ...plan, excludeGlobs: ["wos.json"] };
     expect(reasonsOf(checkManifestAgainstPlan(manifest, strict))).toContain("EXCLUDED_ARTIFACT_INCLUDED");
+  });
+
+  it("rejects any wos:verdict/ ref, even one the plan (wrongly) selected", async () => {
+    const { plan, manifest } = await built();
+    const ref = `wos:verdict/${plan.taskId}/astra`;
+    const withSel = {
+      ...plan,
+      artifacts: [...plan.artifacts, { kind: "server_document" as const, ref, sha256: sha256Of("v"), required: false }],
+    };
+    const forged = tamper(manifest, (m) => {
+      m.artifacts.push({ kind: "server_document", ref, gitBlobOid: null, sha256: sha256Of("v"), bytes: 1, estTokens: 41 });
+      m.budget.estimatedTokens += 41;
+    });
+    expect(reasonsOf(checkManifestAgainstPlan(forged, withSel))).toContain("RESERVED_VERDICT_REF");
+  });
+
+  it("rejects a server document ref that is not in the plan", async () => {
+    const { plan, manifest } = await built();
+    const forged = tamper(manifest, (m) => {
+      m.artifacts.push({
+        kind: "server_document",
+        ref: "wos:catalog-index@abc",
+        gitBlobOid: null,
+        sha256: sha256Of("c"),
+        bytes: 1,
+        estTokens: 41,
+      });
+      m.budget.estimatedTokens += 41;
+    });
+    expect(reasonsOf(checkManifestAgainstPlan(forged, plan))).toContain("UNSELECTED_ARTIFACT");
+  });
+
+  it("reviewer plans: findings only for revealed rounds (k <= round - 1); the round number is required to accept them", async () => {
+    const { plan, manifest } = await built("implementation_reviewer_astra"); // carries wos:findings/<attempt>@1
+    expect(checkManifestAgainstPlan(manifest, plan, { roundNumber: 2 })).toEqual({ ok: true });
+    expect(reasonsOf(checkManifestAgainstPlan(manifest, plan, { roundNumber: 1 }))).toContain("CURRENT_ROUND_FINDINGS");
+    expect(reasonsOf(checkManifestAgainstPlan(manifest, plan))).toContain("ROUND_NUMBER_REQUIRED");
+    // Builders see the ledger of the round they are answering; the rule is for reviewers only.
+    const b = await built("builder");
+    expect(checkManifestAgainstPlan(b.manifest, b.plan)).toEqual({ ok: true });
+  });
+
+  it("local documents: only local:verification-output, only when planned", async () => {
+    const { plan, snap } = scenario("builder");
+    const repair = {
+      ...plan,
+      artifacts: [
+        ...plan.artifacts,
+        { kind: "local_document" as const, ref: "local:verification-output" as const, required: false as const },
+      ],
+    };
+    const { manifest } = await buildContext(
+      repair,
+      makeReader({ ...snap, localOutput: "FAIL modules/contacts/test/contacts.test.ts\n" }),
+      policy,
+    );
+    const local = manifest.artifacts.find((a) => a.kind === "local_document")!;
+    expect(local).toMatchObject({
+      ref: "local:verification-output",
+      gitBlobOid: null,
+      sha256: sha256Of("FAIL modules/contacts/test/contacts.test.ts\n"),
+    });
+    expect(checkManifestAgainstPlan(manifest, repair)).toEqual({ ok: true });
+    // The same manifest against the plan without the local selector is refused.
+    expect(reasonsOf(checkManifestAgainstPlan(manifest, plan))).toContain("UNSELECTED_ARTIFACT");
+    const other = tamper(manifest, (m) => {
+      const a = m.artifacts.find((x) => x.kind === "local_document")!;
+      a.ref = "local:shell-history";
+    });
+    expect(reasonsOf(checkManifestAgainstPlan(other, repair))).toContain("LOCAL_DOCUMENT_NOT_ALLOWED");
+    // Without the local output (first run) the optional selector is recorded missing.
+    const first = await buildContext(repair, makeReader(snap), policy);
+    expect(first.manifest.excluded).toContainEqual({ ref: "local:verification-output", reason: "missing_optional" });
+  });
+
+  it("the task kind comes from the plan, never inferred", async () => {
+    const { plan, snap } = scenario("builder");
+    const asBuild = { ...plan, taskKind: "abu_build" as const };
+    const { manifest } = await buildContext(asBuild, makeReader(snap), policy);
+    expect(manifest.task.kind).toBe("abu_build");
+    expect(reasonsOf(checkManifestAgainstPlan(manifest, plan))).toContain("FIELD_MISMATCH");
+  });
+
+  it("manifest hashes equal computeManifestSha256 from @waronsaas/contracts/canonical", async () => {
+    for (const role of ["builder", "roadmap_reviewer_fable", "feature_author"] as const) {
+      const { manifest } = await built(role);
+      expect(manifest.manifestSha256).toBe(contractsManifestSha256(manifest));
+      expect(manifest.renderedPromptSha256).toMatch(/^sha256:[0-9a-f]{64}$/);
+    }
+  });
+
+  it("feature work carries target null; roadmap work carries feature null", async () => {
+    expect((await built("feature_reviewer_fable")).manifest).toMatchObject({ target: null, feature: "contacts" });
+    expect((await built("builder")).manifest).toMatchObject({ target: null, feature: "contacts", abu: "contacts#04" });
+    expect((await built("roadmap_author")).manifest).toMatchObject({ target: "salesforce", feature: null });
   });
 
   it("rejects a malformed manifest by shape", () => {

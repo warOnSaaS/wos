@@ -3,8 +3,7 @@
  * Same inputs => byte-identical prompt and manifest. No clock, no randomness, no environment reads, no
  * filesystem: repository bytes come only through the SnapshotReader (CONTEXT-PROTOCOL.md).
  */
-import { createHash } from "node:crypto";
-import { canonicalJson, checkPlanAgainstPolicy } from "@waronsaas/agent-policy";
+import { checkPlanAgainstPolicy } from "@waronsaas/agent-policy";
 import {
   type AgentRole,
   CONTEXT_FORMAT_VERSION,
@@ -15,11 +14,13 @@ import {
   type ArtifactSelector,
   type ManifestArtifact,
   type RolePolicy,
-  type TaskKind,
 } from "@waronsaas/contracts";
+import { computeManifestSha256, sha256Of } from "@waronsaas/contracts/canonical";
 import picomatch from "picomatch";
 import { TEMPLATE_SOURCES } from "./templates.generated.js";
 
+/** The one canonical hashing module (contracts 2.0.0, rules C-1..C-7); re-exported, never reimplemented. */
+export { canonicalJson, canonicalSha256, computeManifestSha256, sha256Of } from "@waronsaas/contracts/canonical";
 export { builderArtifactSelectors, type BuilderSelectorInput } from "./selectors.js";
 
 /** Read-only view of the source repo at the plan's source commit, plus server documents. */
@@ -29,6 +30,11 @@ export interface SnapshotReader {
   /** Sorted list of paths matching a glob at the commit. */
   listFiles(glob: string): Promise<string[]>;
   readServerDocument(ref: string): Promise<Uint8Array>;
+  /**
+   * Local documents (CONTEXT-PROTOCOL.md section 2): V1 has only `local:verification-output`, the failing
+   * local checks' output for a builder repair run. Optional; absent or null = the document is not there.
+   */
+  readLocalDocument?(ref: "local:verification-output"): Promise<Uint8Array | null>;
 }
 
 export interface BuiltContext {
@@ -68,28 +74,9 @@ export class ContextBuildError extends Error {
 // Hashing and estimates
 // ---------------------------------------------------------------------------------------------
 
-/** "sha256:<hex>" of raw bytes, or of a string's UTF-8 encoding. */
-export function sha256Of(data: Uint8Array | string): Sha256 {
-  const hash = createHash("sha256");
-  if (typeof data === "string") hash.update(data, "utf8");
-  else hash.update(data);
-  return `sha256:${hash.digest("hex")}`;
-}
-
-/** RFC 8785 canonical JSON + sha256, shared by manifests, agent runs and provenance. */
-export function canonicalSha256(value: unknown): string {
-  return sha256Of(canonicalJson(value));
-}
-
 /** Conservative token estimate used for every budget decision (policy.tokenEstimator). */
 export function estimateTokens(text: string, policy: AgentPolicyDocument): number {
   return Math.ceil(text.length / policy.tokenEstimator.charsPerToken) + policy.tokenEstimator.perArtifactOverheadTokens;
-}
-
-/** `manifestSha256` for a manifest: sha256 of JCS(manifest without manifestSha256). */
-export function computeManifestSha256(manifest: Omit<ContextManifest, "manifestSha256"> | ContextManifest): Sha256 {
-  const { manifestSha256: _ignored, ...rest } = manifest as ContextManifest;
-  return canonicalSha256(rest) as Sha256;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -118,32 +105,6 @@ export function templateSource(id: string): string {
 
 export function templateSha256(id: string): Sha256 {
   return sha256Of(templateSource(id));
-}
-
-/**
- * The manifest's task kind, derived from the plan (ContextPlan carries no task kind; see
- * B-0001-context-policy). A builder plan that carries a finding ledger is a revision.
- */
-export function taskKindForPlan(plan: Pick<ContextPlan, "role" | "artifacts">): TaskKind {
-  switch (plan.role) {
-    case "roadmap_author":
-      return "roadmap_author";
-    case "roadmap_reviewer_astra":
-    case "roadmap_reviewer_fable":
-      return "roadmap_review";
-    case "feature_author":
-      return "feature_author";
-    case "feature_reviewer_astra":
-    case "feature_reviewer_fable":
-      return "feature_review";
-    case "implementation_reviewer_astra":
-    case "implementation_reviewer_fable":
-      return "implementation_review";
-    case "conflict_resolver":
-      return "conflict_resolution";
-    case "builder":
-      return plan.artifacts.some((a) => a.kind === "server_document" && a.ref.startsWith("wos:findings/")) ? "abu_revision" : "abu_build";
-  }
 }
 
 /** Server ref of a role's policy document. */
@@ -181,15 +142,22 @@ function rolePolicy(role: AgentRole, policy: AgentPolicyDocument): RolePolicy {
 export const SECRET_PATTERNS: readonly string[] = ["**/.env*", "**/*.pem", "**/*.key", "**/id_*"];
 const isSecretPath = picomatch([...SECRET_PATTERNS], { dot: true });
 
+/** Reserved prefix of sealed verdicts, `wos:verdict/<roundId>/<slot>` (CONTEXT-PROTOCOL.md section 2). */
+export const RESERVED_VERDICT_PREFIX = "wos:verdict/";
+
 /**
- * True when a server ref is a review verdict of the given (current) round. Such a document is never
- * placed in a reviewer's context (exclusion reason `other_slot_current_round`). V1 convention for
- * verdict refs: `wos:verdict/<roundId>/<slot>` (also `wos:review/...`); see B-0001-context-policy.
+ * True for the reserved sealed-verdict ref form. Such a document is never planned, fetched or placed
+ * in a context: the engine records it as `other_slot_current_round` and the server rejects any manifest
+ * that carries one. Exact prefix only (contracts 2.0.0, B-0001-context-policy).
  */
-export function isCurrentRoundVerdictRef(ref: string, roundId: string | null): boolean {
-  if (roundId === null) return false;
-  if (!/^wos:(verdicts?|reviews?)\//.test(ref)) return false;
-  return ref.split(/[/@]/).includes(roundId);
+export function isReservedVerdictRef(ref: string): boolean {
+  return ref.startsWith(RESERVED_VERDICT_PREFIX);
+}
+
+/** The round number k of a `wos:findings/<subject>@<k>` ref, or null for any other ref. */
+export function findingsRound(ref: string): number | null {
+  const m = /^wos:findings\/.+@(\d+)$/.exec(ref);
+  return m ? Number(m[1]) : null;
 }
 
 function globMatcher(globs: string[]): (s: string) => boolean {
@@ -318,6 +286,32 @@ async function resolveEntries(plan: ContextPlan, reader: SnapshotReader): Promis
       const listed = await reader.listFiles(selector.glob);
       const paths = [...new Set(listed.filter((p) => matches(p)))].sort(compareBytewise);
       for (const path of paths) await addRepoPath(path, selector.required, true);
+    } else if (selector.kind === "local_document") {
+      const key = `local:${selector.ref}`;
+      if (byKey.has(key)) continue;
+      const entry: Entry = {
+        key,
+        manifestKind: "local_document",
+        ref: selector.ref,
+        required: false,
+        soft: true,
+        gitBlobOid: null,
+        text: null,
+        sha256: null,
+        bytes: 0,
+        exclusion: null,
+      };
+      byKey.set(key, entry);
+      entries.push(entry);
+      const bytes = reader.readLocalDocument ? await reader.readLocalDocument(selector.ref) : null;
+      if (bytes === null) {
+        entry.exclusion = "missing_optional";
+        continue;
+      }
+      entry.sha256 = sha256Of(bytes);
+      entry.bytes = bytes.byteLength;
+      entry.text = decodeText(bytes);
+      if (entry.text === null) entry.exclusion = "binary";
     } else {
       const key = `server:${selector.ref}`;
       const seen = byKey.get(key);
@@ -342,7 +336,7 @@ async function resolveEntries(plan: ContextPlan, reader: SnapshotReader): Promis
       };
       byKey.set(key, entry);
       entries.push(entry);
-      if (isCurrentRoundVerdictRef(selector.ref, plan.roundId)) entry.exclusion = "other_slot_current_round";
+      if (isReservedVerdictRef(selector.ref)) entry.exclusion = "other_slot_current_round";
       else if (policyExcluded(selector.ref)) entry.exclusion = "policy_excluded";
       if (entry.exclusion) continue;
       const bytes = await reader.readServerDocument(selector.ref);
@@ -508,7 +502,7 @@ export async function buildContext(plan: ContextPlan, reader: SnapshotReader, po
     reasoning: valid.reasoning,
     target: valid.target,
     feature: valid.feature,
-    task: { id: valid.taskId, kind: taskKindForPlan(valid) },
+    task: { id: valid.taskId, kind: valid.taskKind },
     abu: valid.abu,
     attemptId: valid.attemptId,
     roundId: valid.roundId,
@@ -559,7 +553,15 @@ export async function measureContext(plan: ContextPlan, reader: SnapshotReader, 
  * synchronous part). Failure = `422 MANIFEST_REJECTED`. Git blob oids and server document hashes are
  * confirmed asynchronously by the control plane.
  */
-export function checkManifestAgainstPlan(manifest: ContextManifest, plan: ContextPlan): { ok: true } | { ok: false; reasons: string[] } {
+export function checkManifestAgainstPlan(
+  manifest: ContextManifest,
+  plan: ContextPlan,
+  /**
+   * The current round number of a review task (the plan does not carry it; B-0003-context-policy).
+   * Required to accept any `wos:findings/<subject>@<k>` in a reviewer plan: k must be <= roundNumber - 1.
+   */
+  options: { roundNumber?: number } = {},
+): { ok: true } | { ok: false; reasons: string[] } {
   const reasons: string[] = [];
   const parsed = ContextManifest.safeParse(manifest);
   if (!parsed.success) {
@@ -581,7 +583,7 @@ export function checkManifestAgainstPlan(manifest: ContextManifest, plan: Contex
   eq("source.repo", m.source.repo, plan.source.repo);
   eq("source.commit", m.source.commit, plan.source.commit);
   eq("task.id", m.task.id, plan.taskId);
-  eq("task.kind", m.task.kind, taskKindForPlan(plan));
+  eq("task.kind", m.task.kind, plan.taskKind);
   eq("abu", m.abu, plan.abu);
   eq("attemptId", m.attemptId, plan.attemptId);
   eq("roundId", m.roundId, plan.roundId);
@@ -595,6 +597,7 @@ export function checkManifestAgainstPlan(manifest: ContextManifest, plan: Contex
   const selectors = (plan.artifacts ?? []) as ArtifactSelector[];
   const repoFiles = new Map(selectors.flatMap((s) => (s.kind === "repo_file" ? [[s.path, s] as const] : [])));
   const servers = new Map(selectors.flatMap((s) => (s.kind === "server_document" ? [[s.ref, s] as const] : [])));
+  const locals = new Set(selectors.flatMap((s) => (s.kind === "local_document" ? [s.ref] : [])));
   const globs = selectors.flatMap((s) => (s.kind === "repo_glob" ? [s] : []));
   const globMatchers = globs.map((g) => ({ g, match: globMatcher([g.glob]) }));
   const excludedByPlan = globMatcher(plan.excludeGlobs ?? []);
@@ -610,10 +613,14 @@ export function checkManifestAgainstPlan(manifest: ContextManifest, plan: Contex
       if (a.ref !== plan.promptTemplateId) reasons.push(`UNSELECTED_ARTIFACT: template ${a.ref}`);
       continue;
     }
-    const key = `${a.kind === "repo_file" ? "repo" : "server"}:${a.ref}`;
+    const key = `${a.kind === "repo_file" ? "repo" : a.kind === "local_document" ? "local" : "server"}:${a.ref}`;
     if (seen.has(key)) reasons.push(`DUPLICATE_ARTIFACT: ${a.ref}`);
     seen.add(key);
-    if (a.kind === "repo_file") {
+    if (a.kind === "local_document") {
+      if (a.ref !== "local:verification-output") reasons.push(`LOCAL_DOCUMENT_NOT_ALLOWED: ${a.ref}`);
+      else if (!locals.has(a.ref)) reasons.push(`UNSELECTED_ARTIFACT: ${a.ref}`);
+      if (a.gitBlobOid !== null) reasons.push(`LOCAL_DOCUMENT_BLOB_OID: ${a.ref}`);
+    } else if (a.kind === "repo_file") {
       if (!repoFiles.has(a.ref) && !globMatchers.some((x) => x.match(a.ref))) reasons.push(`UNSELECTED_ARTIFACT: ${a.ref}`);
       if (a.gitBlobOid === null) reasons.push(`MISSING_BLOB_OID: ${a.ref}`);
       if (isSecretPath(a.ref)) reasons.push(`SECRET_ARTIFACT: ${a.ref}`);
@@ -624,7 +631,18 @@ export function checkManifestAgainstPlan(manifest: ContextManifest, plan: Contex
       if (a.kind !== serverKind(a.ref)) reasons.push(`ARTIFACT_KIND_MISMATCH: ${a.ref} is ${a.kind}`);
     }
     if (excludedByPlan(a.ref)) reasons.push(`EXCLUDED_ARTIFACT_INCLUDED: ${a.ref}`);
-    if (isCurrentRoundVerdictRef(a.ref, plan.roundId)) reasons.push(`OTHER_SLOT_CURRENT_ROUND: ${a.ref}`);
+    if (isReservedVerdictRef(a.ref)) reasons.push(`RESERVED_VERDICT_REF: ${a.ref}`);
+  }
+
+  // A reviewer sees revealed rounds only: wos:findings/<subject>@k needs k <= current round - 1.
+  if (plan.role.includes("_reviewer_")) {
+    const findingsRefs = new Set([...servers.keys(), ...m.artifacts.map((a) => a.ref)].filter((r) => findingsRound(r) !== null));
+    for (const ref of findingsRefs) {
+      const k = findingsRound(ref) as number;
+      if (options.roundNumber === undefined) reasons.push(`ROUND_NUMBER_REQUIRED: cannot check ${ref} without the current round number`);
+      else if (k > options.roundNumber - 1)
+        reasons.push(`CURRENT_ROUND_FINDINGS: ${ref} is not a revealed round (current round ${options.roundNumber})`);
+    }
   }
   if (templateEntries !== 1) reasons.push(`TEMPLATE_ARTIFACT_COUNT: expected 1, got ${templateEntries}`);
 

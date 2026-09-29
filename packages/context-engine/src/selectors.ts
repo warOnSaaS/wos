@@ -13,6 +13,8 @@ export interface BuilderSelectorInput {
   findings?: { ref: string; sha256: string } | null;
   /** After `ci_failed`: `wos:ci/<attemptId>@<headSha>`. */
   ci?: { ref: string; sha256: string } | null;
+  /** A local repair run: add the optional `local:verification-output` local document (item 7a). */
+  localVerificationOutput?: boolean;
 }
 
 /** A glob that matches exactly this path (picomatch syntax characters escaped). */
@@ -48,6 +50,7 @@ export function builderArtifactSelectors(input: BuilderSelectorInput): ArtifactS
   for (const test of abu.acceptance.tests) selectors.push({ kind: "repo_glob", repo, glob: literalGlob(test), required: true });
   if (input.findings) selectors.push(serverDoc(input.findings, true));
   if (input.ci) selectors.push(serverDoc(input.ci, true));
+  if (input.localVerificationOutput) selectors.push({ kind: "local_document", ref: "local:verification-output", required: false });
   for (const glob of abu.scope.read) selectors.push({ kind: "repo_glob", repo, glob, required: false });
   selectors.push({ kind: "repo_file", repo, path: `features/${feature}/BUILD-GRAPH.yaml`, required: false });
   return selectors;

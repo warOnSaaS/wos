@@ -148,6 +148,13 @@ describe("agent-policy buildInvocation: structure", () => {
     for (const role of AgentRole.options) expect(checkPlanAgainstPolicy(planFor(role)), role).toEqual([]);
   });
 
+  it("refuses a task kind the role does not run and a plan scoped to both or neither of target and feature", () => {
+    expect(checkPlanAgainstPolicy(planFor("builder", { taskKind: "feature_review" })).join()).toMatch(/TASK_KIND_MISMATCH/);
+    expect(checkPlanAgainstPolicy(planFor("builder", { taskKind: "abu_revision" }))).toEqual([]);
+    expect(checkPlanAgainstPolicy(planFor("builder", { target: "salesforce" })).join()).toMatch(/SUBJECT_SCOPE_INVALID/);
+    expect(checkPlanAgainstPolicy(planFor("roadmap_author", { target: null })).join()).toMatch(/SUBJECT_SCOPE_INVALID/);
+  });
+
   it("is pure: the same plan and paths give the same invocation", () => {
     for (const role of AgentRole.options) {
       expect(buildInvocation(planFor(role), paths)).toEqual(buildInvocation(planFor(role), paths));

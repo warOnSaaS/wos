@@ -22,9 +22,10 @@ import {
   type ProviderSpec,
   type ReasoningLevel,
   type RolePolicy,
+  type TaskKind,
 } from "@waronsaas/contracts";
 
-export { canonicalJson } from "./canonical-json.js";
+export { canonicalJson } from "@waronsaas/contracts/canonical";
 
 export const DEFAULT_POLICY: AgentPolicyDocument = AGENT_POLICY_V1;
 
@@ -59,6 +60,8 @@ export function getProviderSpec(id: ProviderId, policy: AgentPolicyDocument = DE
 /** Roles whose leases count against `maxConcurrentBuildLeasesPerContributor`. */
 export const BUILD_ROLES: readonly AgentRole[] = ["builder"];
 /** Roles whose leases count against `maxConcurrentReviewLeasesPerContributor`. */
+/** Roles whose leases count against `maxConcurrentAuthorLeasesPerContributor` (roadmap_author, feature_author, conflict_resolution). */
+export const AUTHOR_ROLES: readonly AgentRole[] = ["roadmap_author", "feature_author", "conflict_resolver"];
 export const REVIEW_ROLES: readonly AgentRole[] = [
   "roadmap_reviewer_astra",
   "roadmap_reviewer_fable",
@@ -120,6 +123,20 @@ function reasoningLevelProblems(role: RolePolicy, model: ModelSpec, level: Reaso
   return problems;
 }
 
+/** The task kinds a role may run (ContextPlan.taskKind is issued by the server and checked, never inferred). */
+export const TASK_KINDS_BY_ROLE: Readonly<Record<AgentRole, readonly TaskKind[]>> = {
+  roadmap_author: ["roadmap_author"],
+  roadmap_reviewer_astra: ["roadmap_review"],
+  roadmap_reviewer_fable: ["roadmap_review"],
+  feature_author: ["feature_author"],
+  feature_reviewer_astra: ["feature_review"],
+  feature_reviewer_fable: ["feature_review"],
+  builder: ["abu_build", "abu_revision"],
+  implementation_reviewer_astra: ["implementation_review"],
+  implementation_reviewer_fable: ["implementation_review"],
+  conflict_resolver: ["conflict_resolution"],
+};
+
 // ---------------------------------------------------------------------------------------------
 // Plan vs policy
 // ---------------------------------------------------------------------------------------------
@@ -149,6 +166,12 @@ export function checkPlanAgainstPolicy(plan: ContextPlan, policy: AgentPolicyDoc
   if (plan.outputSchema !== role.outputSchema) {
     reasons.push(`OUTPUT_SCHEMA_MISMATCH: ${role.role} outputs ${role.outputSchema}, plan says ${plan.outputSchema}`);
   }
+  if (!TASK_KINDS_BY_ROLE[role.role].includes(plan.taskKind)) {
+    reasons.push(`TASK_KIND_MISMATCH: ${role.role} runs ${TASK_KINDS_BY_ROLE[role.role].join(" or ")}, plan says ${plan.taskKind}`);
+  }
+  if ((plan.target === null) === (plan.feature === null)) {
+    reasons.push("SUBJECT_SCOPE_INVALID: exactly one of target (roadmap work) and feature (feature work) must be set");
+  }
   if (plan.allowedCommands.length > 0 && !role.claudeTools.includes("Bash")) {
     reasons.push(`COMMANDS_NOT_ALLOWED: ${role.role} may not run commands`);
   }
@@ -173,14 +196,14 @@ export interface EligibilityInput {
   /** Hours the review task has been open without an independent claimant (bootstrap self-review rule). */
   taskOpenHours: number;
   /**
-   * Evaluation instant (ISO-8601 with offset), from the caller's clock. The package never reads the
-   * clock (ARCHITECTURE.md rule 4). Required whenever the role has a GitHub account age threshold;
-   * without it the age rule fails closed with `CLOCK_REQUIRED`. Additive, see B-0001-context-policy.
+   * Evaluation instant (ISO-8601 with offset): the caller's transaction clock. REQUIRED (contracts 2.0.0,
+   * B-0001-context-policy); the package never reads a clock (ARCHITECTURE.md rule 4). A missing or
+   * unreadable value fails closed with `CLOCK_REQUIRED`.
    */
-  now?: string;
-  /** The task's `excluded_account_ids` (AGENT-POLICY.md step 7). Additive, see B-0001-context-policy. */
+  now: string;
+  /** The task's `excluded_account_ids` (AGENT-POLICY.md step 7). */
   excludedAccountIds?: string[];
-  /** The task's `restricted_to_account_id` (AGENT-POLICY.md step 7). Additive, see B-0001-context-policy. */
+  /** The task's `restricted_to_account_id` (AGENT-POLICY.md step 7). */
   restrictedToAccountId?: string | null;
 }
 
@@ -226,13 +249,13 @@ export function checkEligibility(input: EligibilityInput, policy: AgentPolicyDoc
   if (role.eligibility.requiresMaintainer && !account.isMaintainer) reason("REQUIRES_MAINTAINER", `${role.role} is maintainers only`);
 
   // 3. Thresholds. Maintainers are exempt from both when maintainersExempt; bootstrap waives contributions.
+  // The clock is required for every evaluation, exempt or not, so a caller that forgets it always fails closed.
+  const now = typeof input.now === "string" ? Date.parse(input.now) : Number.NaN;
+  if (Number.isNaN(now)) reason("CLOCK_REQUIRED", "the evaluation time `now` (the transaction clock) is required");
   const exempt = role.eligibility.maintainersExempt && account.isMaintainer;
-  if (!exempt && role.eligibility.minGithubAccountAgeDays > 0) {
+  if (!exempt && role.eligibility.minGithubAccountAgeDays > 0 && !Number.isNaN(now)) {
     const created = Date.parse(account.githubAccountCreatedAt);
-    const now = input.now === undefined ? Number.NaN : Date.parse(input.now);
-    if (input.now === undefined || Number.isNaN(now)) {
-      reason("CLOCK_REQUIRED", "the evaluation time `now` is needed to check the GitHub account age");
-    } else if (Number.isNaN(created)) {
+    if (Number.isNaN(created)) {
       reason("GITHUB_ACCOUNT_TOO_NEW", `unreadable GitHub creation time ${JSON.stringify(account.githubAccountCreatedAt)}`);
     } else if (now - created < role.eligibility.minGithubAccountAgeDays * DAY_MS) {
       reason("GITHUB_ACCOUNT_TOO_NEW", `GitHub account must be at least ${role.eligibility.minGithubAccountAgeDays} days old`);
@@ -251,8 +274,8 @@ export function checkEligibility(input: EligibilityInput, policy: AgentPolicyDoc
     ? policy.limits.maxConcurrentBuildLeasesPerContributor
     : REVIEW_ROLES.includes(role.role)
       ? policy.limits.maxConcurrentReviewLeasesPerContributor
-      : null;
-  if (leaseLimit !== null && input.activeLeasesOfKind >= leaseLimit) {
+      : policy.limits.maxConcurrentAuthorLeasesPerContributor;
+  if (input.activeLeasesOfKind >= leaseLimit) {
     reason("TOO_MANY_ACTIVE_LEASES", `at most ${leaseLimit} active leases of this kind`);
   }
 
@@ -281,7 +304,12 @@ export function checkEligibility(input: EligibilityInput, policy: AgentPolicyDoc
   if (rules) {
     const isAuthor = rules.excludeSubjectAuthors && input.subjectAuthorIds.includes(account.id);
     const isOtherSlot = rules.distinctReviewersPerRound && input.otherSlotReviewerId === account.id;
-    const overAuthorCap = rules.maxReviewsOfSameAuthorPer7d > 0 && input.reviewsOfSameAuthorLast7d >= rules.maxReviewsOfSameAuthorPer7d;
+    // bootstrap_self reviews are neither counted nor capped (bootstrap.exemptSelfReviewFromSameAuthorCap):
+    // a solo founder reviews only themself. Counting is the caller's; here the cap is not applied to them.
+    const selfReviewCandidate = input.bootstrapMode && account.isMaintainer && isAuthor;
+    const capExempt = selfReviewCandidate && policy.bootstrap.exemptSelfReviewFromSameAuthorCap;
+    const overAuthorCap =
+      !capExempt && rules.maxReviewsOfSameAuthorPer7d > 0 && input.reviewsOfSameAuthorLast7d >= rules.maxReviewsOfSameAuthorPer7d;
 
     if (overAuthorCap) {
       reason("SAME_AUTHOR_REVIEW_LIMIT", `at most ${rules.maxReviewsOfSameAuthorPer7d} reviews of the same author in 7 days`);
@@ -292,7 +320,7 @@ export function checkEligibility(input: EligibilityInput, policy: AgentPolicyDoc
     // (REVIEW-PROTOCOL.md section 9, SECURITY.md S-12) is a solo founder holding both slots, which is
     // only possible when both reviews are bootstrap_self, i.e. the other slot's reviewer is this author.
     const selfWindowOpen = input.taskOpenHours >= policy.bootstrap.selfReviewAfterHours;
-    const bootstrapSelf = input.bootstrapMode && account.isMaintainer && isAuthor;
+    const bootstrapSelf = selfReviewCandidate;
     if (isAuthor) {
       if (!bootstrapSelf) {
         reason("SUBJECT_AUTHOR", "the account authored the subject");

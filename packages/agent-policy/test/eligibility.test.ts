@@ -106,7 +106,14 @@ const rows: Row[] = [
   {
     name: "no clock passed fails closed",
     role: "builder",
-    over: { now: undefined },
+    over: { now: undefined as unknown as string },
+    expect: { eligible: false, codes: ["CLOCK_REQUIRED"] },
+  },
+  {
+    name: "no clock fails closed even for an exempt maintainer",
+    role: "roadmap_reviewer_fable",
+    over: { now: "" },
+    account: { isMaintainer: true },
     expect: { eligible: false, codes: ["CLOCK_REQUIRED"] },
   },
   {
@@ -165,6 +172,24 @@ const rows: Row[] = [
     role: "builder",
     over: { activeLeasesOfKind: 1 },
     expect: { eligible: true, independence: "independent", model: "opus", reasoning: "high" },
+  },
+  {
+    name: "author family: second concurrent author lease refused (limit 1)",
+    role: "roadmap_author",
+    over: { activeLeasesOfKind: 1 },
+    expect: { eligible: false, codes: ["TOO_MANY_ACTIVE_LEASES"] },
+  },
+  {
+    name: "author family: feature author with no other author lease",
+    role: "feature_author",
+    over: { activeLeasesOfKind: 0 },
+    expect: { eligible: true, independence: "independent", model: "fable", reasoning: "max" },
+  },
+  {
+    name: "author family: resolver counts in the author family",
+    role: "conflict_resolver",
+    over: { activeLeasesOfKind: 1 },
+    expect: { eligible: false, codes: ["TOO_MANY_ACTIVE_LEASES"] },
   },
   {
     name: "third concurrent review lease",
@@ -320,11 +345,38 @@ const rows: Row[] = [
     expect: { eligible: false, codes: ["SUBJECT_AUTHOR"] },
   },
   {
-    name: "bootstrap: self-review still respects the same-author cap",
+    name: "bootstrap: self-review beyond 5 a week is allowed (exemptSelfReviewFromSameAuthorCap)",
     role: "implementation_reviewer_fable",
-    over: { bootstrapMode: true, subjectAuthorIds: [ME], taskOpenHours: 30, reviewsOfSameAuthorLast7d: 5 },
+    over: { bootstrapMode: true, subjectAuthorIds: [ME], taskOpenHours: 30, reviewsOfSameAuthorLast7d: 12 },
+    account: { isMaintainer: true },
+    expect: { eligible: true, independence: "bootstrap_self", model: "fable", reasoning: "max" },
+  },
+  {
+    name: "bootstrap: a maintainer reviewing someone else is still capped",
+    role: "implementation_reviewer_fable",
+    over: { bootstrapMode: true, reviewsOfSameAuthorLast7d: 5 },
     account: { isMaintainer: true },
     expect: { eligible: false, codes: ["SAME_AUTHOR_REVIEW_LIMIT"] },
+  },
+  {
+    name: "bootstrap: self-review before 24 h is not rescued by the cap exemption",
+    role: "implementation_reviewer_fable",
+    over: { bootstrapMode: true, subjectAuthorIds: [ME], taskOpenHours: 2, reviewsOfSameAuthorLast7d: 12 },
+    account: { isMaintainer: true },
+    expect: { eligible: false, codes: ["BOOTSTRAP_SELF_REVIEW_TOO_EARLY"] },
+  },
+  {
+    name: "maintainer waiver: new GitHub account and zero contributions on a resolver",
+    role: "conflict_resolver",
+    account: { isMaintainer: true, acceptedContributions: 0, githubAccountCreatedAt: daysBefore(2) },
+    expect: { eligible: true, independence: "independent", model: "fable", reasoning: "max" },
+  },
+  {
+    name: "bootstrap waiver does not waive GitHub age for non-maintainers",
+    role: "roadmap_reviewer_astra",
+    over: { bootstrapMode: true },
+    account: { acceptedContributions: 0, githubAccountCreatedAt: daysBefore(10) },
+    expect: { eligible: false, codes: ["GITHUB_ACCOUNT_TOO_NEW"] },
   },
   {
     name: "bootstrap: non-maintainer independent reviewer stays independent",
