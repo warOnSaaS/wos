@@ -54,6 +54,34 @@ export const VerifyStep = z.object({
   timeoutSeconds: z.number().int().positive().max(3600),
 });
 
+/**
+ * Profile acceptance results (D10/D11, contracts 3.0.0). The wos-verify workflow, on every push to the
+ * default branch, runs each profile's acceptance suite as its own check run named by this function. The
+ * control plane records each concluded check run as verification_runs(subject 'profile_acceptance',
+ * catalog_feature_id, profile_target_id, head_sha, conclusion) and emits verification.recorded.
+ * ProgressFeatureInput.contract.profileAcceptancePassed = the latest recorded run for (feature, target)
+ * on a default-branch commit that contains the last merged relevant ABU concluded "success".
+ */
+export const profileAcceptanceCheckName = (feature: string, target: string) => `wos-acceptance/${feature}/${target}`;
+
+/** The minimum toolchain set every wos.json must list (it may add more). */
+export const DEFAULT_TOOLCHAIN_PATHS = [
+  "wos.json",
+  "**/package.json",
+  "package-lock.json",
+  "**/tsconfig*.json",
+  "biome.json",
+  "biome.jsonc",
+  "**/vitest.config.*",
+  "**/vitest.workspace.*",
+  "**/vite.config.*",
+  "**/eslint.config.*",
+  "**/.eslintrc*",
+  "**/.prettierrc*",
+  ".npmrc",
+  ".nvmrc",
+] as const;
+
 export const RepoManifest = z.object({
   schema: z.literal("wos-repo.v1"),
   displayName: z.string(),
@@ -74,6 +102,17 @@ export const RepoManifest = z.object({
   protectedPaths: z.array(WriteScope).min(2),
   /** Files that change only when an ABU holds the matching `lockfile:<path>` resource. */
   lockfiles: z.array(RepoPath),
+  /**
+   * Files that define HOW verification runs (contracts 2.0.0, B-0005-verification): package.json files,
+   * lockfiles, tsconfig*, biome/vitest/eslint/prettier configs, .npmrc, .nvmrc, wos.json. A submission may
+   * change one only when its ABU holds the exclusive resource `toolchain:<path>` (error
+   * TOOLCHAIN_WITHOUT_RESOURCE otherwise), and such a PR needs a maintainer's CODEOWNERS approval. CI always
+   * runs the verify steps of the BASE commit's wos.json with every toolchain path restored from the base
+   * (BUILD-PROTOCOL.md "Trusted verification"). Picomatch globs; must include DEFAULT_TOOLCHAIN_PATHS.
+   */
+  toolchainPaths: z
+    .array(z.string().min(1))
+    .refine((xs) => DEFAULT_TOOLCHAIN_PATHS.every((d) => xs.includes(d)), "toolchainPaths must include DEFAULT_TOOLCHAIN_PATHS"),
   /** Build outputs and generated files no submission may contain (D9), e.g. "dist/**", "src/generated/**". */
   generatedPaths: z.array(WriteScope).default([]),
   /** Directory whose files require the `db:migrations` resource. Null if the stack has none. */
@@ -278,7 +317,7 @@ export type FeatureContract = z.infer<typeof FeatureContract>;
  * others explicitly. Examples: "db:migrations", "db:table:contacts", "api:route:GET /v1/contacts",
  * "lockfile:package-lock.json", "config:env", "event:contact.created".
  */
-export const ResourceKey = z.string().regex(/^(db|api|schema|lockfile|config|event|ui|dep):[A-Za-z0-9 ._/:{}*-]+$/);
+export const ResourceKey = z.string().regex(/^(db|api|schema|lockfile|toolchain|config|event|ui|dep):[A-Za-z0-9 ._/:{}*-]+$/);
 export type ResourceKey = z.infer<typeof ResourceKey>;
 
 export const ResourceClaim = z.object({ key: ResourceKey, mode: z.enum(["exclusive", "shared"]) });
@@ -330,6 +369,7 @@ export const BuildGraphErrorCode = z.enum([
   "PARALLEL_WRITE_OVERLAP",
   "PARALLEL_EXCLUSIVE_RESOURCE",
   "LOCKFILE_WITHOUT_RESOURCE",
+  "TOOLCHAIN_WITHOUT_RESOURCE",
   "MIGRATION_WITHOUT_RESOURCE",
   "TEST_OUTSIDE_SCOPE",
   "OVER_CONTEXT_BUDGET",

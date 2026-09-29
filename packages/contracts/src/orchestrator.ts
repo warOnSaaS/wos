@@ -24,6 +24,8 @@ import type { AttemptView, LeaseView, Me, TaskView } from "./domain.js";
 export type PipelineStep = "LEASE" | "BUILD" | "VERIFY" | "REVIEW" | "QUALIFY" | "PR";
 
 export type OrchestratorEvent =
+  | { type: "sign_in"; status: "email_sent" | "waiting_for_code" | "redeemed" | "failed"; detail: string }
+  | { type: "github_link"; status: "waiting_for_user" | "linked" | "refused" | "expired"; detail: string }
   | { type: "step"; step: PipelineStep; status: "started" | "passed" | "failed" | "waiting"; detail: string }
   | { type: "lease"; lease: LeaseView }
   | { type: "worktree"; path: string; baseSha: string }
@@ -39,6 +41,15 @@ export type OrchestratorEvent =
   | { type: "error"; code: string; message: string; recoverable: boolean };
 
 export type OrchestratorObserver = (event: OrchestratorEvent) => void;
+
+/** How signIn obtains the second factor from the user (D8). */
+export interface SignInPrompt {
+  /** Resolves with the 8-character code the user typed ("ABCD-EFGH"). CLI: stdin prompt; Desktop: a field. */
+  code(): Promise<string>;
+  /** Desktop only: deep links received for the wos:// scheme while waiting. */
+  deepLinks?: AsyncIterable<string>;
+  signal?: AbortSignal;
+}
 
 export interface ProviderStatus extends ProviderAttestation {
   /** Human-readable problem, e.g. "codex not signed in". */
@@ -82,8 +93,20 @@ export type RunResult =
   | { ok: false; code: string; message: string; task: TaskView | null };
 
 export interface Orchestrator {
-  /** wos login: brokered GitHub device flow; stores the session in the OS keychain. */
-  login(observer: OrchestratorObserver, openUrl: (url: string, userCode: string) => void): Promise<Me>;
+  /**
+   * wos login (D8, contracts 2.0.0). Email sign-in: calls startEmailSignIn with the client's device public
+   * key, keeps the poll secret in memory only, then completes with whichever arrives first: the code the
+   * user types (prompt.code) or a `wos://auth?r=<requestId>&t=<linkToken>` deep link (Desktop only,
+   * prompt.deepLinks) whose request id matches. Redeems with the poll secret, stores the session and
+   * device id in the OS keychain. Never touches GitHub.
+   */
+  signIn(input: { email: string; deviceName: string }, prompt: SignInPrompt, observer: OrchestratorObserver): Promise<Me>;
+  /**
+   * wos link-github (D8). Requires a session. GitHub device flow brokered by the control plane
+   * (startGithubLink flow "device" -> pollGithubLink); `openUrl` shows verificationUri and userCode.
+   * Resolves with Me once linked; rejects with GITHUB_LINKED_ELSEWHERE / GITHUB_RESERVED as returned.
+   */
+  linkGithub(observer: OrchestratorObserver, openUrl: (url: string, userCode: string) => void): Promise<Me>;
   logout(): Promise<void>;
   /** wos status */
   status(): Promise<LocalStatus>;

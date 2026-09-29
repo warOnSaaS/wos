@@ -165,6 +165,7 @@ export const AbuSummary = z.object({
   sizePoints: z.number().int().positive(),
   dependsOn: z.array(AbuKey),
   requirements: z.array(RequirementKey),
+  repo: RepoFullName,
   /** Apps whose profile this ABU is relevant to (it is built once and counts for each, D10). */
   relevantTo: z.array(TargetSlug),
   /** True when the caller could claim it now (only set on authenticated list routes). */
@@ -298,8 +299,17 @@ export const TaskView = z.object({
   state: TaskStateSchema,
   role: AgentRole,
   reviewerSlot: ReviewerSlot.nullable(),
-  target: TargetSlug,
+  /**
+   * Work subject model (contracts 3.0.0, D10): roadmap work belongs to ONE app (`target` set, `feature`
+   * null); contract, build and implementation-review work belongs to ONE catalog feature (`feature` set,
+   * `target` null) and serves every app in `relevantTo`. Never pick a representative app.
+   */
+  target: TargetSlug.nullable(),
   feature: FeatureKey.nullable(),
+  /** Apps this work counts for: [target] for roadmap work; the apps whose profile it serves otherwise. */
+  relevantTo: z.array(TargetSlug),
+  /** Repository the work lands in: the product repo, or the platform repo for TGT-00 warOnSaaS. */
+  repo: RepoFullName,
   abu: AbuKey.nullable(),
   attemptId: Uuid.nullable(),
   documentId: Uuid.nullable(),
@@ -311,7 +321,9 @@ export type TaskView = z.infer<typeof TaskView>;
 export const AttemptView = z.object({
   id: Uuid,
   abu: AbuKey,
-  target: TargetSlug,
+  feature: FeatureKey,
+  relevantTo: z.array(TargetSlug),
+  repo: RepoFullName,
   state: AttemptStateSchema,
   builderHandle: Handle,
   baseSha: GitSha,

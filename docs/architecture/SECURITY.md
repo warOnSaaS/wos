@@ -32,8 +32,9 @@ Trust boundaries:
 
 **S-1 Magic-link and code tokens.** `POST /v1/auth/email/start` creates an `email_signin_requests` row
 with: a 32-byte random link token, an 8-character code from the alphabet `A-H J-N P-Z 2-9` formatted
-`XXXX-XXXX`, a 32-byte poll secret. Only sha256 hashes are stored (`link_token_hash`,
-`code_hash` = sha256(requestId || code), `poll_secret_hash`). TTL 15 minutes (CHECK). Single use: redeem
+`XXXX-XXXX`, a 32-byte poll secret. Only keyed hashes are stored: HMAC-SHA256 with the server secret
+`SESSION_TOKEN_PEPPER` (`link_token_hash` = HMAC(pepper, token), `code_hash` = HMAC(pepper, requestId ||
+code), `poll_secret_hash` = HMAC(pepper, secret)), so a database leak alone cannot test guesses offline. TTL 15 minutes (CHECK). Single use: redeem
 is one guarded UPDATE `where redeemed_at is null and expires_at > now() and attempts < 5`. Each failed
 code try increments `attempts`; the fifth failure kills the request. The email contains the link
 `https://waronsaas.com/auth/verify?r=<requestId>&t=<linkToken>` and the code; nothing else. Workstream:
@@ -54,7 +55,7 @@ email per hour, 20 per IP per hour (IP hashed with a daily salt), 5 code tries p
 authenticated requests per minute per account on write routes. Exceeding returns `429 RATE_LIMITED`.
 Workstream: control-plane. Tests: response equality, limit boundaries.
 
-**S-4 Sessions.** Opaque random tokens; only hashes stored. Access token 1 hour, refresh 30 days,
+**S-4 Sessions.** Opaque random 32-byte tokens; only HMAC-SHA256(`SESSION_TOKEN_PEPPER`, token) is stored (the same keyed hash as S-1; the `bytea` columns named `*_hash` hold these HMACs). Access token 1 hour, refresh 30 days,
 rotating: each refresh issues a new pair and marks the old refresh `rotated_at`; presenting a rotated
 refresh token revokes every session in the family (theft signal). Logout revokes the family.
 Desktop stores tokens with Electron `safeStorage`; CLI with `@napi-rs/keyring`; never plain files.
@@ -101,7 +102,9 @@ progress) has a permissive `app_all` policy because it is public anyway; authori
 control plane's state-machine guards. Private tables have row policies keyed on
 `wos.actor_id()` / `wos.actor_kind()`: `account_emails`, `devices`, `provider_attestations`,
 `github_link_requests`, `leases` (own rows or privileged); `sessions`, `email_signin_requests`
-(system actor only); `reviews` and `findings` (sealed until the round is revealed, S-11). Request
+(system actor only); `reviews` and `findings` (sealed until the round is revealed, S-11); `events`
+rows with `visibility = 'private'` are readable only by privileged actors and the account they concern
+(`actor_account_id` or `payload.accountId`; migration 0002). Request
 handlers run as the calling account; only after authorisation succeeds may a handler switch the
 transaction to `system` for work that must see other accounts' private rows (e.g. eligibility needs
 the other slot's reviewer). Schema `wos` is not exposed through Supabase's Data API, and `anon` and
@@ -129,8 +132,12 @@ review.
 **S-12 Reviewer independence.** Reviewers are assigned by the server (`POST /v1/reviews/claim`), never
 chosen. Excluded: any account that authored any changeset of the subject (document) or built the
 attempt; the other slot's reviewer of the same round (trigger `check_review_independence`; the only exception is two `bootstrap_self` reviews by a solo founder in bootstrap);
-reviewers who already reviewed the same author 5 times in 7 days. The DB trigger
-`check_review_independence` enforces the author rule as a backstop. Bootstrap exceptions are labelled
+reviewers who already reviewed the same author 5 times in 7 days (`bootstrap_self` reviews do not
+count, `exemptSelfReviewFromSameAuthorCap`). The DB trigger `check_review_independence` (migration 0002)
+is the backstop: the review's task must be the review task of that round and slot, the lease must be
+that task's active lease held by the reviewer, the manifest must belong to that lease, the author rule
+holds, and `bootstrap_self` / `bootstrap_maintainer` are accepted only while bootstrap mode is on and
+only from a maintainer. Bootstrap exceptions are labelled
 (`bootstrap_maintainer`, `bootstrap_self`) and shown publicly (AGENT-POLICY.md "Bootstrap mode").
 Workstream: context-policy (`checkEligibility`), control-plane. Test: author claim refused; DB trigger
 rejects direct insert.
@@ -181,12 +188,17 @@ symlink escaping the worktree.
 
 **S-16 Server-side scope validation.** The control plane re-runs `validateChangeset` against the ABU (or
 document) scope at the attempt's base commit before anything reaches GitHub: every path must be inside
-a write scope; `RepoPath` forbids absolute paths, `..`, `.`, empty segments, backslashes, NUL and any
+a write scope; toolchain paths need an exclusive `toolchain:<path>` resource
+(`TOOLCHAIN_WITHOUT_RESOURCE`, S-33); `RepoPath` forbids absolute paths, `..`, `.`, empty segments, backslashes, NUL and any
 `.git` segment; case-insensitive collisions with existing paths are rejected (`CASE_COLLISION`, protects
 macOS/Windows checkouts); each file's sha256 is recomputed (`HASH_MISMATCH`); `submissionSha256` is
 recomputed (`SUBMISSION_HASH_MISMATCH`); the device signature is verified (`SIGNATURE_INVALID`); the
 manifest must be the accepted one for this lease (`MANIFEST_MISMATCH`); total size <= `maxChangesetBytes`
-and 4,000,000 bytes; a secret scanner runs over added content (`SECRET_DETECTED`). CI re-runs the same
+and 4,000,000 bytes; a secret scanner runs over added content (`SECRET_DETECTED`). The normative
+pattern list is `packages/verification/src/secrets.ts` (private keys, AWS, GitHub, Anthropic, OpenAI,
+Slack, Stripe live, Google, npm and Resend keys, non-local Postgres URLs with passwords); changing it
+is reviewed by the architect like a contract change (B-0004-verification). All hashes and the
+signature check use `@waronsaas/contracts/canonical` (S-32). CI re-runs the same
 validator from the build graph at the base commit using the commit trailers. Workstream: verification,
 control-plane. Test: one test per `ChangesetErrorCode`.
 
@@ -249,7 +261,8 @@ and submits a hand-written diff: it still needs two independent reviews and CI.
 
 **S-23 Fabricated or lazy verdicts.** Verdicts must validate against `ReviewVerdict` (NO_MATERIAL_GAPS
 iff no material finding and no still-open prior finding), be bound to the round's head sha and
-submission hash, come from the assigned lease, and carry a signed agent-run record whose manifest was
+submission hash, come from the assigned lease (enforced in the database since migration 0002: a lease
+for round X cannot post into round Y even though head and hash are public), and carry a signed agent-run record whose manifest was
 accepted for that lease. A reviewer can still fabricate a well-formed verdict without running a model.
 Counter: audits (S-28), public verdicts after reveal, reward holds, and suspension on proven
 fabrication (maintainer action `suspend_account`, `reverse_contribution`). Workstream: control-plane,
@@ -313,8 +326,32 @@ and audited as events:
 - leaked App key or webhook secret: rotate in GitHub, update Vercel env, redeploy; the App key is never
   on any laptop;
 - database tampering suspicion: replay the ledger hash chain against the published heads (S-10);
-- bootstrap abuse: bootstrap cannot be re-entered once ended (AGENT-POLICY.md).
+- bootstrap abuse: bootstrap cannot be re-entered once ended (trigger `bootstrap_one_way`, migration
+  0002, applies to every role including the owner's normal sessions).
 Workstream: control-plane. Test: each maintainer action has an integration test.
+
+### Contracts 2.0.0 additions
+
+**S-32 One canonical hashing and signing definition.** Every hash and signature in wOS is computed by
+`@waronsaas/contracts/canonical` (rules C-1..C-7: RFC 8785 JCS, `sha256:<hex>`, the diff hash with deletes
+as `{path, op}` only, signed bytes = JCS of the parsed changeset without `signature` and with each
+upsert's `contentBase64` replaced by its sha256, device keys as base64 of the raw 32-byte Ed25519 key,
+signatures as base64 of 64 bytes). No package keeps its own copy. The database refuses any other device
+key encoding (`devices_public_key_raw_ed25519`). Workstream: all; test vectors in
+`packages/contracts/test/canonical.test.ts`.
+
+**S-33 Trusted verification cannot be redefined by the candidate (B-0005-verification).** The files that
+decide what "verify" means are `RepoManifest.toolchainPaths` (at least `DEFAULT_TOOLCHAIN_PATHS`:
+`wos.json`, every `package.json`, `package-lock.json`, `tsconfig*.json`, biome, vitest, vite, eslint and
+prettier configs, `.npmrc`, `.nvmrc`). (1) A submission may change one only if its ABU declares the
+exclusive resource `toolchain:<path>` (the build-graph validator and `validateChangeset` both enforce
+it). (2) A PR that changes a toolchain path needs a maintainer's CODEOWNERS approval before it can
+merge. (3) The required `wos-verify` check never trusts the candidate's definitions: it reads the verify
+steps from the BASE commit's `wos.json` and restores every toolchain path from the base commit before
+install and verify; a second, non-required job runs the candidate's own toolchain so reviewers can see
+the effect. (4) Implementation reviewers treat any unrequested change to how verification runs as a
+material finding. Workstream: verification (workflow, validator), planning (build-graph rule),
+control-plane (qualification), context-policy (policy rule rendering).
 
 ## 3. Subscription terms
 
