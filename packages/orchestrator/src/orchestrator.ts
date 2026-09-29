@@ -10,6 +10,8 @@ import { buildContext, type SnapshotReader } from "@waronsaas/context-engine";
 import {
   type AgentRunRecord,
   type AttemptView,
+  type AuthorOptions,
+  type BuildOptions,
   AuthorSummary,
   BuildSummary,
   type Changeset,
@@ -405,10 +407,7 @@ export class OrchestratorImpl {
 
   // ------------------------------------------------------------------------------ build
 
-  async build(
-    options: { abu: string; detachAfterSubmit?: boolean; signal?: AbortSignal },
-    observer: OrchestratorObserver,
-  ): Promise<RunResult> {
+  async build(options: BuildOptions, observer: OrchestratorObserver): Promise<RunResult> {
     const emit = observer;
     let task: TaskView | null = null;
     try {
@@ -417,8 +416,9 @@ export class OrchestratorImpl {
       this.step(emit, "LEASE", "started", `claiming ${options.abu}`);
       const claim = await this.api.call("claimBuild", {
         params: { id: abuId },
-        body: { deviceId: s.deviceId },
-        idempotencyKey: idempotencyKey("claimBuild", abuId, s.deviceId, this.now().toISOString().slice(0, 16)),
+        // D15 (4.3.0): the contributor's model choice; omitted = the policy default.
+        body: { deviceId: s.deviceId, ...(options.model ? { model: options.model } : {}) },
+        idempotencyKey: idempotencyKey("claimBuild", abuId, s.deviceId, options.model ?? "", this.now().toISOString().slice(0, 16)),
       });
       task = claim.task;
       if (!claim.attempt) throw new StepError("INTERNAL", "claimBuild returned no attempt");
@@ -905,7 +905,8 @@ export class OrchestratorImpl {
     if (!task) return null;
     const claim = await this.api.call("claimTask", {
       params: { id: task.id },
-      body: { deviceId: s.deviceId },
+      // A revision continues on the model that built the attempt (D15).
+      body: { deviceId: s.deviceId, ...(state.plan ? { model: state.plan.model } : {}) },
       idempotencyKey: idempotencyKey("claimTask", task.id, s.deviceId),
     });
     state.taskId = task.id;
@@ -1035,13 +1036,13 @@ export class OrchestratorImpl {
     }
   }
 
-  async author(options: { taskId: string; signal?: AbortSignal }, observer: OrchestratorObserver): Promise<RunResult> {
+  async author(options: AuthorOptions, observer: OrchestratorObserver): Promise<RunResult> {
     let task: TaskView | null = null;
     try {
       const s = await this.session();
       const claim = await this.api.call("claimTask", {
         params: { id: options.taskId },
-        body: { deviceId: s.deviceId },
+        body: { deviceId: s.deviceId, ...(options.model ? { model: options.model } : {}) },
         idempotencyKey: idempotencyKey("claimTask", options.taskId, s.deviceId),
       });
       task = claim.task;

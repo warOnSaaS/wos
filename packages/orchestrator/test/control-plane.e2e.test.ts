@@ -22,7 +22,6 @@ import {
   HAS_DB,
   type Harness,
   seedFeature,
-  verdict,
   webhookHeaders,
 } from "../../../services/control-plane/test/support/harness.js";
 import { createOrchestrator } from "../src/index.js";

@@ -108,6 +108,42 @@ describe("openPullRequest", () => {
     expect({ ...inBody, qualifiedAt: "" }).toEqual(expected);
   });
 
+  it("provenance-and-merge D15 records the builder's provider and model in the body and the hashed record", async () => {
+    const body = renderPullRequestBody({
+      objective: "List contacts.",
+      qualification: [],
+      reviews: [],
+      builtWith: { provider: "codex_cli", model: "astra", modelId: "gpt-6-astra" },
+    });
+    expect(body).toContain("Built with astra (`gpt-6-astra`, Codex CLI)");
+    const record = {
+      ...provenance(),
+      agentRuns: [
+        {
+          id: "0192ab3c-0000-7000-8000-0000000000b1",
+          role: "builder" as const,
+          provider: "codex_cli" as const,
+          model: "gpt-6-astra",
+          reasoning: "high" as const,
+          manifestSha256: `sha256:${"3".repeat(64)}`,
+        },
+      ],
+    };
+    const pr = await openPullRequest(creds, REPO, {
+      head: officialBranch("contacts#04", ATTEMPT),
+      base: "main",
+      title: "contacts#04: Contact list endpoint",
+      body,
+      draft: false,
+      labels: [],
+      provenance: record,
+    });
+    const stored = fake.pullsOf(REPO).find((p) => p.number === pr.number)!;
+    const inBody = JSON.parse(/```json\n(.*)\n```/.exec(stored.body)![1]!) as ProvenanceRecord;
+    expect(inBody.agentRuns[0]).toMatchObject({ provider: "codex_cli", model: "gpt-6-astra" });
+    expect(stored.body).toContain(`Provenance record \`${provenanceSha256({ ...record, prNumber: pr.number })}\``);
+  });
+
   it("is idempotent: a retry returns the already open PR", async () => {
     const input = {
       head: officialBranch("contacts#04", ATTEMPT),
