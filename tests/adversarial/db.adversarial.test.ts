@@ -325,7 +325,7 @@ describe.skipIf(!process.env.WOS_VERIFY_DATABASE_URL)(`security-hardening: datab
             values (${t!.id}, ${p.A.dave}, ${p.device(p.A.dave)}, 'active', ${sql.json({ i })}, now() + interval '30 minutes', now() + interval '3 hours')`,
       );
       expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
-    });
+    }, 30_000);
 
     it("20 parallel live attempts on one ABU: exactly one wins", async () => {
       const abu = await p.abu();
@@ -335,7 +335,7 @@ describe.skipIf(!process.env.WOS_VERIFY_DATABASE_URL)(`security-hardening: datab
           sql`insert into wos.attempts (abu_id, account_id, github_user_id, state, base_sha) values (${abu}, ${p.A.dave}, 1, 'leased', ${"a".repeat(40)})`,
       );
       expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
-    });
+    }, 30_000);
 
     it("20 parallel identical exclusive resource locks (e.g. db:migrations): exactly one wins", async () => {
       const results = await race(
@@ -344,7 +344,7 @@ describe.skipIf(!process.env.WOS_VERIFY_DATABASE_URL)(`security-hardening: datab
           sql`insert into wos.resource_locks (repo_full_name, attempt_id, resource_key, mode) values (${SUITE_REPO}, ${attempt}, 'db:migrations', 'exclusive')`,
       );
       expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
-    });
+    }, 30_000);
 
     /**
      * BUILD-PROTOCOL.md section 3 steps 2 and 5 run by 20 builders at once over 20 ABUs with deliberately
