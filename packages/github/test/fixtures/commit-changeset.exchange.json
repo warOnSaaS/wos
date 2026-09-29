@@ -1,0 +1,12 @@
+[
+  "jwt GET /repos/waronsaas/suite/installation",
+  "jwt POST /app/installations/4242/access_tokens",
+  "installation GET /repos/waronsaas/suite/git/commits/<sha>",
+  "installation POST /repos/waronsaas/suite/git/blobs",
+  "installation POST /repos/waronsaas/suite/git/blobs",
+  "installation POST /repos/waronsaas/suite/git/blobs",
+  "installation POST /repos/waronsaas/suite/git/blobs",
+  "installation POST /repos/waronsaas/suite/git/trees",
+  "installation POST /repos/waronsaas/suite/git/commits",
+  "installation POST /repos/waronsaas/suite/git/refs"
+]

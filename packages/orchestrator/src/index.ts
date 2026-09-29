@@ -3,15 +3,16 @@
  * used by both apps/cli and apps/desktop (owner: github-build workstream).
  * Implements the `Orchestrator` interface frozen in @waronsaas/contracts (src/orchestrator.ts).
  */
-import {
-  NotImplementedError,
-  type Orchestrator,
-  type RouteBody,
-  type RouteName,
-  type RouteParams,
-  type RouteQuery,
-  type RouteResponse,
-} from "@waronsaas/contracts";
+import type { buildInvocation } from "@waronsaas/agent-policy";
+import type { buildContext } from "@waronsaas/context-engine";
+import type { AgentPolicyDocument, Orchestrator, RouteBody, RouteName, RouteParams, RouteQuery, RouteResponse } from "@waronsaas/contracts";
+import type { parseBuildGraphYaml } from "@waronsaas/planning";
+import type { validateChangeset } from "@waronsaas/verification";
+import { OrchestratorImpl } from "./orchestrator.js";
+
+export { ApiCallError, createApiClient } from "./api-client.js";
+export { createNodeProcessRunner } from "./process-runner.js";
+export { idempotencyKey } from "./session.js";
 
 /** Where the session lives: OS keychain (Electron safeStorage in Desktop, @napi-rs/keyring in CLI). */
 export interface SecretStore {
@@ -32,7 +33,18 @@ export interface ProcessRunner {
     signal?: AbortSignal;
     onStdout: (chunk: string) => void;
     onStderr: (chunk: string) => void;
+    /** Additive: called with the child pid once spawned (the `agent_started` event carries it). */
+    onSpawn?: (pid: number) => void;
   }): Promise<{ exitCode: number; durationMs: number }>;
+}
+
+/** The pure engines the orchestrator composes. Defaults are the real packages; tests inject fakes. */
+export interface Engines {
+  buildContext: typeof buildContext;
+  buildInvocation: typeof buildInvocation;
+  validateChangeset: typeof validateChangeset;
+  parseBuildGraphYaml: typeof parseBuildGraphYaml;
+  policy: AgentPolicyDocument;
 }
 
 export interface OrchestratorDeps {
@@ -43,6 +55,15 @@ export interface OrchestratorDeps {
   fetch: typeof fetch;
   clientKind: "desktop" | "cli";
   clientVersion: string;
+  /** Additive, optional: engine overrides (tests, the Wave 2 fake end-to-end run). */
+  engines?: Partial<Engines>;
+  /** Additive, optional: clock and sleep, so fake runs are deterministic. */
+  now?: () => Date;
+  sleep?: (ms: number) => Promise<void>;
+  /** Additive, optional: attempt polling interval while waiting for CI, reviews and merge. Default 5000. */
+  pollIntervalMs?: number;
+  /** Additive, optional: environment passed to agent and verify processes. Default: PATH, HOME, USER, LANG, TMPDIR. */
+  baseEnv?: Record<string, string>;
 }
 
 /** Typed client over the route map; the only way the orchestrator talks to the control plane. */
@@ -54,6 +75,5 @@ export interface ApiClient {
 }
 
 export function createOrchestrator(deps: OrchestratorDeps): Orchestrator {
-  void deps;
-  throw new NotImplementedError("createOrchestrator");
+  return new OrchestratorImpl(deps);
 }
