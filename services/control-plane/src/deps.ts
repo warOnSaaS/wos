@@ -1,0 +1,305 @@
+/**
+ * Everything the control plane talks to, injected. Production wiring is `defaultDeps(env)`; tests pass
+ * fakes. The pure logic of other workstreams (agent-policy, context-engine, verification, planning,
+ * rewards) is injected too, so the control plane can be tested against fakes until those land.
+ */
+import { checkEligibility } from "@waronsaas/agent-policy";
+import { checkManifestAgainstPlan } from "@waronsaas/context-engine";
+import {
+  AGENT_POLICY_V1,
+  type AgentPolicyDocument,
+  type Changeset,
+  NotImplementedError,
+  PLATFORM_REPO,
+  PRODUCT_REPO,
+  type ProvenanceRecord,
+  REWARD_SCHEDULE_V1,
+  type RewardSchedule,
+} from "@waronsaas/contracts";
+import type { Sql } from "@waronsaas/db";
+import * as githubApp from "@waronsaas/github/app";
+import {
+  computeRoundOutcome,
+  parseBuildGraphYaml,
+  parseCatalogEntryYaml,
+  parseFeatureContractYaml,
+  parseInventoryYaml,
+  parseRoadmapYaml,
+  validateBuildGraph,
+  validateRoadmap,
+} from "@waronsaas/planning";
+import { computeLedgerDrafts } from "@waronsaas/rewards";
+import { validateChangeset } from "@waronsaas/verification";
+import { ApiFailure } from "./errors.js";
+
+export type GithubUserIdentity = githubApp.GithubUserIdentity;
+export type CommitIdentity = githubApp.CommitIdentity;
+
+/**
+ * The GitHub operations the control plane needs, mapped 1:1 onto `@waronsaas/github/app` (github-build),
+ * with the App credentials bound.
+ */
+export interface GithubPort {
+  commitChangeset(
+    repo: string,
+    branch: string,
+    changeset: Changeset,
+    identity: CommitIdentity,
+    options: { createBranch: boolean; expectedHeadSha: string | null },
+  ): Promise<{ commitSha: string; treeSha: string }>;
+  openPullRequest(
+    repo: string,
+    input: {
+      head: string;
+      base: string;
+      title: string;
+      body: string;
+      draft: boolean;
+      labels: string[];
+      provenance: ProvenanceRecord | null;
+    },
+  ): Promise<{ number: number; url: string }>;
+  setCommitStatus(
+    repo: string,
+    sha: string,
+    input: { context: string; state: "pending" | "success" | "failure" | "error"; description: string; targetUrl: string | null },
+  ): Promise<void>;
+  enableAutoMerge(repo: string, prNumber: number): Promise<void>;
+  blobOidsAt(repo: string, commit: string, paths: string[]): Promise<Map<string, string | null>>;
+  createIssue(repo: string, input: { title: string; body: string; labels: string[] }): Promise<{ number: number; url: string }>;
+  verifyWebhookSignature(rawBody: string, signatureHeader: string): Promise<boolean>;
+  exchangeUserAuthorization(
+    input: { deviceCode: string } | { code: string; redirectUri: string },
+  ): Promise<{ status: "pending" | "denied" | "expired" } | { status: "ok"; user: GithubUserIdentity }>;
+
+  // ---- ratified in contracts 3.0.0 (B-0001-control-plane decision); github-build implements them ----
+  startDeviceAuthorization(): Promise<{
+    deviceCode: string;
+    userCode: string;
+    verificationUri: string;
+    intervalSeconds: number;
+    expiresInSeconds: number;
+  }>;
+  webAuthorizeUrl(input: { state: string; redirectUri: string }): string;
+  /** Current head commit of a branch (pins an attempt's base, BUILD-PROTOCOL.md section 3 step 6). */
+  getBranchHead(repo: string, branch: string): Promise<string>;
+  /** File bytes at a commit, or null when absent. */
+  readFileAt(repo: string, commit: string, path: string): Promise<Uint8Array | null>;
+  /** Every blob path at a commit. */
+  listTreePaths(repo: string, commit: string): Promise<string[]>;
+  /** Creates a branch at a commit (the official PR branch). */
+  createBranchAt(repo: string, branch: string, sha: string): Promise<void>;
+  /** Moves an existing branch (expected-head check, or force). */
+  moveBranch(repo: string, branch: string, sha: string, mode: { expectedHeadSha: string } | { force: true }): Promise<void>;
+  deleteBranch(repo: string, branch: string): Promise<void>;
+  closePullRequest(repo: string, prNumber: number, options: { comment: string; lock: boolean }): Promise<void>;
+  /** Unified diff base..head. */
+  compareDiff(repo: string, base: string, head: string): Promise<string>;
+}
+
+export interface OutboundMail {
+  template: "signin" | "progress_digest" | "lease_expiring" | "review_assigned";
+  to: string;
+  subject: string;
+  text: string;
+  html: string;
+}
+
+export interface Mailer {
+  send(mail: OutboundMail): Promise<{ providerId: string | null }>;
+}
+
+/** Pure logic owned by other workstreams, injected so fakes can stand in until each lands. */
+export interface Logic {
+  checkEligibility: typeof checkEligibility;
+  checkManifestAgainstPlan: typeof checkManifestAgainstPlan;
+  validateChangeset: typeof validateChangeset;
+  computeRoundOutcome: typeof computeRoundOutcome;
+  computeLedgerDrafts: typeof computeLedgerDrafts;
+  parseRoadmapYaml: typeof parseRoadmapYaml;
+  parseInventoryYaml: typeof parseInventoryYaml;
+  parseCatalogEntryYaml: typeof parseCatalogEntryYaml;
+  parseFeatureContractYaml: typeof parseFeatureContractYaml;
+  parseBuildGraphYaml: typeof parseBuildGraphYaml;
+  validateRoadmap: typeof validateRoadmap;
+  validateBuildGraph: typeof validateBuildGraph;
+}
+
+export const DEFAULT_LOGIC: Logic = {
+  checkEligibility,
+  checkManifestAgainstPlan,
+  validateChangeset,
+  computeRoundOutcome,
+  computeLedgerDrafts,
+  parseRoadmapYaml,
+  parseInventoryYaml,
+  parseCatalogEntryYaml,
+  parseFeatureContractYaml,
+  parseBuildGraphYaml,
+  validateRoadmap,
+  validateBuildGraph,
+};
+
+export interface Config {
+  env: "production" | "preview" | "local" | "test";
+  /** https://waronsaas.com: CORS origin, cookie domain and every link in email. */
+  webOrigin: string;
+  /** https://api.waronsaas.com: OAuth callback base. */
+  apiOrigin: string;
+  cronSecret: string;
+  /** HMAC key for every stored token hash (SESSION_TOKEN_PEPPER). */
+  tokenPepper: string;
+  /** HMAC key for daily-salted IP hashes (IP_HASH_SECRET). */
+  ipHashSecret: string;
+  productRepo: string;
+  platformRepo: string;
+  /** Cookie Domain attribute; null in local and test runs. */
+  cookieDomain: string | null;
+  /** Retry budget for GitHub calls made inside a request. */
+  githubRetries: number;
+  /** Login of the wOS GitHub App's bot user: the only allowed PR author (S-18). */
+  appBotLogin: string;
+}
+
+export type Logger = (level: "info" | "warn" | "error", message: string, fields?: Record<string, unknown>) => void;
+
+export interface Deps {
+  /** Connection as wos_app (NOBYPASSRLS). Never the owner. */
+  sql: Sql;
+  config: Config;
+  github: GithubPort;
+  mailer: Mailer;
+  logic: Logic;
+  policy: AgentPolicyDocument;
+  schedule: RewardSchedule;
+  log: Logger;
+  /**
+   * Test hook: when set, the router reports every error code a handler returns that the route's
+   * contract does not list, instead of silently sending it.
+   */
+  onContractViolation?: (route: string, detail: string) => void;
+}
+
+export function configFromEnv(env: Readonly<Record<string, string | undefined>>): Config {
+  const need = (k: string) => {
+    const v = env[k];
+    if (!v) throw new Error(`wOS control plane: environment variable ${k} is required`);
+    return v;
+  };
+  const wosEnv = (env.WOS_ENV ?? "local") as Config["env"];
+  const webOrigin = env.WEB_ORIGIN ?? "https://waronsaas.com";
+  return {
+    env: wosEnv,
+    webOrigin,
+    apiOrigin: env.API_ORIGIN ?? "https://api.waronsaas.com",
+    cronSecret: need("CRON_SECRET"),
+    tokenPepper: need("SESSION_TOKEN_PEPPER"),
+    ipHashSecret: need("IP_HASH_SECRET"),
+    productRepo: env.PRODUCT_REPO ?? PRODUCT_REPO,
+    platformRepo: PLATFORM_REPO,
+    cookieDomain: wosEnv === "production" ? new URL(webOrigin).hostname : null,
+    githubRetries: 2,
+    appBotLogin: `${env.GITHUB_APP_SLUG ?? "waronsaas-wos"}[bot]`,
+  };
+}
+
+/**
+ * Calls a github/app operation ratified in contracts 3.0.0 by its exact name. Until github-build's Wave 1
+ * branch is merged the stub package lacks it, and the call answers UPSTREAM_GITHUB (never silently).
+ */
+async function ratified<T>(name: string, ...args: unknown[]): Promise<T> {
+  const fn = (githubApp as unknown as Record<string, unknown>)[name];
+  if (typeof fn !== "function")
+    throw new ApiFailure("UPSTREAM_GITHUB", `GitHub operation ${name} is not available in this build of @waronsaas/github/app`);
+  try {
+    return (await (fn as (...a: unknown[]) => Promise<T>)(...args)) as T;
+  } catch (err) {
+    if (err instanceof NotImplementedError) throw new ApiFailure("UPSTREAM_GITHUB", err.message);
+    throw err;
+  }
+}
+
+/** Production adapter over @waronsaas/github/app. Operations missing from that package fail with UPSTREAM_GITHUB. */
+export function githubFromEnv(env: Readonly<Record<string, string | undefined>>): GithubPort {
+  const creds: githubApp.AppCredentials = {
+    appId: env.GITHUB_APP_ID ?? "",
+    privateKeyPem: env.GITHUB_APP_PRIVATE_KEY ?? "",
+    webhookSecret: env.GITHUB_WEBHOOK_SECRET ?? "",
+    clientId: env.GITHUB_APP_CLIENT_ID ?? "",
+    clientSecret: env.GITHUB_APP_CLIENT_SECRET ?? "",
+  };
+  const upstream = async <T>(fn: () => Promise<T>): Promise<T> => {
+    try {
+      return await fn();
+    } catch (err) {
+      if (err instanceof NotImplementedError) throw new ApiFailure("UPSTREAM_GITHUB", err.message);
+      throw err;
+    }
+  };
+  return {
+    commitChangeset: (repo, branch, changeset, identity, options) =>
+      upstream(() => githubApp.commitChangeset(creds, repo, branch, changeset, identity, options)),
+    openPullRequest: (repo, input) => upstream(() => githubApp.openPullRequest(creds, repo, input)),
+    setCommitStatus: (repo, sha, input) => upstream(() => githubApp.setCommitStatus(creds, repo, sha, input)),
+    enableAutoMerge: (repo, n) => upstream(() => githubApp.enableAutoMerge(creds, repo, n)),
+    blobOidsAt: (repo, commit, paths) => upstream(() => githubApp.blobOidsAt(creds, repo, commit, paths)),
+    createIssue: (repo, input) => upstream(() => githubApp.createIssue(creds, repo, input)),
+    verifyWebhookSignature: async (rawBody, header) => {
+      try {
+        return await githubApp.verifyWebhookSignature(creds.webhookSecret, rawBody, header);
+      } catch {
+        return false;
+      }
+    },
+    exchangeUserAuthorization: (input) => upstream(() => githubApp.exchangeUserAuthorization(creds, input)),
+    startDeviceAuthorization: () => ratified("startDeviceAuthorization", creds),
+    webAuthorizeUrl: ({ state, redirectUri }) => {
+      const fn = (githubApp as unknown as Record<string, unknown>).webAuthorizeUrl;
+      if (typeof fn === "function")
+        return (fn as (c: githubApp.AppCredentials, i: { state: string; redirectUri: string }) => string)(creds, { state, redirectUri });
+      return `https://github.com/login/oauth/authorize?${new URLSearchParams({ client_id: creds.clientId, state, redirect_uri: redirectUri })}`;
+    },
+    getBranchHead: (repo, branch) => ratified("getBranchHead", creds, repo, branch),
+    readFileAt: (repo, commit, path) => ratified("readFileAt", creds, repo, commit, path),
+    listTreePaths: (repo, commit) => ratified("listTreePaths", creds, repo, commit),
+    createBranchAt: (repo, branch, sha) => ratified("createBranchAt", creds, repo, branch, sha),
+    moveBranch: (repo, branch, sha, mode) => ratified("moveBranch", creds, repo, branch, sha, mode),
+    deleteBranch: (repo, branch) => ratified("deleteBranch", creds, repo, branch),
+    closePullRequest: (repo, n, options) => ratified("closePullRequest", creds, repo, n, options),
+    compareDiff: (repo, base, head) => ratified("compareDiff", creds, repo, base, head),
+  };
+}
+
+/** Resend over HTTPS from notify.waronsaas.com (D5, D8). Without RESEND_API_KEY mail is dropped with a warning (local only). */
+export function resendMailer(env: Readonly<Record<string, string | undefined>>, log: Logger): Mailer {
+  const key = env.RESEND_API_KEY;
+  const from = env.EMAIL_FROM ?? "warOnSaaS <signin@notify.waronsaas.com>";
+  return {
+    async send(mail) {
+      if (!key) {
+        log("warn", "RESEND_API_KEY not set: email not sent", { template: mail.template });
+        return { providerId: null };
+      }
+      const res = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
+        body: JSON.stringify({ from, to: [mail.to], subject: mail.subject, text: mail.text, html: mail.html }),
+      });
+      if (!res.ok) throw new Error(`Resend responded ${res.status}`);
+      const body = (await res.json()) as { id?: string };
+      return { providerId: body.id ?? null };
+    },
+  };
+}
+
+export function consoleLogger(): Logger {
+  return (level, message, fields) => {
+    const line = JSON.stringify({ level, message, ...fields });
+    if (level === "error") console.error(line);
+    else console.log(line);
+  };
+}
+
+export function defaultPolicyAndSchedule(): { policy: AgentPolicyDocument; schedule: RewardSchedule } {
+  return { policy: AGENT_POLICY_V1, schedule: REWARD_SCHEDULE_V1 };
+}

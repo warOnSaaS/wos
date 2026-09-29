@@ -1,0 +1,331 @@
+/**
+ * Canonical documents end to end (ROADMAP-PROTOCOL.md sections 3 and 5, FEATURE-CONTRACT.md section 7):
+ * author revision -> validation -> round -> consensus -> merge -> materialisation / ingestion -> progress.
+ */
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { reviewAs } from "./support/flow.js";
+import {
+  type Account,
+  BASE_SHA,
+  CRON_SECRET,
+  createHarness,
+  HAS_DB,
+  type Harness,
+  manifestFor,
+  signedChangeset,
+  signedRun,
+  verdict,
+  webhookHeaders,
+} from "./support/harness.js";
+
+const WHY = "Chosen against its siblings for size, user importance, complexity and share of the product's value.";
+
+const inventory = {
+  schema: "wos-inventory.v1",
+  target: "salesforce",
+  version: 1,
+  sources: [{ title: "Vendor docs", url: "https://example.com/docs", retrievedOn: "2026-09-01" }],
+  items: [
+    { key: "INV-0001", area: "Sales", title: "Contacts", description: "Contact records", source: 0, weight: 1 },
+    { key: "INV-0002", area: "Analytics", title: "Reports", description: "Reports and dashboards", source: 0, weight: 1 },
+    { key: "INV-0003", area: "Legacy", title: "Classic UI", description: "The retired interface", source: 0, weight: 1 },
+  ],
+};
+const roadmap = (crmWeight: number) => ({
+  schema: "wos-roadmap.v1",
+  target: "salesforce",
+  version: 1,
+  inventoryVersion: 1,
+  productName: "OpenCRM",
+  summary: "An open-source CRM.",
+  architecture: {
+    overview: "Modules composed per app.",
+    composition: "products/salesforce",
+    appSpecificData: "None yet.",
+    selfHosting: "Docker.",
+  },
+  capabilities: [
+    {
+      key: "crm",
+      title: "CRM",
+      summary: "Customer records",
+      weightBp: crmWeight,
+      weightRationale: WHY,
+      inventoryItems: ["INV-0001"],
+      features: [
+        {
+          feature: "contacts",
+          weightBp: 10000,
+          weightRationale: WHY,
+          inventoryItems: ["INV-0001"],
+          appNotes: "Accounts and people.",
+          phase: "core",
+        },
+      ],
+    },
+    {
+      key: "analytics",
+      title: "Analytics",
+      summary: "Reports",
+      weightBp: 3000,
+      weightRationale: WHY,
+      inventoryItems: ["INV-0002"],
+      features: [],
+    },
+  ],
+  excluded: [{ item: "INV-0003", reason: "Retired by the vendor itself." }],
+  newCatalogFeatures: ["contacts"],
+  proposals: [],
+});
+const catalogEntry = {
+  schema: "wos-catalog-entry.v1",
+  key: "contacts",
+  title: "Contacts",
+  summary: "People and companies you work with.",
+  aliasOf: null,
+};
+const contract = {
+  schema: "wos-feature-contract.v1",
+  feature: "contacts",
+  version: 1,
+  title: "Contacts",
+  summary: "People and companies.",
+  requirements: [
+    { key: "R-001", kind: "functional", statement: "Users MUST be able to list contacts.", acceptance: ["the list shows every contact"] },
+    {
+      key: "R-002",
+      kind: "functional",
+      statement: "Users MUST be able to open one contact.",
+      acceptance: ["the detail shows the contact"],
+    },
+  ],
+  profiles: [
+    {
+      target: "salesforce",
+      requirements: ["R-001", "R-002"],
+      acceptance: { dir: "features/contacts/acceptance/salesforce", run: ["npm", "test"] },
+    },
+  ],
+  impactedTargets: [],
+  interfaces: {},
+  dependsOnFeatures: [],
+  openQuestions: [],
+};
+const unit = (n: string, req: string, write: string, deps: string[], size: number) => ({
+  key: `contacts#${n}`,
+  title: `Unit ${n}`,
+  objective: "Build this unit so that its acceptance checks pass.",
+  requirements: [req],
+  dependsOn: deps,
+  sizePoints: size,
+  scope: { write: [write], read: [] },
+  resources: [],
+  acceptance: { checks: [{ id: "t", run: ["npm", "test"] }], tests: [] },
+});
+const graph = {
+  schema: "wos-build-graph.v1",
+  feature: "contacts",
+  contractVersion: 1,
+  abus: [unit("01", "R-001", "modules/contacts/list/**", [], 2), unit("02", "R-002", "modules/contacts/detail/**", ["contacts#01"], 3)],
+};
+
+describe.skipIf(!HAS_DB)("roadmap and feature contract workflows", () => {
+  let h: Harness;
+  let maint: Account;
+  beforeAll(async () => {
+    h = await createHarness();
+    maint = await h.contributor("doc-maint", { maintainer: true });
+  });
+  afterAll(async () => {
+    await h?.close();
+  });
+
+  const author = async (acct: Account, taskId: string, files: Array<{ path: string; content: string }>) => {
+    const claim = await h.call("POST", `/v1/tasks/${taskId}/claim`, { token: acct.token, idem: true, body: { deviceId: acct.deviceId } });
+    expect(claim.status, JSON.stringify(claim.body)).toBe(200);
+    const plan = claim.body.contextPlan;
+    const kind = claim.body.task.kind;
+    const m = manifestFor(plan, kind);
+    expect((await h.call("POST", `/v1/leases/${claim.body.lease.id}/manifest`, { token: acct.token, idem: true, body: m })).status).toBe(
+      200,
+    );
+    await h.call("POST", `/v1/leases/${claim.body.lease.id}/agent-runs`, {
+      token: acct.token,
+      idem: true,
+      body: signedRun(acct.key, plan, claim.body.lease.id, acct.deviceId, m.manifestSha256),
+    });
+    const [doc] = await h.owner<{ head_sha: string | null }[]>`select head_sha from wos.documents where id = ${claim.body.task.documentId}`;
+    const cs = signedChangeset(acct.key, {
+      taskId,
+      leaseId: claim.body.lease.id,
+      deviceId: acct.deviceId,
+      parentCommit: doc!.head_sha ?? plan.source.commit,
+      manifestSha256: m.manifestSha256,
+      files,
+      summary: { schema: "author-summary.v1", summary: "Revision.", responses: [], proposalsAddressed: [] },
+    });
+    return h.call("POST", `/v1/leases/${claim.body.lease.id}/changeset`, { token: acct.token, idem: true, body: cs });
+  };
+  const dispatch = () => h.call("GET", "/v1/cron/dispatch", { headers: { authorization: `Bearer ${CRON_SECRET}` } });
+
+  it("materialises a merged roadmap (D11) and ingests the merged contract, with progress at every step", async () => {
+    const opened = await h.call("POST", "/v1/admin/targets/salesforce/roadmaps", {
+      token: maint.token,
+      idem: true,
+      body: { reason: "First roadmap" },
+    });
+    expect(opened.status).toBe(200);
+    const again = await h.call("POST", "/v1/admin/targets/salesforce/roadmaps", {
+      token: maint.token,
+      idem: true,
+      body: { reason: "Second one" },
+    });
+    expect(again.body.error.code).toBe("CONFLICT"); // ONE canonical open roadmap per app
+    const writer = await h.contributor("roadmap-writer");
+    const files = (crmWeight: number) => [
+      { path: "roadmaps/salesforce/ROADMAP.yaml", content: JSON.stringify(roadmap(crmWeight)) },
+      { path: "roadmaps/salesforce/INVENTORY.yaml", content: JSON.stringify(inventory) },
+      { path: "catalog/contacts.yaml", content: JSON.stringify(catalogEntry) },
+    ];
+
+    // A path outside the document's allowed paths is refused before anything is committed (422, lease kept).
+    const probe = await h.call("POST", `/v1/tasks/${opened.body.taskId}/claim`, {
+      token: writer.token,
+      idem: true,
+      body: { deviceId: writer.deviceId },
+    });
+    const pm = manifestFor(probe.body.contextPlan, "roadmap_author");
+    await h.call("POST", `/v1/leases/${probe.body.lease.id}/manifest`, { token: writer.token, idem: true, body: pm });
+    const evil = signedChangeset(writer.key, {
+      taskId: opened.body.taskId,
+      leaseId: probe.body.lease.id,
+      deviceId: writer.deviceId,
+      parentCommit: probe.body.contextPlan.source.commit,
+      manifestSha256: pm.manifestSha256,
+      files: [{ path: "modules/contacts/evil.ts", content: "x" }],
+      summary: { schema: "author-summary.v1", summary: "Sneaky.", responses: [], proposalsAddressed: [] },
+    });
+    const refused = await h.call("POST", `/v1/leases/${probe.body.lease.id}/changeset`, { token: writer.token, idem: true, body: evil });
+    expect(refused.status).toBe(422);
+    expect(refused.body.error.code).toBe("SCOPE_VIOLATION");
+    expect(h.github.commits).toHaveLength(0);
+    const [still] = await h.owner<{ state: string }[]>`select state from wos.documents where id = ${opened.body.documentId}`;
+    expect(still!.state).toBe("drafting");
+    await h.call("POST", `/v1/leases/${probe.body.lease.id}/release`, { token: writer.token, idem: true, body: { reason: "retry" } });
+
+    // Invalid weights (D12 sums): validation_failed -> revising, errors carried to a new author task.
+    const bad = await author(writer, opened.body.taskId, files(6000));
+    expect(bad.status, JSON.stringify(bad.body)).toBe(200);
+    const [d1] = await h.owner<
+      { state: string; round_number: number }[]
+    >`select state, round_number from wos.documents where id = ${opened.body.documentId}`;
+    expect(d1).toEqual({ state: "revising", round_number: 0 });
+    const [carry] = await h.owner<{ id: string; carry: { validatorErrors: unknown[] } }[]>`
+      select id, carry from wos.tasks where document_id = ${opened.body.documentId} and kind = 'roadmap_author' and state = 'open'`;
+    expect(carry!.carry.validatorErrors.length).toBeGreaterThan(0);
+
+    // Valid revision: round 1 opens with one task per slot; the author is excluded from both.
+    const good = await author(writer, carry!.id, files(7000));
+    expect(good.status).toBe(200);
+    const [d2] = await h.owner<
+      { state: string; round_number: number; head_sha: string }[]
+    >`select state, round_number, head_sha from wos.documents where id = ${opened.body.documentId}`;
+    expect(d2!.state).toBe("in_review");
+    expect(d2!.round_number).toBe(1);
+    const reviewTasks = await h.owner<
+      { excluded_account_ids: string[] }[]
+    >`select excluded_account_ids from wos.tasks where document_id = ${opened.body.documentId} and kind = 'roadmap_review'`;
+    expect(reviewTasks).toHaveLength(2);
+    for (const t of reviewTasks) expect(t.excluded_account_ids).toContain(writer.id);
+    await dispatch();
+    const draft = h.github.prs.find((p) => p.title === "salesforce Replacement Roadmap" || p.title === "OpenCRM Replacement Roadmap")!;
+    expect(draft.draft).toBe(true);
+
+    const selfReview = await h.call("POST", "/v1/reviews/claim", {
+      token: writer.token,
+      idem: true,
+      body: { deviceId: writer.deviceId, slot: "astra", kinds: ["roadmap_review"] },
+    });
+    expect(selfReview.body).toBeNull(); // the author is never assigned their own subject
+    await reviewAs(h, await h.contributor("rm-astra"), "astra", "roadmap_review", verdict("NO_MATERIAL_GAPS"));
+    await reviewAs(h, await h.contributor("rm-fable"), "fable", "roadmap_review", verdict("NO_MATERIAL_GAPS"));
+    const [d3] = await h.owner<{ state: string }[]>`select state from wos.documents where id = ${opened.body.documentId}`;
+    expect(d3!.state).toBe("consensus");
+    await dispatch();
+    expect(h.github.statuses.some((s) => s.context === "wos/consensus" && s.sha === d2!.head_sha)).toBe(true);
+
+    // Merge -> materialisation.
+    const merged = {
+      action: "closed",
+      repository: { full_name: "waronsaas/suite" },
+      pull_request: { number: draft.number, merged: true, merge_commit_sha: d2!.head_sha },
+    };
+    expect((await h.call("POST", "/v1/github/webhook", { body: merged, headers: webhookHeaders("pull_request", merged) })).status).toBe(
+      200,
+    );
+    const target = await h.call("GET", "/v1/public/targets/salesforce");
+    expect(target.body.productName).toBe("OpenCRM");
+    expect(target.body.progress).toMatchObject({
+      mappedBp: 7000,
+      specifiedBp: 0,
+      builtBp: 0,
+      roadmapVersion: 1,
+      inventoryItems: 3,
+      excludedItems: 1,
+    });
+    expect(target.body.capabilities.map((c: { key: string; mapped: boolean }) => [c.key, c.mapped])).toEqual([
+      ["crm", true],
+      ["analytics", false],
+    ]);
+    expect(target.body.excluded).toEqual([{ item: "INV-0003", title: "Classic UI", reason: "Retired by the vendor itself." }]);
+    const feature = target.body.capabilities[0].features[0];
+    expect(feature).toMatchObject({ key: "contacts", state: "specifying", weightBp: 10000, effectiveAppWeightBp: 7000 });
+    expect(feature.contract).toMatchObject({ kind: "feature_contract", version: 1, state: "drafting" });
+    const catalog = await h.call("GET", "/v1/public/catalog");
+    expect(catalog.body.items.map((i: { key: string }) => i.key)).toContain("contacts");
+
+    // The contract workflow that the merge opened: author, validate, review, merge, ingest.
+    const [ft] = await h.owner<{ id: string }[]>`select t.id from wos.tasks t join wos.documents d on d.id = t.document_id
+                                                 where d.kind = 'feature_contract' and t.kind = 'feature_author' and t.state = 'open'`;
+    const contractWriter = await h.contributor("contract-writer");
+    const submitted = await author(contractWriter, ft!.id, [
+      { path: "features/contacts/CONTRACT.yaml", content: JSON.stringify(contract) },
+      { path: "features/contacts/BUILD-GRAPH.yaml", content: JSON.stringify(graph) },
+    ]);
+    expect(submitted.status, JSON.stringify(submitted.body)).toBe(200);
+    await reviewAs(h, await h.contributor("fc-astra"), "astra", "feature_review", verdict("NO_MATERIAL_GAPS"));
+    await reviewAs(h, await h.contributor("fc-fable"), "fable", "feature_review", verdict("NO_MATERIAL_GAPS"));
+    await dispatch();
+    const contractPr = h.github.prs.find((p) => p.title === "contacts Feature Contract")!;
+    const [cd] = await h.owner<
+      { id: string; head_sha: string; state: string }[]
+    >`select id, head_sha, state from wos.documents where kind = 'feature_contract'`;
+    expect(cd!.state).toBe("consensus");
+    const mergedContract = {
+      action: "closed",
+      repository: { full_name: "waronsaas/suite" },
+      pull_request: { number: contractPr.number, merged: true, merge_commit_sha: cd!.head_sha },
+    };
+    await h.call("POST", "/v1/github/webhook", { body: mergedContract, headers: webhookHeaders("pull_request", mergedContract) });
+    const abus = await h.owner<{ key: string; state: string; task: string }[]>`
+      select a.key, a.state, t.state as task from wos.abus a join wos.tasks t on t.abu_id = a.id and t.kind = 'abu_build' order by a.key`;
+    expect(abus).toEqual([
+      { key: "contacts#01", state: "ready", task: "open" },
+      { key: "contacts#02", state: "pending_dependencies", task: "blocked" },
+    ]);
+    const after = await h.call("GET", "/v1/public/targets/salesforce/features/contacts");
+    expect(after.body).toMatchObject({ state: "specified", specifiedBp: 10000, builtBp: 0, relevantPoints: 5, mergedPoints: 0 });
+    expect(after.body.requirements.map((r: { key: string }) => r.key)).toEqual(["R-001", "R-002"]);
+    const t2 = await h.call("GET", "/v1/public/targets/salesforce");
+    expect(t2.body.progress).toMatchObject({ mappedBp: 7000, specifiedBp: 7000, builtBp: 0 });
+    const history = await h.call("GET", "/v1/public/targets/salesforce/progress");
+    expect(history.body.items.length).toBeGreaterThanOrEqual(2);
+    // Replaying the same merge delivery changes nothing (dedupe by X-GitHub-Delivery and the consensus guard).
+    const before = await h.owner<{ n: number }[]>`select count(*)::int as n from wos.events`;
+    await h.call("POST", "/v1/github/webhook", { body: mergedContract, headers: webhookHeaders("pull_request", mergedContract) });
+    const afterReplay = await h.owner<{ n: number }[]>`select count(*)::int as n from wos.events`;
+    expect(afterReplay[0]!.n).toBe(before[0]!.n);
+    expect(BASE_SHA).toHaveLength(40);
+    expect(h.violations).toEqual([]);
+  });
+});
