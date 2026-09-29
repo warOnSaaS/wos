@@ -268,6 +268,9 @@ export class FakeControlPlane {
   }
 
   readonly rulings: unknown[] = [];
+  readonly claimBodies: Array<{ deviceId: string; model?: string }> = [];
+  /** Scripted claim refusals, e.g. the per-provider build-lease limit (D15). */
+  readonly claimRefusals: Array<"LIMIT_REACHED" | "NOT_ELIGIBLE"> = [];
   /** Events served by listMyEvents (tests push contract-shaped DomainEvents). */
   readonly domainEvents: Array<{ id: number } & Record<string, unknown>> = [];
   /** D15: the model the server issues builder plans for (until the claim can name it, B-0010-github-build). */
@@ -276,7 +279,9 @@ export class FakeControlPlane {
   private authorPlan(t: TaskView, leaseId: string): ContextPlan {
     const roleName = t.role;
     const role = getRolePolicy(roleName, AGENT_POLICY_V1);
-    const model = AGENT_POLICY_V1.models.find((m) => m.ref === role.allowedModels[0])!;
+    const chosen = this.claimBodies.at(-1)?.model;
+    const ref = chosen && role.allowedModels.includes(chosen as never) ? chosen : role.allowedModels[0];
+    const model = AGENT_POLICY_V1.models.find((m) => m.ref === ref)!;
     const artifacts: ArtifactSelector[] = [
       this.doc(`wos:policy/${roleName}@${AGENT_POLICY_V1.policyVersion}`),
       this.doc(`wos:task/${t.id}`),
@@ -500,6 +505,15 @@ export class FakeControlPlane {
           ],
         };
       case "claimBuild": {
+        this.claimBodies.push(body as never);
+        const refusal = this.claimRefusals.shift();
+        if (refusal) throw new HttpErr(refusal === "LIMIT_REACHED" ? 409 : 403, refusal, `${refusal}: fake refusal`);
+        if (body?.model) {
+          if (!getRolePolicy("builder", AGENT_POLICY_V1).allowedModels.includes(body.model as never)) {
+            throw new HttpErr(403, "NOT_ELIGIBLE", `model ${String(body.model)} is not allowed for builder`);
+          }
+          this.builderModel = body.model as "opus" | "astra" | "sol";
+        }
         if (params.id !== this.abuId) throw new HttpErr(404, "NOT_FOUND", "no such ABU");
         const task = this.task("abu_build", null, "leased");
         const a: Attempt = {
@@ -656,6 +670,7 @@ export class FakeControlPlane {
       case "listOpenTasks":
         return { items: [...this.tasks.values()].filter((t) => t.state === "open" && (!query.kind || t.kind === query.kind)) };
       case "claimTask": {
+        this.claimBodies.push(body as never);
         const t = this.tasks.get(params.id!)!;
         if (t.state !== "open") throw new HttpErr(409, "CONFLICT", "task not open");
         t.state = "leased";
