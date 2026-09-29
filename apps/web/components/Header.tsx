@@ -5,13 +5,13 @@ export function Header() {
   return (
     <header>
       <a className="skip" href="#main">Skip to content</a>
-      <div className="strip" role="presentation">
-        <span>Distribution: public</span>
-        <span>Open source</span>
+      <div className="strip">
+        <span>DISTRIBUTION: PUBLIC</span>
+        <span>OPEN SOURCE</span>
       </div>
       <div className="masthead">
         <Link href="/" className="wordmark" aria-label="warOnSaaS home">
-          WARONSAAS
+          warOnSaaS
         </Link>
         <nav aria-label="Main">
           <ul className="nav">

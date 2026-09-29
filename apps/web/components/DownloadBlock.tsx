@@ -1,13 +1,12 @@
 import { CLI, DOWNLOADS, PREREQUISITES, SIGN_IN } from "@/lib/site";
 
-/** Equipment: desktop builds, CLI, prerequisites. Used on / and /download. */
-export function DownloadBlock({ headingLevel = 3 }: { headingLevel?: 2 | 3 }) {
-  const H = headingLevel === 2 ? "h2" : "h3";
+/** Equipment: desktop builds, CLI, requirements. Used on / and /download. */
+export function DownloadBlock() {
   return (
     <div className="equip">
       <div>
-        <H className="h3">wOS Desktop</H>
-        <p className="dim">Pick a target, a feature and a task. Press BUILD.</p>
+        <h3>wOS Desktop</h3>
+        <p>Pick a target, a feature and a task. Press BUILD.</p>
         <ul className="dl">
           {DOWNLOADS.map((d) => (
             <li key={d.os}>
@@ -20,8 +19,8 @@ export function DownloadBlock({ headingLevel = 3 }: { headingLevel?: 2 | 3 }) {
         </ul>
       </div>
       <div>
-        <H className="h3">wos CLI</H>
-        <p className="dim">Install with npm:</p>
+        <h3>wOS CLI</h3>
+        <p>Install with npm.</p>
         <pre className="term"><code>{CLI.install}</code></pre>
         <dl className="clist">
           {CLI.commands.map((c) => (
@@ -33,8 +32,8 @@ export function DownloadBlock({ headingLevel = 3 }: { headingLevel?: 2 | 3 }) {
         </dl>
       </div>
       <div>
-        <H className="h3">Requirements</H>
-        <p className="dim">{SIGN_IN}</p>
+        <h3>Requirements</h3>
+        <p>{SIGN_IN}</p>
         <ul className="checks">
           {PREREQUISITES.map((p) => (
             <li key={p.name}>

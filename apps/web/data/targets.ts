@@ -32,6 +32,8 @@ export type Target = {
   hosted: boolean;
   /** Whether the replacement can be self-hosted yet. */
   selfHosted: boolean;
+  /** Optional status that overrides the derived one (used only for TGT-00, warOnSaaS itself). */
+  statusLabel?: string;
 };
 
 export const targets: Target[] = [
@@ -261,6 +263,7 @@ export function roadmapState(t: Target): string {
  * SPECIFYING: contracts in progress, nothing built. BUILDING: some merged. COMPLETE: 100% built.
  */
 export function targetStatus(t: Target): string {
+  if (t.statusLabel) return t.statusLabel;
   if (t.built >= 100) return "COMPLETE";
   if (t.built > 0) return "BUILDING";
   if (t.specified > 0) return "SPECIFYING";

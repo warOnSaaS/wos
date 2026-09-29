@@ -15,12 +15,12 @@ export default function About() {
   return (
     <>
       <div className="title">
-        <p className="label">About // mission</p>
+        <p className="label">ABOUT // MISSION</p>
         <h1>Mission</h1>
         <p>{ABOUT.mission}</p>
       </div>
 
-      <Section n="01" title="Reasons" id="reasons">
+      <Section n="01" title="REASONS" id="reasons">
         <ol className="rules">
           {ABOUT.why.map((w, i) => (
             <li key={w}>
@@ -31,13 +31,13 @@ export default function About() {
         </ol>
       </Section>
 
-      <Section n="02" title="Method" id="method">
+      <Section n="02" title="METHOD" id="method">
         <p>{ABOUT.how}</p>
         <p>{ABOUT.selfHost}</p>
         <p><Link href="/how-it-works">Full procedure</Link></p>
       </Section>
 
-      <Section n="03" title="Position" id="position">
+      <Section n="03" title="POSITION" id="position">
         <p>{ABOUT.zero}</p>
         <p>
           First ten targets:{" "}

@@ -14,9 +14,9 @@ export default async function Image() {
       title="Open-source replacements for the software you rent"
       subtitle={`${targets.length} targets. ${roadmapsOpen()} roadmaps open. The war starts at zero.`}
       rows={[
-        { label: "Mapped", value: `${overall("mapped")}%` },
-        { label: "Specified", value: `${overall("specified")}%` },
-        { label: "Built", value: `${overall("built")}%` },
+        { label: "MAPPED", value: `${overall("mapped")}%` },
+        { label: "SPECIFIED", value: `${overall("specified")}%` },
+        { label: "BUILT", value: `${overall("built")}%` },
       ]}
     />,
     { ...size, fonts: await ogFont() },

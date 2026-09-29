@@ -14,18 +14,18 @@ export default function Tokens() {
   return (
     <>
       <div className="title">
-        <p className="label">Tokens // accounting</p>
+        <p className="label">TOKENS // ACCOUNTING</p>
         <h1>WOS tokens</h1>
         <p>{TOKENS.intro}</p>
       </div>
 
-      <Section n="01" title="Terms" id="terms">
+      <Section n="01" title="TERMS" id="terms">
         <p><strong>{TOKENS.disclaimer}</strong></p>
         <p>{TOKENS.notCrypto}</p>
         <p>{TOKENS.rule}</p>
       </Section>
 
-      <Section n="02" title="Earned for" id="earned">
+      <Section n="02" title="EARNED FOR" id="earned">
         <dl className="kv">
           {TOKENS.earnedFor.map((e) => (
             <div key={e.what}>
@@ -36,9 +36,9 @@ export default function Tokens() {
         </dl>
       </Section>
 
-      <Section n="03" title="Ledger" id="ledger">
+      <Section n="03" title="LEDGER" id="ledger">
         <p>{TOKENS.balance}</p>
-        <Link className="cmd" href="/leaderboard">Leaderboard</Link>
+        <Link className="cmd" href="/leaderboard">LEADERBOARD</Link>
       </Section>
     </>
   );

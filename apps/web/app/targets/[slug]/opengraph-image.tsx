@@ -21,9 +21,9 @@ export default async function Image({ params }: { params: Promise<{ slug: string
       title={`Open-source ${t.name} alternative`}
       subtitle={t.whatItIs}
       rows={[
-        { label: "Mapped", value: `${t.mapped}%` },
-        { label: "Specified", value: `${t.specified}%` },
-        { label: "Built", value: `${t.built}%` },
+        { label: "MAPPED", value: `${t.mapped}%` },
+        { label: "SPECIFIED", value: `${t.specified}%` },
+        { label: "BUILT", value: `${t.built}%` },
       ]}
     />,
     { ...size, fonts: await ogFont() },

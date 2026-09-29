@@ -1,3 +1,5 @@
+import { BRIEFING, BRIEFING_INTRO, type Block } from "./briefing";
+import { WOS_PROPOSAL_LABEL, WOS_ZERO_REASON, wosCapabilities, wosTarget } from "@/data/wos-roadmap";
 import { programme, roadmapState, roadmapStatus, roadmapTitle, targetStatus, targets } from "@/data/targets";
 import { ABOUT, FAQ, OBJECTIVE, PROGRESS_METRICS, ROE, STEPS, TOKENS } from "./content";
 import { abs } from "./seo";
@@ -5,10 +7,13 @@ import { CLI, DOWNLOADS, LINKS, PREREQUISITES, SIGN_IN, SITE_DESCRIPTION, SITE_N
 
 const pages = [
   { path: "/", title: "Home", about: "What warOnSaaS is, the Sniper List with live progress, how it works, WOS tokens, download and FAQ." },
+  { path: "/briefing", title: "Briefing", about: "The whole idea and how every part works: PR types, Feature Catalog, progress, leases, review, gated PRs, tokens, sign-in, models." },
+  { path: "/targets/waronsaas", title: "TGT-00 warOnSaaS builds itself", about: "The proposed wOS V1 feature list in roadmap format, with honest status." },
   { path: "/how-it-works", title: "How it works", about: "The seven steps from public roadmap to merged code, and how progress is measured." },
-  { path: "/download", title: "Download wOS", about: "wOS Desktop for macOS, Windows and Linux, the wos CLI, and prerequisites." },
+  { path: "/download", title: "Download wOS", about: "wOS Desktop for macOS, Windows and Linux, the wOS CLI, and prerequisites." },
   { path: "/tokens", title: "WOS tokens", about: "What earns WOS tokens. WOS tokens are in-app credits with no cash value." },
   { path: "/leaderboard", title: "Leaderboard", about: "Contributors ranked by accepted work. No accepted contributions yet." },
+  { path: "/faq", title: "FAQ", about: "Short answers to common questions." },
   { path: "/about", title: "About", about: "The mission." },
 ];
 
@@ -29,6 +34,7 @@ export function llmsTxt(): string {
     "",
     "## The Sniper List (targets, in order)",
     "",
+    `- [${wosTarget.id} warOnSaaS (wOS)](${abs("/targets/waronsaas")}): warOnSaaS is its own first target. ${WOS_PROPOSAL_LABEL}. Progress: ${progressLine(wosTarget)}.`,
     ...targets.map(
       (t) => `- [${t.id} Open-source ${t.name} alternative](${abs(`/targets/${t.slug}`)}): ${t.category}. ${t.whatItIs} Progress: ${progressLine(t)}. ${roadmapStatus(t)}.`,
     ),
@@ -62,8 +68,7 @@ export function llmsFullTxt(): string {
     "",
   );
   push("### Objective", "", OBJECTIVE, "");
-  push("### Rules of engagement", "", ...ROE.map((r, i) => `R-${i + 1}. ${r}`), "");
-  push("### Targets (the Sniper List)", "");
+  push("### The Sniper List", "");
   push(
     "Each target gets its own public roadmap. Progress is three independent numbers:",
     "",
@@ -71,9 +76,11 @@ export function llmsFullTxt(): string {
     "",
   );
   push("| ID | Target | Category | Mapped | Specified | Built | Roadmap | Status |", "|---|---|---|---|---|---|---|---|");
+  push(`| ${wosTarget.id} | warOnSaaS (wOS) | ${wosTarget.category} | 0% | 0% | 0% | ${roadmapState(wosTarget)} | ${targetStatus(wosTarget)} |`);
   targets.forEach((t) => push(`| ${t.id} | ${t.name} | ${t.category} | ${t.mapped}% | ${t.specified}% | ${t.built}% | ${roadmapState(t)} | ${targetStatus(t)} |`));
   push("");
 
+  push("", "### Procedure (summary)", "", "1. Each target gets one public roadmap. Two AI reviewers from two labs must both find no gaps.", "2. Each feature gets a contract, cut into tasks small enough for one AI agent.", "3. A contributor presses BUILD. Someone else reviews it. Only then does wOS open the PR.", "");
   push(`## How it works (${abs("/how-it-works")})`, "");
   STEPS.forEach((s, i) => push(`### ${i + 1}. ${s.title}`, "", s.summary, "", `Detail: ${s.detail}`, ""));
   push(
@@ -83,6 +90,22 @@ export function llmsFullTxt(): string {
     "",
   );
 
+  push("### Rules of engagement", "", ...ROE.map((r, i) => `R-${i + 1}. ${r}`), "");
+  push(`## Briefing (${abs("/briefing")})`, "", BRIEFING_INTRO, "");
+  BRIEFING.forEach((sec, i) => {
+    push(`### ${String(i + 1).padStart(2, "0")}. ${sec.title}`, "");
+    sec.blocks.forEach((b) => push(...blockMd(b), ""));
+  });
+  push(`## TGT-00 warOnSaaS builds itself (${abs("/targets/waronsaas")})`, "");
+  push("warOnSaaS is its own first target. wOS will be built with the same process it runs for every other target.", "");
+  push(`- Status: ${targetStatus(wosTarget)}`, "- Roadmap: not opened", `- Mapped ${wosTarget.mapped}%, specified ${wosTarget.specified}%, built ${wosTarget.built}%`, `- Why 0%: ${WOS_ZERO_REASON}`, "");
+  push("State of work: the public website exists (this site, static v0: pages rendered at build time, data from a file, every number 0%). Architecture is in progress (Phase 0, nothing merged). Everything else is not started.", "");
+  push(`### Feature proposal (${WOS_PROPOSAL_LABEL})`, "");
+  wosCapabilities.forEach((c) => {
+    push(`#### ${c.id} ${c.name} [${c.status}]`, "", c.summary + (c.note ? ` ${c.note}` : ""), "");
+    c.features.forEach((f) => push(`- [${f.status}] ${f.name}${f.note ? ` (${f.note})` : ""}`));
+    push("");
+  });
   push(`## Download wOS (${abs("/download")})`, "");
   push("wOS is the build tool. Pick a target, a feature and a task. Press BUILD. Your local Claude Code does the work under wOS's checks.", "");
   push("### Sign-in", "", SIGN_IN, "No GitHub account is needed just to sign in.", "");
@@ -123,9 +146,25 @@ export function llmsFullTxt(): string {
     push("To contribute: propose changes to the one canonical roadmap pull request (do not start a separate one). Fable and Astra review it independently until both report no material gaps. Once features have agreed contracts, download wOS, pick this target, a feature and a task, and press BUILD. Contributing requires a linked GitHub account.", "");
   });
 
-  push("## FAQ", "");
+  push(`## FAQ (${abs("/faq")})`, "");
   FAQ.forEach((f) => push(`### ${f.q}`, "", f.a, ""));
 
   push("## Legal", "", TOKENS.disclaimer + " They are not cryptocurrency and cannot be transferred or sold.", "", "Product names on this site are trademarks of their respective owners. warOnSaaS is not affiliated with, endorsed by or sponsored by any of them.", "");
   return out.join("\n");
+}
+
+function blockMd(b: Block): string[] {
+  switch (b.type) {
+    case "p":
+    case "note":
+      return [b.text];
+    case "list":
+      return b.items.map((i) => `- ${i}`);
+    case "steps":
+      return b.items.map((i, n) => `${n + 1}. ${i}`);
+    case "kv":
+      return b.rows.map(([k, v]) => `- ${k}: ${v}`);
+    case "diagram":
+      return [`Diagram: ${b.label}.`, "", "```", ...b.lines, "```"];
+  }
 }

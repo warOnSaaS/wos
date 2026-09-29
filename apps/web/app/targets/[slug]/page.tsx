@@ -35,13 +35,13 @@ export default async function TargetPage({ params }: Props) {
 
   const header: [string, string][] = [
     ["ID", t.id],
-    ["Designation", t.name],
-    ["Category", t.category],
-    ["Status", targetStatus(t)],
-    ["Roadmap", roadmapState(t)],
-    ["Self-hosted", t.selfHosted ? "Available" : "Not yet"],
-    ["Hosted", t.hosted ? "Running" : "Not yet"],
-    ["Contributors", "0"],
+    ["DESIGNATION", t.name],
+    ["CATEGORY", t.category],
+    ["STATUS", targetStatus(t)],
+    ["ROADMAP", roadmapState(t)],
+    ["SELF-HOSTED", t.selfHosted ? "Available" : "Not yet"],
+    ["HOSTED", t.hosted ? "Running" : "Not yet"],
+    ["CONTRIBUTORS", "0"],
   ];
 
   return (
@@ -54,7 +54,7 @@ export default async function TargetPage({ params }: Props) {
             <li><span aria-current="page">{t.id}</span></li>
           </ol>
         </nav>
-        <p className="label">Target dossier // {t.id}</p>
+        <p className="label">TARGET DOSSIER // {t.id}</p>
         <h1>Open-source {t.name} alternative</h1>
         <p>
           {t.name}: {t.whatItIs} warOnSaaS is building an open-source replacement you can run yourself, one feature at
@@ -62,7 +62,7 @@ export default async function TargetPage({ params }: Props) {
         </p>
       </div>
 
-      <Section n="01" title="Header" id="header">
+      <Section n="01" title="HEADER" id="header">
         <dl className="cells">
           {header.map(([k, v]) => (
             <div key={k}>
@@ -73,11 +73,11 @@ export default async function TargetPage({ params }: Props) {
         </dl>
       </Section>
 
-      <Section n="02" title="Progress" id="progress" aside="Three independent measures">
+      <Section n="02" title="PROGRESS" id="progress" aside="THREE INDEPENDENT MEASURES">
         <div className="readout">
           {PROGRESS_METRICS.map((m) => (
             <div key={m.key}>
-              <span className="label">{m.label}</span>
+              <span className="label">{m.label.toUpperCase()}</span>
               <span className="readout__n">{t[m.key]}%</span>
               <Bar value={t[m.key]} cells={20} showValue={false} />
               <p className="fine">{m.means}</p>
@@ -86,7 +86,7 @@ export default async function TargetPage({ params }: Props) {
         </div>
       </Section>
 
-      <Section n="03" title="Roadmap" id="roadmap">
+      <Section n="03" title="ROADMAP" id="roadmap">
         <dl className="kv">
           <div>
             <dt>Canonical PR</dt>
@@ -108,7 +108,7 @@ export default async function TargetPage({ params }: Props) {
         </dl>
       </Section>
 
-      <Section n="04" title="Scope" id="scope" aside="Provisional outline">
+      <Section n="04" title="SCOPE" id="scope" aside="PROVISIONAL OUTLINE">
         <p>{t.name} is: {t.whatItIs.charAt(0).toLowerCase() + t.whatItIs.slice(1)} The replacement is expected to cover, in broad strokes:</p>
         <ul className="rules">
           {t.replacementCovers.map((c, i) => (
@@ -121,7 +121,7 @@ export default async function TargetPage({ params }: Props) {
         <p className="fine">Provisional. The public roadmap sets the exact scope. This is not a feature commitment.</p>
       </Section>
 
-      <Section n="05" title="How to contribute" id="contribute">
+      <Section n="05" title="HOW TO CONTRIBUTE" id="contribute">
         <ol className="proc">
           <li>
             <span className="proc__n" aria-hidden="true">01</span>

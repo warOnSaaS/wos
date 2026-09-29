@@ -14,19 +14,19 @@ export default function Leaderboard() {
   return (
     <>
       <div className="title">
-        <p className="label">Leaderboard // ranked by accepted work</p>
+        <p className="label">LEADERBOARD // RANKED BY ACCEPTED WORK</p>
         <h1>Leaderboard</h1>
         <p>Contributors are ranked by WOS tokens earned for accepted work.</p>
       </div>
 
-      <Section n="01" title="Rankings" id="rankings" aside="Entries: 0">
+      <Section n="01" title="RANKINGS" id="rankings" aside="ENTRIES: 0">
         <div className="empty">
           <strong>No accepted contributions yet</strong>
           <p>Nothing has been merged. The board is empty. The first accepted roadmap change, contract, review or build unit takes rank 1.</p>
         </div>
         <div className="cmds-row">
-          <Link className="cmd" href="/download">Download wOS</Link>
-          <Link className="cmd" href="/how-it-works">Procedure</Link>
+          <Link className="cmd" href="/download">DOWNLOAD wOS</Link>
+          <Link className="cmd" href="/how-it-works">PROCEDURE</Link>
         </div>
         <p className="fine">{TOKEN_DISCLAIMER} They are not cryptocurrency and cannot be transferred or sold.</p>
       </Section>

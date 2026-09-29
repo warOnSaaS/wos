@@ -10,12 +10,12 @@ export const metadata: Metadata = {
 export default function NotFound() {
   return (
     <div className="title">
-      <p className="label">Error 404 // no such page</p>
+      <p className="label">ERROR 404 // NO SUCH PAGE</p>
       <h1>Not found</h1>
       <p>This page does not exist.</p>
       <div className="cmds-row" style={{ marginTop: "1rem" }}>
-        <Link className="cmd" href="/#targets">Targets</Link>
-        <Link className="cmd" href="/">Home</Link>
+        <Link className="cmd" href="/#targets">TARGETS</Link>
+        <Link className="cmd" href="/">HOME</Link>
       </div>
     </div>
   );

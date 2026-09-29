@@ -44,7 +44,7 @@ export const STEPS: Step[] = [
   {
     title: "A contributor presses BUILD",
     summary:
-      "Open wOS Desktop or the wos CLI. Pick a target, a feature and a task. Press BUILD. wOS reserves the task, prepares a clean copy of the code, gives your Claude Code the exact instructions, limits which files it may change, and runs the tests.",
+      "Open wOS Desktop or the wOS CLI. Pick a target, a feature and a task. Press BUILD. wOS reserves the task, prepares a clean copy of the code, gives your Claude Code the exact instructions, limits which files it may change, and runs the tests.",
     detail:
       "wOS leases the unit to you, creates an isolated git worktree, hands your local Claude Code a context manifest, enforces a file allow-list, and runs the unit’s tests. It runs on your own Claude subscription.",
   },

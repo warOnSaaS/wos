@@ -1,14 +1,11 @@
 import Link from "next/link";
 import { overall, programme, roadmapsOpen, targets } from "@/data/targets";
-import { FAQ, OBJECTIVE, TOKENS } from "@/lib/content";
-import { desktopAppLd, faqLd, pageMetadata, targetListLd } from "@/lib/seo";
+import { wosTarget } from "@/data/wos-roadmap";
+import { desktopAppLd, pageMetadata, targetListLd } from "@/lib/seo";
 import { SITE_DESCRIPTION, SITE_NAME } from "@/lib/site";
 import { Section } from "@/components/Section";
 import { TargetTable } from "@/components/TargetTable";
-import { Procedure } from "@/components/Procedure";
-import { Rules } from "@/components/Rules";
 import { DownloadBlock } from "@/components/DownloadBlock";
-import { FaqList } from "@/components/FaqList";
 import { JsonLd } from "@/components/JsonLd";
 
 export const metadata = pageMetadata({
@@ -20,25 +17,33 @@ export const metadata = pageMetadata({
 
 export default function Home() {
   const sitrep: [string, string][] = [
-    ["Targets", String(targets.length)],
-    ["Roadmaps open", String(roadmapsOpen())],
-    ["Mapped", `${overall("mapped")}%`],
-    ["Specified", `${overall("specified")}%`],
-    ["Built", `${overall("built")}%`],
-    ["Contributors", String(programme.contributors)],
-    ["Accepted work", String(programme.acceptedContributions)],
-    ["Tokens issued", String(programme.tokensIssued)],
+    ["TARGETS", String(targets.length)],
+    ["ROADMAPS OPEN", String(roadmapsOpen())],
+    ["MAPPED", `${overall("mapped")}%`],
+    ["SPECIFIED", `${overall("specified")}%`],
+    ["BUILT", `${overall("built")}%`],
+    ["CONTRIBUTORS", String(programme.contributors)],
+    ["ACCEPTED WORK", String(programme.acceptedContributions)],
+    ["TOKENS ISSUED", String(programme.tokensIssued)],
   ];
 
   return (
     <>
       <div className="title">
-        <p className="label">Operation order // warOnSaaS</p>
+        <p className="label">OPERATION ORDER // <span>warOnSaaS</span></p>
         <h1>Open-source replacements for the software you rent.</h1>
-        <p>{SITE_DESCRIPTION}</p>
+        <p className="lead">
+          warOnSaaS builds open-source replacements for the biggest rented business software, one feature at a time.
+          The code is written by AI coding agents that contributors run on their own subscriptions.
+        </p>
+        <div className="cmds-row">
+          <a className="cmd" href="#targets">SNIPER LIST</a>
+          <Link className="cmd" href="/briefing">FULL BRIEFING</Link>
+          <Link className="cmd" href="/download">DOWNLOAD wOS</Link>
+        </div>
       </div>
 
-      <Section n="01" title="Sitrep" id="sitrep" aside="Status: standby">
+      <Section n="01" title="SITREP" id="sitrep" aside="STATUS: STANDBY">
         <dl className="cells">
           {sitrep.map(([k, v]) => (
             <div key={k}>
@@ -47,45 +52,46 @@ export default function Home() {
             </div>
           ))}
         </dl>
-        <p className="dim">Nothing has started. The numbers are real. The war starts at zero.</p>
+        <p>Nothing has started. The numbers are real. The war starts at zero.</p>
       </Section>
 
-      <Section n="02" title="Objective" id="objective">
-        <p>{OBJECTIVE}</p>
-      </Section>
-
-      <Section n="03" title="Targets" id="targets" aside="The Sniper List">
-        <TargetTable targets={targets} />
+      <Section n="02" title="THE SNIPER LIST" id="targets" aside="TGT-00 TO TGT-10">
+        <TargetTable targets={targets} self={wosTarget} />
         <p className="fine">
-          Mapped: share of the product on the roadmap. Specified: share with an agreed Feature Contract. Built: share
+          Mapped: share of the product on its roadmap. Specified: share with an agreed Feature Contract. Built: share
           merged. Measured separately.
         </p>
       </Section>
 
-      <Section n="04" title="Procedure" id="procedure" aside={<Link href="/how-it-works">Full procedure</Link>}>
-        <Procedure />
+      <Section n="03" title="PROCEDURE" id="procedure" aside={<Link href="/how-it-works">FULL PROCEDURE</Link>}>
+        <ol className="rules">
+          <li>
+            <span aria-hidden="true">01</span>
+            <span>Each target gets one public roadmap. Two AI reviewers from two labs must both find no gaps.</span>
+          </li>
+          <li>
+            <span aria-hidden="true">02</span>
+            <span>Each feature gets a contract, cut into tasks small enough for one AI agent.</span>
+          </li>
+          <li>
+            <span aria-hidden="true">03</span>
+            <span>A contributor presses BUILD. Someone else reviews it. Only then does wOS open the PR.</span>
+          </li>
+        </ol>
+        <div className="cmds-row">
+          <Link className="cmd" href="/how-it-works">PROCEDURE AND RULES</Link>
+          <Link className="cmd" href="/briefing">FULL BRIEFING</Link>
+          <Link className="cmd" href="/tokens">TOKENS</Link>
+          <Link className="cmd" href="/faq">FAQ</Link>
+        </div>
       </Section>
 
-      <Section n="05" title="Rules of engagement" id="roe">
-        <Rules />
-      </Section>
-
-      <Section n="06" title="Equipment" id="equipment" aside={<Link href="/download">Setup</Link>}>
+      <Section n="04" title="EQUIPMENT" id="equipment" aside={<Link href="/download">SETUP</Link>}>
         <DownloadBlock />
-      </Section>
-
-      <Section n="07" title="Tokens" id="tokens" aside={<Link href="/tokens">Detail</Link>}>
-        <p>{TOKENS.intro} {TOKENS.rule}</p>
-        <p><strong>{TOKENS.disclaimer}</strong> {TOKENS.notCrypto.replace("WOS tokens are not", "They are not")}</p>
-      </Section>
-
-      <Section n="08" title="FAQ" id="faq">
-        <FaqList faq={FAQ} />
       </Section>
 
       <JsonLd data={targetListLd(targets)} />
       <JsonLd data={desktopAppLd} />
-      <JsonLd data={faqLd(FAQ)} />
     </>
   );
 }

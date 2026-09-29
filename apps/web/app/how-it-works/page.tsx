@@ -16,7 +16,7 @@ export default function HowItWorks() {
   return (
     <>
       <div className="title">
-        <p className="label">Procedure // plan to merge</p>
+        <p className="label">PROCEDURE // PLAN TO MERGE</p>
         <h1>How it works</h1>
         <p>
           One agreed plan per target. Cut into tasks small enough for one AI agent. Built on contributors’ machines.
@@ -24,11 +24,11 @@ export default function HowItWorks() {
         </p>
       </div>
 
-      <Section n="01" title="Procedure" id="procedure" aside="Seven steps">
+      <Section n="01" title="PROCEDURE" id="procedure" aside="SEVEN STEPS">
         <Procedure detailed />
       </Section>
 
-      <Section n="02" title="Measures" id="measures">
+      <Section n="02" title="MEASURES" id="measures">
         <p>Each target reports three numbers. They are independent: a product can be fully mapped with nothing built.</p>
         <dl className="kv">
           {PROGRESS_METRICS.map((m) => (
@@ -43,7 +43,7 @@ export default function HowItWorks() {
         </p>
       </Section>
 
-      <Section n="03" title="Reviewers" id="reviewers">
+      <Section n="03" title="REVIEWERS" id="reviewers">
         <dl className="kv">
           <div>
             <dt>Fable</dt>
@@ -64,14 +64,14 @@ export default function HowItWorks() {
         <p className="fine">Both run at maximum reasoning effort for every review.</p>
       </Section>
 
-      <Section n="04" title="Rules of engagement" id="roe">
+      <Section n="04" title="RULES OF ENGAGEMENT" id="roe">
         <Rules />
       </Section>
 
-      <Section title="Next" id="next">
+      <Section title="NEXT" id="next">
         <div className="cmds-row">
-          <Link className="cmd" href="/download">Download wOS</Link>
-          <Link className="cmd" href="/tokens">Tokens</Link>
+          <Link className="cmd" href="/download">DOWNLOAD wOS</Link>
+          <Link className="cmd" href="/tokens">TOKENS</Link>
         </div>
       </Section>
     </>

@@ -43,7 +43,7 @@ export function OgCard({
         >
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
             <MarkSvg size={36} />
-            <span style={{ color: OG.fg, fontWeight: 700, letterSpacing: 5 }}>WARONSAAS</span>
+            <span style={{ color: OG.fg, fontWeight: 700, letterSpacing: 1 }}>warOnSaaS</span>
           </div>
           <span>{kicker}</span>
         </div>
@@ -52,7 +52,7 @@ export function OgCard({
           {id ? (
             <div style={{ display: "flex", fontSize: 26, color: OG.dim, letterSpacing: 3, marginBottom: 12 }}>{id}</div>
           ) : null}
-          <div style={{ display: "flex", fontSize: title.length > 30 ? 52 : 64, fontWeight: 700, lineHeight: 1.15, textTransform: "uppercase" }}>
+          <div style={{ display: "flex", fontSize: title.length > 30 ? 52 : 64, fontWeight: 700, lineHeight: 1.15 }}>
             {title}
           </div>
           <div style={{ display: "flex", fontSize: 26, color: OG.dim, marginTop: 16 }}>{subtitle}</div>
@@ -70,7 +70,7 @@ export function OgCard({
                 borderLeft: i === 0 ? "none" : rule,
               }}
             >
-              <span style={{ fontSize: 18, color: OG.dim, letterSpacing: 3 }}>{r.label.toUpperCase()}</span>
+              <span style={{ fontSize: 18, color: OG.dim, letterSpacing: 3 }}>{r.label}</span>
               <span style={{ fontSize: 48, fontWeight: 700, marginTop: 4 }}>{r.value}</span>
             </div>
           ))}

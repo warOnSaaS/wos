@@ -23,9 +23,9 @@ export const LINKS = {
 
 /** wOS Desktop downloads. All three point at the latest GitHub release for now. */
 export const DOWNLOADS = [
-  { os: "macOS", file: ".dmg", label: "Download for macOS", href: LINKS.releases },
-  { os: "Windows", file: ".exe", label: "Download for Windows", href: LINKS.releases },
-  { os: "Linux", file: ".AppImage", label: "Download for Linux", href: LINKS.releases },
+  { os: "macOS", file: ".dmg", label: "DOWNLOAD — MACOS", href: LINKS.releases },
+  { os: "Windows", file: ".exe", label: "DOWNLOAD — WINDOWS", href: LINKS.releases },
+  { os: "Linux", file: ".AppImage", label: "DOWNLOAD — LINUX", href: LINKS.releases },
 ] as const;
 
 export const CLI = {
@@ -51,10 +51,11 @@ export const PREREQUISITES: { name: string; href: string | null }[] = [
 ];
 
 export const NAV = [
-  { href: "/#targets", label: "Targets" },
-  { href: "/how-it-works", label: "Procedure" },
-  { href: "/tokens", label: "Tokens" },
-  { href: "/leaderboard", label: "Leaderboard" },
-  { href: "/about", label: "About" },
-  { href: "/download", label: "Download" },
+  { href: "/#targets", label: "TARGETS" },
+  { href: "/briefing", label: "BRIEFING" },
+  { href: "/how-it-works", label: "PROCEDURE" },
+  { href: "/tokens", label: "TOKENS" },
+  { href: "/leaderboard", label: "LEADERBOARD" },
+  { href: "/faq", label: "FAQ" },
+  { href: "/download", label: "DOWNLOAD" },
 ] as const;

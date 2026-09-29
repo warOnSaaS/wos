@@ -6,9 +6,9 @@ import { JsonLd } from "@/components/JsonLd";
 import { CLI, TOKEN_DISCLAIMER } from "@/lib/site";
 
 export const metadata = pageMetadata({
-  title: "Download wOS Desktop and the wos CLI",
+  title: "Download wOS Desktop and the wOS CLI",
   description:
-    "Download wOS Desktop for macOS, Windows or Linux, or install the wos command-line tool with npm. Sign in with your email; link GitHub to contribute.",
+    "Download wOS Desktop for macOS, Windows or Linux, or install the wOS CLI with npm. Sign in with your email; link GitHub to contribute.",
   path: "/download",
 });
 
@@ -16,7 +16,7 @@ export default function Download() {
   return (
     <>
       <div className="title">
-        <p className="label">Equipment // wOS</p>
+        <p className="label">EQUIPMENT // wOS</p>
         <h1>Download wOS</h1>
         <p>
           wOS is the build tool. Pick a target, a feature and a task. Press BUILD. Your local Claude Code does the work
@@ -24,11 +24,11 @@ export default function Download() {
         </p>
       </div>
 
-      <Section n="01" title="Equipment" id="equipment">
+      <Section n="01" title="EQUIPMENT" id="equipment">
         <DownloadBlock />
       </Section>
 
-      <Section n="02" title="Setup" id="setup">
+      <Section n="02" title="SETUP" id="setup">
         <ol className="proc">
           <li>
             <span className="proc__n" aria-hidden="true">01</span>

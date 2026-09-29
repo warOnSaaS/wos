@@ -1,4 +1,7 @@
-/** An ops-document section: numbered header bar, then body. */
+/**
+ * An ops-document section: heavy rule, numbered title, then body.
+ * `title` is rendered exactly as written (no CSS re-casing); write labels in capitals.
+ */
 export function Section({
   n,
   title,
@@ -7,17 +10,17 @@ export function Section({
   children,
 }: {
   n?: string;
-  title: string;
-  id?: string;
+  title: React.ReactNode;
+  id: string;
   aside?: React.ReactNode;
   children: React.ReactNode;
 }) {
-  const hid = `${id ?? title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-h`;
+  const hid = `${id}-h`;
   return (
     <section className="sec" id={id} aria-labelledby={hid}>
       <div className="sec-h">
         <h2 id={hid}>
-          {n ? <span className="dim">{n} // </span> : null}
+          {n ? <span className="n">{n}</span> : null}
           {title}
         </h2>
         {aside ? <span className="label">{aside}</span> : null}
