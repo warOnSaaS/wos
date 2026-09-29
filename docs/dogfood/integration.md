@@ -43,3 +43,5 @@ Adaptations made in other workstreams' paths so `main` stays green; owners revie
 | `packages/context-engine/test/**`, `packages/orchestrator/test/support/harness.ts`, `packages/github/test/local.test.ts` | `repo` in ABU fixtures; product repo name; golden hashes |
 | `tests/adversarial/**` | S-34..S-36 in the coverage map; platform repo `waronsaas/wos` in a DB assertion |
 | repo-wide | `waronsaas/suite` and later `waronsaas/replacements` → `waronsaas/product`; `waronsaas/waronsaas` → `waronsaas/wos` (not in apps/web, not in historical records) |
+
+| 2026-09-29 | coordinator | packages/context-engine/test/determinism.test.ts | First GitHub CI run (Linux) failed: the leak test compared the prompt against the real $USER, which is "runner" on GitHub runners, an ordinary word the feature_author template contains. Replaced with sentinel USER/HOSTNAME values, restored afterwards. |

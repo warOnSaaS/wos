@@ -51,13 +51,24 @@ describe("context-engine determinism (DONE 1)", () => {
   });
 
   it("the prompt carries no clock, host, user, absolute path or environment value", async () => {
-    for (const role of AgentRole.options) {
-      const { plan, snap } = scenario(role);
-      const { prompt } = await buildContext(plan, makeReader(snap), policy);
-      expect(prompt).not.toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/);
-      expect(prompt).not.toMatch(/\/Users\/|\/home\/|C:\\/);
-      for (const v of [process.env.USER, process.env.HOSTNAME, process.cwd()].filter((x): x is string => !!x && x.length > 3)) {
-        expect(prompt.includes(v), `${role} leaks ${v}`).toBe(false);
+    // Sentinel values instead of the machine's own: on CI the user is "runner", an ordinary word the templates may use.
+    const saved = { USER: process.env.USER, HOSTNAME: process.env.HOSTNAME };
+    process.env.USER = "wos-sentinel-user-7f3a91";
+    process.env.HOSTNAME = "wos-sentinel-host-c20e4b";
+    try {
+      for (const role of AgentRole.options) {
+        const { plan, snap } = scenario(role);
+        const { prompt } = await buildContext(plan, makeReader(snap), policy);
+        expect(prompt).not.toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/);
+        expect(prompt).not.toMatch(/\/Users\/|\/home\/|C:\\/);
+        for (const v of [process.env.USER, process.env.HOSTNAME, process.cwd()]) {
+          expect(prompt.includes(v), `${role} leaks ${v}`).toBe(false);
+        }
+      }
+    } finally {
+      for (const [k, v] of Object.entries(saved)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
       }
     }
   });
