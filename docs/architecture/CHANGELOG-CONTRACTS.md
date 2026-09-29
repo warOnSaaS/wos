@@ -40,4 +40,5 @@ MINOR. Rulings in the four blocker files below.
 - `ContextPlan.roundNumber` (optional, set for review plans). (B-0003-context-policy)
 - `SnapshotReader.readLocalDocument(ref)` in `@waronsaas/context-engine` ratified as the only channel for `local_document` artifacts. (B-0005-github-build)
 - `@waronsaas/github/app` `requestTeamReview(creds, repo, prNumber, teamSlug)` ratified; `document.opened.target` nullable and `relevantTo` added (default []). The nullable widening is recorded as MINOR by architect decision: its only producer requested it and nothing consumes it yet. (B-0005-control-plane)
+- Migration `0004_manifest_per_lease.sql`: a context manifest is unique per (lease, manifest sha), not globally, because a deterministic engine gives a re-claimed task the same manifest (found at the integration gate).
 - Built-in builder rule: inside `features/` only `features/<f>/acceptance/**` is writable; `features/**` removed from the suite template's protectedPaths. (B-0006-verification)
