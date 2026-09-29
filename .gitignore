@@ -11,3 +11,4 @@ dist-types
 coverage
 release
 services/control-plane/api/
+services/control-plane/public/

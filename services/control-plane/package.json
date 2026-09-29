@@ -20,7 +20,7 @@
   "scripts": {
     "build": "tsc -b",
     "typecheck": "tsc -b",
-    "bundle": "esbuild dist/index.js --bundle --platform=node --format=esm --target=node22 --outfile=api/index.mjs \"--banner:js=import{createRequire as __cr}from'module';const require=__cr(import.meta.url);\""
+    "bundle": "esbuild dist/index.js --bundle --platform=node --format=esm --target=node22 --outfile=api/index.mjs \"--banner:js=import{createRequire as __cr}from'module';const require=__cr(import.meta.url);\" && mkdir -p public"
   },
   "dependencies": {
     "@waronsaas/contracts": "*",
