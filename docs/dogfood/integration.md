@@ -96,3 +96,4 @@ Merged onto main 4cd94c1 (4.3.0) plus the architect's 4.4.0 commit 3aca13f, in d
 
 Note (web workstream, 2026-09-29, ws/web2): replaced `apps/desktop/build/icon.png` (1024x1024) with the founder-approved wOS mark (Geist Mono Bold, off-white on near-black), rendered by `apps/web/scripts/render-mark.mjs`. No other file under `apps/desktop` was touched.
 | 2026-09-29 | coordinator | apps/web/package.json | First git-connected Vercel build failed: apps/web required node >=22.18 while the root pins >=22.12 <23 with engine-strict, and Vercel 22.x did not satisfy it. apps/web now matches the root range. |
+| 2026-09-29 | coordinator | services/control-plane/api/index.mjs, package.json, .gitignore | First git-triggered API deploy served 404 (production rolled back). Vercel detects functions from committed files before the build, and the bundle is build output. Now a committed stub api/index.mjs re-exports bundle/index.mjs (git-ignored, written by `npm run bundle`). |
