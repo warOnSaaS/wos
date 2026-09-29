@@ -2,7 +2,7 @@ import { ImageResponse } from "next/og";
 import { targetStatus } from "@/data/targets";
 import { wosTarget as t } from "@/data/wos-roadmap";
 import { formatPercent, getTarget } from "@/lib/data-source";
-import { ogFont } from "@/lib/og";
+import { markDataUrl, ogFont } from "@/lib/og";
 import { OgCard } from "@/lib/ogCard";
 
 export const alt = "warOnSaaS target dossier TGT-00: warOnSaaS builds itself. Mapped 0%, specified 0%, built 0%.";
@@ -13,6 +13,7 @@ export default async function Image() {
   const p = getTarget(t.slug)!.data.progress;
   return new ImageResponse(
     <OgCard
+      mark={await markDataUrl()}
       kicker={`TARGET DOSSIER // ${targetStatus(t)}`}
       id="TGT-00 // DOGFOOD"
       title="warOnSaaS builds itself"
