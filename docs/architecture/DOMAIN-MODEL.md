@@ -2,7 +2,7 @@
 
 Status: frozen at contracts 1.0.0. Owner: Lead Architect. Ground truth:
 `packages/contracts/src/state-machines.ts` (machines), `packages/contracts/src/domain.ts` (read models),
-`packages/db/migrations/0001_init.sql` (tables). The transition tables below are generated from the
+`packages/db/migrations/0001_init.sql` (tables) and `0002_backstops.sql` (contracts 2.0.0: review binding, one-way bootstrap flag via trigger `bootstrap_one_way`, private events visible only to privileged actors and the account concerned, raw Ed25519 device keys). The transition tables below are generated from the
 code and must be regenerated if it changes.
 
 ## 1. Vocabulary
@@ -85,7 +85,7 @@ for every role, and `wos_app` has only SELECT, INSERT); P = private (RLS restric
 | `agent_runs` | A | Every signed `AgentRunRecord`, with `signature_valid` computed by the server. |
 | `changesets` | A | Every submission's file manifest (paths, modes, sha256, bytes; never contents), `parent_sha`, `manifest_sha256`, `submission_sha256`, `signature_valid`, validation result, summary. |
 | `candidate_commits` | A | Commit the App built from a changeset (one per changeset). |
-| `reviews` | A, P | One per (round, slot) and one per (round, account). Bound to the round's head and submission hash (trigger `check_review_independence` also rejects an author reviewing their own subject unless labelled `bootstrap_self`). Sealed: visible only to its author and privileged actors until the round is revealed. |
+| `reviews` | A, P | One per (round, slot); distinct accounts per round except two `bootstrap_self` reviews. Trigger `check_review_independence` (rewritten in `0002_backstops.sql`) binds it to the round's head and submission hash, to the review task of that round and slot, to that task's active lease held by the reviewer, and to a manifest of that lease; rejects an author reviewing their own subject unless `bootstrap_self`; accepts `bootstrap_self`/`bootstrap_maintainer` only while bootstrap mode is on and only from a maintainer. Sealed: visible only to its author and privileged actors until the round is revealed. |
 | `findings` | M, P | One per verdict finding; state `open, resolved, disputed, upheld, overruled`; `dispute_rounds`. Written only by privileged actors; readable after reveal. |
 | `finding_responses` | A | Every author response, reviewer re-check, ruling and maintainer confirmation. |
 | `rulings` | M | Conflict Resolver output; `awaiting_maintainer -> confirmed/rejected`. |

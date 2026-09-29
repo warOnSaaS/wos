@@ -74,7 +74,7 @@ Roadmap features referenced below are keys in `docs/roadmap/waronsaas.roadmap.js
 
 ### context-policy (spec Agent 5) — Wave 1
 
-- **Owns:** `packages/context-engine/**`, `packages/agent-policy/**`, `docs/dogfood/context-policy.md`.
+- **Owns:** `packages/context-engine/**` except the planning-role template files below, `packages/agent-policy/**`, `docs/dogfood/context-policy.md`.
 - **May read:** everything. **May not change:** the policy data `packages/contracts/src/data/agent-policy.v1.json` (architect) — propose changes by blocker.
 - **Honours:** CONTEXT-PROTOCOL.md (ordered artifacts per role, determinism, budgets, exclusions, JCS hashing); AGENT-POLICY.md (eligibility algorithm, independence, bootstrap, reasoning resolution); `ContextPlan`, `ContextManifest`, `AgentRunRecord`.
 - **Roadmap features:** context-engine, agent-policy.
@@ -83,7 +83,7 @@ Roadmap features referenced below are keys in `docs/roadmap/waronsaas.roadmap.js
 
 ### planning (spec Agent 6) — Wave 2
 
-- **Owns:** `packages/planning/**` including `packages/planning/templates/**` (role prompt templates for roadmap/feature authors, reviewers and the resolver), `docs/dogfood/planning.md`.
+- **Owns:** `packages/planning/**`; the planning-role prompt templates `packages/context-engine/templates/tpl.roadmap_*`, `tpl.feature_*` and `tpl.conflict_resolver*` (contracts 2.0.0: all templates ship inside context-engine; ownership is per file); `docs/dogfood/planning.md`.
 - **May read:** everything. **May not change:** progress formulas (`progress.ts`, architect) and policy data.
 - **Honours:** ROADMAP-PROTOCOL.md, FEATURE-CONTRACT.md, REVIEW-PROTOCOL.md; D10–D12; the `DocumentMachine` and `RoundMachine`; `BuildGraphErrorCode`.
 - **Roadmap features:** feature-catalog, roadmap-consensus, feature-contract-consensus, build-graph-validation, proposals-and-resolution, review-rounds (outcome logic).
@@ -112,7 +112,7 @@ Roadmap features referenced below are keys in `docs/roadmap/waronsaas.roadmap.js
 
 - **Owns:** `apps/cli/**`, `docs/dogfood/cli.md`.
 - **May read:** everything. **May not change:** anything outside `apps/cli`.
-- **Honours:** the `Orchestrator` interface (no workflow logic in the CLI); commands `wos login`, `link-github`, `logout`, `status`, `build <abu>`, `review`, `roadmap`, `propose`, `resolve`; session in the OS keychain via `@napi-rs/keyring`; exit codes 0 success, 1 failure, 2 usage, 3 not signed in / GitHub required; `--json` output of `OrchestratorEvent`s for scripting.
+- **Honours:** the `Orchestrator` interface (no workflow logic in the CLI); commands `wos login` (orchestrator `signIn`: email, then the emailed code), `link-github` (orchestrator `linkGithub`), `logout`, `status`, `build <abu>`, `review`, `roadmap`, `propose`, `resolve`; session in the OS keychain via `@napi-rs/keyring`; exit codes 0 success, 1 failure, 2 usage, 3 not signed in / GitHub required; `--json` output of `OrchestratorEvent`s for scripting.
 - **Roadmap features:** wos-cli.
 - **DONE:** (1) every command calls the orchestrator and prints its events; (2) `wos status` reports git, claude, codex installation and sign-in via the policy's check commands; (3) a golden test of `wos build` against the fake orchestrator; (4) `npm pack` produces `@waronsaas/cli` with the `wos` binary.
 - **Escalate when:** a command needs an orchestrator operation that does not exist.
@@ -186,3 +186,16 @@ Continue with unaffected work. Do not implement around the blocker by changing a
 | | transactional-email | control-plane |
 
 A feature of TGT-00 counts as BUILT when every requirement listed for it in the roadmap file has a passing test named after the requirement id (e.g. `it("magic-link-sign-in R-001 ...")`), merged at a wave gate.
+
+## 7. Contracts 2.0.0 (Wave 1 gate) — what each workstream must change
+
+Rulings are in `blockers/B-*.md` (the `decision` field). Rebase onto the architect commit that carries contracts 2.0.0, then:
+
+| Workstream | Must change |
+|---|---|
+| github-build | Implement `Orchestrator.signIn` (email, code or `wos://auth?r=&t=` deep link, poll secret in memory only) and `linkGithub` (device flow); delete `login`. Delete `packages/github/src/internal/hash.ts` and the orchestrator's own `submissionSha256`/signing code: import `@waronsaas/contracts/canonical` (`canonicalJson`, `sha256Of`, `gitBlobOid`, `submissionSha256`, `signChangeset`, `encodeDevicePublicKey`, `provenanceSha256`). Fetch server documents with `getLeaseDocument`. Put `local:verification-output` into repair-run manifests and post a new manifest per run. Set `ContextPlan.taskKind` handling to trust the plan. Comment `WorktreeHandle.branch = "HEAD"` for detached worktrees. |
+| context-policy | Make `EligibilityInput.now` required (keep `excludedAccountIds`, `restrictedToAccountId`); count the author lease family with `maxConcurrentAuthorLeasesPerContributor`; exempt `bootstrap_self` from the same-author cap when `exemptSelfReviewFromSameAuthorCap`; use `ContextPlan.taskKind` (drop `taskKindForPlan` inference); support `local_document`; reject `wos:verdict/` refs and any server_document ref not in the plan; replace the context-engine JCS with a re-export from `@waronsaas/contracts/canonical`; apply `trailingArgs` and the drop-empty-flag rule in `buildInvocation`; render the new builder obligation and implementation-reviewer rule verbatim. |
+| verification | Delete `src/jcs.ts` and the local `computeSubmissionSha256` / `changesetSigningPayload` / key parsing: import from `@waronsaas/contracts/canonical` (PEM/SPKI keys are no longer accepted). Add `TOOLCHAIN_WITHOUT_RESOURCE` to `validateChangeset` using `RepoManifest.toolchainPaths`. Update `templates/suite/wos.json` (`toolchainPaths` must include `DEFAULT_TOOLCHAIN_PATHS`) and `wos-verify.yml` (restore toolchain paths and read verify steps from the base; add the non-required candidate-toolchain job). Remove the `it.fails` markers from the five B-0003 tests and give their fixtures real task/lease/manifest bindings and a maintainer role for bootstrap cases. Move suites to `tests/**` if wanted (now included). |
+| control-plane | Apply `0002_backstops.sql`; implement `getLeaseDocument`; accept several manifests per lease; pass `now`, `excludedAccountIds`, `restrictedToAccountId` to `checkEligibility`; store device keys in the C-5 encoding; hash and verify only via `@waronsaas/contracts/canonical`; set `taskKind` in every plan; qualification requests maintainer review when a toolchain path changed. |
+| planning (Wave 2) | Build-graph rule `TOOLCHAIN_WITHOUT_RESOURCE`; planning-role templates now in `packages/context-engine/templates/`. |
+| cli, desktop (Wave 2) | Call `signIn` / `linkGithub`; the desktop registers `wos://` and forwards deep links to `SignInPrompt.deepLinks`. |

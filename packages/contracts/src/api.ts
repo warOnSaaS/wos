@@ -289,7 +289,7 @@ export const Routes = {
       email: z.email().max(254),
       clientKind: z.enum(["web", "desktop", "cli"]),
       deviceName: z.string().max(100).nullable(),
-      /** Desktop/CLI only: Ed25519 public key (base64) generated on first run, private key in the OS keychain. */
+      /** Desktop/CLI only: Ed25519 public key as base64 of the raw 32 bytes (canonical.ts C-5), generated on first run; private key stays in the OS keychain. */
       devicePublicKey: z.string().max(100).nullable(),
     }),
     /**
@@ -592,7 +592,21 @@ export const Routes = {
     body: ContextManifest,
     response: z.object({ accepted: z.literal(true), manifestId: Uuid }),
     errors: ["LEASE_NOT_HELD", "LEASE_EXPIRED", "MANIFEST_REJECTED"],
-    summary: "Immutable Context Manifest for this invocation; must match the plan. Moves attempt leased->building.",
+    summary:
+      "Immutable Context Manifest for one agent invocation; must match the plan. The first one moves the attempt leased->building. A local repair run posts a new manifest (same plan, new local:verification-output hash); a submission must cite the manifest of the run that produced it.",
+  }),
+  getLeaseDocument: route({
+    method: "GET",
+    path: "/v1/leases/:id/documents/:ref",
+    auth: "contributor",
+    idempotent: false,
+    params: z.object({ id: Uuid, ref: z.string().min(5).max(300).describe("URL-encoded server_document ref from the lease's plan") }),
+    query: None,
+    body: None,
+    response: z.object({ ref: z.string(), sha256: Sha256, contentBase64: z.string() }),
+    errors: ["LEASE_NOT_HELD", "LEASE_EXPIRED", "NOT_FOUND", "FORBIDDEN"],
+    summary:
+      "Serves a server_document of the caller's active lease (B-0004-github-build). FORBIDDEN for any ref not in that lease's plan (so a sealed wos:verdict/... ref can never be fetched). sha256 always equals the plan's.",
   }),
   postAgentRun: route({
     method: "POST",

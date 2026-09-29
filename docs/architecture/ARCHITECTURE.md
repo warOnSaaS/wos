@@ -123,7 +123,7 @@ db                   <- contracts
 context-engine       <- contracts, agent-policy
 planning             <- contracts, agent-policy, context-engine, verification
 github               <- contracts            (./app server side, ./local client side)
-orchestrator         <- contracts, agent-policy, context-engine, verification, github (./local only)
+orchestrator         <- contracts, agent-policy, context-engine, verification, github (./local only), planning (local document validation)
 control-plane        <- contracts, db, agent-policy, context-engine, verification, github (./app), planning, rewards
 cli                  <- contracts, orchestrator
 desktop (main)       <- contracts, orchestrator
@@ -134,8 +134,12 @@ web                  <- contracts (types only, after Wave 2 adoption)
 Hard rules:
 
 1. `packages/contracts` has one runtime dependency (zod) and no I/O. It is imported by everything.
+   Its second entry point `@waronsaas/contracts/canonical` (Node only, `node:crypto`) is THE hashing and
+   signing implementation (contracts 2.0.0, SECURITY.md S-32): JCS, sha256, the diff hash, signing
+   payloads, Ed25519 key encoding, manifest and provenance hashes, git blob ids. No other package may
+   carry its own copy; browser code (web, desktop renderer) imports only the root entry.
 2. The control plane never imports `orchestrator` or `github/local`. Clients never import `db`,
-   `github/app`, `planning` or `rewards`.
+   `github/app` or `rewards` (the orchestrator may import `planning` for local validation only).
 3. Apps never import `packages/db`. Only `services/control-plane` talks to Postgres.
 4. Pure packages (`agent-policy`, `verification`, `context-engine`, `planning`, `rewards`, the
    progress functions in `contracts`) do not read the clock, the environment, the network or the
@@ -147,14 +151,14 @@ Hard rules:
 | Package | Responsibility | Public API (frozen signature, Phase 0 stub) |
 |---|---|---|
 | contracts | every shared type and schema; state machines as data; `Routes`; `DomainEventBody`; artifacts; `computeAppProgress` (implemented and tested); `AGENT_POLICY_V1`; `REWARD_SCHEDULE_V1`; `Orchestrator` interface | as exported by `src/index.ts` |
-| db | migrations `0000_meta.sql`, `0001_init.sql`; runner | `runMigrations({databaseUrl, migrationsDir, checkOnly})` |
+| db | migrations `0000_meta.sql`, `0001_init.sql`, `0002_backstops.sql`; runner | `runMigrations({databaseUrl, migrationsDir, checkOnly})` |
 | agent-policy | eligibility, reasoning resolution, argv building | `getRolePolicy`, `resolveReasoning`, `checkEligibility`, `buildInvocation` |
-| context-engine | context assembly and hashing | `buildContext`, `checkManifestAgainstPlan`, `estimateTokens`, `canonicalSha256` |
+| context-engine | context assembly; ALL prompt templates in `templates/` (files for roadmap_*, feature_* and conflict_resolver owned by planning, builder and implementation_reviewer_* by context-policy) | `buildContext`, `checkManifestAgainstPlan`, `estimateTokens`; `canonicalSha256` re-exported from `contracts/canonical` |
 | verification | changeset scope validation, scope algebra | `validateChangeset`, `scopesOverlap` (implemented) |
-| github | branch naming (root), App operations (`./app`), worktrees (`./local`) | `commitChangeset`, `openPullRequest`, `setCommitStatus`, `enableAutoMerge`, `blobOidsAt`, `createIssue`, `verifyWebhookSignature`, `exchangeUserAuthorization`, `createWorktree`, `captureChanges`, `removeWorktree` |
+| github | branch naming (root), App operations (`./app`), worktrees (`./local`) | `commitChangeset`, `openPullRequest`, `setCommitStatus`, `enableAutoMerge`, `blobOidsAt`, `createIssue`, `verifyWebhookSignature`, `exchangeUserAuthorization`, and (2.0.0, B-0001-github-build) `createBranchAt`, `deleteBranch`, `closePullRequest`, `startDeviceAuthorization`, `configureGithubApp`/`resetGithubAppConfig`, `GithubAppError`, `renderPullRequestBody`, `renderProvenanceSection`; local: `createWorktree`, `captureChanges`, `removeWorktree` |
 | planning | YAML parsing and deterministic validators; round outcome | `parse*Yaml`, `validateRoadmap`, `validateBuildGraph`, `computeRoundOutcome` |
 | rewards | reward rules | `computeLedgerDrafts`, `allocatePool` |
-| orchestrator | the one workflow driver | `createOrchestrator(deps): Orchestrator` |
+| orchestrator | the one workflow driver | `createOrchestrator(deps): Orchestrator` (2.0.0: `signIn` for email sign-in and `linkGithub` replace `login`) |
 | control-plane | HTTP API, auth, state machines, persistence, webhooks, cron | `Routes` |
 
 ## 5. Runtime topology
@@ -185,7 +189,7 @@ The spec's steps 1-26, with the component and contract that does each step.
 
 | # | Step | Component | Contract |
 |---|---|---|---|
-| 1-2 | Install Desktop or CLI, sign in by email link or code, link GitHub | Desktop/CLI -> orchestrator.login -> `startEmailSignIn`, `redeemEmailSignIn`, `startGithubLink`, `pollGithubLink` | D8, SECURITY.md S-1..S-6 |
+| 1-2 | Install Desktop or CLI, sign in by email link or code, link GitHub | Desktop/CLI -> `orchestrator.signIn` -> `startEmailSignIn`, `redeemEmailSignIn`; then `orchestrator.linkGithub` -> `startGithubLink`, `pollGithubLink` | D8, SECURITY.md S-1..S-6 |
 | 3-6 | Pick Salesforce -> CRM -> feature -> ABU | `getTarget`, `getFeature`, `listClaimableAbus` | `TargetDetail`, `AppFeatureDetail`, `AbuSummary.claimable` |
 | 7 | BUILD / `wos build <abu>` | `Orchestrator.build` | `BuildOptions` |
 | 8 | Eligibility | orchestrator runs `claude auth status`, `codex login status`, versions -> `postAttestation`; server `checkEligibility` at claim | AGENT-POLICY.md "Eligibility" |

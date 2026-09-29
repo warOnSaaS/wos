@@ -115,7 +115,10 @@ args follow `baseArgs`, and `trailingArgs` (codex: the stdin marker `-`) always 
 Placeholders: `{modelId}` from the model; `{reasoning}` the resolved level; `{sessionId}` a fresh
 UUID per run; `{tools}` `claudeTools` joined with commas; `{allowedCommandRules}` expands to ONE argv
 element per allowed command, each `Bash(<command joined by spaces>)` (from `plan.allowedCommands`, i.e.
-the repo's verify steps and the ABU's acceptance checks); `{schemaJson}` the generated JSON Schema as a
+the repo's verify steps and the ABU's acceptance checks). When a list placeholder expands to nothing
+(e.g. author roles have no allowed commands) the placeholder AND its flag are dropped, because
+`--allowedTools` is variadic and would otherwise swallow the next option (B-0002-context-policy). Final
+argv order: `baseArgs + modeArgs + reasoningArgs + outputSchemaArgs + trailingArgs`; `{schemaJson}` the generated JSON Schema as a
 string; `{schemaPath}` a temp file with that schema; `{lastMessagePath}` a temp file for codex's final
 message; `{cwd}` the worktree.
 
@@ -169,7 +172,9 @@ from `modelIdRequested`, the run is recorded and the submission is refused.
 
 Input: `EligibilityInput` (role, account facts, latest attestations, subject author ids, other-slot
 reviewer id, reviews of the same author in 7 days, active leases of this kind, bootstrap flag, hours the
-task has been open). Output: eligible with `independence` label, chosen model and resolved reasoning;
+task has been open, and since contracts 2.0.0 the REQUIRED `now` (the transaction clock; the evaluator
+never reads a clock and fails closed with `CLOCK_REQUIRED` without it), `excludedAccountIds` and
+`restrictedToAccountId` from the task row; B-0001-context-policy). Output: eligible with `independence` label, chosen model and resolved reasoning;
 or not eligible with every failing reason. Steps, in order, all evaluated (reasons accumulate):
 
 1. Account `active` and GitHub linked (else `GITHUB_REQUIRED` at the route layer).
@@ -178,8 +183,9 @@ or not eligible with every failing reason. Steps, in order, all evaluated (reaso
    `minAcceptedContributions`. Maintainers are exempt from both when `eligibility.maintainersExempt` is true
    (all V1 roles), and while bootstrap is on `bootstrap.waiveMinAcceptedContributions` waives the
    contribution threshold for everyone, so seed reviewers can start at zero.
-4. Active leases of this family (build: `abu_build` + `abu_revision`; review: the three review kinds)
-   < the matching `maxConcurrent...PerContributor`.
+4. Active leases of this family (build: `abu_build` + `abu_revision`; review: the three review kinds;
+   author: `roadmap_author` + `feature_author` + `conflict_resolution`) < the matching
+   `maxConcurrent...PerContributor` (author family: `maxConcurrentAuthorLeasesPerContributor` = 1).
 5. Model choice: the first model in `allowedModels` whose provider attestation (latest row, same
    device) is `installed`, `signedIn`, at least `minVersion`, and lists the model. None = not eligible.
 6. Reasoning: resolve `required` (`max` -> `maxReasoning`); must be in `reasoningLevels` and not in
@@ -190,6 +196,9 @@ or not eligible with every failing reason. Steps, in order, all evaluated (reaso
      GitHub id (`github_identity_history`);
    - `distinctReviewersPerRound`: account is not the other slot's reviewer;
    - `maxReviewsOfSameAuthorPer7d` (>0): fewer than that many revealed reviews of this author in 7 days;
+     reviews labelled `bootstrap_self` are neither counted nor capped when
+     `bootstrap.exemptSelfReviewFromSameAuthorCap` is true (V1: true), so a solo founder is not limited
+     to five self-reviews a week;
    - also never in the task's `excluded_account_ids`, and equal to `restricted_to_account_id` when set.
 8. Independence label: `independent` if all rules hold. In bootstrap mode only: a maintainer who
    fails only the author rule may claim once the task has been open `selfReviewAfterHours` (24 h)

@@ -200,7 +200,7 @@ Sources: `docs/V1-SPEC.md` (the spec), `docs/DECISIONS.md` (D1–D12 and the nam
 - **Resolution.** `docs/roadmap/waronsaas.roadmap.json` is marked `PROPOSED` (architect's reasoning, not consensus). Once wOS runs, its roadmap goes through a real round and becomes version 1; progress for TGT-00 is 0% mapped until then, and the site says so.
 
 ### G-48 The spec's eight agents plus a CLI
-- **Resolution.** The CLI is its own workstream (`cli`, Wave 2), not part of the GitHub/orchestrator workstream: it is a thin client, and having two independent clients (CLI and Desktop) over the orchestrator keeps the orchestrator's interface honest. Nine implementation agents total. Prompt templates for planning roles belong to the planning workstream (`packages/planning/templates/`), so the orchestrator may depend on `@waronsaas/planning`.
+- **Resolution.** The CLI is its own workstream (`cli`, Wave 2), not part of the GitHub/orchestrator workstream: it is a thin client, and having two independent clients (CLI and Desktop) over the orchestrator keeps the orchestrator's interface honest. Nine implementation agents total. Prompt templates all live in `packages/context-engine/templates/` (contracts 2.0.0); the planning workstream owns the files for planning roles. The orchestrator may depend on `@waronsaas/planning` for local document validation.
 
 ### G-46 apps/web is being changed on `main` by another agent while the monorepo is set up
 - **Resolution.** The architect does not touch `apps/web` and does not add it to the npm workspaces yet (it keeps its own lockfile and its live Vercel project). The web workstream adopts it in Wave 2: delete `apps/web/package-lock.json`, add `apps/web` to root workspaces, set the Vercel project to install from the repo root, then replace `data/targets.ts` reads with `GET /v1/public/targets` (ISR, revalidate 60 s) keeping the same `Target` shape.
@@ -213,3 +213,16 @@ Sources: `docs/V1-SPEC.md` (the spec), `docs/DECISIONS.md` (D1–D12 and the nam
 
 ### G-42 Terms of service and privacy policy for the site and apps — FOUNDER DECISION (legal)
 - **Gap.** Email sign-in (D8) collects personal data; nothing public describes its use. Needed before sign-in goes live.
+
+## H. Found at the Wave 1 gate (contracts 2.0.0)
+
+### G-51 Toolchain changes need a maintainer — FOUNDER DECISION
+- **Gap.** CI trusted the candidate's own `package.json` scripts and test configs (B-0005-verification): a submission could set `"test": "true"` and pass.
+- **Resolution (implemented in contracts 2.0.0, SECURITY.md S-33).** Required CI runs the base commit's toolchain; changing a toolchain path needs an exclusive `toolchain:<path>` resource in the build graph and a maintainer's CODEOWNERS approval on the PR.
+- **Founder decides:** accept that every toolchain change (new dependency, test config) waits for a maintainer — during V1 that is you. The alternative, letting two reviewers approve toolchain changes, reopens the hole the moment two reviewers are fooled.
+
+### G-52 Two CLI behaviours are still unverified — test before Wave 3
+- Whether `--allowedTools` keeps a rule with spaces (`Bash(npm run test)`) whole, and whether `codex exec --output-schema` accepts the zod-generated JSON Schema keywords. Both are listed as UNVERIFIED in `agent-policy.v1.json`. One real builder run and one real Codex review on the founder's machine settle them; a strict-schema fallback is specified (B-0002-context-policy).
+
+### G-53 The secret-pattern list is now normative
+- `packages/verification/src/secrets.ts` is the list `SECRET_DETECTED` uses (B-0004-verification). False positives block honest submissions; false negatives publish secrets in a public repo. Changes go through the architect. No founder decision unless you want a stricter policy (e.g. blocking any high-entropy string).

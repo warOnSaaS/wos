@@ -9,7 +9,11 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
-    "./data/*": "./dist/data/*"
+    "./data/*": "./dist/data/*",
+    "./canonical": {
+      "types": "./dist/canonical.d.ts",
+      "default": "./dist/canonical.js"
+    }
   },
   "files": [
     "dist"
