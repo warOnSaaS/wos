@@ -31,3 +31,9 @@ export const officialBranch = (abuKey: string, attemptId: string) =>
 export const APP_COMMIT_AUTHOR_NAME = "waronsaas-wos[bot]" as const;
 export const coAuthoredBy = (githubUserId: number, login: string) =>
   `Co-authored-by: ${login} <${githubUserId}+${login}@users.noreply.github.com>`;
+
+/**
+ * RFC 8785 canonical JSON and its sha256, shared by ./app (provenance) and the orchestrator
+ * (submission hash, signatures). Should move to @waronsaas/contracts (blockers/B-0002).
+ */
+export { canonicalJson, canonicalSha256, gitBlobOid, sha256Prefixed } from "./internal/hash.js";
