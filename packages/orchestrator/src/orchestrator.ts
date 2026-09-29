@@ -10,9 +10,10 @@ import { buildContext, type SnapshotReader } from "@waronsaas/context-engine";
 import {
   type AgentRunRecord,
   type AttemptView,
-  type AuthorSummary,
+  AuthorSummary,
   BuildSummary,
   type Changeset,
+  type ChangesetFile,
   type ChangesetValidation,
   type ClaimResponse,
   type ContextPlan,
@@ -25,6 +26,7 @@ import {
   type ProviderStatus,
   RepoManifest,
   ReviewVerdict,
+  Ruling,
   type RunResult,
   type TaskView,
 } from "@waronsaas/contracts";
@@ -1031,15 +1033,142 @@ export class OrchestratorImpl {
         };
         return await this.drive(state, claim, false, observer, options.signal);
       }
-      // Roadmap / feature contract authoring and conflict resolution: Wave 2 (needs planning templates).
+      const kind = claim.contextPlan.taskKind;
+      if (kind === "roadmap_author" || kind === "feature_author") return await this.authorDocument(claim, observer, options.signal);
+      if (kind === "conflict_resolution") return await this.resolveConflict(claim, observer, options.signal);
       await this.api.call("releaseLease", {
         params: { id: claim.lease.id },
-        body: { reason: "this client cannot run this task kind yet" },
+        body: { reason: `author() does not run ${kind} tasks` },
         idempotencyKey: idempotencyKey("release", claim.lease.id),
       });
-      throw new StepError("NOT_IMPLEMENTED", `task kind ${claim.contextPlan.taskKind} is not supported by this orchestrator build yet`);
+      throw new StepError("VALIDATION_FAILED", `task kind ${kind} is not an author task (use build or review)`);
     } catch (e) {
       return this.failure(e, task, observer);
+    }
+  }
+
+  /** A leased agent run in a fresh worktree at plan.source.commit: context, manifest, agent, signed run record. */
+  private async leasedRun(claim: ClaimResponse, prefix: string, observer: OrchestratorObserver, signal?: AbortSignal) {
+    const plan = claim.contextPlan;
+    const wt = await createWorktree(
+      this.deps.workspaceRoot,
+      plan.source.repo,
+      plan.source.commit,
+      `${prefix}-${claim.lease.id.replace(/-/g, "").slice(0, 12)}`,
+    );
+    observer({ type: "worktree", path: wt.path, baseSha: wt.baseSha });
+    const ctx = await this.engines.buildContext(
+      plan,
+      this.snapshotReader(wt, plan, claim.lease.id, () => null),
+      this.engines.policy,
+    );
+    observer({ type: "context", manifest: ctx.manifest });
+    await this.api.call("postManifest", {
+      params: { id: claim.lease.id },
+      body: ctx.manifest,
+      idempotencyKey: idempotencyKey("postManifest", claim.lease.id, ctx.manifest.manifestSha256),
+    });
+    const run = await this.runAgent(plan, ctx.prompt, ctx.manifest.manifestSha256, wt.path, claim.lease.id, observer, signal);
+    return { wt, run };
+  }
+
+  /**
+   * roadmap_author / feature_author: the agent edits the canonical document files, the changeset is
+   * limited to the document paths the control plane will enforce (documentScope), signed and submitted.
+   * Review rounds are server-driven; a revision arrives later as a new author task.
+   */
+  private async authorDocument(claim: ClaimResponse, observer: OrchestratorObserver, signal?: AbortSignal): Promise<RunResult> {
+    const plan = claim.contextPlan;
+    const hb = this.heartbeat(claim.lease.id, claim.lease.heartbeatSeconds, { value: "authoring" });
+    let wt: WorktreeHandle | null = null;
+    try {
+      this.step(observer, "BUILD", "started", `${plan.taskKind} for ${plan.feature ?? plan.target}`);
+      const r = await this.leasedRun(claim, "d", observer, signal);
+      wt = r.wt;
+      const summary = AuthorSummary.safeParse(r.run.output);
+      if (!summary.success) throw new StepError("AGENT_OUTPUT_INVALID", "the agent's output does not match author-summary.v1", true);
+      this.step(observer, "BUILD", "passed", summary.data.summary.slice(0, 200));
+      this.step(observer, "VERIFY", "started", "document scope");
+      const s = await this.session();
+      const cap = await captureChanges(wt);
+      const errors: ChangesetValidation["errors"] = cap.rejected.filter(isBlockingRejection).map((x) => ({
+        code: x.reason === "path_invalid" ? ("PATH_INVALID" as const) : ("SYMLINK_OR_SPECIAL_FILE" as const),
+        path: x.path,
+        message: `rejected by capture: ${x.reason}`,
+      }));
+      if (cap.files.length === 0) errors.push({ code: "EMPTY_DIFF", path: null, message: "the agent changed nothing" });
+      if (errors.length > 0) {
+        observer({ type: "scope", validation: { ok: false, errors } });
+        throw new StepError("SCOPE_VIOLATION", errors.map((e) => `${e.code} ${e.path ?? ""}`.trim()).join("; "));
+      }
+      const existing = new Set(
+        (await gitOut(wt.path, ["ls-tree", "-r", "-z", "--name-only", "--full-tree", wt.baseSha]))
+          .toString("utf8")
+          .split("\0")
+          .filter(Boolean),
+      );
+      const changeset = await signChangesetWithDevice(this.deps.secrets, {
+        schema: "wos-changeset.v1",
+        taskId: plan.taskId,
+        leaseId: claim.lease.id,
+        deviceId: s.deviceId,
+        parentCommit: wt.baseSha,
+        manifestSha256: r.run.manifestSha256,
+        submissionSha256: submissionSha256(wt.baseSha, cap.files),
+        files: cap.files,
+        summary: summary.data,
+        localVerification: [],
+      });
+      const local = this.engines.validateChangeset(changeset, {
+        kind: plan.taskKind === "feature_author" ? "feature_contract" : "roadmap",
+        abu: null,
+        documentPaths: documentPaths(plan, cap.files, existing),
+        repoManifest: await this.repoManifest(wt),
+        existingPaths: existing,
+      });
+      observer({ type: "scope", validation: local });
+      if (!local.ok) throw new StepError("SCOPE_VIOLATION", local.errors.map((e) => `${e.code} ${e.path ?? ""}`.trim()).join("; "));
+      const res = await this.api.call("submitChangeset", {
+        params: { id: claim.lease.id },
+        body: changeset,
+        idempotencyKey: idempotencyKey("submitChangeset", claim.lease.id, changeset.submissionSha256),
+      });
+      observer({ type: "scope", validation: res.validation });
+      if (!res.validation.ok) throw new StepError("SCOPE_VIOLATION", "the control plane refused the submission");
+      this.step(observer, "VERIFY", "passed", `submitted ${changeset.files.length} file(s) to document ${res.documentId ?? "?"}`);
+      this.step(observer, "REVIEW", "waiting", "the document review round is server-driven");
+      return { ok: true, attempt: null, task: claim.task, output: summary.data };
+    } finally {
+      hb.stop();
+      if (wt) await removeWorktree(wt).catch(() => undefined);
+    }
+  }
+
+  /** conflict_resolution: a read-only resolver run whose Ruling goes to the maintainer for confirmation (V1). */
+  private async resolveConflict(claim: ClaimResponse, observer: OrchestratorObserver, signal?: AbortSignal): Promise<RunResult> {
+    const hb = this.heartbeat(claim.lease.id, claim.lease.heartbeatSeconds, { value: "resolving" });
+    let wt: WorktreeHandle | null = null;
+    try {
+      this.step(observer, "REVIEW", "started", "resolving the dispute");
+      const r = await this.leasedRun(claim, "c", observer, signal);
+      wt = r.wt;
+      const ruling = Ruling.safeParse(r.run.output);
+      if (!ruling.success) throw new StepError("AGENT_OUTPUT_INVALID", "the resolver's output does not match ruling.v1", true);
+      const res = await this.api.call("submitRuling", {
+        params: { id: claim.lease.id },
+        body: ruling.data,
+        idempotencyKey: idempotencyKey("submitRuling", claim.lease.id, r.run.agentRunId),
+      });
+      this.step(
+        observer,
+        "REVIEW",
+        "passed",
+        res.awaitingMaintainer ? "ruling submitted; awaiting maintainer confirmation" : "ruling submitted",
+      );
+      return { ok: true, attempt: null, task: claim.task, output: ruling.data };
+    } finally {
+      hb.stop();
+      if (wt) await removeWorktree(wt).catch(() => undefined);
     }
   }
 
@@ -1059,6 +1188,21 @@ function stripAttempt(a: AttemptView & { reviews?: unknown; openFindings?: unkno
 }
 
 const LOCAL_VERIFICATION_REF = "local:verification-output";
+
+/**
+ * The document paths the control plane enforces for an author task (control-plane documentScope):
+ * feature contracts write CONTRACT.yaml, BUILD-GRAPH.yaml and acceptance/**; roadmaps write
+ * roadmaps/<target>/** plus NEW catalog entries (the server narrows those to newCatalogFeatures).
+ */
+function documentPaths(plan: ContextPlan, files: ChangesetFile[], existing: ReadonlySet<string>): string[] {
+  if (plan.taskKind === "feature_author") {
+    const f = plan.feature!;
+    return [`features/${f}/CONTRACT.yaml`, `features/${f}/BUILD-GRAPH.yaml`, `features/${f}/acceptance/**`];
+  }
+  const paths = [`roadmaps/${plan.target}/**`];
+  for (const f of files) if (/^catalog\/[a-z][a-z0-9-]*\.yaml$/.test(f.path) && !existing.has(f.path)) paths.push(f.path);
+  return paths;
+}
 
 /** The local_document a repair run sees: the failing check's output tail and any scope errors. */
 function renderVerificationOutput(

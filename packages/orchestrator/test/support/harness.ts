@@ -1,10 +1,12 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import {
   AGENT_POLICY_V1,
   BuildGraph,
+  type AuthorSummary,
   type BuildSummary,
+  type Ruling,
   type ReviewVerdict,
   type Orchestrator,
   type OrchestratorEvent,
@@ -53,6 +55,18 @@ export function probeOutput(machine: Machine, binary: string, argv: string[]): {
   return out === undefined ? null : { exitCode: 0, out };
 }
 
+/** Which output schema the real agent-policy argv pins: claude --json-schema <json>, codex --output-schema <file>. */
+export function outputSchemaOf(binary: string, argv: string[]): string | null {
+  const text =
+    binary === "claude"
+      ? (argv[argv.indexOf("--json-schema") + 1] ?? "")
+      : existsSync(argv[argv.indexOf("--output-schema") + 1] ?? "")
+        ? readFileSync(argv[argv.indexOf("--output-schema") + 1]!, "utf8")
+        : "";
+  for (const id of ["review-verdict.v1", "author-summary.v1", "ruling.v1", "build-summary.v1"]) if (text.includes(id)) return id;
+  return null;
+}
+
 /** Fake `claude`, fake `codex` and the repo's fake check command. Agents edit the worktree like real ones. */
 export class FakeProcesses implements ProcessRunner {
   runs = 0;
@@ -79,9 +93,11 @@ export class FakeProcesses implements ProcessRunner {
       return { exitCode: 0, durationMs: 1 };
     }
     if (input.binary !== "claude" && input.binary !== "codex") return { exitCode: 127, durationMs: 1 };
-    const readOnly = input.argv.includes("read-only") || input.argv.includes("dontAsk");
     const modelId = input.argv[input.argv.indexOf("--model") + 1]!;
-    if (readOnly) return this.review(input, modelId);
+    const schema = outputSchemaOf(input.binary, input.argv);
+    if (schema === "review-verdict.v1") return this.review(input, modelId);
+    if (schema === "author-summary.v1") return this.author(input, modelId);
+    if (schema === "ruling.v1") return this.rule(input, modelId);
     this.runs += 1;
     const action = this.script.shift() ?? "ok";
     if (action === "crash") throw new Error("the machine went to sleep");
@@ -101,6 +117,28 @@ export class FakeProcesses implements ProcessRunner {
     };
     const model = action === "wrong-model" ? "claude-haiku-9" : modelId;
     return this.emit(input, model, summary);
+  }
+
+  /** What author runs write (relative to the worktree) and with which content. */
+  authorFile = { path: "roadmaps/salesforce/ROADMAP.yaml", content: "schema: wos-roadmap.v1\ntarget: salesforce\n" };
+
+  private author(input: Parameters<ProcessRunner["run"]>[0], modelId: string) {
+    input.onSpawn?.(4444);
+    mkdirSync(dirname(join(input.cwd, this.authorFile.path)), { recursive: true });
+    writeFileSync(join(input.cwd, this.authorFile.path), this.authorFile.content);
+    const summary: AuthorSummary = {
+      schema: "author-summary.v1",
+      summary: `drafted ${this.authorFile.path}`,
+      responses: [],
+      proposalsAddressed: [],
+    };
+    return this.emit(input, modelId, summary);
+  }
+
+  private rule(input: Parameters<ProcessRunner["run"]>[0], modelId: string) {
+    input.onSpawn?.(4545);
+    const ruling: Ruling = { schema: "ruling.v1", rulings: [], proposedChange: "Split contacts#04 into list and pagination units." };
+    return this.emit(input, modelId, ruling);
   }
 
   private review(input: Parameters<ProcessRunner["run"]>[0], modelId: string) {

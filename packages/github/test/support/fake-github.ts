@@ -72,6 +72,7 @@ export class FakeGithub {
   readonly issues: Array<{ repo: string; number: number; title: string; body: string; labels: string[] }> = [];
   readonly graphqlCalls: Array<{ query: string; variables: Record<string, unknown> }> = [];
   readonly revokedTokens: string[] = [];
+  readonly teamReviewRequests: Array<{ repo: string; number: number; teams: string[] }> = [];
   readonly installations = new Map<string, number>();
   /** Scripted OAuth token endpoint responses, consumed in order. */
   readonly oauthQueue: Array<Record<string, unknown>> = [];
@@ -564,6 +565,13 @@ export class FakeGithub {
       const [, headBranch] = (query.head ?? ":").split(":");
       const list = this.pullsOf(full).filter((p) => (!query.head || p.head === headBranch) && (!query.state || p.state === query.state));
       return { status: 200, data: list.map((p) => this.pullJson(full, p)) };
+    }
+    m = method === "POST" ? /^\/pulls\/(\d+)\/requested_reviewers$/.exec(rest) : null;
+    if (m) {
+      const pr = this.pullsOf(full).find((p) => p.number === Number(m![1]));
+      if (!pr) throw new HttpError(404, "Not Found");
+      this.teamReviewRequests.push({ repo: full, number: pr.number, teams: (b.team_reviewers as string[]) ?? [] });
+      return { status: 201, data: this.pullJson(full, pr) };
     }
     m = /^\/pulls\/(\d+)$/.exec(rest);
     if (m) {

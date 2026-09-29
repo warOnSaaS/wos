@@ -252,6 +252,65 @@ export class FakeControlPlane {
     return p;
   }
 
+  /** Opens an author or resolver task (roadmap_author, feature_author, conflict_resolution) for author(). */
+  openAuthorTask(kind: "roadmap_author" | "feature_author" | "conflict_resolution"): TaskView {
+    const role = kind === "conflict_resolution" ? "conflict_resolver" : kind;
+    const t: TaskView = {
+      ...this.task(kind, null, "open"),
+      role,
+      target: kind === "roadmap_author" ? TARGET : null,
+      feature: kind === "roadmap_author" ? null : FEATURE,
+      abu: null,
+      documentId: kind === "conflict_resolution" ? null : this.id(),
+    };
+    this.tasks.set(t.id, t);
+    return t;
+  }
+
+  readonly rulings: unknown[] = [];
+
+  private authorPlan(t: TaskView, leaseId: string): ContextPlan {
+    const roleName = t.role;
+    const role = getRolePolicy(roleName, AGENT_POLICY_V1);
+    const model = AGENT_POLICY_V1.models.find((m) => m.ref === role.allowedModels[0])!;
+    const artifacts: ArtifactSelector[] = [
+      this.doc(`wos:policy/${roleName}@${AGENT_POLICY_V1.policyVersion}`),
+      this.doc(`wos:task/${t.id}`),
+    ];
+    if (t.kind === "roadmap_author")
+      artifacts.push({ kind: "repo_file", repo: REPO, path: "roadmaps/salesforce/ROADMAP.yaml", required: false });
+    if (t.kind === "feature_author")
+      artifacts.push({ kind: "repo_file", repo: REPO, path: "features/contacts/CONTRACT.yaml", required: false });
+    if (t.kind === "conflict_resolution") artifacts.push(this.doc(`wos:dispute/${t.id}`));
+    const p: ContextPlan = {
+      schema: "wos-context-plan.v1",
+      taskId: t.id,
+      taskKind: t.kind,
+      leaseId,
+      role: roleName,
+      model: model.ref,
+      modelId: model.modelId,
+      provider: model.provider,
+      reasoning: resolveReasoning(role, model),
+      policyVersion: AGENT_POLICY_V1.policyVersion,
+      contextFormatVersion: CONTEXT_FORMAT_VERSION,
+      target: t.target,
+      feature: t.feature,
+      abu: null,
+      attemptId: null,
+      roundId: null,
+      source: { repo: REPO, commit: this.upstream.base },
+      artifacts,
+      excludeGlobs: [...SECRET_PATTERNS],
+      promptTemplateId: PROMPT_TEMPLATE_BY_ROLE[roleName],
+      budgetTokens: role.contextBudgetTokens,
+      outputSchema: role.outputSchema,
+      allowedCommands: [],
+    };
+    this.plans.set(leaseId, p);
+    return p;
+  }
+
   private builderPlan(
     taskId: string,
     taskKind: "abu_build" | "abu_revision",
@@ -557,8 +616,19 @@ export class FakeControlPlane {
         else this.move(a, "building");
         return this.view(a);
       }
+      case "submitRuling": {
+        const l = this.activeLease(params.id!);
+        this.rulings.push(body);
+        l.state = "completed";
+        return { rulingId: this.id(), awaitingMaintainer: true };
+      }
       case "submitChangeset": {
         const l = this.activeLease(params.id!);
+        if (!l.attemptId) {
+          this.submissions.push(body as unknown as Changeset);
+          l.state = "completed";
+          return { validation: { ok: true, errors: [] }, attempt: null, documentId: this.tasks.get(l.taskId)!.documentId };
+        }
         const a = this.attempts.get(l.attemptId!)!;
         const cs = body as unknown as Changeset;
         this.submissions.push(cs);
@@ -580,6 +650,10 @@ export class FakeControlPlane {
         const t = this.tasks.get(params.id!)!;
         if (t.state !== "open") throw new HttpErr(409, "CONFLICT", "task not open");
         t.state = "leased";
+        if (t.kind !== "abu_revision") {
+          const lease = this.lease(t.id, null);
+          return { task: t, lease: this.leaseView(lease), contextPlan: this.authorPlan(t, lease.id), attempt: null };
+        }
         const a = this.attempts.get(t.attemptId!)!;
         a.repairCount += 1;
         this.move(a, "building");

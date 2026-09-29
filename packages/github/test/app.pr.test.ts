@@ -11,6 +11,7 @@ import {
   openPullRequest,
   renderProvenanceSection,
   renderPullRequestBody,
+  requestTeamReview,
   resetGithubAppConfig,
   setCommitStatus,
 } from "../src/app/index.js";
@@ -203,6 +204,22 @@ describe("statuses, auto-merge, issues, close", () => {
     expect(stored.state).toBe("closed");
     expect(stored.locked).toBe(true);
     expect(stored.comments[0]).toContain("warOnSaaS wOS");
+  });
+
+  it("requests a team review on a toolchain PR (contracts 3.1.0, added by the integrator)", async () => {
+    const input = {
+      head: officialBranch("contacts#04", ATTEMPT),
+      base: "main",
+      title: "t",
+      body: "b",
+      draft: false,
+      labels: [],
+      provenance: null,
+    };
+    const pr = await openPullRequest(creds, REPO, input);
+    await requestTeamReview(creds, REPO, pr.number, "maintainers");
+    expect(fake.teamReviewRequests).toEqual([{ repo: REPO, number: pr.number, teams: ["maintainers"] }]);
+    await expect(requestTeamReview(creds, REPO, 999, "maintainers")).rejects.toMatchObject({ code: "GITHUB_ERROR", status: 404 });
   });
 
   it("creates an issue with labels", async () => {
