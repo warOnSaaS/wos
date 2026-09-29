@@ -1,0 +1,46 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`context-engine determinism (DONE 1) > golden hashes: identical on macOS and Linux (CI runs the same assertion on ubuntu) 1`] = `
+{
+  "builder": {
+    "manifest": "sha256:c061f1366b51f088dfc6b2f4a0f2a500bc1e7229e1e67300f70afdb90300e43b",
+    "prompt": "sha256:c5733ee682d27be29e53b59a343c7cc2987346d907f161b06c7464664a8b719b",
+  },
+  "conflict_resolver": {
+    "manifest": "sha256:48b18e35f0010bdaa0b3a2e64f45b0993bc5acf77943b03af41c7b86a446202b",
+    "prompt": "sha256:09f550be2e81a2a6b19ff4dadab95a374dd6dd542ffc59cd1fbfad2d6fcdaa58",
+  },
+  "feature_author": {
+    "manifest": "sha256:e685413350434cb82c2201778153fb4989f9be2cf2c19ac5de320edd9e6858f1",
+    "prompt": "sha256:f134afc91e0a6c5d4898b4bed1b827fdbc0e46caee6d5228d7c3681380451b80",
+  },
+  "feature_reviewer_astra": {
+    "manifest": "sha256:43049f3674ca7d6acbea4187745f78091db168760993f06f1c928392607415e1",
+    "prompt": "sha256:27d34610e9f84237a29a2e564698fee619c190810dddf80ec0145eecbb5bbbec",
+  },
+  "feature_reviewer_fable": {
+    "manifest": "sha256:2b2f83ff284b6acbd93537730ac3812a085a5f57e6e4cc74966f1a768c6b013c",
+    "prompt": "sha256:1e0f82e67e10ad3345ca2c7b1a1fd642867145a0de8f73c25db8090af3b678e9",
+  },
+  "implementation_reviewer_astra": {
+    "manifest": "sha256:fd83f445a8caedcbed2ad292d2744f39082dd1433a44a74950c0979be4b52874",
+    "prompt": "sha256:970e40aea3952397a5d625349dcd12fb67823ebda1dc1b87e47ba5871d56a5fd",
+  },
+  "implementation_reviewer_fable": {
+    "manifest": "sha256:b6e9369645fe049627f4f94160258c0c732cab8d6352c8dbbf8ca81336219599",
+    "prompt": "sha256:e2d6ca74373d4a07d905472455546dc829e7e958bd4b96c0542bd1ea71827af0",
+  },
+  "roadmap_author": {
+    "manifest": "sha256:6d05380c1a756a34201fac6f252786d02323ba90c186cac913e61bcc8067c5fd",
+    "prompt": "sha256:8f34aecf8ad063d083febf7a89693d2311f5b678bcdb67bd8d98888a6108cf0f",
+  },
+  "roadmap_reviewer_astra": {
+    "manifest": "sha256:b27ccdcd35c6e617c131ebb2bd78fcb29531e39daa22700071aa85b43f9e284f",
+    "prompt": "sha256:9dda5bd2e372d3cc29d3de305e545254ed7ad3a1a6741acb3e37818380c66ad5",
+  },
+  "roadmap_reviewer_fable": {
+    "manifest": "sha256:644c6bcb840631c45b68749250229baa5c2c264f1dd637e1278edf2adc4a6ff9",
+    "prompt": "sha256:09e722c7e033a3ba6f62073a04f318e2406054586439256961a6b4a4b477510a",
+  },
+}
+`;

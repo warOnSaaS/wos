@@ -15,7 +15,8 @@
   ],
   "scripts": {
     "build": "tsc -b",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b",
+    "templates": "node scripts/embed-templates.mjs"
   },
   "dependencies": {
     "@waronsaas/contracts": "*",

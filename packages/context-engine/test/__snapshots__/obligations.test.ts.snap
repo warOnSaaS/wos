@@ -1,0 +1,13 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`context-engine templates > template hashes are pinned: any text change needs a new template version 1`] = `
+{
+  "tpl.builder.v1": "sha256:9a8f4b64d3fac7c8d8c7c36f81625ef8c8ff769f89619022e86cc23b88323150",
+  "tpl.conflict_resolver.v1": "sha256:b74c52d529d5c47937c81e347b8ad892128aa1d00f436caf0ad4d56df3a57e00",
+  "tpl.feature_author.v1": "sha256:ab861a111f09442499d1150165db334bad9b585b284071ea275c5bb4d5562477",
+  "tpl.feature_reviewer.v1": "sha256:7d41be1d68bf96d174d5a4d7b7dc03d18478aa5a49374f3d370a24f51e888c7d",
+  "tpl.implementation_reviewer.v1": "sha256:cd387292dcf3e3032e90cd39d5b05402c4a0d3df241c3bf4096a120276e736b3",
+  "tpl.roadmap_author.v1": "sha256:a0d1a0643eb8853f3fef7c6f120e3ceaf62a2763a3b45bf9c373c5d58a54b239",
+  "tpl.roadmap_reviewer.v1": "sha256:25932d4748598d07e1cec47d442f6acb9061151e08257d5772c5c43fcfce38f3",
+}
+`;
