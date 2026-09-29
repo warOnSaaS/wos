@@ -1,0 +1,241 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`status() and the toolchain attestation (D13) > Linux: kernel from uname -r, Android SDK from sdkmanager, Node; no Xcode probe 1`] = `
+{
+  "activeLeases": [],
+  "eligibleRoles": [
+    "roadmap_author",
+    "roadmap_reviewer_astra",
+    "roadmap_reviewer_fable",
+    "feature_author",
+    "feature_reviewer_astra",
+    "feature_reviewer_fable",
+    "builder",
+    "implementation_reviewer_astra",
+    "implementation_reviewer_fable",
+    "conflict_resolver",
+  ],
+  "git": {
+    "installed": true,
+    "version": "2.47.1",
+  },
+  "me": {
+    "attestations": [],
+    "balance": {
+      "available": 0,
+      "held": 0,
+      "score": 0,
+    },
+    "canContribute": true,
+    "displayName": null,
+    "email": "dev@example.com",
+    "followedTargets": [],
+    "github": {
+      "accountCreatedAt": "2019-01-01T00:00:00Z",
+      "linkedAt": "2026-09-29T12:00:00Z",
+      "login": "octo-dev",
+      "userId": 4242,
+    },
+    "handle": "octo-dev",
+    "id": "0192ab3c-0000-7000-8000-00000000aaaa",
+    "leaderboardOptIn": false,
+    "progressEmails": false,
+    "roles": [],
+    "status": "active",
+  },
+  "providers": [
+    {
+      "authMethod": "claude.ai",
+      "checkedAt": "2026-09-29T12:00:00.000Z",
+      "cliVersion": "2.1.284",
+      "installed": true,
+      "models": [
+        "fable",
+        "opus",
+      ],
+      "problems": [],
+      "provider": "claude_cli",
+      "signedIn": true,
+    },
+    {
+      "authMethod": "ChatGPT",
+      "checkedAt": "2026-09-29T12:00:00.000Z",
+      "cliVersion": "0.155.0",
+      "installed": true,
+      "models": [
+        "astra",
+      ],
+      "problems": [],
+      "provider": "codex_cli",
+      "signedIn": true,
+    },
+  ],
+  "signedIn": true,
+}
+`;
+
+exports[`status() and the toolchain attestation (D13) > Linux: kernel from uname -r, Android SDK from sdkmanager, Node; no Xcode probe 2`] = `
+{
+  "deviceId": "0192ab3c-0000-7000-8000-0000000000dd",
+  "providers": [
+    {
+      "authMethod": "claude.ai",
+      "checkedAt": "2026-09-29T12:00:00.000Z",
+      "cliVersion": "2.1.284",
+      "installed": true,
+      "models": [
+        "fable",
+        "opus",
+      ],
+      "provider": "claude_cli",
+      "signedIn": true,
+    },
+    {
+      "authMethod": "ChatGPT",
+      "checkedAt": "2026-09-29T12:00:00.000Z",
+      "cliVersion": "0.155.0",
+      "installed": true,
+      "models": [
+        "astra",
+      ],
+      "provider": "codex_cli",
+      "signedIn": true,
+    },
+  ],
+  "toolchain": {
+    "checkedAt": "2026-09-29T12:00:00.000Z",
+    "os": "linux",
+    "osVersion": "6.8.0-85-generic",
+    "tools": [
+      {
+        "name": "node",
+        "version": "22.23.1",
+      },
+      {
+        "name": "android-sdk",
+        "version": "12.0",
+      },
+    ],
+  },
+}
+`;
+
+exports[`status() and the toolchain attestation (D13) > macOS: os version from sw_vers, Xcode from xcodebuild -version, Node; posted with the providers 1`] = `
+{
+  "activeLeases": [],
+  "eligibleRoles": [
+    "roadmap_author",
+    "roadmap_reviewer_astra",
+    "roadmap_reviewer_fable",
+    "feature_author",
+    "feature_reviewer_astra",
+    "feature_reviewer_fable",
+    "builder",
+    "implementation_reviewer_astra",
+    "implementation_reviewer_fable",
+    "conflict_resolver",
+  ],
+  "git": {
+    "installed": true,
+    "version": "2.47.1",
+  },
+  "me": {
+    "attestations": [],
+    "balance": {
+      "available": 0,
+      "held": 0,
+      "score": 0,
+    },
+    "canContribute": true,
+    "displayName": null,
+    "email": "dev@example.com",
+    "followedTargets": [],
+    "github": {
+      "accountCreatedAt": "2019-01-01T00:00:00Z",
+      "linkedAt": "2026-09-29T12:00:00Z",
+      "login": "octo-dev",
+      "userId": 4242,
+    },
+    "handle": "octo-dev",
+    "id": "0192ab3c-0000-7000-8000-00000000aaaa",
+    "leaderboardOptIn": false,
+    "progressEmails": false,
+    "roles": [],
+    "status": "active",
+  },
+  "providers": [
+    {
+      "authMethod": "claude.ai",
+      "checkedAt": "2026-09-29T12:00:00.000Z",
+      "cliVersion": "2.1.284",
+      "installed": true,
+      "models": [
+        "fable",
+        "opus",
+      ],
+      "problems": [],
+      "provider": "claude_cli",
+      "signedIn": true,
+    },
+    {
+      "authMethod": "ChatGPT",
+      "checkedAt": "2026-09-29T12:00:00.000Z",
+      "cliVersion": "0.155.0",
+      "installed": true,
+      "models": [
+        "astra",
+      ],
+      "problems": [],
+      "provider": "codex_cli",
+      "signedIn": true,
+    },
+  ],
+  "signedIn": true,
+}
+`;
+
+exports[`status() and the toolchain attestation (D13) > macOS: os version from sw_vers, Xcode from xcodebuild -version, Node; posted with the providers 2`] = `
+{
+  "deviceId": "0192ab3c-0000-7000-8000-0000000000dd",
+  "providers": [
+    {
+      "authMethod": "claude.ai",
+      "checkedAt": "2026-09-29T12:00:00.000Z",
+      "cliVersion": "2.1.284",
+      "installed": true,
+      "models": [
+        "fable",
+        "opus",
+      ],
+      "provider": "claude_cli",
+      "signedIn": true,
+    },
+    {
+      "authMethod": "ChatGPT",
+      "checkedAt": "2026-09-29T12:00:00.000Z",
+      "cliVersion": "0.155.0",
+      "installed": true,
+      "models": [
+        "astra",
+      ],
+      "provider": "codex_cli",
+      "signedIn": true,
+    },
+  ],
+  "toolchain": {
+    "checkedAt": "2026-09-29T12:00:00.000Z",
+    "os": "macos",
+    "osVersion": "15.6.1",
+    "tools": [
+      {
+        "name": "node",
+        "version": "22.23.1",
+      },
+      {
+        "name": "xcode",
+        "version": "26.0.1",
+      },
+    ],
+  },
+}
+`;

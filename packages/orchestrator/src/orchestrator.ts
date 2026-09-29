@@ -19,6 +19,7 @@ import {
   type LocalStatus,
   type Me,
   type SignInPrompt,
+  type ToolchainAttestation,
   type OrchestratorObserver,
   type PipelineStep,
   type ProviderStatus,
@@ -262,6 +263,15 @@ export class OrchestratorImpl {
     }
     const ready = new Set(providers.filter((p) => p.installed && p.signedIn).flatMap((p) => p.models));
     const eligibleRoles = this.engines.policy.roles.filter((r) => r.allowedModels.some((m) => ready.has(m))).map((r) => r.role);
+    const toolchain = await this.collectToolchain();
+    // D13: the attestation the control plane matches against a repo's toolchainRequirements at claim time.
+    if (me?.canContribute && session) {
+      const providerAttestations = providers.map(({ problems: _p, ...a }) => a);
+      await this.api.call("postAttestation", {
+        body: { deviceId: session.deviceId, providers: providerAttestations, toolchain },
+        idempotencyKey: idempotencyKey("postAttestation", session.deviceId, canonicalJson({ providerAttestations, toolchain })),
+      });
+    }
     const work = me?.canContribute ? await this.api.call("getMyWork", {}).catch(() => null) : null;
     return {
       signedIn: me !== null,
@@ -274,7 +284,37 @@ export class OrchestratorImpl {
     };
   }
 
+  /**
+   * D13 ToolchainAttestation: os and os version, then the tools wOS knows how to detect. Tool names:
+   * "node", "xcode" (macOS only, `xcodebuild -version`), "android-sdk" (`sdkmanager --version`).
+   * The shared vocabulary for tool names is not yet in the contracts (blockers/B-0007-github-build.md).
+   */
+  async collectToolchain(): Promise<ToolchainAttestation> {
+    const platform = this.deps.platform ?? process.platform;
+    const os: ToolchainAttestation["os"] = platform === "darwin" ? "macos" : platform === "win32" ? "windows" : "linux";
+    const firstVersion = (text: string) => /\d+(?:\.\d+)+/.exec(text)?.[0] ?? null;
+    const osProbe =
+      os === "macos"
+        ? await this.capture("sw_vers", ["-productVersion"])
+        : os === "linux"
+          ? await this.capture("uname", ["-r"])
+          : await this.capture("cmd", ["/c", "ver"]);
+    const rawOs = osProbe.ok ? osProbe.out.trim().split("\n")[0]!.trim() : "";
+    const osVersion = (os === "windows" ? firstVersion(rawOs) : rawOs) || "unknown";
+    const tools: ToolchainAttestation["tools"] = [];
+    const probe = async (name: string, binary: string, argv: string[]) => {
+      const r = await this.capture(binary, argv);
+      const version = r.ok ? firstVersion(r.out) : null;
+      if (version) tools.push({ name, version });
+    };
+    await probe("node", "node", ["--version"]);
+    if (os === "macos") await probe("xcode", "xcodebuild", ["-version"]);
+    await probe("android-sdk", "sdkmanager", ["--version"]);
+    return { os, osVersion, tools, checkedAt: this.now().toISOString() };
+  }
+
   private async capture(binary: string, argv: string[]): Promise<{ ok: boolean; out: string }> {
+    await mkdir(this.deps.workspaceRoot, { recursive: true });
     let out = "";
     try {
       const r = await this.deps.processes.run({

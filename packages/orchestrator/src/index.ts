@@ -62,6 +62,8 @@ export interface OrchestratorDeps {
   sleep?: (ms: number) => Promise<void>;
   /** Additive, optional: attempt polling interval while waiting for CI, reviews and merge. Default 5000. */
   pollIntervalMs?: number;
+  /** Additive, optional: the OS to attest (D13). Default: process.platform. Lets tests fake macOS and Linux. */
+  platform?: "darwin" | "linux" | "win32";
   /** Additive, optional: environment passed to agent and verify processes. Default: PATH, HOME, USER, LANG, TMPDIR. */
   baseEnv?: Record<string, string>;
 }

@@ -8,8 +8,16 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { getRolePolicy, resolveReasoning } from "@waronsaas/agent-policy";
+import { builderArtifactSelectors, PROMPT_TEMPLATE_BY_ROLE, renderPolicyDocument, SECRET_PATTERNS } from "@waronsaas/context-engine";
 import { sha256Of } from "@waronsaas/contracts/canonical";
 import {
+  AGENT_POLICY_V1,
+  type AbuSpec,
+  type AgentRole,
+  type ArtifactSelector,
+  type BuildGraph,
+  CONTEXT_FORMAT_VERSION,
   DEFAULT_TOOLCHAIN_PATHS,
   type AttemptView,
   type Changeset,
@@ -47,7 +55,7 @@ export const SIGNIN_REQUEST_ID = "0192ab3c-0000-7000-8000-00000000beef";
 export const WOS_JSON = {
   schema: "wos-repo.v1",
   displayName: "warOnSaaS suite (fixture)",
-  products: [],
+  apps: [{ surface: "web", path: "apps/web" }],
   defaultBranch: "main",
   stack: { language: "typescript", runtime: "node", packageManager: "npm" },
   install: ["wos-fake-check", "install"],
@@ -60,13 +68,30 @@ export const WOS_JSON = {
   toolchainPaths: [...DEFAULT_TOOLCHAIN_PATHS],
 };
 
+export const ABU_SPEC: AbuSpec = {
+  repo: REPO,
+  key: ABU_KEY,
+  title: "Contact list endpoint",
+  objective: "Return the contact list for the signed-in tenant, paginated.",
+  requirements: ["R-001"],
+  dependsOn: [],
+  sizePoints: 3,
+  scope: { write: ["modules/contacts/**"], read: [] },
+  resources: [],
+  acceptance: { checks: [{ id: "list", run: ["wos-fake-check", "unit"] }], tests: [] },
+};
+
+export const BUILD_GRAPH: BuildGraph = { schema: "wos-build-graph.v1", feature: FEATURE, contractVersion: 1, abus: [ABU_SPEC] };
+
 export function makeUpstream(): { dir: string; base: string } {
   const dir = mkdtempSync(join(tmpdir(), "wos-orch-upstream-"));
   git(dir, "init", "-q", "-b", "main");
   git(dir, "config", "uploadpack.allowAnySHA1InWant", "true");
   const files: Record<string, string> = {
     "wos.json": `${JSON.stringify(WOS_JSON, null, 2)}\n`,
-    "features/contacts/BUILD-GRAPH.yaml": "schema: wos-build-graph.v1\n# parsed by the fake parseBuildGraphYaml\n",
+    // JSON is valid YAML; planning's parseBuildGraphYaml is still a stub, tests parse it with the zod schema.
+    "features/contacts/BUILD-GRAPH.yaml": `${JSON.stringify(BUILD_GRAPH, null, 2)}\n`,
+    "features/contacts/CONTRACT.yaml": "schema: wos-feature-contract.v1\nkey: contacts\n",
     "modules/contacts/list.ts": "export const list = () => [];\n",
   };
   for (const [p, c] of Object.entries(files)) {
@@ -103,6 +128,37 @@ export class FakeControlPlane {
   readonly redeems: Array<Record<string, unknown>> = [];
   githubLinkScript: Array<"pending" | "linked" | "denied" | "expired" | "elsewhere"> = [];
   meOverride: Partial<Me> | null = null;
+
+  /** The plan a lease was issued (tests inspect it; describeInvocation uses a real one). */
+  planOf(leaseId: string): ContextPlan | undefined {
+    return this.plans.get(leaseId);
+  }
+
+  /** Every server document this fake serves, rendered deterministically so plan sha256s match. */
+  renderDoc(ref: string): string {
+    const policy = /^wos:policy\/([a-z_]+)@/.exec(ref);
+    if (policy) return renderPolicyDocument(policy[1] as AgentRole, AGENT_POLICY_V1);
+    const task = /^wos:task\/(.+)$/.exec(ref);
+    if (task) return this.taskSpec(task[1]!);
+    return `# ${ref}\n\nRendered by the fake control plane.\n`;
+  }
+
+  private doc(ref: string, required = true): ArtifactSelector {
+    return { kind: "server_document", ref, sha256: sha256Of(this.renderDoc(ref)), required };
+  }
+
+  readonly plans = new Map<string, ContextPlan>();
+  readonly attestations: Array<{ deviceId: string; providers: unknown[]; toolchain?: unknown }> = [];
+  /** "scripted": outcomes.review decides; "orchestrators": two review tasks, decided by the submitted verdicts. */
+  reviewMode: "scripted" | "orchestrators" = "scripted";
+  readonly reviewTasks: Array<{
+    taskId: string;
+    attemptId: string;
+    slot: "astra" | "fable";
+    state: "open" | "leased" | "done";
+    roundId: string;
+  }> = [];
+  readonly verdicts: Array<{ slot: string; verdict: string; headSha: string; agentRunId: string }> = [];
 
   taskSpec(taskId: string): string {
     return `# Task ${taskId}\n\nBuild ${ABU_KEY}: contact list endpoint.\n`;
@@ -149,34 +205,94 @@ export class FakeControlPlane {
     };
   }
 
+  /** Issued exactly like services/control-plane buildPlan for a builder, from the real policy and selectors. */
   private plan(taskId: string, taskKind: "abu_build" | "abu_revision", leaseId: string, attemptId: string, commit: string): ContextPlan {
+    const p = this.builderPlan(taskId, taskKind, leaseId, attemptId, commit);
+    this.plans.set(leaseId, p);
+    return p;
+  }
+
+  private reviewPlan(t: (typeof this.reviewTasks)[number], leaseId: string, headSha: string): ContextPlan {
+    const roleName = `implementation_reviewer_${t.slot}` as const;
+    const role = getRolePolicy(roleName, AGENT_POLICY_V1);
+    const model = AGENT_POLICY_V1.models.find((m) => m.ref === role.allowedModels[0])!;
+    const p: ContextPlan = {
+      schema: "wos-context-plan.v1",
+      taskId: t.taskId,
+      taskKind: "implementation_review",
+      leaseId,
+      role: roleName,
+      model: model.ref,
+      modelId: model.modelId,
+      provider: model.provider,
+      reasoning: resolveReasoning(role, model),
+      policyVersion: AGENT_POLICY_V1.policyVersion,
+      contextFormatVersion: CONTEXT_FORMAT_VERSION,
+      target: null,
+      feature: FEATURE,
+      abu: ABU_KEY,
+      attemptId: t.attemptId,
+      roundId: t.roundId,
+      source: { repo: REPO, commit: headSha },
+      artifacts: [
+        this.doc(`wos:policy/${roleName}@${AGENT_POLICY_V1.policyVersion}`),
+        this.doc(`wos:task/${t.taskId}`),
+        this.doc(`wos:diff/${t.attemptId}@${headSha}`),
+        { kind: "repo_file", repo: REPO, path: "features/contacts/CONTRACT.yaml", required: true },
+        { kind: "repo_glob", repo: REPO, glob: "modules/contacts/**", required: true },
+        this.doc(`wos:ci/${t.attemptId}@${headSha}`),
+      ],
+      excludeGlobs: [...SECRET_PATTERNS],
+      promptTemplateId: PROMPT_TEMPLATE_BY_ROLE[roleName],
+      budgetTokens: role.contextBudgetTokens,
+      outputSchema: role.outputSchema,
+      allowedCommands: [],
+    };
+    this.plans.set(leaseId, p);
+    return p;
+  }
+
+  private builderPlan(
+    taskId: string,
+    taskKind: "abu_build" | "abu_revision",
+    leaseId: string,
+    attemptId: string,
+    commit: string,
+  ): ContextPlan {
+    const role = getRolePolicy("builder", AGENT_POLICY_V1);
+    const model = AGENT_POLICY_V1.models.find((m) => m.ref === role.allowedModels[0])!;
+    const policyText = renderPolicyDocument("builder", AGENT_POLICY_V1);
     return {
       schema: "wos-context-plan.v1",
       taskId,
       taskKind,
       leaseId,
       role: "builder",
-      model: "opus",
-      modelId: "claude-opus-5-5",
-      provider: "claude_cli",
-      reasoning: "high",
-      policyVersion: "agent-policy.v1",
-      contextFormatVersion: "wos-context.v1",
-      target: TARGET,
+      model: model.ref,
+      modelId: model.modelId,
+      provider: model.provider,
+      reasoning: resolveReasoning(role, model),
+      policyVersion: AGENT_POLICY_V1.policyVersion,
+      contextFormatVersion: CONTEXT_FORMAT_VERSION,
+      target: null,
       feature: FEATURE,
       abu: ABU_KEY,
       attemptId,
       roundId: null,
       source: { repo: REPO, commit },
-      artifacts: [
-        { kind: "server_document", ref: `wos:task/${taskId}`, sha256: sha256Of(this.taskSpec(taskId)), required: true },
-        { kind: "local_document", ref: "local:verification-output", required: false },
-      ],
-      excludeGlobs: [],
-      promptTemplateId: "builder.v1",
-      budgetTokens: 100000,
-      outputSchema: "build-summary.v1",
-      allowedCommands: [["wos-fake-check", "unit"]],
+      artifacts: builderArtifactSelectors({
+        repo: REPO,
+        feature: FEATURE,
+        abu: ABU_SPEC,
+        policyDocument: { ref: `wos:policy/builder@${AGENT_POLICY_V1.policyVersion}`, sha256: sha256Of(policyText) },
+        taskDocument: { ref: `wos:task/${taskId}`, sha256: sha256Of(this.renderDoc(`wos:task/${taskId}`)) },
+        localVerificationOutput: true,
+      }),
+      excludeGlobs: [...SECRET_PATTERNS],
+      promptTemplateId: PROMPT_TEMPLATE_BY_ROLE.builder,
+      budgetTokens: role.contextBudgetTokens,
+      outputSchema: role.outputSchema,
+      allowedCommands: [...WOS_JSON.verify.map((v) => v.run), ...ABU_SPEC.acceptance.checks.map((c) => c.run)],
     };
   }
 
@@ -355,9 +471,39 @@ export class FakeControlPlane {
       case "getLeaseDocument": {
         const l = this.activeLease(params.id!);
         this.documentRequests.push(query.ref!);
-        if (query.ref !== `wos:task/${l.taskId}`) throw new HttpErr(403, "FORBIDDEN", "ref not in this lease's plan");
-        const text = this.taskSpec(l.taskId);
+        const plan = this.plans.get(l.id);
+        const inPlan = plan?.artifacts.some((a) => a.kind === "server_document" && a.ref === query.ref);
+        if (!inPlan) throw new HttpErr(403, "FORBIDDEN", "ref not in this lease's plan");
+        const text = this.renderDoc(query.ref!);
         return { ref: query.ref, sha256: sha256Of(text), contentBase64: Buffer.from(text).toString("base64") };
+      }
+      case "postAttestation":
+        this.attestations.push(body as never);
+        return this.me();
+      case "claimReview": {
+        const t = this.reviewTasks.find((x) => x.state === "open" && x.slot === body?.slot);
+        if (!t) return null;
+        t.state = "leased";
+        const a = this.attempts.get(t.attemptId)!;
+        const task: TaskView = {
+          ...this.task("implementation_review", a.id, "leased"),
+          role: `implementation_reviewer_${t.slot}`,
+          reviewerSlot: t.slot,
+          roundId: t.roundId,
+        };
+        this.tasks.set(task.id, task);
+        t.taskId = task.id;
+        const lease = this.lease(task.id, null);
+        return { task, lease: this.leaseView(lease), contextPlan: this.reviewPlan(t, lease.id, a.headSha!), attempt: this.view(a) };
+      }
+      case "submitVerdict": {
+        const l = this.activeLease(params.id!);
+        const t = this.reviewTasks.find((x) => x.taskId === l.taskId)!;
+        const v = body as { verdict: { verdict: string }; headSha: string; agentRunId: string };
+        this.verdicts.push({ slot: t.slot, verdict: v.verdict.verdict, headSha: v.headSha, agentRunId: v.agentRunId });
+        t.state = "done";
+        l.state = "completed";
+        return { sealed: true, reviewId: this.id() };
       }
       case "startEmailSignIn":
         this.signInStarts.push(body as never);
@@ -395,10 +541,10 @@ export class FakeControlPlane {
         return this.leaseView(this.leases.get(params.id!)!);
       case "postManifest": {
         const l = this.activeLease(params.id!);
-        const a = this.attempts.get(l.attemptId!)!;
+        const a = l.attemptId ? this.attempts.get(l.attemptId) : undefined;
         this.manifests.push(String(body?.manifestSha256));
         this.manifestBodies.push(body as never);
-        if (a.state === "leased") this.move(a, "building");
+        if (a?.state === "leased") this.move(a, "building");
         return { accepted: true, manifestId: this.id() };
       }
       case "postAgentRun":
@@ -477,13 +623,28 @@ export class FakeControlPlane {
         this.move(a, "candidate_pushed");
         return;
       case "candidate_pushed":
-        if ((this.outcomes.ci.shift() ?? "success") === "success") this.move(a, "in_review");
+        if ((this.outcomes.ci.shift() ?? "success") === "success") {
+          this.move(a, "in_review");
+          if (this.reviewMode === "orchestrators") {
+            const roundId = this.id();
+            for (const slot of ["astra", "fable"] as const)
+              this.reviewTasks.push({ taskId: "", attemptId: a.id, slot, state: "open", roundId });
+          }
+        } else this.requestRevision(a);
+        return;
+      case "in_review": {
+        if (this.reviewMode === "scripted") {
+          if ((this.outcomes.review.shift() ?? "pass") === "pass") this.move(a, "qualified");
+          else this.requestRevision(a);
+          return;
+        }
+        const mine = this.reviewTasks.filter((t) => t.attemptId === a.id);
+        if (mine.some((t) => t.state !== "done")) return;
+        const bound = this.verdicts.filter((v) => v.headSha === a.headSha);
+        if (bound.length === 2 && bound.every((v) => v.verdict === "NO_MATERIAL_GAPS")) this.move(a, "qualified");
         else this.requestRevision(a);
         return;
-      case "in_review":
-        if ((this.outcomes.review.shift() ?? "pass") === "pass") this.move(a, "qualified");
-        else this.requestRevision(a);
-        return;
+      }
       case "qualified":
         this.move(a, "pr_open");
         a.pr = { number: 7, url: "https://github.com/waronsaas/product/pull/7" };

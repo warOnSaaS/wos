@@ -5,7 +5,9 @@ import { join } from "node:path";
 import {
   AGENT_POLICY_V1,
   type AbuSpec,
+  BuildGraph,
   type BuildSummary,
+  type ReviewVerdict,
   type ContextManifest,
   type ContextPlan,
   type Orchestrator,
@@ -31,14 +33,41 @@ export class MemorySecrets implements SecretStore {
   }
 }
 
-/** Fake `claude` and the repo's fake check command. The agent edits the worktree like a real one would. */
+export type Machine = "macos" | "linux";
+
+/** Version and login probes answered like the real tools on a macOS or Linux machine (status snapshots). */
+export function probeOutput(machine: Machine, binary: string, argv: string[]): { exitCode: number; out: string } | null {
+  const cmd = [binary, ...argv].join(" ");
+  const table: Record<string, string> = {
+    "git --version": "git version 2.47.1\n",
+    "node --version": "v22.23.1\n",
+    "claude --version": "2.1.284 (Claude Code)\n",
+    "claude auth status": '{"loggedIn": true, "authMethod": "claude.ai", "subscriptionType": "max"}\n',
+    "codex --version": "codex-cli 0.155.0\n",
+    "codex login status": "Logged in using ChatGPT\n",
+    ...(machine === "macos"
+      ? { "sw_vers -productVersion": "15.6.1\n", "xcodebuild -version": "Xcode 26.0.1\nBuild version 17A400\n" }
+      : { "uname -r": "6.8.0-85-generic\n", "sdkmanager --version": "12.0\n" }),
+  };
+  const out = table[cmd];
+  return out === undefined ? null : { exitCode: 0, out };
+}
+
+/** Fake `claude`, fake `codex` and the repo's fake check command. Agents edit the worktree like real ones. */
 export class FakeProcesses implements ProcessRunner {
   runs = 0;
+  machine: Machine = "linux";
   readonly script: AgentAction[] = [];
+  reviewVerdict: "NO_MATERIAL_GAPS" | "MATERIAL_GAPS" = "NO_MATERIAL_GAPS";
   readonly invocations: Array<{ binary: string; argv: string[]; cwd: string; env: Record<string, string> }> = [];
 
   async run(input: Parameters<ProcessRunner["run"]>[0]): Promise<{ exitCode: number; durationMs: number }> {
     this.invocations.push({ binary: input.binary, argv: input.argv, cwd: input.cwd, env: input.env });
+    const probe = probeOutput(this.machine, input.binary, input.argv);
+    if (probe) {
+      input.onStdout(probe.out);
+      return { exitCode: probe.exitCode, durationMs: 1 };
+    }
     if (input.binary === "wos-fake-check") {
       if (input.argv[0] === "install") return { exitCode: 0, durationMs: 1 };
       const src = readFileSync(join(input.cwd, "modules/contacts/list.ts"), "utf8");
@@ -49,7 +78,10 @@ export class FakeProcesses implements ProcessRunner {
       input.onStdout("PASS unit\n");
       return { exitCode: 0, durationMs: 1 };
     }
-    if (input.binary !== "claude") return { exitCode: 127, durationMs: 1 };
+    if (input.binary !== "claude" && input.binary !== "codex") return { exitCode: 127, durationMs: 1 };
+    const readOnly = input.argv.includes("read-only") || input.argv.includes("dontAsk");
+    const modelId = input.argv[input.argv.indexOf("--model") + 1]!;
+    if (readOnly) return this.review(input, modelId);
     this.runs += 1;
     const action = this.script.shift() ?? "ok";
     if (action === "crash") throw new Error("the machine went to sleep");
@@ -67,115 +99,66 @@ export class FakeProcesses implements ProcessRunner {
       responses: [],
       abuConcerns: [],
     };
-    const model = action === "wrong-model" ? "claude-haiku-9" : "claude-opus-5-5";
-    input.onStdout(`${JSON.stringify({ type: "system", subtype: "init", model })}\n`);
-    input.onStdout(
-      `${JSON.stringify({ type: "result", subtype: "success", structured_output: summary, usage: { input_tokens: 10, output_tokens: 5 } })}\n`,
-    );
+    const model = action === "wrong-model" ? "claude-haiku-9" : modelId;
+    return this.emit(input, model, summary);
+  }
+
+  private review(input: Parameters<ProcessRunner["run"]>[0], modelId: string) {
+    input.onSpawn?.(4343);
+    const verdict: ReviewVerdict = {
+      schema: "review-verdict.v1",
+      verdict: this.reviewVerdict,
+      summary: this.reviewVerdict === "NO_MATERIAL_GAPS" ? "No material gaps." : "One material gap.",
+      findings:
+        this.reviewVerdict === "MATERIAL_GAPS"
+          ? [
+              {
+                localId: "f1",
+                severity: "material",
+                category: "test_gap",
+                title: "Missing test",
+                detail: "No test for the empty list.",
+                evidence: [],
+                suggestedResolution: "Add one.",
+              },
+            ]
+          : [],
+      priorFindings: [],
+    };
+    return this.emit(input, modelId, verdict);
+  }
+
+  /** claude: stream-json on stdout. codex: --json events on stdout and the final message in the -o file. */
+  private emit(input: Parameters<ProcessRunner["run"]>[0], model: string, output: unknown) {
+    if (input.binary === "claude") {
+      input.onStdout(`${JSON.stringify({ type: "system", subtype: "init", model })}\n`);
+      input.onStdout(
+        `${JSON.stringify({ type: "result", subtype: "success", structured_output: output, usage: { input_tokens: 10, output_tokens: 5 } })}\n`,
+      );
+    } else {
+      input.onStdout(`${JSON.stringify({ type: "thread.started", model })}\n`);
+      const o = input.argv[input.argv.indexOf("-o") + 1]!;
+      writeFileSync(o, JSON.stringify(output));
+      input.onStdout(`${JSON.stringify({ type: "turn.completed", usage: { input_tokens: 10, output_tokens: 5 } })}\n`);
+    }
     return { exitCode: 0, durationMs: 7 };
   }
 }
 
-const ABU_SPEC: AbuSpec = {
-  repo: "waronsaas/product",
-  key: ABU_KEY,
-  title: "Contact list endpoint",
-  objective: "Return the contact list for the signed-in tenant, paginated.",
-  requirements: ["R-001"],
-  dependsOn: [],
-  sizePoints: 3,
-  scope: { write: ["modules/contacts/**"], read: [] },
-  resources: [],
-  acceptance: { checks: [{ id: "list", run: ["wos-fake-check", "unit"] }], tests: [] },
-};
-
-/** Stand-ins for the Wave 1 packages whose frozen signatures exist but are implemented elsewhere. */
-export const fakeEngines: Partial<Engines> = {
+/**
+ * Engines: the REAL context-engine, agent-policy and verification packages (defaults). Only planning's
+ * parseBuildGraphYaml is still a stub on main (planning is Wave 2), so tests parse the JSON-in-YAML
+ * fixture with the contract's own zod schema.
+ */
+export const testEngines: Partial<Engines> = {
   policy: AGENT_POLICY_V1,
-  async buildContext(plan: ContextPlan, reader) {
-    const artifacts: ContextManifest["artifacts"] = [];
-    const excluded: ContextManifest["excluded"] = [];
-    const file = await reader.readFile("modules/contacts/list.ts");
-    if (file) {
-      artifacts.push({
-        kind: "repo_file",
-        ref: "modules/contacts/list.ts",
-        gitBlobOid: file.gitBlobOid,
-        sha256: sha256Of(file.bytes),
-        bytes: file.bytes.byteLength,
-        estTokens: 10,
-      });
-    }
-    for (const a of plan.artifacts) {
-      if (a.kind === "repo_file" || a.kind === "repo_glob") continue;
-      if (a.kind === "local_document") {
-        // contracts 3.1.0: local documents come only from readLocalDocument (null = absent).
-        const bytes = reader.readLocalDocument ? await reader.readLocalDocument(a.ref) : null;
-        if (bytes === null) excluded.push({ ref: a.ref, reason: "missing_optional" });
-        else
-          artifacts.push({
-            kind: "local_document",
-            ref: a.ref,
-            gitBlobOid: null,
-            sha256: sha256Of(bytes),
-            bytes: bytes.byteLength,
-            estTokens: 10,
-          });
-        continue;
-      }
-      try {
-        const bytes = await reader.readServerDocument(a.ref);
-        artifacts.push({ kind: a.kind, ref: a.ref, gitBlobOid: null, sha256: sha256Of(bytes), bytes: bytes.byteLength, estTokens: 10 });
-      } catch (e) {
-        if (a.required) throw e;
-        excluded.push({ ref: a.ref, reason: "missing_optional" });
-      }
-    }
-    const unhashed: Omit<ContextManifest, "manifestSha256"> = {
-      schema: "wos-context-manifest.v1",
-      contextFormatVersion: plan.contextFormatVersion,
-      contractsVersion: "3.0.0",
-      policyVersion: plan.policyVersion,
-      role: plan.role,
-      provider: plan.provider,
-      model: { ref: plan.model, modelId: plan.modelId },
-      reasoning: plan.reasoning,
-      target: plan.target,
-      feature: plan.feature,
-      task: { id: plan.taskId, kind: plan.taskKind },
-      abu: plan.abu,
-      attemptId: plan.attemptId,
-      roundId: plan.roundId,
-      source: plan.source,
-      promptTemplate: { id: plan.promptTemplateId, sha256: `sha256:${"1".repeat(64)}` },
-      artifacts,
-      excluded,
-      budget: { limitTokens: plan.budgetTokens, estimatedTokens: 100 },
-      outputSchema: plan.outputSchema,
-      renderedPromptSha256: `sha256:${"2".repeat(64)}`,
-    };
-    const manifest: ContextManifest = { ...unhashed, manifestSha256: computeManifestSha256(unhashed) };
-    return { manifest, prompt: `Build ${plan.abu} at ${plan.source.commit}` };
-  },
-  buildInvocation(plan) {
-    return {
-      binary: "claude",
-      argv: ["-p", "--model", plan.modelId, "--effort", plan.reasoning, "--output-format", "stream-json"],
-      env: { CLAUDE_CODE_SAFE_MODE: "1" },
-      outputSchemaJson: "{}",
-    };
-  },
-  validateChangeset(cs) {
-    const errors = cs.files
-      .filter((f) => !f.path.startsWith("modules/contacts/"))
-      .map((f) => ({ code: "OUT_OF_SCOPE" as const, path: f.path, message: "outside modules/contacts/**" }));
-    return { ok: errors.length === 0, errors };
-  },
-  parseBuildGraphYaml() {
-    return { ok: true, value: { schema: "wos-build-graph.v1", feature: "contacts", contractVersion: 1, abus: [ABU_SPEC] } };
+  parseBuildGraphYaml(text) {
+    const r = BuildGraph.safeParse(JSON.parse(text));
+    return r.success
+      ? { ok: true, value: r.data }
+      : { ok: false, errors: r.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })) };
   },
 };
-
 export interface Harness {
   server: FakeControlPlane;
   processes: FakeProcesses;
@@ -183,7 +166,9 @@ export interface Harness {
   upstream: { dir: string; base: string };
   root: string;
   events: OrchestratorEvent[];
-  make: (clientKind?: "cli" | "desktop") => Orchestrator;
+  make: (clientKind?: "cli" | "desktop", opts?: { platform?: "darwin" | "linux"; root?: string }) => Orchestrator;
+  /** Run while the orchestrator waits between polls (e.g. other contributors reviewing). */
+  idle: Array<() => Promise<void>>;
   dispose: () => void;
 }
 
@@ -208,25 +193,30 @@ export function harness(opts: { root?: string } = {}): Harness {
   const root = opts.root ?? mkdtempSync(join(tmpdir(), "wos-orch-ws-"));
   configureLocalGit({ remoteUrl: () => upstream.dir });
   const events: OrchestratorEvent[] = [];
+  const idle: Array<() => Promise<void>> = [];
   return {
+    idle,
     server,
     processes,
     secrets,
     upstream,
     root,
     events,
-    make: (clientKind = "cli") =>
+    make: (clientKind = "cli", opts = {}) =>
       createOrchestrator({
         apiBaseUrl: "https://api.waronsaas.test",
-        workspaceRoot: root,
+        workspaceRoot: opts.root ?? root,
+        platform: opts.platform ?? "linux",
         secrets,
         processes,
         fetch: server.fetch,
         clientKind,
         clientVersion: "0.0.0-test",
-        engines: fakeEngines,
+        engines: testEngines,
         now: clock,
-        sleep: async () => undefined,
+        sleep: async () => {
+          for (const f of idle) await f();
+        },
         pollIntervalMs: 0,
         baseEnv: { PATH: "/usr/bin:/bin" },
       }),

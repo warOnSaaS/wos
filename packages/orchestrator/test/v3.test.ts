@@ -190,11 +190,11 @@ describe("server documents and repair runs", () => {
     h = harness();
     await h.make("cli").build({ abu: `${TARGET}/${ABU_KEY}`, detachAfterSubmit: true }, () => undefined);
     const taskId = [...h.server.tasks.values()][0]!.id;
-    expect(h.server.documentRequests).toEqual([`wos:task/${taskId}`]);
+    expect(h.server.documentRequests).toEqual(["wos:policy/builder@agent-policy.v1", `wos:task/${taskId}`]);
     const docCall = h.server.calls.find((c) => c.route === "getLeaseDocument");
     expect(docCall).toBeDefined();
     const m = h.server.manifestBodies[0]!;
-    expect(m.artifacts).toContainEqual(expect.objectContaining({ kind: "server_document", ref: `wos:task/${taskId}` }));
+    expect(m.artifacts).toContainEqual(expect.objectContaining({ ref: `wos:task/${taskId}`, gitBlobOid: null }));
   });
 
   it("a repair run posts a second manifest with local:verification-output and the changeset cites it", async () => {

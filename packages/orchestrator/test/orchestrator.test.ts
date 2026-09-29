@@ -66,8 +66,16 @@ describe("orchestrator build (fake control plane, fake claude)", () => {
     expect(verify(null, Buffer.from(canonicalJson(signedView)), createPublicKey(pem), Buffer.from(signature, "base64"))).toBe(true);
     // The agent ran in the worktree, at the pinned base, with the policy's argv and no inherited secrets.
     const agent = h.processes.invocations.find((i) => i.binary === "claude")!;
-    expect(agent.argv).toEqual(["-p", "--model", "claude-opus-5-5", "--effort", "high", "--output-format", "stream-json"]);
-    expect(agent.env).toEqual({ PATH: "/usr/bin:/bin", CLAUDE_CODE_SAFE_MODE: "1" });
+    // The real agent-policy invocation: exactly what describeInvocation shows, placeholders filled.
+    const plan = h.server.planOf([...h.server.leases.keys()][0]!)!;
+    const shown = h.make("cli").describeInvocation(plan);
+    expect(agent.binary).toBe(shown.binary);
+    expect(agent.argv.slice(0, 3)).toEqual(["-p", "--model", "claude-opus-5-5"]);
+    expect(agent.argv).toEqual(
+      expect.arrayContaining(["--effort", plan.reasoning, "--restricted", "--safe-mode", "--permission-mode", "acceptEdits"]),
+    );
+    expect(agent.argv).toEqual(expect.arrayContaining(["Bash(wos-fake-check unit)"]));
+    expect(agent.env).toEqual({ PATH: "/usr/bin:/bin", ...shown.env });
     expect(agent.cwd.startsWith(join(realpathSync(h.root), "worktrees"))).toBe(true);
     // Every idempotent call carried a key; the agent run record was posted and signed.
     expect(
@@ -210,21 +218,6 @@ describe("one orchestrator for CLI and Desktop", () => {
     const desktop = await run("desktop");
     expect(cli.length).toBeGreaterThan(1000);
     expect(desktop).toBe(cli);
-  });
-
-  it("describeInvocation is pure and matches what build launches", () => {
-    h = harness();
-    const o = h.make("cli");
-    const plan = {
-      schema: "wos-context-plan.v1",
-      modelId: "claude-opus-5-5",
-      reasoning: "high",
-    } as Parameters<typeof o.describeInvocation>[0];
-    expect(o.describeInvocation(plan)).toEqual({
-      binary: "claude",
-      argv: ["-p", "--model", "claude-opus-5-5", "--effort", "high", "--output-format", "stream-json"],
-      env: { CLAUDE_CODE_SAFE_MODE: "1" },
-    });
   });
 });
 
