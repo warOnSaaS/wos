@@ -119,7 +119,12 @@ function clientIp(c: Context): string {
 async function dispatch(c: Context, name: RouteName, route: RouteDef, handler: Handler<RouteName>, deps: Deps): Promise<Response> {
   const requestId = uuidv7();
   const cookiesOut: string[] = [];
-  const allowed = new Set<ApiErrorCode>([...route.errors, ...IMPLICIT[route.auth]]);
+  // api.ts: every idempotent route may answer 422 IDEMPOTENCY_MISMATCH (header rule, not in each route's list).
+  const allowed = new Set<ApiErrorCode>([
+    ...route.errors,
+    ...IMPLICIT[route.auth],
+    ...(route.idempotent ? (["IDEMPOTENCY_MISMATCH"] as const) : []),
+  ]);
   const respondError = (code: ApiErrorCode, message: string, details?: unknown) => {
     if (!allowed.has(code)) deps.onContractViolation?.(name, `returned ${code} (${message}), not listed in Routes.${name}.errors`);
     const res = c.json(envelope(code, message, requestId, details), HTTP_STATUS[code] as 400);
