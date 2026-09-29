@@ -23,6 +23,7 @@ export async function generateMetadata({ params }: Props) {
     title: `Open-source ${t.name} alternative`,
     description: `warOnSaaS is building an open-source, self-hostable ${t.name} alternative, one feature at a time. ${t.whatItIs} Progress today: mapped ${t.mapped}%, specified ${t.specified}%, built ${t.built}%.`,
     path: `/targets/${t.slug}`,
+    defaultImage: false,
   });
 }
 

@@ -13,13 +13,18 @@ export function pageMetadata({
   description,
   path,
   absoluteTitle = false,
+  defaultImage = true,
 }: {
   title: string;
   description: string;
   path: string;
   absoluteTitle?: boolean;
+  /** Use the site-wide share image. Target pages have their own opengraph-image file instead. */
+  defaultImage?: boolean;
 }): Metadata {
   const fullTitle = absoluteTitle ? title : `${title} — ${SITE_NAME}`;
+  // A page that sets openGraph replaces the parent's, so the root image must be named explicitly.
+  const images = defaultImage ? [{ url: "/opengraph-image", width: 1200, height: 630, alt: OG_ALT }] : undefined;
   return {
     title: absoluteTitle ? { absolute: title } : title,
     description,
@@ -34,14 +39,19 @@ export function pageMetadata({
       url: path,
       title: fullTitle,
       description,
+      ...(images ? { images } : {}),
     },
     twitter: {
       card: "summary_large_image",
       title: fullTitle,
       description,
+      ...(images ? { images } : {}),
     },
   };
 }
+
+export const OG_ALT =
+  "warOnSaaS: open-source replacements for the software you rent. The war starts at zero.";
 
 export const abs = (path: string) => new URL(path, SITE_URL).toString();
 
