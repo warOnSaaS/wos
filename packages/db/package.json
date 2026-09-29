@@ -17,7 +17,9 @@
   ],
   "scripts": {
     "build": "tsc -b",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b",
+    "migrate": "node dist/cli.js",
+    "migrate:check": "node dist/cli.js --check"
   },
   "dependencies": {
     "@waronsaas/contracts": "*",
