@@ -2,86 +2,49 @@
  * Write-scope vs glob questions the build-graph validator asks before any code exists: "can this write
  * scope touch a path that matches this `wos.json` glob?".
  *
- * `toolchainPaths` and `toolchainRequirements[].paths` are picomatch globs (dot: true). This package has no
- * picomatch dependency (the lockfile is frozen), so it carries a small segment matcher for the subset those
- * files use: `*`, `?`, `**` and `{a,b}`. Anything else is matched literally, which can only make a scope look
- * LESS dangerous than picomatch would; the changeset validator (verification, picomatch) still checks every
- * concrete path at submission time.
+ * `toolchainPaths` and `toolchainRequirements[].paths` are picomatch globs. Matching uses picomatch with the
+ * changeset validator's options (dot files matched, case-insensitive), so a graph and its submissions agree
+ * (contracts 4.2.0, FEATURE-CONTRACT.md section 9).
  */
 import type { WriteScope } from "@waronsaas/contracts";
+import picomatch from "picomatch";
 
-const GLOB_CHARS = /[*?{}[\]!]/;
+const OPTIONS = { dot: true, nocase: true } as const;
 
-export const isLiteralGlob = (glob: string) => !GLOB_CHARS.test(glob);
+export const isLiteralGlob = (glob: string) => !picomatch.scan(glob).isGlob;
 
-const segmentCache = new Map<string, RegExp>();
-
-function segmentRegExp(seg: string): RegExp {
-  let re = segmentCache.get(seg);
-  if (re) return re;
-  let src = "";
-  for (let i = 0; i < seg.length; i++) {
-    const ch = seg[i] as string;
-    if (ch === "*") src += "[^/]*";
-    else if (ch === "?") src += "[^/]";
-    else if (ch === "{") {
-      const end = seg.indexOf("}", i);
-      if (end === -1) {
-        src += "\\{";
-        continue;
-      }
-      const alts = seg
-        .slice(i + 1, end)
-        .split(",")
-        .map((a) =>
-          a
-            .replace(/[.+^$()|[\]\\]/g, "\\$&")
-            .replace(/\*/g, "[^/]*")
-            .replace(/\?/g, "[^/]"),
-        );
-      src += `(?:${alts.join("|")})`;
-      i = end;
-    } else src += ch.replace(/[.+^$()|[\]\\{}]/g, "\\$&");
+const matchers = new Map<string, (path: string) => boolean>();
+function matcher(glob: string): (path: string) => boolean {
+  let m = matchers.get(glob);
+  if (!m) {
+    m = picomatch(glob, OPTIONS);
+    matchers.set(glob, m);
   }
-  re = new RegExp(`^${src}$`, "i");
-  segmentCache.set(seg, re);
-  return re;
+  return m;
+}
+
+/** Full match of a repo path against a glob (picomatch, dot: true, nocase: true). */
+export function globMatches(glob: string, path: string): boolean {
+  return matcher(glob)(path);
 }
 
 const split = (p: string) => p.split("/").filter((s) => s.length > 0);
 
-/** Full match of a repo path against a glob (case-insensitive, like the changeset validator's nocase). */
-export function globMatches(glob: string, path: string): boolean {
-  const g = split(glob);
-  const p = split(path);
-  const walk = (gi: number, pi: number): boolean => {
-    if (gi === g.length) return pi === p.length;
-    const seg = g[gi] as string;
-    if (seg === "**") {
-      for (let k = pi; k <= p.length; k++) if (walk(gi + 1, k)) return true;
-      return false;
-    }
-    if (pi === p.length) return false;
-    return segmentRegExp(seg).test(p[pi] as string) && walk(gi + 1, pi + 1);
-  };
-  return walk(0, 0);
-}
-
 /**
  * Can some path inside `scope` match `glob`? An exact scope is one path. A tree scope `<dir>/**` holds every
- * path below `<dir>`, with any names, so the glob only has to match `<dir>`'s segments as a prefix and still
- * have at least one segment left for the file.
+ * path below `<dir>`, with any names, so the glob's leading segments only have to match `<dir>`'s segments
+ * (each segment matched by picomatch) and the glob must still have a segment left for the file; a `**`
+ * segment matches any remainder.
  */
 export function scopeCanTouchGlob(scope: WriteScope, glob: string): boolean {
   if (!scope.endsWith("/**")) return globMatches(glob, scope);
   const dir = split(scope.slice(0, -3));
   const g = split(glob);
-  const walk = (gi: number, di: number): boolean => {
-    if (di === dir.length) return gi < g.length;
-    if (gi === g.length) return false;
-    const seg = g[gi] as string;
+  for (let i = 0; i < dir.length; i++) {
+    const seg = g[i];
+    if (seg === undefined) return false;
     if (seg === "**") return true;
-    return segmentRegExp(seg).test(dir[di] as string) && walk(gi + 1, di + 1);
-  };
-  return walk(0, 0);
+    if (!matcher(seg)(dir[i] as string)) return false;
+  }
+  return g.length > dir.length;
 }

@@ -3,22 +3,14 @@
  * and 5): version sequence, unique keys, one profile per app, and the shared-contract versioning rule
  * ("changing a requirement that appears in an unlisted app's profile is a validation error").
  *
- * ADDITIVE export: no frozen signature carries these checks and no `BuildGraphErrorCode` names them, so
- * the control plane does not call this yet. See blockers/B-0001-planning.md item 4.
+ * Ratified in contracts 4.2.0 (B-0002-planning); the control plane calls it beside validateBuildGraph.
  */
-import type { FeatureContract } from "@waronsaas/contracts";
+import { type FeatureContract, FeatureContractErrorCode } from "@waronsaas/contracts";
 import { canonicalJson } from "@waronsaas/contracts/canonical";
 
-export const CONTRACT_ERROR_CODES = [
-  "VERSION_NOT_NEXT",
-  "FEATURE_MISMATCH",
-  "REQUIREMENT_DUPLICATE",
-  "JOURNEY_DUPLICATE",
-  "PROFILE_DUPLICATE",
-  "IMPACTED_TARGETS_MISSING",
-  "PROFILE_CHANGED_UNLISTED",
-] as const;
-export type ContractErrorCode = (typeof CONTRACT_ERROR_CODES)[number];
+/** The ratified codes (contracts 4.2.0 `FeatureContractErrorCode`, B-0002-planning). */
+export const CONTRACT_ERROR_CODES = FeatureContractErrorCode.options;
+export type ContractErrorCode = FeatureContractErrorCode;
 export interface ContractIssue {
   code: ContractErrorCode;
   message: string;

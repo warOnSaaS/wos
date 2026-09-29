@@ -27,14 +27,26 @@ export interface BuildGraphIssue {
 }
 
 /**
- * Official repositories and their family (migration 0005 `wos.repositories`). INTERIM, see
- * blockers/B-0001-planning.md: `validateBuildGraph` receives no registry and no contract repository, so it
- * uses the two repositories the contracts name and requires every ABU of one graph to be in one family.
+ * Official repositories and their family (the seed rows of migration 0005 `wos.repositories`). The fallback
+ * registry when `validateBuildGraph` is called without a context (B-0001-planning reading 1, ratified).
  */
-export const REPOSITORY_FAMILIES: ReadonlyMap<string, "platform" | "product"> = new Map([
+export const REPOSITORY_FAMILIES: ReadonlyMap<string, RepositoryFamily> = new Map([
   [PLATFORM_REPO, "platform"],
   [PRODUCT_REPO, "product"],
 ]);
+
+/**
+ * The sixth argument (contracts 4.2.0, FEATURE-CONTRACT.md section 9, B-0001-planning). The control plane
+ * passes `wos.repositories`, the contract document's repository and, per profile app, the surfaces in scope for
+ * this feature (`app_feature_surfaces`). Without it the ratified fallbacks apply: the family of the first
+ * registered ABU, and each profile's acceptance surfaces as its in-scope surfaces.
+ */
+export interface BuildGraphContext {
+  repositories: ReadonlyMap<string, RepositoryFamily>;
+  contractRepo: string;
+  surfacesInScope?: ReadonlyMap<string, readonly Surface[]>;
+}
+export type RepositoryFamily = "platform" | "product";
 
 /** Surfaces served by the React Native app (D13): native capabilities there need native ABUs. */
 const NATIVE_SURFACES: ReadonlySet<Surface> = new Set(["ios", "android"]);
@@ -94,6 +106,7 @@ export function validateBuildGraph(
   repo: RepoManifest,
   estimateBuilderContextTokens: (abuKey: string) => number,
   policy: AgentPolicyDocument,
+  context?: BuildGraphContext,
 ): BuildGraphIssue[] {
   const out: BuildGraphIssue[] = [];
   const add = (code: BuildGraphErrorCode, abu: string | null, message: string) => out.push({ code, abu, message });
@@ -171,7 +184,12 @@ export function validateBuildGraph(
     }
   }
 
-  // --- scopes ---
+  // --- D13: repositories (reading 1): with a context the graph's family is the contract repository's ---
+  const registry = context?.repositories ?? REPOSITORY_FAMILIES;
+  const families = abus.map((a) => registry.get(a.repo) ?? null);
+  const graphFamily = context ? (registry.get(context.contractRepo) ?? null) : (families.find((f) => f !== null) ?? null);
+
+  // --- scopes (reading 6: platform-family graphs may write any path that is not protected) ---
   const protectedScopes = [...ALWAYS_PROTECTED, ...repo.protectedPaths, ...repo.generatedPaths];
   const shells = repo.apps.length > 0 ? [...new Set(repo.apps.map((x) => x.path))] : [ARTIFACT_PATHS.webApp, ARTIFACT_PATHS.mobileApp];
   const roots = [ARTIFACT_PATHS.module(feature), `${ARTIFACT_PATHS.acceptanceDir(feature)}`, ...shells];
@@ -179,7 +197,7 @@ export function validateBuildGraph(
     for (const s of a.scope.write) {
       const hit = protectedScopes.find((p) => foldedOverlap(s, p));
       if (hit !== undefined) add("WRITE_SCOPE_PROTECTED", a.key, `${a.key} write scope ${s} overlaps protected or generated path ${hit}`);
-      if (!roots.some((r) => scopeUnder(s, r)))
+      if (graphFamily !== "platform" && !roots.some((r) => scopeUnder(s, r)))
         add("WRITE_OUTSIDE_MODULE_OR_PRODUCT", a.key, `${a.key} write scope ${s} is outside ${roots.map((r) => `${r}/`).join(", ")}`);
     }
   }
@@ -247,13 +265,13 @@ export function validateBuildGraph(
   }
 
   // --- D13: repositories ---
-  const families = abus.map((a) => REPOSITORY_FAMILIES.get(a.repo) ?? null);
-  const graphFamily = families.find((f) => f !== null) ?? null;
+  if (context && graphFamily === null)
+    add("ABU_REPO_UNKNOWN", null, `the contract's repository ${context.contractRepo} is not a registered warOnSaaS repository`);
   abus.forEach((a, i) => {
     const fam = families[i];
     if (fam === null || fam === undefined)
       add("ABU_REPO_UNKNOWN", a.key, `${a.key} names repository ${a.repo}, which is not a registered warOnSaaS repository`);
-    else if (fam !== graphFamily)
+    else if (graphFamily !== null && fam !== graphFamily)
       add("ABU_REPO_UNKNOWN", a.key, `${a.key} is in ${a.repo} (${fam} family) but this graph's ABUs are in the ${graphFamily} family`);
   });
 
@@ -267,16 +285,21 @@ export function validateBuildGraph(
     );
 
   const repoSurfaces = new Set(repo.apps.map((x) => x.surface));
+  /** An app's in-scope surfaces: its roadmap's (context) or, without a context, its profile's acceptance suites. */
+  const inScopeFor = (p: FeatureContract["profiles"][number]): ReadonlySet<string> => {
+    const fromRoadmap = context?.surfacesInScope?.get(p.target);
+    return new Set(fromRoadmap ?? p.acceptance.map((x) => x.surface));
+  };
   for (const r of contract.requirements) {
     const profiles = contract.profiles.filter((p) => p.requirements.includes(r.key));
     for (const s of r.surfaces) {
       if (repo.apps.length > 0 && !repoSurfaces.has(s))
         add("REQUIREMENT_SURFACE_NOT_IN_SCOPE", null, `${r.key} is tagged ${s}, but wos.json has no app shell for ${s}`);
-      else if (profiles.length > 0 && !profiles.some((p) => p.acceptance.some((x) => x.surface === s)))
+      else if (profiles.length > 0 && !profiles.some((p) => inScopeFor(p).has(s)))
         add(
           "REQUIREMENT_SURFACE_NOT_IN_SCOPE",
           null,
-          `${r.key} is tagged ${s}, but no profile that lists it (${profiles.map((p) => p.target).join(", ")}) has ${s} in scope (an acceptance suite for it)`,
+          `${r.key} is tagged ${s}, but no profile that lists it (${profiles.map((p) => p.target).join(", ")}) has ${s} in scope${context?.surfacesInScope ? " in its roadmap" : " (an acceptance suite for it)"}`,
         );
     }
   }
