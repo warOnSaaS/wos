@@ -34,6 +34,7 @@ export function Footer() {
             <li><Link href="/download">Download</Link></li>
             <li><Link href="/tokens">Tokens</Link></li>
             <li><Link href="/leaderboard">Leaderboard</Link></li>
+            <li><Link href="/log">Build log</Link></li>
             <li><Link href="/faq">FAQ</Link></li>
             <li><Link href="/about">About</Link></li>
             <li><a href={LINKS.repo}>GitHub</a></li>

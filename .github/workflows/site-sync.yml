@@ -1,0 +1,134 @@
+# Site sync (owner: web workstream, added for the coordinator; see docs/dogfood/integration.md).
+# After merges to main that change anything outside apps/web, an agent compares what changed with the
+# website copy and proposes edits as a pull request. It never pushes to main.
+#
+# Layers 1 and 2 need no agent: the site reads the live API with ISR and generates /log from git at
+# every Vercel build. This workflow is layer 3: copy (briefing, how-it-works, FAQ, download, TGT-00, llms).
+#
+# Secrets:
+#   CLAUDE_CODE_OAUTH_TOKEN  required. Founder's Claude subscription token (`claude setup-token`).
+#   SITE_SYNC_PR_TOKEN       optional. A token allowed to open PRs on this repo (see the PR step).
+name: site-sync
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "packages/**"
+      - "services/**"
+      - "apps/**"
+      - "AGENTS.md"
+      - "!apps/web/**"
+  workflow_dispatch:
+
+# A burst of merges runs once, on the newest main.
+concurrency:
+  group: site-sync
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci --ignore-scripts
+
+      - name: Collect what changed since the last sync
+        id: changes
+        run: |
+          last=$(cat apps/web/SITE-SYNC.last 2>/dev/null || true)
+          if [ -z "$last" ] || ! git cat-file -e "$last^{commit}" 2>/dev/null; then last=$(git rev-parse HEAD~20 2>/dev/null || git rev-list --max-parents=0 HEAD); fi
+          mkdir -p .site-sync
+          {
+            echo "# Changes on main since $last"
+            echo
+            echo "## Commits (first-parent)"
+            git log --first-parent --format='- %h %cs %s' "$last..HEAD"
+            echo
+            echo "## Files changed outside apps/web"
+            git diff --name-status "$last" HEAD -- . ':(exclude)apps/web'
+            echo
+            echo "## Diff stat"
+            git diff --stat "$last" HEAD -- . ':(exclude)apps/web'
+          } > .site-sync/changes.md
+          echo "last=$last" >> "$GITHUB_OUTPUT"
+          echo "head=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          if [ -z "$(git diff --name-only "$last" HEAD -- . ':(exclude)apps/web')" ]; then echo "skip=true" >> "$GITHUB_OUTPUT"; fi
+
+      # Model: Sonnet (alias `sonnet`, the current Sonnet in Claude Code). Copy sync is reading a change log
+      # and making small, rule-bound text edits; Sonnet does that reliably at a fraction of Opus's usage,
+      # which matters because this runs on the founder's subscription after every merge batch. The build
+      # gates (casing, numbers) and human review of the PR catch what the model misses.
+      # Caps: 40 turns, 20 minutes; tools limited to reading/editing files and running the site build.
+      - name: Site-sync agent
+        if: steps.changes.outputs.skip != 'true'
+        id: agent
+        timeout-minutes: 20
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          prompt: |
+            Follow apps/web/SITE-SYNC.md exactly. The changes to review are in .site-sync/changes.md
+            (main moved from ${{ steps.changes.outputs.last }} to ${{ steps.changes.outputs.head }}).
+            Edit only files under apps/web/. Run `npm run build -w apps/web` before you finish, then write
+            your summary to .site-sync/summary.md.
+          claude_args: |
+            --model sonnet
+            --max-turns 40
+            --allowedTools "Read,Glob,Grep,Edit,Write,Bash(npm run build -w apps/web),Bash(git log:*),Bash(git diff:*),Bash(git show:*)"
+            --disallowedTools "WebFetch,WebSearch"
+
+      - name: Guard, record the sync point, run the site checks
+        if: steps.changes.outputs.skip != 'true'
+        id: guard
+        run: |
+          { echo "summary<<SITE_SYNC_EOF"; cat .site-sync/summary.md 2>/dev/null || echo "The agent wrote no summary."; echo "SITE_SYNC_EOF"; } >> "$GITHUB_OUTPUT"
+          rm -rf .site-sync
+          echo "${{ steps.changes.outputs.head }}" > apps/web/SITE-SYNC.last
+          outside=$(git status --porcelain | awk '{print $2}' | grep -v '^apps/web/' || true)
+          if [ -n "$outside" ]; then echo "::error::The agent changed files outside apps/web:"; echo "$outside"; exit 1; fi
+          npm run build -w apps/web
+          git add apps/web
+          if git diff --cached --quiet -- ':(exclude)apps/web/SITE-SYNC.last' ':(exclude)apps/web/generated'; then echo "changed=false" >> "$GITHUB_OUTPUT"; else echo "changed=true" >> "$GITHUB_OUTPUT"; fi
+
+      # PR creation. GITHUB_TOKEN can only open PRs if the repository allows GitHub Actions to create
+      # pull requests (Settings > Actions > General), and this repo also restricts PR creation to
+      # collaborators. If SITE_SYNC_PR_TOKEN is set (a token of a collaborator, or of an App allowed to
+      # open PRs) it is used instead. If PR creation is refused, the branch is still pushed and the job
+      # summary links to the compare page so a person can open the PR.
+      - name: Open the pull request
+        if: steps.changes.outputs.skip != 'true' && steps.guard.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.SITE_SYNC_PR_TOKEN || github.token }}
+          HEAD_SHA: ${{ steps.changes.outputs.head }}
+          SUMMARY: ${{ steps.guard.outputs.summary }}
+        run: |
+          branch="site-sync/${HEAD_SHA:0:7}"
+          git config user.name "adventurini"
+          git config user.email "anthonydventurini@gmail.com"
+          git checkout -b "$branch"
+          git commit -q -m "site-sync: update apps/web for main ${HEAD_SHA:0:7}" -m "Proposed by the site-sync agent (apps/web/SITE-SYNC.md)."
+          git push -q "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/$branch"
+          body=$(printf 'Site copy updated for the changes on main up to %s.\n\n%s\n\nChecks run in the workflow: site build, casing gate, number gate. Merge only after reading the diff.' "${HEAD_SHA:0:7}" "${SUMMARY:-See the workflow log for the agent summary.}")
+          if gh pr create --base main --head "$branch" --title "site-sync: main ${HEAD_SHA:0:7}" --body "$body"; then
+            echo "PR opened for $branch" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::PR creation was refused for this token. Open it by hand."
+            echo "PR creation refused. Branch pushed: https://github.com/${GITHUB_REPOSITORY}/compare/main...$branch" >> "$GITHUB_STEP_SUMMARY"
+          fi

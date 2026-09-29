@@ -16,6 +16,7 @@ const pages = [
   { path: "/tokens", title: "WOS tokens", about: "What earns WOS tokens. WOS tokens are in-app credits with no cash value." },
   { path: "/leaderboard", title: "Leaderboard", about: "Contributors ranked by accepted work. No accepted contributions yet." },
   { path: "/faq", title: "FAQ", about: "Short answers to common questions." },
+  { path: "/log", title: "Build log", about: "What landed on main, generated from the git history and the wave reports." },
   { path: "/about", title: "About", about: "The mission." },
 ];
 

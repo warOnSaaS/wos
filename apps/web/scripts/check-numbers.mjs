@@ -3,7 +3,8 @@
  * Number gate. Runs after `next build`; exits non-zero if a data page renders a number that is not
  * in the data source.
  *
- * The data source (lib/data-source.ts) is snapshotted at build as /data-source.json. Every
+ * The data source (lib/data-source.ts: the live public API plus the TGT-00 roadmap file) is
+ * snapshotted at build as /data-source.json, from the same fetches the pages used. Every
  * percentage on a data page must equal formatPercent(n) (the contracts' own function) for some
  * number n in that snapshot, and every "N bp" figure must be a number in it. Data pages: the home
  * page, every target dossier and every drilldown page.

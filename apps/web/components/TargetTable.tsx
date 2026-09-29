@@ -30,12 +30,12 @@ export function TargetTable({ items }: { items: TargetSummary[] }) {
       </thead>
       <tbody>
         {items.map((t) => {
-          const site = siteFields(t.slug)!;
+          const site = siteFields(t.slug, t.rank)!;
           return (
             <tr key={t.slug} className={t.rank === 0 ? "row--self" : undefined}>
               <td data-label="ID">{site.id}</td>
               <th scope="row" data-label="TARGET">
-                <Link href={`/targets/${t.slug}`}>{site.name}</Link>
+                <Link href={`/targets/${t.slug}`}>{t.rank === 0 ? site.name : t.name}</Link>
               </th>
               <td data-label="CATEGORY">{site.category}</td>
               <td data-label="MAPPED"><Bar bp={t.progress.mappedBp} /></td>
