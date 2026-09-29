@@ -228,3 +228,20 @@ export const AgentPolicyDocument = z.object({
   tokenEstimator: z.object({ charsPerToken: z.number().positive(), perArtifactOverheadTokens: z.number().int().nonnegative() }),
 });
 export type AgentPolicyDocument = z.infer<typeof AgentPolicyDocument>;
+
+/**
+ * The ONE role-to-prompt-template map (contracts 4.2.0, B-0002-planning). Context-engine and the control plane
+ * import it; a template revision (v2) is a change here plus the template file, nowhere else.
+ */
+export const PROMPT_TEMPLATE_BY_ROLE: Readonly<Record<AgentRole, string>> = {
+  roadmap_author: "tpl.roadmap_author.v1",
+  roadmap_reviewer_astra: "tpl.roadmap_reviewer.v1",
+  roadmap_reviewer_fable: "tpl.roadmap_reviewer.v1",
+  feature_author: "tpl.feature_author.v1",
+  feature_reviewer_astra: "tpl.feature_reviewer.v1",
+  feature_reviewer_fable: "tpl.feature_reviewer.v1",
+  builder: "tpl.builder.v1",
+  implementation_reviewer_astra: "tpl.implementation_reviewer.v1",
+  implementation_reviewer_fable: "tpl.implementation_reviewer.v1",
+  conflict_resolver: "tpl.conflict_resolver.v1",
+};

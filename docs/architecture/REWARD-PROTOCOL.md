@@ -111,3 +111,17 @@ Rubber-stamp risk: the flat review reward pays a reviewer who always answers `NO
 - `allocatePool(total, weights)`: pure.
 - The `rewards` event consumer in the control plane calls them and persists everything in one transaction per event (`event_consumptions` PK makes the consumer at-least-once safe).
 - Public views: reward history per contributor (only if opted in), leaderboard with the disclaimer.
+
+## 8. Rulings at the Wave 2a gate (contracts 4.2.0, B-0001/B-0002-rewards)
+
+- **Facts contract.** `packages/rewards/src/facts.ts` (typed `RewardFacts`, every new field optional) is the contract between the rewards rules and the control plane's loader. The loader mapping in B-0001-rewards is normative. Missing facts pay nothing (fail closed); facts naming another subject throw.
+- **Division of work.** The rules return ledger entry DRAFTS only. Contribution state transitions (pending → accepted/rejected/reversed) stay with the control plane. Releases come from `computeReleaseDrafts`, called by `GET /v1/cron/sweep`. The control plane creates `reward_pools` rows before calling the rules and passes their ids. The rewards consumer also listens to `app_feature.state_changed` and `progress.recomputed`.
+- **The eight rule choices are ratified as implemented:**
+  1. The hold starts at the event's `occurredAt`.
+  2. One payer per category, with the idempotency keys listed in the blocker.
+  3. Document pools are shared per author, weighted by accepted revisions.
+  4. Pool shares carry `contributionId` null.
+  5. Feature pool = floor(live implementation tokens x percent / 100); reversed awards are excluded.
+  6. No cascade from a reversal into pools already paid.
+  7. A failed independent re-review voids the held bootstrap awards; a passed one releases through the sweeper.
+  8. Missing facts fail closed and inconsistent facts throw.

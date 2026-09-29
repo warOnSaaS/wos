@@ -6,10 +6,13 @@ import type {
   ContextManifest,
   ContextPlan,
   ProviderAttestation,
+  TaskKind,
+  ToolchainAttestation,
   ReviewVerdict,
   Ruling,
 } from "./agent-io.js";
-import type { AttemptView, LeaseView, Me, TaskView } from "./domain.js";
+import type { AbuSummary, AttemptView, LeaseView, Me, TaskView } from "./domain.js";
+import type { DomainEvent } from "./events.js";
 
 /**
  * The ONE orchestration interface shared by wOS CLI and wOS Desktop (spec: "The CLI and Desktop
@@ -65,6 +68,8 @@ export interface LocalStatus {
   eligibleRoles: AgentRole[];
   activeLeases: LeaseView[];
   workspaceRoot: string;
+  /** The toolchain this device attests (contracts 4.2.0, B-0006-github-build); null before the first status run. */
+  toolchain: ToolchainAttestation | null;
 }
 
 export interface BuildOptions {
@@ -124,4 +129,11 @@ export interface Orchestrator {
   release(leaseId: string, reason: string): Promise<void>;
   /** Pure: what the orchestrator would pass to the CLI (for Desktop's "show command" and for tests). */
   describeInvocation(plan: ContextPlan): { binary: string; argv: string[]; env: Record<string, string> };
+
+  // Read operations the CLI and Desktop need (contracts 4.2.0, B-0009-github-build): thin ApiClient calls, no
+  // workflow logic. Public reads (targets, features, catalog, leaderboard) stay direct fetches of public routes.
+  listClaimableAbus(target: string, feature: string): Promise<AbuSummary[]>;
+  listOpenTasks(filter: { kind?: TaskKind; target?: string; feature?: string }): Promise<TaskView[]>;
+  myWork(): Promise<{ leases: LeaseView[]; tasks: TaskView[]; attempts: AttemptView[] }>;
+  events(after?: number): Promise<{ items: DomainEvent[]; lastId: number }>;
 }

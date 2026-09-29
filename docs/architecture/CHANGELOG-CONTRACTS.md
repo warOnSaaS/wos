@@ -69,3 +69,13 @@ MINOR.
 - `ModelRef` gains `sol` (gpt-6-sol), builders only; policy `models[]` adds Sol.
 - Correction: `codex debug models` reports a 272000 window at 95% effective for Astra and Sol; `contextWindowTokens` is now 258000 (was an UNVERIFIED 400000), and Astra reviewer and author budgets get overrides that fit.
 - Optional fields: `ProvenanceRecord.agentRuns[].provider`, `AttemptView.builtWith`.
+
+## 4.2.0 — 2026-09-29 (Wave 2a gate)
+
+MINOR (additive for consumers; the one implementer of `Orchestrator`, github-build, adds the four read methods).
+- `ClaimResponse.round` {id, number, headSha, submissionSha256} for review claims (B-0008-github-build).
+- `LocalStatus.toolchain`; `ToolName` enum (`node`, `xcode`, `android-sdk`) for attestations and `toolchainRequirements`; `compareToolVersions` (B-0006-github-build).
+- `Orchestrator.listClaimableAbus`, `listOpenTasks`, `myWork`, `events` (B-0009-github-build).
+- `PROMPT_TEMPLATE_BY_ROLE` moves to contracts; `FeatureContractErrorCode`; `BuildGraphErrorCode.CONTRACT_VERSION_MISMATCH` (B-0001/B-0002-planning).
+- `picomatch` dependency for `@waronsaas/planning`.
+- Protocol text: REWARD-PROTOCOL section 8, REVIEW-PROTOCOL section 11, FEATURE-CONTRACT section 9.

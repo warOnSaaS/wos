@@ -1,6 +1,18 @@
 import { z } from "zod";
 import { AgentRole, ModelRef, OutputSchemaId, ProviderId, ReasoningLevel, ReviewerSlot } from "./agent-policy.js";
-import { AbuKey, FeatureKey, GitSha, RepoFullName, RepoPath, RequirementKey, Sha256, TargetSlug, Timestamp, Uuid } from "./primitives.js";
+import {
+  AbuKey,
+  FeatureKey,
+  GitSha,
+  RepoFullName,
+  RepoPath,
+  RequirementKey,
+  Sha256,
+  TargetSlug,
+  Timestamp,
+  ToolName,
+  Uuid,
+} from "./primitives.js";
 
 // ---------------------------------------------------------------------------------------------
 // Task kinds (everything leasable). See DOMAIN-MODEL.md "Task".
@@ -347,7 +359,7 @@ export type ProviderAttestation = z.infer<typeof ProviderAttestation>;
 export const ToolchainAttestation = z.object({
   os: z.enum(["macos", "linux", "windows"]),
   osVersion: z.string().min(1),
-  tools: z.array(z.object({ name: z.string().min(1), version: z.string().min(1) })),
+  tools: z.array(z.object({ name: ToolName, version: z.string().min(1) })),
   checkedAt: Timestamp,
 });
 export type ToolchainAttestation = z.infer<typeof ToolchainAttestation>;

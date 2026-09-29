@@ -155,3 +155,13 @@ Idempotency: the transition guard `state = consensus` makes a replayed webhook a
 ## 8. Within-feature weighting
 
 The split of a feature's BUILT % across its requirements and units is mechanical: ABU size points of the relevant ABUs (ROADMAP-PROTOCOL.md section 6). A contract cannot override it with per-requirement weights in V1 (G-30). Size points are fixed in the reviewed build graph, so they are as hard to game as the contract; reviewers treat a size point assignment that is plainly out of proportion to the ABU's objective as a material finding.
+
+## 9. Rulings at the Wave 2a gate (contracts 4.2.0, B-0001/B-0002-planning)
+
+- `validateBuildGraph` takes an optional sixth argument `context: { repositories: ReadonlyMap<repo, family>; contractRepo: string; surfacesInScope?: ReadonlyMap<target, Surface[]> }`. The control plane passes `wos.repositories`, the contract document's repo and each profile app's `app_feature_surfaces`.
+- Planning's interim readings 1–6 are ratified as the normative definitions, with two changes. Reading 1: when `context` is present, the family is that of `contractRepo`, not "the first ABU's". Reading 6: for platform-family graphs (TGT-00) the allowed roots are every path not in `protectedPaths`; `WRITE_OUTSIDE_MODULE_OR_PRODUCT` applies to the product family only.
+- Reading 7: a graph whose `contractVersion` differs from the contract's `version` is `CONTRACT_VERSION_MISMATCH` (new code); `KEY_NOT_IN_FEATURE` stays for a feature-key mismatch.
+- `picomatch` is added to `@waronsaas/planning` (lockfile updated); replace the local matcher with it.
+- `validateFeatureContract(contract, previousMerged)` is ratified with the codes in `FeatureContractErrorCode`. The control plane calls it beside `validateBuildGraph`.
+- `FEATURE_IN_TWO_CAPABILITIES` in `validateRoadmap` is accepted.
+- The role-to-template map lives in contracts (`PROMPT_TEMPLATE_BY_ROLE`); context-engine and the control plane import it.

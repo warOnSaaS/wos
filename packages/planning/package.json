@@ -22,6 +22,10 @@
     "@waronsaas/agent-policy": "*",
     "@waronsaas/context-engine": "*",
     "@waronsaas/verification": "*",
-    "yaml": "^2.9.1"
+    "yaml": "^2.9.1",
+    "picomatch": "^4.0.7"
+  },
+  "devDependencies": {
+    "@types/picomatch": "^4.0.3"
   }
 }

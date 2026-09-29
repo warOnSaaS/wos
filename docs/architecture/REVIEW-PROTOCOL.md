@@ -126,3 +126,8 @@ At launch the founder is contributor zero. `platform_settings.bootstrap_mode.ena
 ## 10. Rewards for reviewers
 
 Flat reward per completed review of an accepted subject plus a bonus per material finding later upheld or fixed; nothing for findings that were overruled. Details and the rubber-stamp risk in REWARD-PROTOCOL.md.
+
+## 11. Rulings at the Wave 2a gate (contracts 4.2.0, B-0002-planning)
+
+- `computeRoundOutcome.priorOpenFindingIds` contains MATERIAL findings only. A minor finding never blocks consensus. The control plane's query filters `severity = 'material'` (this was a real bug: minor findings blocked consensus forever; fixed at the gate).
+- Overruled findings: consensus is reached iff neither verdict has a new material finding and no non-overruled prior material finding is still open. A prior material finding counts as open if it is in `priorOpenFindingIds` or a verdict marks it `still_open`. A reviewer holding an overruled finding open cannot block, because the maintainer-confirmed ruling is final.

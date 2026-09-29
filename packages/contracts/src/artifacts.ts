@@ -14,6 +14,7 @@ import {
   Surface,
   Browser,
   MINIMUM_BROWSERS,
+  ToolName,
 } from "./primitives.js";
 
 /**
@@ -141,7 +142,7 @@ export const RepoManifest = z.object({
         id: z.string().regex(/^[a-z][a-z0-9-]*$/),
         paths: z.array(z.string().min(1)).min(1),
         os: z.array(z.enum(["macos", "linux", "windows"])).min(1),
-        tools: z.array(z.object({ name: z.string().min(1), minVersion: z.string().min(1) })).default([]),
+        tools: z.array(z.object({ name: ToolName, minVersion: z.string().min(1) })).default([]),
       }),
     )
     .default([]),
@@ -536,6 +537,7 @@ export const BuildGraphErrorCode = z.enum([
   "JOURNEY_UNCOVERED",
   "REQUIREMENT_SURFACE_NOT_IN_SCOPE",
   "NATIVE_CAPABILITY_UNPLANNED",
+  "CONTRACT_VERSION_MISMATCH",
 ]);
 export type BuildGraphErrorCode = z.infer<typeof BuildGraphErrorCode>;
 
@@ -557,3 +559,15 @@ export const RoadmapBundle = z.object({
   requirements: z.array(z.object({ feature: FeatureKey, requirements: z.array(Requirement).min(1) })),
 });
 export type RoadmapBundle = z.infer<typeof RoadmapBundle>;
+
+/** Contract-level validator codes (planning.validateFeatureContract, contracts 4.2.0, B-0002-planning). */
+export const FeatureContractErrorCode = z.enum([
+  "VERSION_NOT_NEXT",
+  "FEATURE_MISMATCH",
+  "REQUIREMENT_DUPLICATE",
+  "JOURNEY_DUPLICATE",
+  "PROFILE_DUPLICATE",
+  "IMPACTED_TARGETS_MISSING",
+  "PROFILE_CHANGED_UNLISTED",
+]);
+export type FeatureContractErrorCode = z.infer<typeof FeatureContractErrorCode>;

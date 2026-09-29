@@ -126,4 +126,24 @@ export type Surface = z.infer<typeof Surface>;
  */
 export const Browser = z.enum(["chromium", "edge", "webkit", "firefox", "mobile_safari", "mobile_chrome"]);
 export type Browser = z.infer<typeof Browser>;
+/**
+ * Tool names shared by ToolchainAttestation and wos.json toolchainRequirements (contracts 4.2.0, B-0006-github-build).
+ * Extendable (MINOR). Versions compare as dotted numeric prefixes: "16.2" >= "16.1.3"; trailing non-numeric
+ * text is ignored ("16.2 (build 16C5032a)" -> 16.2).
+ */
+export const ToolName = z.enum(["node", "xcode", "android-sdk"]);
+export type ToolName = z.infer<typeof ToolName>;
+
+/** Numeric dotted-prefix version comparison used by toolchain eligibility. Returns -1, 0 or 1. */
+export function compareToolVersions(a: string, b: string): -1 | 0 | 1 {
+  const parse = (v: string) => (/^\s*v?(\d+(?:\.\d+)*)/.exec(v)?.[1] ?? "0").split(".").map(Number);
+  const x = parse(a);
+  const y = parse(b);
+  for (let i = 0; i < Math.max(x.length, y.length); i++) {
+    const d = (x[i] ?? 0) - (y[i] ?? 0);
+    if (d !== 0) return d < 0 ? -1 : 1;
+  }
+  return 0;
+}
+
 export const MINIMUM_BROWSERS = ["chromium", "edge", "webkit", "firefox", "mobile_safari", "mobile_chrome"] as const;

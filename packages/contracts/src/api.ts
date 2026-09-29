@@ -129,6 +129,14 @@ export const ClaimResponse = z.object({
   lease: LeaseView,
   contextPlan: ContextPlan,
   attempt: AttemptView.nullable(),
+  /**
+   * For review claims: exactly what the verdict must be bound to (contracts 4.2.0, B-0008-github-build).
+   * submitVerdict sends round.headSha and round.submissionSha256 back. Null for non-review claims.
+   */
+  round: z
+    .object({ id: Uuid, number: z.number().int().positive(), headSha: GitSha, submissionSha256: Sha256.nullable() })
+    .nullable()
+    .optional(),
 });
 export type ClaimResponse = z.infer<typeof ClaimResponse>;
 
