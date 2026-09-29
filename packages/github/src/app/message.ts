@@ -1,6 +1,6 @@
 /** Commit message, PR body and provenance rendering for App-authored objects. Internal to ./app. */
-import { COMMIT_TRAILERS, type ProvenanceRecord } from "@waronsaas/contracts";
-import { canonicalJson, canonicalSha256 } from "../internal/hash.js";
+import { COMMIT_TRAILERS, ProvenanceRecord } from "@waronsaas/contracts";
+import { canonicalJson, provenanceSha256 } from "@waronsaas/contracts/canonical";
 import { GithubAppError } from "./client.js";
 import type { CommitIdentity } from "./index.js";
 
@@ -67,10 +67,11 @@ export const GITHUB_BODY_LIMIT = 65_536;
 /**
  * The provenance section appended to an official PR body: the record's JCS sha256 and the record
  * itself. The record must carry the PR's own number, which only exists after the PR is opened, so
- * `openPullRequest` fills `prNumber` and then writes this section (see blockers/B-0001).
+ * `openPullRequest` fills `prNumber` and then writes this section (contracts 2.0.0 rule, B-0002-github-build).
  */
 export function renderProvenanceSection(record: ProvenanceRecord): { section: string; sha256: string } {
-  const sha256 = canonicalSha256(record);
+  const parsed = ProvenanceRecord.parse(record);
+  const sha256 = provenanceSha256(parsed);
   const section = [
     PROVENANCE_MARKER,
     "### wOS provenance",
@@ -80,7 +81,7 @@ export function renderProvenanceSection(record: ProvenanceRecord): { section: st
     "<details><summary>Record</summary>",
     "",
     "```json",
-    canonicalJson(record),
+    canonicalJson(parsed),
     "```",
     "",
     "</details>",

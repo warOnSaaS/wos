@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { Changeset, ChangesetFile } from "@waronsaas/contracts";
 import { configureGithubApp, type AppCredentials } from "../../src/app/index.js";
-import { sha256Prefixed } from "../../src/internal/hash.js";
+import { sha256Of } from "@waronsaas/contracts/canonical";
 import { FakeGithub } from "./fake-github.js";
 
 export const API = "https://api.github.test";
@@ -84,7 +84,7 @@ export function makeApp(): { creds: AppCredentials; fake: FakeGithub } {
 
 export function upsert(path: string, content: string | Buffer, mode: "100644" | "100755" = "100644"): ChangesetFile {
   const bytes = typeof content === "string" ? Buffer.from(content) : content;
-  return { op: "upsert", path, mode, contentBase64: bytes.toString("base64"), sha256: sha256Prefixed(bytes), bytes: bytes.byteLength };
+  return { op: "upsert", path, mode, contentBase64: bytes.toString("base64"), sha256: sha256Of(bytes), bytes: bytes.byteLength };
 }
 
 export function del(path: string): ChangesetFile {

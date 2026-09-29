@@ -14,7 +14,7 @@ import {
   resetGithubAppConfig,
   setCommitStatus,
 } from "../src/app/index.js";
-import { canonicalJson, canonicalSha256 } from "../src/internal/hash.js";
+import { canonicalJson, provenanceSha256 } from "@waronsaas/contracts/canonical";
 import type { FakeGithub } from "./support/fake-github.js";
 import { changeset, cleanup, git, makeApp, makeUpstream, upsert } from "./support/setup.js";
 
@@ -103,7 +103,7 @@ describe("openPullRequest", () => {
     const inBody = JSON.parse(m[1]!) as ProvenanceRecord;
     expect(inBody.prNumber).toBe(pr.number);
     expect(canonicalJson(inBody)).toBe(m[1]);
-    expect(stored.body).toContain(`Provenance record \`${canonicalSha256(inBody)}\``);
+    expect(stored.body).toContain(`Provenance record \`${provenanceSha256(inBody)}\``);
     expect({ ...inBody, qualifiedAt: "" }).toEqual(expected);
   });
 

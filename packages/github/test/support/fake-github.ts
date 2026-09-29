@@ -297,6 +297,9 @@ export class FakeGithub {
 
   private json(status: number, data: unknown): Response {
     if (status === 204) return new Response(null, { status });
+    if (data && typeof data === "object" && "__raw" in data) {
+      return new Response(String((data as { __raw: string }).__raw), { status, headers: { "content-type": "text/plain; charset=utf-8" } });
+    }
     return new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json; charset=utf-8" } });
   }
 
@@ -420,6 +423,16 @@ export class FakeGithub {
 
     m = method === "GET" ? /^\/git\/commits\/([0-9a-f]{40})$/.exec(rest) : null;
     if (m) return { status: 200, data: this.commitJson(m[1]!) };
+    m = method === "GET" ? /^\/git\/blobs\/([0-9a-f]{40})$/.exec(rest) : null;
+    if (m) {
+      const raw = this.get(m[1]!, "blob").raw;
+      return {
+        status: 200,
+        data: { sha: m[1], size: raw.length, encoding: "base64", content: raw.toString("base64").replace(/(.{60})/g, "$1\n") },
+      };
+    }
+    m = method === "GET" ? /^\/compare\/([0-9a-f]{40})\.\.\.([0-9a-f]{40})$/.exec(rest) : null;
+    if (m) return { status: 200, data: { __raw: this.unifiedDiff(m[1]!, m[2]!) } };
     if (method === "POST" && rest === "/git/blobs") {
       const content = b.encoding === "base64" ? Buffer.from(String(b.content), "base64") : Buffer.from(String(b.content), "utf8");
       const sha = this.put("blob", content);
@@ -601,6 +614,26 @@ export class FakeGithub {
       return { status: 201, data: { number: n, html_url: `https://github.com/${full}/issues/${n}`, title: b.title } };
     }
     throw new HttpError(404, `fake GitHub: no route for ${method} ${path}`);
+  }
+
+  /** Naive unified diff (whole-file hunks), enough to test the plumbing of compareDiff. */
+  unifiedDiff(base: string, head: string): string {
+    const a = this.flatten(this.readCommit(base).tree);
+    const b = this.flatten(this.readCommit(head).tree);
+    const paths = [...new Set([...a.keys(), ...b.keys()])].sort();
+    const lines = (e: { sha: string } | undefined) => (e ? this.get(e.sha).raw.toString("utf8").replace(/\n$/, "").split("\n") : []);
+    let out = "";
+    for (const p of paths) {
+      const x = a.get(p);
+      const y = b.get(p);
+      if (x && y && x.sha === y.sha && x.mode === y.mode) continue;
+      const old = lines(x);
+      const neu = lines(y);
+      out += `diff --git a/${p} b/${p}\n--- ${x ? `a/${p}` : "/dev/null"}\n+++ ${y ? `b/${p}` : "/dev/null"}\n`;
+      out += `@@ -${old.length ? 1 : 0},${old.length} +${neu.length ? 1 : 0},${neu.length} @@\n`;
+      out += old.map((l) => `-${l}\n`).join("") + neu.map((l) => `+${l}\n`).join("");
+    }
+    return out;
   }
 
   private pullJson(full: string, pr: FakePull) {

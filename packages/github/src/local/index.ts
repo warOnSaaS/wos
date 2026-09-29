@@ -14,12 +14,13 @@ import { constants as fsc } from "node:fs";
 import { lstat, mkdir, open, readdir, readFile, readlink, realpath, rm } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import { type ChangesetFile, RepoPath } from "@waronsaas/contracts";
-import { gitBlobOid, sha256Prefixed } from "../internal/hash.js";
+import { gitBlobOid, sha256Of } from "@waronsaas/contracts/canonical";
 
 export interface WorktreeHandle {
   path: string;
   repo: string;
   baseSha: string;
+  /** Always "HEAD": wOS worktrees are detached at the lease's base commit; no local branch exists. */
   branch: string;
 }
 
@@ -305,7 +306,7 @@ export async function captureChanges(
         path: rel,
         mode,
         contentBase64: bytes.toString("base64"),
-        sha256: sha256Prefixed(bytes),
+        sha256: sha256Of(bytes),
         bytes: bytes.byteLength,
       });
     }

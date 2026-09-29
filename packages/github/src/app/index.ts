@@ -5,7 +5,7 @@
  */
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { type Changeset, type ProvenanceRecord, RepoPath } from "@waronsaas/contracts";
-import { gitBlobOid, sha256Prefixed } from "../internal/hash.js";
+import { gitBlobOid, sha256Of } from "@waronsaas/contracts/canonical";
 import { currentTransport, GithubAppError, installationClient, messageOf, splitRepo, statusOf, wrap } from "./client.js";
 import { buildCommitMessage, GITHUB_BODY_LIMIT, PROVENANCE_MARKER, renderProvenanceSection, validateAuthor } from "./message.js";
 
@@ -74,7 +74,7 @@ export function precheckChangeset(changeset: Changeset): Array<{ path: string; o
     if (!/^[A-Za-z0-9+/]*={0,2}$/.test(f.contentBase64))
       throw new GithubAppError("CHANGESET_REJECTED", `HASH_MISMATCH: ${f.path} is not base64`);
     const bytes = Buffer.from(f.contentBase64, "base64");
-    if (bytes.byteLength !== f.bytes || sha256Prefixed(bytes) !== f.sha256) {
+    if (bytes.byteLength !== f.bytes || sha256Of(bytes) !== f.sha256) {
       throw new GithubAppError("CHANGESET_REJECTED", `HASH_MISMATCH: ${f.path}`);
     }
     out.push({ path: f.path, op: "upsert", mode: f.mode, bytes });
@@ -657,4 +657,131 @@ export async function exchangeUserAuthorization(
       })
       .catch(() => undefined);
   }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Contracts 3.0.0 additions (B-0001-control-plane). The repo is always the caller's ABU/document
+// repo (`AbuSummary.repo`, `TaskView.repo`), never a constant.
+// ---------------------------------------------------------------------------------------------
+
+/** Current head sha of a branch, or null when the branch does not exist. */
+export async function getBranchHead(creds: AppCredentials, repo: string, branch: string): Promise<string | null> {
+  const { owner, repo: name } = splitRepo(repo);
+  assertBranch(branch);
+  const gh = await installationClient(creds, repo);
+  return readRef(gh, owner, name, branch);
+}
+
+/** Bytes of a regular file at a commit, or null when the path is missing, a directory, a symlink or a submodule. */
+export async function readFileAt(creds: AppCredentials, repo: string, commit: string, path: string): Promise<Uint8Array | null> {
+  const { owner, repo: name } = splitRepo(repo);
+  const oid = (await blobOidsAt(creds, repo, commit, [path])).get(path) ?? null;
+  if (oid === null) return null;
+  const gh = await installationClient(creds, repo);
+  try {
+    const blob = await gh.request("GET /repos/{owner}/{repo}/git/blobs/{file_sha}", { owner, repo: name, file_sha: oid });
+    const bytes = Buffer.from(blob.data.content, blob.data.encoding === "base64" ? "base64" : "utf8");
+    if (gitBlobOid(bytes) !== oid) throw new GithubAppError("GITHUB_ERROR", `blob ${oid} content does not hash to its id`);
+    return new Uint8Array(bytes);
+  } catch (e) {
+    throw wrap(e, `readFileAt ${repo}@${commit}:${path}`);
+  }
+}
+
+/**
+ * Every regular-file and symlink path at a commit (blobs only; directories and submodules are
+ * left out), sorted by UTF-16 code units. Walks subtrees when the recursive listing is truncated.
+ */
+export async function listTreePaths(creds: AppCredentials, repo: string, commit: string): Promise<string[]> {
+  const { owner, repo: name } = splitRepo(repo);
+  assertSha(commit, "commit");
+  const gh = await installationClient(creds, repo);
+  type Entry = { path?: string; type?: string; sha?: string };
+  const out: string[] = [];
+  try {
+    const all = await gh.request("GET /repos/{owner}/{repo}/git/trees/{tree_sha}", { owner, repo: name, tree_sha: commit, recursive: "1" });
+    if (!all.data.truncated) {
+      for (const e of all.data.tree as Entry[]) if (e.type === "blob" && e.path) out.push(e.path);
+    } else {
+      const root = await gh.request("GET /repos/{owner}/{repo}/git/commits/{commit_sha}", { owner, repo: name, commit_sha: commit });
+      const walk = async (sha: string, prefix: string): Promise<void> => {
+        const t = await gh.request("GET /repos/{owner}/{repo}/git/trees/{tree_sha}", { owner, repo: name, tree_sha: sha });
+        for (const e of t.data.tree as Entry[]) {
+          const p = prefix ? `${prefix}/${e.path}` : e.path!;
+          if (e.type === "blob") out.push(p);
+          else if (e.type === "tree" && e.sha) await walk(e.sha, p);
+        }
+      };
+      await walk(root.data.tree.sha, "");
+    }
+  } catch (e) {
+    if (statusOf(e) === 404 || statusOf(e) === 422)
+      throw new GithubAppError("INVALID_INPUT", `commit ${commit} not found in ${repo}`, statusOf(e));
+    throw wrap(e, `listTreePaths ${repo}@${commit}`);
+  }
+  return out.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+}
+
+/**
+ * Moves an EXISTING branch to `sha`. With `{expectedHeadSha}` the move happens only if the branch is
+ * currently there (compare-and-swap; the move itself may be non-fast-forward, e.g. a rebase). With
+ * `{force: true}` it moves unconditionally. Idempotent when the branch already points at `sha`.
+ */
+export async function moveBranch(
+  creds: AppCredentials,
+  repo: string,
+  branch: string,
+  sha: string,
+  options: { expectedHeadSha: string } | { force: true },
+): Promise<{ previousSha: string }> {
+  const { owner, repo: name } = splitRepo(repo);
+  assertBranch(branch);
+  assertSha(sha, "sha");
+  if ("expectedHeadSha" in options) assertSha(options.expectedHeadSha, "expectedHeadSha");
+  const gh = await installationClient(creds, repo);
+  try {
+    const head = await readRef(gh, owner, name, branch);
+    if (head === null) throw new GithubAppError("HEAD_MISMATCH", `branch ${branch} does not exist`);
+    if (head === sha) return { previousSha: head };
+    if ("expectedHeadSha" in options && head !== options.expectedHeadSha) {
+      throw new GithubAppError("HEAD_MISMATCH", `branch ${branch} is at ${head}, expected ${options.expectedHeadSha}`);
+    }
+    await gh.request("PATCH /repos/{owner}/{repo}/git/refs/{ref}", { owner, repo: name, ref: `heads/${branch}`, sha, force: true });
+    return { previousSha: head };
+  } catch (e) {
+    throw wrap(e, `moveBranch ${repo}@${branch}`);
+  }
+}
+
+/** Unified diff text between two commits (compare API, `application/vnd.github.diff`). */
+export async function compareDiff(creds: AppCredentials, repo: string, base: string, head: string): Promise<string> {
+  const { owner, repo: name } = splitRepo(repo);
+  assertSha(base, "base");
+  assertSha(head, "head");
+  const gh = await installationClient(creds, repo);
+  try {
+    const res = await gh.request("GET /repos/{owner}/{repo}/compare/{basehead}", {
+      owner,
+      repo: name,
+      basehead: `${base}...${head}`,
+      mediaType: { format: "diff" },
+    });
+    return String(res.data as unknown);
+  } catch (e) {
+    throw wrap(e, `compareDiff ${repo} ${base}...${head}`);
+  }
+}
+
+/**
+ * The GitHub web-flow authorisation URL for linking an identity from the website (D8, S-6). Pure:
+ * the control plane stores only a hash of `state` and binds the callback to it.
+ */
+export function webAuthorizeUrl(creds: AppCredentials, input: { state: string; redirectUri: string }): string {
+  if (input.state.length < 16) throw new GithubAppError("INVALID_INPUT", "state must be at least 16 characters of randomness");
+  const url = new URL("/login/oauth/authorize", currentTransport().oauthBaseUrl);
+  url.searchParams.set("client_id", creds.clientId);
+  url.searchParams.set("redirect_uri", input.redirectUri);
+  url.searchParams.set("state", input.state);
+  url.searchParams.set("allow_signup", "false");
+  return url.toString();
 }
