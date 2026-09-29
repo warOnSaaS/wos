@@ -122,12 +122,35 @@ function layout(workspaceRoot: string, repo: string, name: string) {
 }
 
 /** Ensures a bare mirror under <workspaceRoot>/repos/<owner>/<name>.git, fetches `sha`, adds a detached worktree at it. */
+/**
+ * One in-process lock per mirror (B-0005-desktop, integration glue at the Wave 2 gate): mirror init, config,
+ * fetch, worktree add and remove are serialised per mirror path, so one orchestrator can run two builds (D15:
+ * an Opus builder and an Astra/Sol builder) on the same repository at once. Git's own locks are not enough:
+ * concurrent `config` writes and `worktree add` on one bare repo fail with "could not lock config file".
+ * Separate processes (CLI and Desktop on one machine) are not covered; each uses its own workspace root.
+ */
+const mirrorLocks = new Map<string, Promise<unknown>>();
+async function withMirrorLock<T>(mirror: string, fn: () => Promise<T>): Promise<T> {
+  const prev = mirrorLocks.get(mirror) ?? Promise.resolve();
+  const run = prev.then(fn, fn);
+  const tail = run.catch(() => undefined);
+  mirrorLocks.set(mirror, tail);
+  try {
+    return await run;
+  } finally {
+    if (mirrorLocks.get(mirror) === tail) mirrorLocks.delete(mirror);
+  }
+}
+
 export async function createWorktree(workspaceRoot: string, repo: string, sha: string, name: string): Promise<WorktreeHandle> {
   if (!SHA.test(sha)) throw new LocalGitError("INVALID_INPUT", `not a 40-hex sha: ${JSON.stringify(sha)}`);
   await mkdir(workspaceRoot, { recursive: true });
   const root = await realpath(workspaceRoot);
   const { mirror, worktree } = layout(root, repo, name);
+  return withMirrorLock(mirror, () => createWorktreeLocked(repo, sha, mirror, worktree));
+}
 
+async function createWorktreeLocked(repo: string, sha: string, mirror: string, worktree: string): Promise<WorktreeHandle> {
   if (!(await exists(join(mirror, "HEAD")))) {
     await mkdir(mirror, { recursive: true });
     await git(mirror, ["init", "--bare", "-q"]);
@@ -365,6 +388,10 @@ export async function removeWorktree(worktree: WorktreeHandle): Promise<void> {
     throw new LocalGitError("INVALID_INPUT", `${worktree.path} is not under a wOS worktrees directory`);
   const root = dirname(worktreesDir);
   const mirror = join(root, "repos", m[1]!, `${m[2]!}.git`);
+  return withMirrorLock(mirror, () => removeWorktreeLocked(worktree, wtAbs, mirror));
+}
+
+async function removeWorktreeLocked(worktree: WorktreeHandle, wtAbs: string, mirror: string): Promise<void> {
   if (!(await exists(mirror))) {
     if (await exists(wtAbs)) throw new LocalGitError("NOT_A_WORKTREE", `no mirror for ${worktree.repo} at ${mirror}`);
     return;

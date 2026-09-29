@@ -44,7 +44,12 @@ export interface ControlPlaneHarness {
     init?: { token?: string; body?: unknown; headers?: Record<string, string>; ip?: string },
   ): Promise<{ status: number; body: unknown; headers: Record<string, string> }>;
   /** An account; `github: false` leaves it unlinked, `githubAgeDays` sets the linked account's age. */
-  contributor(opts?: { github?: boolean; githubAgeDays?: number; maintainer?: boolean }): Promise<Contributor>;
+  contributor(opts?: {
+    github?: boolean;
+    githubAgeDays?: number;
+    maintainer?: boolean;
+    acceptedContributions?: number;
+  }): Promise<Contributor>;
   /** A ready ABU in the product repo; returns its id. */
   seedAbu(spec: { key: string; write: string[]; resources?: { key: string; mode: "exclusive" | "shared" }[] }): Promise<string>;
   /** Claim + accepted manifest + signed agent run: the attempt is `verifying` and ready to submit. */
@@ -54,6 +59,7 @@ export interface ControlPlaneHarness {
   /** Signed agent run for a review lease (so a verdict can reference it). */
   reviewAgentRun(reviewer: Contributor, leaseId: string): Promise<string>;
   bootstrap(enabled: boolean): Promise<void>;
+  repoManifest(patch: Record<string, unknown> | null): Promise<void>;
   lastEmail(to: string): Promise<{ link: string; code: string } | null>;
   githubCalls(): Array<{ method: string; path: string; body?: unknown }>;
   close(): Promise<void>;

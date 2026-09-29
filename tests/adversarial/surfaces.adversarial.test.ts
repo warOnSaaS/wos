@@ -113,21 +113,32 @@ describe("D13 / S-34: a native ABU needs a macOS toolchain; a JS-only mobile ABU
     expect(ToolchainAttestation.safeParse({ ...linux, tools: [{ name: "xcode-but-trust-me", version: "99" }] }).success).toBe(false);
   });
 
-  // context-policy implements the toolchain step (AGENT-POLICY.md "Toolchain eligibility (D13)"); the input
-  // field names are not fixed by the contracts yet, so this activates only when a TOOLCHAIN_* reason exists.
-  const toolchainStep = (ELIGIBILITY_REASONS as readonly string[]).some((r) => r.startsWith("TOOLCHAIN"));
-  it.skipIf(!toolchainStep)(
-    `a Linux device is not eligible for a builder claim on an ABU under apps/mobile/ios/**${toolchainStep ? "" : " [PENDING Wave 2b: context-policy toolchain eligibility step (no TOOLCHAIN_* reason yet)]"}`,
-    () => {
-      const base = builderInput(["opus"]);
-      const input = {
-        ...base,
-        toolchainAttestation: { os: "linux", osVersion: "Ubuntu 24.04", tools: [{ name: "node", version: "22.12.0" }], checkedAt: iso(0) },
-        toolchainRequirements: template.toolchainRequirements.filter((r) => r.id === "ios-native"),
-      } as unknown as EligibilityInput;
-      const r = checkEligibility(input);
-      expect(r.eligible).toBe(false);
-      if (!r.eligible) expect(r.reasons.join(" ")).toMatch(/TOOLCHAIN.*ios-native|ios-native/);
+  // context-policy's toolchain step (AGENT-POLICY.md "Toolchain eligibility (D13)"), fed the real input fields.
+  it("the toolchain step exists in the policy engine", () => {
+    expect(ELIGIBILITY_REASONS as readonly string[]).toContain("TOOLCHAIN_UNSATISFIED");
+  });
+  const linuxDevice = ToolchainAttestation.parse({
+    os: "linux",
+    osVersion: "Ubuntu 24.04",
+    tools: [{ name: "node", version: "22.12.0" }],
+    checkedAt: iso(0),
+  });
+  it("a Linux device is not eligible for a builder claim on an ABU under apps/mobile/ios/**", () => {
+    const r = checkEligibility({
+      ...builderInput(["astra"]),
+      toolchain: { writeScopes: ["apps/mobile/ios/**"], requirements: template.toolchainRequirements, attestation: linuxDevice },
+    });
+    expect(r.eligible).toBe(false);
+    if (!r.eligible) expect(r.reasons.join(" ")).toMatch(/TOOLCHAIN_UNSATISFIED: ios-native/);
+  });
+  it.each(["apps/mobile/src/**", "modules/contacts/src/**", "apps/web/**"])(
+    "the same Linux device is eligible for a JS-only ABU scoped %s",
+    (scope) => {
+      const r = checkEligibility({
+        ...builderInput(["astra"]),
+        toolchain: { writeScopes: [scope], requirements: template.toolchainRequirements, attestation: linuxDevice },
+      });
+      expect(r.eligible, JSON.stringify(r)).toBe(true);
     },
   );
 });
@@ -154,6 +165,10 @@ function builderInput(models: string[], role: EligibilityInput["role"] = "builde
     bootstrapMode: false,
     taskOpenHours: 0,
     account: { id: "me", githubAccountCreatedAt: iso(400 * DAY), acceptedContributions: 5, isMaintainer: false, suspended: false },
+    // Builder facts (4.2.0 / D13): no build leases held, a JS-only scope, no native requirement in play.
+    ...(role === "builder"
+      ? { activeBuildLeasesByProvider: {}, toolchain: { writeScopes: ["modules/contacts/src/**"], requirements: [], attestation: null } }
+      : {}),
   };
 }
 

@@ -14,21 +14,26 @@
     }
   },
   "bin": {
-    "wos": "./dist/index.js"
+    "wos": "./dist/wos.mjs"
   },
   "files": [
-    "dist",
-    "!dist/.tsbuildinfo",
-    "!dist/**/*.map"
+    "dist/wos.mjs"
   ],
   "scripts": {
     "build": "tsc -b",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b",
+    "bundle": "node scripts/bundle.mjs",
+    "prepack": "npm run build && npm run bundle"
   },
   "dependencies": {
-    "@waronsaas/contracts": "*",
-    "@waronsaas/orchestrator": "*",
     "commander": "^15.0.0",
-    "@napi-rs/keyring": "^2.1.0"
+    "@napi-rs/keyring": "^2.1.0",
+    "zod": "^4.6.5",
+    "picomatch": "^4.0.7",
+    "yaml": "^2.9.1"
+  },
+  "devDependencies": {
+    "@waronsaas/contracts": "*",
+    "@waronsaas/orchestrator": "*"
   }
 }

@@ -12,8 +12,11 @@ const here = import.meta.dirname;
 // biome-ignore lint/suspicious/noExplicitAny: parsed YAML, asserted field by field below.
 type Yaml = any;
 const builder = parse(readFileSync(join(here, "../electron-builder.yml"), "utf8")) as Record<string, Yaml>;
-const wf = parse(readFileSync(join(here, "../ci/desktop-release.yml"), "utf8")) as { jobs: Record<string, Yaml>; permissions: unknown };
-const wfText = readFileSync(join(here, "../ci/desktop-release.yml"), "utf8");
+const wf = parse(readFileSync(join(here, "../../../.github/workflows/desktop-release.yml"), "utf8")) as {
+  jobs: Record<string, Yaml>;
+  permissions: unknown;
+};
+const wfText = readFileSync(join(here, "../../../.github/workflows/desktop-release.yml"), "utf8");
 
 describe("electron-builder config", () => {
   it("targets a macOS dmg and a Linux AppImage", () => {

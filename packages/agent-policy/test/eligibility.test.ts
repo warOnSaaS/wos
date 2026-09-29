@@ -461,13 +461,16 @@ const codexBoth: ProviderAttestation = { ...codexOk, models: ["astra", "sol"] };
 describe("agent-policy checkEligibility: two agents per contributor (D15)", () => {
   const builder = (over: Partial<EligibilityInput>) => checkEligibility(input("builder", { attestations: [claudeOk, codexBoth], ...over }));
 
-  it("agent-policy eligibility: with no claim the first allowed model with a free provider is chosen (Opus)", () => {
+  it("agent-policy eligibility: with no claim the first attested allowed model is chosen (Opus)", () => {
     expect(builder({})).toMatchObject({ eligible: true, model: { ref: "opus" }, reasoning: "high" });
   });
 
-  it("agent-policy eligibility: one Opus build lease held -> the next free provider (Astra) is chosen", () => {
+  it("agent-policy eligibility: one Opus build lease held and no model named -> LIMIT_REACHED, never a silent switch to Astra", () => {
     const r = builder({ activeLeasesOfKind: 1, activeBuildLeasesByProvider: { claude_cli: 1 } });
-    expect(r).toMatchObject({ eligible: true, model: { ref: "astra", provider: "codex_cli" }, reasoning: "high" });
+    expect(codes(r)).toEqual(["PROVIDER_LEASE_LIMIT"]);
+    expect(eligibilityRouteError(r)).toBe("LIMIT_REACHED");
+    const named = builder({ requestedModel: "astra", activeLeasesOfKind: 1, activeBuildLeasesByProvider: { claude_cli: 1 } });
+    expect(named).toMatchObject({ eligible: true, model: { ref: "astra", provider: "codex_cli" }, reasoning: "high" });
   });
 
   it("agent-policy eligibility: claimed Sol builder is honoured", () => {

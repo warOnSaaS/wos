@@ -1,6 +1,6 @@
 import { defineConfig } from "vitest/config";
 
-// Desktop's own suite (root vitest.config.ts does not include apps/desktop yet: blocker B-0001-desktop).
+// Desktop's own suite. The root vitest.config.ts includes apps/desktop too (B-0001-desktop, ruled at 4.4.0).
 export default defineConfig({
   test: {
     root: import.meta.dirname,

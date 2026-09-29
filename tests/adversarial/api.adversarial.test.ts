@@ -3,6 +3,8 @@
  * frozen Routes, against the real control plane (see support/harness.ts). Skipped until the harness
  * exists; every assertion is written against contracts 1.0.0 only.
  */
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { Routes } from "@waronsaas/contracts";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { scopesOverlap } from "../../packages/verification/src/index.js";
@@ -11,8 +13,9 @@ import { type Contributor, type ControlPlaneHarness, HARNESS_REASON, loadHarness
 
 const h = await loadHarness();
 const path = (p: string, params: Record<string, string>) => p.replace(/:(\w+)/g, (_, k: string) => params[k] ?? `:${k}`);
+// A 422 SCOPE_VIOLATION carries the ChangesetValidation in error.details (B-0006-control-plane, 4.4.0).
 const codes = (body: unknown) =>
-  ((body as { validation?: { errors: { code: string }[] } }).validation?.errors ?? []).map((e) => e.code).sort();
+  ((body as { error?: { details?: { errors?: { code: string }[] } } }).error?.details?.errors ?? []).map((e) => e.code).sort();
 
 describe.skipIf(!h)(`integration-and-e2e: API attacks${h ? "" : HARNESS_REASON}`, () => {
   const H = h as ControlPlaneHarness;
@@ -22,8 +25,9 @@ describe.skipIf(!h)(`integration-and-e2e: API attacks${h ? "" : HARNESS_REASON}`
 
   beforeAll(async () => {
     builder = await H.contributor();
-    reviewerA = await H.contributor();
-    reviewerB = await H.contributor();
+    // Outside bootstrap a reviewer needs one accepted contribution (S-12); the reviewers bring one each.
+    reviewerA = await H.contributor({ acceptedContributions: 1 });
+    reviewerB = await H.contributor({ acceptedContributions: 1 });
   }, 60_000);
   afterAll(async () => {
     await H.close();
@@ -201,7 +205,10 @@ describe.skipIf(!h)(`integration-and-e2e: API attacks${h ? "" : HARNESS_REASON}`
         },
         headers: { "Idempotency-Key": crypto.randomUUID() },
       });
-      expect([409, 422]).toContain(res.status);
+      // The binding check refuses it as 400 VALIDATION_FAILED ("verdict must be bound to the round's head sha
+      // and submission hash"); 409/422 would be equally acceptable refusals. Never a 200.
+      expect([400, 409, 422]).toContain(res.status);
+      expect(JSON.stringify(res.body)).toMatch(/VALIDATION_FAILED|CONFLICT|STALE|MISMATCH/);
     });
   });
 
@@ -285,6 +292,16 @@ describe.skipIf(!h)(`integration-and-e2e: API attacks${h ? "" : HARNESS_REASON}`
 
   // ---- D13 / S-34: native ABUs need a macOS toolchain at claim -------------------------------------------
   describe("toolchain eligibility at claim", () => {
+    // The product template's toolchainRequirements (templates/product/wos.json), served as the repo's wos.json.
+    beforeAll(async () => {
+      const template = JSON.parse(readFileSync(join(import.meta.dirname, "../../templates/product/wos.json"), "utf8")) as {
+        toolchainRequirements: unknown;
+      };
+      await H.repoManifest({ toolchainRequirements: template.toolchainRequirements });
+    });
+    afterAll(async () => {
+      await H.repoManifest(null);
+    });
     const providers = [
       {
         provider: "claude_cli",

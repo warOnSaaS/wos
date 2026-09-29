@@ -355,7 +355,14 @@ describe("wos propose and the read commands", () => {
     expect(r.out).toContain("7   2026-09-29T12:00:00Z  attempt.created  attempt a1");
     const none = await cli(["events", "--after", "7"]);
     expect(none.out).toBe("no events (last id 7)\n");
-    h.server.fetch = served;
+    // The shared fake control plane serves listMyEvents since Wave 2a, so the failure is forced explicitly.
+    h.server.fetch = async (input, init) =>
+      new URL(String(input instanceof Request ? input.url : input)).pathname === "/v1/me/events"
+        ? new Response(JSON.stringify({ error: { code: "INTERNAL", message: "boom", requestId: "r1" } }), {
+            status: 500,
+            headers: { "content-type": "application/json" },
+          })
+        : served(input, init);
     const failed = await cli(["events"]);
     expect(failed.code).toBe(1);
     expect(failed.err).toMatch(/^error {4}INTERNAL: /);

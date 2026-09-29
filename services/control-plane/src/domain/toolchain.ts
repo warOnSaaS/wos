@@ -3,30 +3,19 @@
  * path-based `toolchainRequirements` whose paths can intersect the ABU's write scopes must each be satisfied
  * by the device's latest `ToolchainAttestation`, otherwise the claim is NOT_ELIGIBLE.
  */
-import { matchesGlob } from "node:path";
+import { scopeCanTouchGlob } from "@waronsaas/agent-policy";
 import { compareToolVersions, type RepoManifest } from "@waronsaas/contracts";
 import type { Tx } from "@waronsaas/db";
 import type { Deps } from "../deps.js";
 import { ApiFailure } from "../errors.js";
 
-/** The literal directory prefix of a glob, up to its first wildcard segment. */
-function literalPrefix(glob: string): string {
-  const segs = glob.split("/");
-  const out: string[] = [];
-  for (const s of segs) {
-    if (/[*?[\]{}]/.test(s)) break;
-    out.push(s);
-  }
-  return out.join("/");
-}
-
-const within = (a: string, b: string) => a === "" || b === "" || a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`);
-
-/** True when some path inside the write scope (an exact file or `<dir>/**`) can match the glob. */
-export function scopeCanTouch(writeScope: string, glob: string): boolean {
-  if (!writeScope.endsWith("/**")) return matchesGlob(writeScope, glob);
-  return within(writeScope.slice(0, -3), literalPrefix(glob));
-}
+/**
+ * True when some path inside the write scope (an exact file or `<dir>/**`) can match the glob. One matcher for
+ * the platform (integration glue at the Wave 2 gate): agent-policy's segment-wise check. The earlier literal-prefix
+ * version here treated `apps/mobile/app.config.*` as the directory `apps/mobile`, so `apps/mobile/ios/**`
+ * picked up the expo-native-config requirement.
+ */
+export const scopeCanTouch = scopeCanTouchGlob;
 
 export function applicableRequirements(manifest: RepoManifest | null, write: readonly string[]) {
   return (manifest?.toolchainRequirements ?? []).filter((r) => r.paths.some((p) => write.some((w) => scopeCanTouch(w, p))));

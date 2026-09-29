@@ -13,6 +13,7 @@ import {
   createHarness,
   type Harness,
   manifestFor,
+  REPO_MANIFEST,
   seedFeature,
   signedChangeset,
   signedRun,
@@ -46,12 +47,19 @@ export interface ControlPlaneHarness {
     path: string,
     init?: { token?: string; body?: unknown; headers?: Record<string, string>; ip?: string },
   ): Promise<{ status: number; body: unknown; headers: Record<string, string> }>;
-  contributor(opts?: { github?: boolean; githubAgeDays?: number; maintainer?: boolean }): Promise<Contributor>;
+  contributor(opts?: {
+    github?: boolean;
+    githubAgeDays?: number;
+    maintainer?: boolean;
+    acceptedContributions?: number;
+  }): Promise<Contributor>;
   seedAbu(spec: { key: string; write: string[]; resources?: { key: string; mode: "exclusive" | "shared" }[] }): Promise<string>;
   leaseReadyToSubmit(builder: Contributor, abuId: string): Promise<ReadyLease>;
   roundInReview(builder: Contributor, abuId: string): Promise<OpenRound>;
   reviewAgentRun(reviewer: Contributor, leaseId: string): Promise<string>;
   bootstrap(enabled: boolean): Promise<void>;
+  /** Merge fields into the wos.json every repository serves (null restores the default manifest). */
+  repoManifest(patch: Record<string, unknown> | null): Promise<void>;
   lastEmail(to: string): Promise<{ link: string; code: string } | null>;
   githubCalls(): Array<{ method: string; path: string; body?: unknown }>;
   close(): Promise<void>;
@@ -195,7 +203,15 @@ export async function createTestHarness(): Promise<ControlPlaneHarness> {
 
     async contributor(opts = {}) {
       const name = `adv-${++seq}-${randomUUID().slice(0, 6)}`;
-      const a = opts.github === false ? await h.signIn(`${name}@example.com`) : await h.contributor(name, opts);
+      const { acceptedContributions = 0, ...rest } = opts;
+      const a = opts.github === false ? await h.signIn(`${name}@example.com`) : await h.contributor(name, rest);
+      // Fixture history: accepted contributions make an account review-eligible outside bootstrap (S-12).
+      for (let i = 0; i < acceptedContributions; i++) {
+        const cid = randomUUID();
+        await h.owner`insert into wos.contributions (id, account_id, github_user_id, category, state, independence, idempotency_key, accepted_at)
+                      select ${cid}, a.id, a.github_user_id, 'implementation', 'accepted', 'independent', ${`fixture:${cid}`}, now()
+                        from wos.accounts a where a.id = ${a.id}`;
+      }
       accounts.set(a.id, a);
       return toContributor(a);
     },
@@ -287,6 +303,10 @@ export async function createTestHarness(): Promise<ControlPlaneHarness> {
       if (row?.enabled === enabled) return;
       // Bootstrap is one-way (migration 0002): ending it is allowed, re-entering it is refused by the database.
       await h.owner`update wos.platform_settings set value = jsonb_build_object('enabled', ${enabled}::boolean) where key = 'bootstrap_mode'`;
+    },
+
+    async repoManifest(patch) {
+      (h.github as unknown as { manifest: object }).manifest = patch === null ? REPO_MANIFEST : { ...REPO_MANIFEST, ...patch };
     },
 
     async lastEmail(to) {

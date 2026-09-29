@@ -145,7 +145,14 @@ export const RepoManifest = z.object({
          * write scopes can reach that directory. "**\/app.plugin.*" would match every ABU and force macOS on
          * JS-only work; write "apps/mobile/app.plugin.*" instead.
          */
-        paths: z.array(z.string().min(1).refine((p) => !p.startsWith("*"), "toolchainRequirements paths must be anchored (no leading * or **)")).min(1),
+        paths: z
+          .array(
+            z
+              .string()
+              .min(1)
+              .refine((p) => !p.startsWith("*"), "toolchainRequirements paths must be anchored (no leading * or **)"),
+          )
+          .min(1),
         os: z.array(z.enum(["macos", "linux", "windows"])).min(1),
         tools: z.array(z.object({ name: ToolName, minVersion: z.string().min(1) })).default([]),
       }),

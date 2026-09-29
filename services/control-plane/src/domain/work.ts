@@ -350,6 +350,8 @@ export async function evaluateEligibility(tx: Tx, deps: Deps, f: EligibilityFact
     excludedAccountIds: f.task?.excluded_account_ids ?? [],
     restrictedToAccountId: f.task?.restricted_to_account_id ?? null,
     claimedModel: f.claimedModel ?? null,
+    // Wave 2 gate glue: the named model goes to the policy engine, which applies the per-provider lease limit to it.
+    ...(f.claimedModel ? { requestedModel: f.claimedModel } : {}),
     ...builderFacts,
     role: f.role,
     account: {

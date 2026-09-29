@@ -61,7 +61,7 @@
   "toolchainRequirements": [
     {
       "id": "ios-native",
-      "paths": ["apps/mobile/ios/**", "modules/*/native/ios/**", "**/*.podspec"],
+      "paths": ["apps/mobile/ios/**", "modules/*/native/ios/**", "modules/*/native/*.podspec"],
       "os": ["macos"],
       "tools": [
         {

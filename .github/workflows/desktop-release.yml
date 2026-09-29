@@ -1,6 +1,7 @@
-# wOS Desktop release (owner: desktop workstream). Destination: .github/workflows/desktop-release.yml
-# (outside apps/desktop, so it is installed by the architect: blocker B-0004-desktop). Until then it is
-# kept here and asserted by apps/desktop/test/packaging.test.ts.
+# wOS Desktop release. Installed here by the architect at the Wave 2 gate (B-0004-desktop, 4.4.0); owned by
+# verification from now on, asserted by apps/desktop/test/packaging.test.ts. The latest-mac.yml /
+# latest-linux.yml update metadata (B-0006-desktop) follows once Desktop wires electron-updater and sets a
+# publish provider in apps/desktop/electron-builder.yml (Wave 3, desktop).
 #
 # D7 / S-30: signing and notarisation happen ONLY here, never on a laptop. The macOS job runs in the
 # protected `release` environment (required reviewer: the founder) and is the only place the Developer

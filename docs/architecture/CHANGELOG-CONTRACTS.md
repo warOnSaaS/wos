@@ -97,3 +97,8 @@ MINOR, additive.
 - SECURITY S-29 amendment: Desktop main may open exactly `https://github.com/login/device` from `linkGithub` (B-0002-desktop).
 - Dependencies (one lockfile change): `esbuild` (CLI bundle, B-0001-cli), `electron-updater` (B-0006-desktop), `picomatch` declared in agent-policy (B-0004-context-policy); `apps/web` joins the workspaces (B-0001-web, two-step adoption, ARCHITECTURE section 9).
 - Root test config: Desktop tests included; `testTimeout` 30 s, `hookTimeout` 60 s (B-0001-desktop, B-0007-verification).
+- Gate clarifications, no schema change:
+  - An omitted claim `model` is the first attested allowed model, with no fallthrough to another provider (agent-policy had drifted; it is fixed, and the control plane now passes `requestedModel` and maps refusals with `eligibilityRouteError`).
+  - There is one toolchain matcher, agent-policy's `scopeCanTouchGlob`. The control plane's literal-prefix copy made `apps/mobile/ios/**` require the Android SDK.
+  - The product template's `**/*.podspec` is anchored to `modules/*/native/*.podspec`.
+  - `github/local` serialises mirror work per repository (B-0005-desktop).

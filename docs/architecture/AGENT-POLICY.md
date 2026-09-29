@@ -212,6 +212,8 @@ to grey out work they cannot claim (`AbuSummary.claimable`).
 
 For `builder` and revision claims, after step 5: compute the target repository's `toolchainRequirements` whose paths can intersect the ABU's write scopes; each must be satisfied by the device's latest toolchain attestation (os in the allowed list, every tool present at or above `minVersion`), otherwise not eligible with the requirement id as the reason. Reviewers need no toolchain (they run no code). The evaluator receives the attestation and the requirements as inputs; it reads nothing itself.
 
+One matcher decides "can intersect": `scopeCanTouchGlob` in `@waronsaas/agent-policy`, which the control plane also uses (Wave 2 gate, 4.4.0). A `<dir>/**` scope touches a requirement when the glob can match a path inside `<dir>`. So a whole-module scope such as `modules/contacts/**` touches `modules/*/native/ios/**` and needs the native toolchain, and that is correct because such an ABU may write native code. The planner scopes JS-only work below the native directories (for example `modules/contacts/src/**` or `apps/mobile/src/**`). Those scopes are claimable from any OS.
+
 ## 6. Bootstrap mode (D2)
 
 At launch the founder is the only contributor. `platform_settings.bootstrap_mode = {"enabled": true}`.
@@ -259,4 +261,4 @@ data in `agent-policy.v1.json`) are what make the first reviews possible.
 
 ### Model choice at claim (contracts 4.3.0, B-0010-github-build)
 
-`claimBuild` and `claimTask` accept an optional `model` (`ModelRef`). Eligibility step 5 then checks that model only: it must be in `allowedModels`, attested and not forbidden. If it is omitted, the evaluator takes the first attested entry in the role's `allowedModels` order, which is Opus for builders. The per-provider build-lease limit is checked against the chosen model's provider.
+`claimBuild` and `claimTask` accept an optional `model` (`ModelRef`). Eligibility step 5 then checks that model only: it must be in `allowedModels`, attested and not forbidden. If it is omitted, the evaluator takes the first attested entry in the role's `allowedModels` order, which is Opus for builders. The per-provider build-lease limit is checked against the chosen model's provider. An omitted model never falls through to another provider: with a Claude build lease held, an omitted model is `LIMIT_REACHED`, and the contributor names Astra or Sol to build in parallel (Wave 2 gate, 4.4.0).

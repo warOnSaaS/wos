@@ -1,7 +1,7 @@
 /**
  * Coverage map of SECURITY.md S-controls to the tests that fail when the control is removed.
  * Fails when SECURITY.md gains a control that is not listed here, so a new control cannot land untested
- * silently. `now` = runs on this branch; `pending` = written, activates at Wave 2 integration;
+ * silently. `now` = runs on this branch (the API attacks run since the Wave 2 integration gate); `pending` = written, not yet runnable;
  * `none` = no verification test yet, with the reason (owned elsewhere or needs real GitHub/Electron).
  */
 import { readFileSync } from "node:fs";
@@ -12,11 +12,11 @@ import { REPO_ROOT } from "../../packages/verification/test/support/git-fixture.
 type Status = "now" | "pending" | "none";
 const COVERAGE: Record<string, { status: Status; where: string }> = {
   "S-1": { status: "none", where: "control-plane DONE (3) sign-in tests (token reuse, expiry, sixth try, hash-only)" },
-  "S-2": { status: "pending", where: "api.adversarial: wrong poll secret" },
-  "S-3": { status: "pending", where: "api.adversarial: identical start responses" },
+  "S-2": { status: "now", where: "api.adversarial: wrong poll secret" },
+  "S-3": { status: "now", where: "api.adversarial: identical start responses" },
   "S-4": { status: "none", where: "control-plane (refresh reuse revokes family); cli (keychain only)" },
   "S-5": { status: "none", where: "control-plane + web: CSRF header; needs the web cookie flow in the harness" },
-  "S-6": { status: "pending", where: "api.adversarial: GITHUB_REQUIRED" },
+  "S-6": { status: "now", where: "api.adversarial: GITHUB_REQUIRED" },
   "S-7": {
     status: "now",
     where: "templates.test: wos-ci verify runs npm ci without lifecycle scripts, minimal env, refuses unsafe install",
@@ -33,7 +33,7 @@ const COVERAGE: Record<string, { status: Status; where: string }> = {
   },
   "S-12": {
     status: "now",
-    where: "db.adversarial self-review trigger (now); pipeline.adversarial checkEligibility, api.adversarial claimReview (pending)",
+    where: "db.adversarial self-review trigger (now); pipeline.adversarial checkEligibility, api.adversarial claimReview (now)",
   },
   "S-13": {
     status: "now",
@@ -52,19 +52,25 @@ const COVERAGE: Record<string, { status: Status; where: string }> = {
   "S-18": { status: "none", where: "needs real GitHub: PR by a user token, merge without wos/qualified (Wave 3); rulesets doc test only" },
   "S-19": { status: "now", where: "vectors WORKFLOW_FILE (now); webhook HMAC one-byte change (pending)" },
   "S-20": { status: "now", where: "templates.test + primitives.test: lintProductWorkflow over every product workflow" },
-  "S-21": { status: "pending", where: "pipeline.adversarial: injected text after obligations inside an untrusted block" },
-  "S-22": { status: "now", where: "vectors SIGNATURE_INVALID/SUBMISSION_HASH_MISMATCH (now); api.adversarial modified client (pending)" },
+  "S-21": { status: "now", where: "pipeline.adversarial: injected text after obligations inside an untrusted block" },
+  "S-22": { status: "now", where: "vectors SIGNATURE_INVALID/SUBMISSION_HASH_MISMATCH (now); api.adversarial modified client (now)" },
   "S-23": {
     status: "now",
-    where: "db.adversarial head/hash binding and ReviewVerdict refinements (now); api fabricated verdict (pending)",
+    where: "db.adversarial head/hash binding and ReviewVerdict refinements (now); api fabricated verdict (now)",
   },
-  "S-24": { status: "pending", where: "pipeline.adversarial and api.adversarial: 89-day GitHub refused" },
-  "S-25": { status: "pending", where: "pipeline.adversarial: sixth review of the same author in 7 days" },
+  "S-24": { status: "now", where: "pipeline.adversarial and api.adversarial: 89-day GitHub refused" },
+  "S-25": { status: "now", where: "pipeline.adversarial: sixth review of the same author in 7 days" },
   "S-26": { status: "now", where: "changeset vectors: symlink, lockfile, generated; wos.json package.json-as-lockfile" },
-  "S-27": { status: "pending", where: "api.adversarial: lease expiry and lease limits; pipeline eligibility lease limit" },
+  "S-27": { status: "now", where: "api.adversarial: lease expiry and lease limits; pipeline eligibility lease limit" },
   "S-28": { status: "none", where: "control-plane/rewards audit task (GAPS.md rate decision)" },
-  "S-29": { status: "none", where: "desktop workstream (Electron hardening tests)" },
-  "S-30": { status: "none", where: "no release workflow exists yet (desktop + verification, Wave 2)" },
+  "S-29": {
+    status: "now",
+    where: "apps/desktop/test security.test + ipc-fuzz.test (root suite); electron.test live renderer where Electron and the bundle exist",
+  },
+  "S-30": {
+    status: "now",
+    where: "apps/desktop/test/packaging.test asserts .github/workflows/desktop-release.yml (signing only in the release job)",
+  },
   "S-31": {
     status: "now",
     where:
@@ -83,7 +89,7 @@ const COVERAGE: Record<string, { status: Status; where: string }> = {
   "S-34": {
     status: "now",
     where:
-      "db.adversarial: toolchain_attestations own rows, invisible to others, append-only; surfaces.adversarial template requirements; eligibility and API claim from Linux (pending)",
+      "db.adversarial: toolchain_attestations own rows, invisible to others, append-only; surfaces.adversarial template requirements; eligibility and API claim from Linux (now)",
   },
   "S-35": {
     status: "now",
@@ -107,6 +113,6 @@ describe("security-hardening: every SECURITY.md control is mapped", () => {
     console.info(
       `S-controls: now ${by("now").length} [${by("now")}], pending ${by("pending").length} [${by("pending")}], none ${by("none").length} [${by("none")}]`,
     );
-    expect(by("now").length + by("pending").length + by("none").length).toBe(ids.length);
+    expect(by("now").length + by("pending").length + by("none").length).toBe(new Set(ids).size);
   });
 });

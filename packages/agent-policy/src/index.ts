@@ -221,7 +221,7 @@ export interface EligibilityInput {
   /**
    * The model the claim body names (D15; contracts 4.3.0, B-0010-github-build), e.g. an Astra or Sol builder.
    * It must be in the role's allowedModels and attested (else NOT_ELIGIBLE) and have provider lease room (else
-   * LIMIT_REACHED, see eligibilityRouteError). Omitted = the first attested allowed model with room.
+   * LIMIT_REACHED, see eligibilityRouteError). Omitted = the first attested allowed model; if its provider is full, LIMIT_REACHED.
    */
   requestedModel?: ModelRef;
   /**
@@ -352,14 +352,19 @@ export function checkEligibility(input: EligibilityInput, policy: AgentPolicyDoc
     const ready = role.allowedModels
       .map((ref) => policy.models.find((m) => m.ref === ref))
       .filter((m): m is ModelSpec => m !== undefined && modelReady(m, input.attestations, policy));
-    model = ready.find((m) => !providerFull(m)) ?? null;
-    if (ready.length === 0) {
+    // Omitted model = the FIRST attested allowed model in policy order (contracts 4.3.0, api.ts claimBuild). It
+    // never falls through to another provider: a held lease on that provider is PROVIDER_LEASE_LIMIT, and the
+    // contributor names the other model to run a second build (Wave 2 gate ruling, 4.4.0).
+    const first = ready[0] ?? null;
+    if (first === null) {
       reason("NO_ATTESTED_MODEL", `no installed, signed-in, recent-enough CLI attests any of ${role.allowedModels.join(", ")}`);
-    } else if (model === null) {
+    } else if (providerFull(first)) {
       reason(
         "PROVIDER_LEASE_LIMIT",
-        `every attested provider already holds ${policy.limits.maxConcurrentBuildLeasesPerProvider} build lease`,
+        `${first.ref} is the default model and ${first.provider} already holds ${policy.limits.maxConcurrentBuildLeasesPerProvider} build lease; name another model to build in parallel`,
       );
+    } else {
+      model = first;
     }
   }
 

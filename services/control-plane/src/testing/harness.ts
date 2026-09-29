@@ -64,6 +64,8 @@ export const REPO_MANIFEST = {
 };
 
 export class FakeGithub implements GithubPort {
+  /** wos.json served at every commit that has no explicit one (putFile); suites may swap it. */
+  manifest: object = REPO_MANIFEST;
   heads = new Map<string, string>();
   files = new Map<string, Uint8Array>();
   commits: Array<{ repo: string; branch: string; sha: string; parent: string; trailers: Record<string, string>; message: string }> = [];
@@ -140,7 +142,7 @@ export class FakeGithub implements GithubPort {
     return this.headOf(repo);
   }
   async readFileAt(repo: string, commit: string, path: string) {
-    if (path === "wos.json" && !this.files.has(`${repo}@${commit}:${path}`)) return Buffer.from(JSON.stringify(REPO_MANIFEST));
+    if (path === "wos.json" && !this.files.has(`${repo}@${commit}:${path}`)) return Buffer.from(JSON.stringify(this.manifest));
     // Integration glue: the real context engine requires the canonical documents a plan selects; the fake
     // repo serves a placeholder for any that a test did not put there.
     if (

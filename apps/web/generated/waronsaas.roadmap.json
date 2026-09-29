@@ -483,7 +483,7 @@
               {
                 "key": "J-001",
                 "surface": "cli",
-                "title": "From the wos CLI: Email magic-link sign-in",
+                "title": "From the wOS CLI: Email magic-link sign-in",
                 "steps": [
                   "Run wos status to confirm readiness",
                   "Run the wos command for email magic-link sign-in",
@@ -557,7 +557,7 @@
               {
                 "key": "J-004",
                 "surface": "cli",
-                "title": "From the wos CLI: GitHub identity link",
+                "title": "From the wOS CLI: GitHub identity link",
                 "steps": [
                   "Run wos status to confirm readiness",
                   "Run the wos command for github identity link",
@@ -626,7 +626,7 @@
               {
                 "key": "J-007",
                 "surface": "cli",
-                "title": "From the wos CLI: Device sessions",
+                "title": "From the wOS CLI: Device sessions",
                 "steps": [
                   "Run wos status to confirm readiness",
                   "Run the wos command for device sessions",
@@ -796,7 +796,7 @@
               {
                 "key": "J-012",
                 "surface": "cli",
-                "title": "From the wos CLI: Roadmap consensus",
+                "title": "From the wOS CLI: Roadmap consensus",
                 "steps": [
                   "Run wos status to confirm readiness",
                   "Run the wos command for roadmap consensus",
@@ -865,7 +865,7 @@
               {
                 "key": "J-015",
                 "surface": "cli",
-                "title": "From the wos CLI: Feature contract consensus",
+                "title": "From the wOS CLI: Feature contract consensus",
                 "steps": [
                   "Run wos status to confirm readiness",
                   "Run the wos command for feature contract consensus",
@@ -919,7 +919,7 @@
               {
                 "key": "J-017",
                 "surface": "cli",
-                "title": "From the wos CLI: Build graph validation",
+                "title": "From the wOS CLI: Build graph validation",
                 "steps": [
                   "Run wos status to confirm readiness",
                   "Run the wos command for build graph validation",
@@ -974,7 +974,7 @@
               {
                 "key": "J-019",
                 "surface": "cli",
-                "title": "From the wos CLI: Proposals and resolution",
+                "title": "From the wOS CLI: Proposals and resolution",
                 "steps": [
                   "Run wos status to confirm readiness",
                   "Run the wos command for proposals and resolution",
@@ -1053,7 +1053,7 @@
               {
                 "key": "J-021",
                 "surface": "cli",
-                "title": "From the wos CLI: Agent policy",
+                "title": "From the wOS CLI: Agent policy",
                 "steps": [
                   "Run wos status to confirm readiness",
                   "Run the wos command for agent policy",
@@ -1107,7 +1107,7 @@
               {
                 "key": "J-023",
                 "surface": "cli",
-                "title": "From the wos CLI: Leases and locks",
+                "title": "From the wOS CLI: Leases and locks",
                 "steps": [
                   "Run wos status to confirm readiness",
                   "Run the wos command for leases and locks",
@@ -1161,7 +1161,7 @@
               {
                 "key": "J-025",
                 "surface": "cli",
-                "title": "From the wos CLI: Context engine",
+                "title": "From the wOS CLI: Context engine",
                 "steps": [
                   "Run wos status to confirm readiness",
                   "Run the wos command for context engine",
@@ -1216,7 +1216,7 @@
               {
                 "key": "J-027",
                 "surface": "cli",
-                "title": "From the wos CLI: Local orchestrator",
+                "title": "From the wOS CLI: Local orchestrator",
                 "steps": [
                   "Run wos status to confirm readiness",
                   "Run the wos command for local orchestrator",
@@ -1271,7 +1271,7 @@
               {
                 "key": "J-029",
                 "surface": "cli",
-                "title": "From the wos CLI: Scope verification",
+                "title": "From the wOS CLI: Scope verification",
                 "steps": [
                   "Run wos status to confirm readiness",
                   "Run the wos command for scope verification",
@@ -1325,7 +1325,7 @@
               {
                 "key": "J-031",
                 "surface": "cli",
-                "title": "From the wos CLI: Review rounds",
+                "title": "From the wOS CLI: Review rounds",
                 "steps": [
                   "Run wos status to confirm readiness",
                   "Run the wos command for review rounds",
@@ -1380,7 +1380,7 @@
               {
                 "key": "J-033",
                 "surface": "cli",
-                "title": "From the wos CLI: Gated pull requests",
+                "title": "From the wOS CLI: Gated pull requests",
                 "steps": [
                   "Run wos status to confirm readiness",
                   "Run the wos command for gated pull requests",
@@ -1435,7 +1435,7 @@
               {
                 "key": "J-035",
                 "surface": "cli",
-                "title": "From the wos CLI: Provenance and merge",
+                "title": "From the wOS CLI: Provenance and merge",
                 "steps": [
                   "Run wos status to confirm readiness",
                   "Run the wos command for provenance and merge",
@@ -1502,7 +1502,7 @@
                 "title": "In wOS Desktop: wOS Desktop",
                 "steps": [
                   "Open wOS Desktop and sign in",
-                  "Open wos desktop",
+                  "Open wOS Desktop",
                   "Complete the task and see its status in the activity pane"
                 ],
                 "entryPoints": [
@@ -1533,10 +1533,10 @@
               {
                 "key": "J-038",
                 "surface": "cli",
-                "title": "From the wos CLI: wOS CLI",
+                "title": "From the wOS CLI: wOS CLI",
                 "steps": [
                   "Run wos status to confirm readiness",
-                  "Run the wos command for wos cli",
+                  "Run the wos command for the wOS CLI",
                   "Read the printed result and exit code"
                 ],
                 "entryPoints": [
@@ -1785,7 +1785,7 @@
               {
                 "key": "J-044",
                 "surface": "cli",
-                "title": "From the wos CLI: Ship gate and migrations",
+                "title": "From the wOS CLI: Ship gate and migrations",
                 "steps": [
                   "Run wos status to confirm readiness",
                   "Run the wos command for ship gate and migrations",
@@ -1819,7 +1819,7 @@
               {
                 "key": "J-045",
                 "surface": "cli",
-                "title": "From the wos CLI: Integration and end-to-end tests",
+                "title": "From the wOS CLI: Integration and end-to-end tests",
                 "steps": [
                   "Run wos status to confirm readiness",
                   "Run the wos command for integration and end-to-end tests",
@@ -1853,7 +1853,7 @@
               {
                 "key": "J-046",
                 "surface": "cli",
-                "title": "From the wos CLI: Security hardening",
+                "title": "From the wOS CLI: Security hardening",
                 "steps": [
                   "Run wos status to confirm readiness",
                   "Run the wos command for security hardening",
@@ -1942,7 +1942,7 @@
               {
                 "key": "J-048",
                 "surface": "cli",
-                "title": "From the wos CLI: Multi-repo products",
+                "title": "From the wOS CLI: Multi-repo products",
                 "steps": [
                   "Run wos status to confirm readiness",
                   "Run the wos command for multi-repo products",
@@ -1996,7 +1996,7 @@
               {
                 "key": "J-050",
                 "surface": "cli",
-                "title": "From the wos CLI: Toolchain eligibility",
+                "title": "From the wOS CLI: Toolchain eligibility",
                 "steps": [
                   "Run wos status to confirm readiness",
                   "Run the wos command for toolchain eligibility",
@@ -2045,7 +2045,7 @@
               {
                 "key": "J-052",
                 "surface": "cli",
-                "title": "From the wos CLI: Native CI runners",
+                "title": "From the wOS CLI: Native CI runners",
                 "steps": [
                   "Run wos status to confirm readiness",
                   "Run the wos command for native ci runners",
@@ -2079,7 +2079,7 @@
               {
                 "key": "J-053",
                 "surface": "cli",
-                "title": "From the wos CLI: Per-surface acceptance",
+                "title": "From the wOS CLI: Per-surface acceptance",
                 "steps": [
                   "Run wos status to confirm readiness",
                   "Run the wos command for per-surface acceptance",
@@ -2113,7 +2113,7 @@
               {
                 "key": "J-054",
                 "surface": "cli",
-                "title": "From the wos CLI: Mobile app signing",
+                "title": "From the wOS CLI: Mobile app signing",
                 "steps": [
                   "Run wos status to confirm readiness",
                   "Run the wos command for mobile app signing",

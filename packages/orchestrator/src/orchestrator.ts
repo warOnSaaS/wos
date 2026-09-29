@@ -367,6 +367,11 @@ export class OrchestratorImpl {
     return this.api.call("getMyWork", {});
   }
 
+  // contracts 4.4.0 (B-0003-desktop), integration glue.
+  async updateMe(patch: { displayName?: string | null; leaderboardOptIn?: boolean; followedTargets?: string[]; progressEmails?: boolean }) {
+    return this.api.call("updateMe", { body: patch });
+  }
+
   async events(after?: number) {
     return this.api.call("listMyEvents", { query: after === undefined ? {} : { after } });
   }

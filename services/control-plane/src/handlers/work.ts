@@ -13,6 +13,7 @@ import {
   type ReviewerSlot,
   type TaskKind,
 } from "@waronsaas/contracts";
+import { eligibilityRouteError } from "@waronsaas/agent-policy";
 import { inTransaction, type Tx } from "@waronsaas/db";
 import { APP_COMMIT_AUTHOR_NAME, candidateBranch, coAuthoredBy } from "@waronsaas/github";
 import type { Deps } from "../deps.js";
@@ -257,7 +258,8 @@ export const workHandlers: Pick<
         claimedModel: ctx.body.model ?? null,
         builder: { writeScopes: abu.spec.scope.write, manifest },
       });
-      if (!elig.eligible) throw new ApiFailure("NOT_ELIGIBLE", "not eligible to build this ABU", { reasons: elig.reasons });
+      if (!elig.eligible)
+        throw new ApiFailure(eligibilityRouteError(elig) ?? "NOT_ELIGIBLE", "not eligible to build this ABU", { reasons: elig.reasons });
       await assertProviderCapacity(tx, deps, caller.accountId, elig.model.provider);
       await assertToolchain(tx, deps, {
         accountId: caller.accountId,
@@ -488,7 +490,8 @@ export const workHandlers: Pick<
         claimedModel: ctx.body.model ?? null,
         ...(revisionSpec ? { builder: { writeScopes: revisionSpec.scope.write, manifest } } : {}),
       });
-      if (!elig.eligible) throw new ApiFailure("NOT_ELIGIBLE", "not eligible for this task", { reasons: elig.reasons });
+      if (!elig.eligible)
+        throw new ApiFailure(eligibilityRouteError(elig) ?? "NOT_ELIGIBLE", "not eligible for this task", { reasons: elig.reasons });
       if (task.kind === "abu_revision") await assertProviderCapacity(tx, deps, caller.accountId, elig.model.provider);
       let spec: AbuSpec | null = null;
       let attemptId: string | null = null;

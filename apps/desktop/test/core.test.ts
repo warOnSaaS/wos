@@ -158,8 +158,7 @@ describe("the BUILD flow: Sniper List -> Salesforce -> CRM -> feature -> ABU -> 
   it("D15: two builds run at once, each tagged with its own run id and model", async () => {
     // The Desktop's side of D15: two runs in flight, events kept apart per run, each model passed to
     // orchestrator.build. The orchestrator itself is stubbed here because two concurrent build() calls
-    // in ONE real orchestrator collide on the shared repository mirror (blocker B-0005-desktop; see the
-    // skipped test below).
+    // in ONE real orchestrator are covered by the B-0005-desktop test below.
     let release: () => void = () => undefined;
     const gate = new Promise<void>((res) => {
       release = res;
@@ -198,20 +197,24 @@ describe("the BUILD flow: Sniper List -> Salesforce -> CRM -> feature -> ABU -> 
     expect(done.map((x) => x.state)).toEqual(["passed", "passed"]);
   });
 
-  // B-0005-desktop: enable when the orchestrator serialises its per-repository mirror work.
-  it.skip("D15 with the REAL orchestrator: two concurrent builds both pass", async () => {
-    r = rig({ githubLinked: true });
-    await signIn(r);
-    const id = r.backend.server.abuId;
-    await r.core.invoke("wos:build", { abu: id, model: "opus" });
-    await r.core.invoke("wos:build", { abu: id, model: "astra" });
-    await r.core.settle();
-    const runs = (await r.core.invoke("wos:runs", undefined)) as RunSnapshot[];
-    expect(runs.map((x) => [x.state, x.code])).toEqual([
-      ["passed", null],
-      ["passed", null],
-    ]);
-  });
+  // B-0005-desktop (ruled at 4.4.0): the orchestrator serialises mirror work per repository. The Wave 2
+  // gate asks for proof: two builds, different providers, ONE real orchestrator, 10 repetitions.
+  it.each(Array.from({ length: 10 }, (_, i) => i + 1))(
+    "D15 with the REAL orchestrator: two concurrent builds both pass (repetition %i of 10)",
+    async () => {
+      r = rig({ githubLinked: true });
+      await signIn(r);
+      const id = r.backend.server.abuId;
+      await r.core.invoke("wos:build", { abu: id, model: "opus" });
+      await r.core.invoke("wos:build", { abu: id, model: "astra" });
+      await r.core.settle();
+      const runs = (await r.core.invoke("wos:runs", undefined)) as RunSnapshot[];
+      expect(runs.map((x) => [x.state, x.code])).toEqual([
+        ["passed", null],
+        ["passed", null],
+      ]);
+    },
+  );
 
   it("refuses a model the policy does not allow for builders before anything is claimed", async () => {
     r = rig({ githubLinked: true });

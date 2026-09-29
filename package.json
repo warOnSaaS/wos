@@ -21,11 +21,12 @@
     "packages/orchestrator",
     "services/control-plane",
     "apps/cli",
-    "apps/desktop"
+    "apps/desktop",
+    "apps/web"
   ],
   "scripts": {
     "build": "tsc -b",
-    "typecheck": "tsc -b && tsc -p tsconfig.test.json",
+    "typecheck": "tsc -b && tsc -p tsconfig.test.json && tsc -p apps/desktop/tsconfig.test.json",
     "test": "vitest run",
     "lint": "biome check .",
     "check": "npm run typecheck && npm run lint && npm run test",
@@ -36,6 +37,7 @@
     "@biomejs/biome": "2.5.14",
     "@types/node": "^22.19.0",
     "typescript": "7.0.2",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.2",
+    "esbuild": "^0.28.2"
   }
 }

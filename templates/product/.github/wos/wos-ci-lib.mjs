@@ -6585,7 +6585,7 @@ const RepoManifest = object({
 	maxChangesetBytes: number$1().int().positive().max(4e6),
 	toolchainRequirements: array(object({
 		id: string().regex(/^[a-z][a-z0-9-]*$/),
-		paths: array(string().min(1)).min(1),
+		paths: array(string().min(1).refine((p) => !p.startsWith("*"), "toolchainRequirements paths must be anchored (no leading * or **)")).min(1),
 		os: array(_enum([
 			"macos",
 			"linux",
@@ -7409,7 +7409,7 @@ const AppFeatureSummary = object({
 	capability: CapabilityKey,
 	title: string(),
 	summary: string(),
-	state: AppFeatureStateSchema,
+	state: union([AppFeatureStateSchema, literal("proposed")]),
 	weightBp: number$1().int().positive(),
 	weightRationale: string(),
 	effectiveAppWeightBp: number$1().int().nonnegative(),
@@ -7443,6 +7443,7 @@ const CapabilitySummary = object({
 	features: array(AppFeatureSummary)
 });
 const TargetDetail = TargetSummary.extend({
+	basis: _enum(["merged", "proposed"]).optional(),
 	surfaces: array(object({
 		surface: Surface,
 		status: _enum(["in_scope", "excluded"]),
@@ -7462,6 +7463,7 @@ const RequirementView = object({
 	key: RequirementKey,
 	kind: string(),
 	statement: string(),
+	acceptance: array(string()).optional(),
 	abus: array(AbuKey),
 	built: boolean(),
 	profiles: array(TargetSlug),
@@ -8878,7 +8880,7 @@ const ArchitectureBlocker = object({
 //#region packages/contracts/dist/data/agent-policy.v1.json
 var agent_policy_v1_default = {
 	policyVersion: "agent-policy.v1",
-	contractsVersion: "4.3.0",
+	contractsVersion: "4.4.0",
 	effectiveFrom: "2026-09-29",
 	providers: [{
 		"id": "claude_cli",
