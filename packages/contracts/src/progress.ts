@@ -1,40 +1,38 @@
 /**
- * Progress calculation (D10, D11, D12). Pure, deterministic, integer-only. This file is the contract:
+ * Progress calculation (D10, D11, D12, D13). Pure, deterministic, integer-only. This file is the contract:
  * the control plane's progress consumer calls `computeAppProgress` on every relevant merge event and
  * appends the result as snapshots; the web renders the result verbatim with `formatPercent`.
  * ROADMAP-PROTOCOL.md "Progress" is the prose version of this file.
  *
  *  Weights (D12) — reasoned by the Roadmap Agent, reviewed at consensus, frozen per merged roadmap version:
- *    W_c  capability c's share of the app, basis points; all capabilities of the app sum to 10000.
- *    w_f  feature f's share of its capability, basis points; a mapped capability's features sum to 10000.
+ *    W_c    capability c's share of the app (bp); all capabilities of the app sum to 10000.
+ *    w_f    feature f's share of its capability (bp); a mapped capability's features sum to 10000.
+ *    v_f,s  surface s's share of feature f for this app (bp, D13); the feature's surfaces sum to 10000.
  *    Effective weight of f toward the app = W_c * w_f / 10000 (published on the feature page).
  *
- *  Feature level (per app, using the latest MERGED contract of the catalog feature, D10)
- *    SPECIFIED_f = 10000 if that contract contains a profile for this app, else 0. Binary by design:
- *                  the profile is the complete list of requirements the app needs, and D10 says the
- *                  feature is specified for the app only when all of them are.
- *    relevant ABUs = non-superseded ABUs whose requirements intersect the app's profile.
- *    BUILT_f     = 0 if not specified; else floor(10000 * mergedPoints / relevantPoints), capped at
- *                  9999 until complete (all relevant ABUs merged AND the profile's acceptance suite
- *                  passed on the default branch), then 10000.
- *                  The split inside a feature is MECHANICAL by ABU size points (1,2,3,5,8) fixed in the
- *                  consensus build graph. V1 allows no per-requirement weight override: a second weighting
- *                  layer adds a gaming surface without making the number more honest (GAPS.md G-30).
+ *  Per surface s of feature f, for app A (latest MERGED contract of the catalog feature, D10 + D13)
+ *    P_s = requirements in A's profile that are tagged with surface s.
+ *    SPECIFIED_s = 10000 if P_s is non-empty, else 0 (the surface is not specified until the merged contract
+ *                  says what A needs there).
+ *    relevant_s  = non-superseded ABUs whose requirements intersect P_s (shared-module ABUs count for every
+ *                  surface whose requirements they cover).
+ *    BUILT_s     = 0 if not specified; else floor(10000 * mergedPoints_s / relevantPoints_s), capped at 9999
+ *                  until complete_s: every relevant ABU merged, every requirement in P_s built, AND the surface's
+ *                  acceptance check wos-acceptance/<feature>/<A>/<s> passed on the default branch. The split
+ *                  inside a surface is mechanical by ABU size points (G-30).
  *
- *  Capability level: unmapped capability => 0/0/0. Mapped:
- *    MAPPED_c = 10000, SPECIFIED_c = floor(sum_f(w_f * SPECIFIED_f) / 10000), BUILT_c likewise.
+ *  Feature level: SPECIFIED_f = floor(sum_s v_f,s * SPECIFIED_s / 10000); BUILT_f likewise.
+ *    => 10000 only when every in-scope surface of the feature is specified / complete (D13 item 3).
  *
- *  App level (sums over capabilities)
- *    MAPPED    = sum of W_c over mapped capabilities
- *    SPECIFIED = floor(sum_c sum_f (W_c * w_f * SPECIFIED_f) / 10^8)
- *    BUILT     = floor(sum_c sum_f (W_c * w_f * BUILT_f) / 10^8)
+ *  Capability level: unmapped => 0/0. Mapped: SPECIFIED_c = floor(sum_f w_f * SPECIFIED_f / 10000), BUILT_c likewise.
+ *  App level:  MAPPED = sum of W_c over mapped capabilities;
+ *              SPECIFIED = floor(sum_c sum_f W_c * w_f * SPECIFIED_f / 10^8); BUILT likewise.
+ *  App per surface (the web drilldown's per-surface view): over the features that include s,
+ *              SPECIFIED_s(app) = floor(sum W_c*w_f*v_f,s*SPECIFIED_s / sum W_c*w_f*v_f,s); BUILT likewise.
  *    => BUILT <= SPECIFIED <= MAPPED always, and 10000 only when literally everything is complete.
- *
- *  The inventory (roadmaps/<target>/INVENTORY.yaml) is the completeness evidence reviewers check the
- *  roadmap against; it is reported alongside (items, excluded) but does not weight anything.
  */
 
-import type { AbuKey, BasisPoints, CapabilityKey, FeatureKey, RequirementKey, TargetSlug } from "./primitives.js";
+import type { AbuKey, BasisPoints, CapabilityKey, FeatureKey, RequirementKey, Surface, TargetSlug } from "./primitives.js";
 
 export interface ProgressAbuInput {
   key: AbuKey;
@@ -51,14 +49,18 @@ export interface ProgressFeatureInput {
   capability: CapabilityKey;
   /** w_f: the feature's reasoned share of its capability (bp), from the merged roadmap version. */
   weightBp: number;
+  /** v_f,s: the feature's reasoned surface weights for this app (bp, sum 10000), from the roadmap (D13). */
+  surfaces: Array<{ surface: Surface; weightBp: number }>;
   /** Latest merged contract of the catalog feature, or null if none has merged. */
   contract: null | {
     version: number;
     /** This app's profile requirement ids; empty when the merged contract has no profile for the app. */
     profile: RequirementKey[];
+    /** Surface tags of every requirement of the contract (D13). */
+    requirementSurfaces: Record<RequirementKey, Surface[]>;
     abus: ProgressAbuInput[];
-    /** Profile acceptance suite passed on the default branch at or after the last relevant merge. */
-    profileAcceptancePassed: boolean;
+    /** Per surface: the profile's acceptance check passed on the default branch after the last relevant merge. */
+    acceptancePassed: Partial<Record<Surface, boolean>>;
   };
 }
 
@@ -84,9 +86,21 @@ export interface ProgressCapabilityInput {
 
 export interface RequirementProgress {
   key: RequirementKey;
+  surfaces: Surface[];
   /** Relevant ABUs covering it. */
   abus: AbuKey[];
   built: boolean;
+}
+
+export interface SurfaceProgress {
+  surface: Surface;
+  weightBp: number;
+  specifiedBp: BasisPoints;
+  builtBp: BasisPoints;
+  relevantPoints: number;
+  mergedPoints: number;
+  acceptancePassed: boolean;
+  complete: boolean;
 }
 
 export interface FeatureProgress {
@@ -98,9 +112,11 @@ export interface FeatureProgress {
   contractVersion: number | null;
   specifiedBp: BasisPoints;
   builtBp: BasisPoints;
+  complete: boolean;
+  /** Size points of the distinct ABUs relevant to any surface of this app's profile, and of those merged. */
   relevantPoints: number;
   mergedPoints: number;
-  complete: boolean;
+  surfaces: SurfaceProgress[];
   requirements: RequirementProgress[];
 }
 
@@ -108,6 +124,12 @@ export interface CapabilityProgress {
   capability: CapabilityKey;
   weightBp: number;
   mapped: boolean;
+  specifiedBp: BasisPoints;
+  builtBp: BasisPoints;
+}
+
+export interface AppSurfaceProgress {
+  surface: Surface;
   specifiedBp: BasisPoints;
   builtBp: BasisPoints;
 }
@@ -121,6 +143,7 @@ export interface AppProgress {
   mappedBp: BasisPoints;
   specifiedBp: BasisPoints;
   builtBp: BasisPoints;
+  surfaces: AppSurfaceProgress[];
   capabilities: CapabilityProgress[];
   features: FeatureProgress[];
 }
@@ -136,40 +159,75 @@ function assertBp(n: number, what: string): void {
   if (n < 1 || n > FULL) throw new RangeError(`${what} must be 1..10000 bp, got ${n}`);
 }
 
+const bySurface = (a: { surface: string }, b: { surface: string }) => (a.surface < b.surface ? -1 : a.surface > b.surface ? 1 : 0);
+
 /** Progress of one feature for one app. `capabilityWeightBp` only feeds the published effective weight. */
 export function computeFeatureProgress(input: ProgressFeatureInput, capabilityWeightBp: number): FeatureProgress {
   assertBp(input.weightBp, `weightBp of ${input.feature}`);
-  const base = {
+  const surfaceTotal = input.surfaces.reduce((n, s) => n + s.weightBp, 0);
+  if (surfaceTotal !== FULL) throw new RangeError(`surface weights of ${input.feature} must sum to 10000, got ${surfaceTotal}`);
+  for (const s of input.surfaces) assertBp(s.weightBp, `surface ${s.surface} of ${input.feature}`);
+  const c = input.contract;
+  const profile = new Set(c?.profile ?? []);
+  const tags = (key: RequirementKey): Surface[] => c?.requirementSurfaces[key] ?? [];
+
+  const surfaces: SurfaceProgress[] = [...input.surfaces].sort(bySurface).map(({ surface, weightBp }) => {
+    const ps = [...profile].filter((k) => tags(k).includes(surface));
+    const acceptancePassed = c?.acceptancePassed[surface] === true;
+    if (c === null || ps.length === 0) {
+      return { surface, weightBp, specifiedBp: 0, builtBp: 0, relevantPoints: 0, mergedPoints: 0, acceptancePassed, complete: false };
+    }
+    const psSet = new Set(ps);
+    const relevant = c.abus.filter((a) => !a.superseded && a.requirements.some((r) => psSet.has(r)));
+    let relevantPoints = 0;
+    let mergedPoints = 0;
+    for (const a of relevant) {
+      relevantPoints += a.sizePoints;
+      if (a.merged) mergedPoints += a.sizePoints;
+    }
+    const allBuilt = ps.every((k) => {
+      const covering = relevant.filter((a) => a.requirements.includes(k));
+      return covering.length > 0 && covering.every((a) => a.merged);
+    });
+    const complete = relevant.length > 0 && allBuilt && acceptancePassed;
+    let builtBp = relevantPoints === 0 ? 0 : Math.floor((FULL * mergedPoints) / relevantPoints);
+    if (complete) builtBp = FULL;
+    else if (builtBp >= FULL) builtBp = FULL - 1;
+    return { surface, weightBp, specifiedBp: FULL, builtBp, relevantPoints, mergedPoints, acceptancePassed, complete };
+  });
+
+  const requirements: RequirementProgress[] = [...profile].sort().map((key) => {
+    const covering = (c?.abus ?? []).filter((a) => !a.superseded && a.requirements.includes(key));
+    return {
+      key,
+      surfaces: [...tags(key)].sort(),
+      abus: covering.map((a) => a.key).sort(),
+      built: covering.length > 0 && covering.every((a) => a.merged),
+    };
+  });
+
+  const union = (c?.abus ?? []).filter((a) => !a.superseded && a.requirements.some((r) => profile.has(r)));
+  const relevantPoints = union.reduce((n, a) => n + a.sizePoints, 0);
+  const mergedPoints = union.filter((a) => a.merged).reduce((n, a) => n + a.sizePoints, 0);
+  const specNum = surfaces.reduce((n, s) => n + s.weightBp * s.specifiedBp, 0);
+  const builtNum = surfaces.reduce((n, s) => n + s.weightBp * s.builtBp, 0);
+  return {
     feature: input.feature,
     capability: input.capability,
     weightBp: input.weightBp,
     effectiveAppWeightBp: Math.floor((capabilityWeightBp * input.weightBp) / FULL),
-    contractVersion: input.contract?.version ?? null,
+    contractVersion: c?.version ?? null,
+    specifiedBp: Math.floor(specNum / FULL),
+    builtBp: Math.floor(builtNum / FULL),
+    complete: surfaces.every((s) => s.complete),
+    relevantPoints,
+    mergedPoints,
+    surfaces,
+    requirements,
   };
-  const c = input.contract;
-  if (c === null || c.profile.length === 0) {
-    return { ...base, specifiedBp: 0, builtBp: 0, relevantPoints: 0, mergedPoints: 0, complete: false, requirements: [] };
-  }
-  const profile = new Set(c.profile);
-  const relevant = c.abus.filter((a) => !a.superseded && a.requirements.some((r) => profile.has(r)));
-  let relevantPoints = 0;
-  let mergedPoints = 0;
-  for (const a of relevant) {
-    relevantPoints += a.sizePoints;
-    if (a.merged) mergedPoints += a.sizePoints;
-  }
-  const requirements: RequirementProgress[] = [...profile].sort().map((key) => {
-    const covering = relevant.filter((a) => a.requirements.includes(key));
-    return { key, abus: covering.map((a) => a.key).sort(), built: covering.length > 0 && covering.every((a) => a.merged) };
-  });
-  const complete = relevant.length > 0 && requirements.every((r) => r.built) && c.profileAcceptancePassed;
-  let builtBp = relevantPoints === 0 ? 0 : Math.floor((FULL * mergedPoints) / relevantPoints);
-  if (complete) builtBp = FULL;
-  else if (builtBp >= FULL) builtBp = FULL - 1;
-  return { ...base, specifiedBp: FULL, builtBp, relevantPoints, mergedPoints, complete, requirements };
 }
 
-/** Progress of one app: features, capabilities and the app triple. Throws on inputs that violate D12. */
+/** Progress of one app: features, capabilities, surfaces and the app triple. Throws on inputs that violate D12/D13. */
 export function computeAppProgress(input: ProgressInput): AppProgress {
   const r = input.roadmap;
   if (r === null) {
@@ -182,6 +240,7 @@ export function computeAppProgress(input: ProgressInput): AppProgress {
       mappedBp: 0,
       specifiedBp: 0,
       builtBp: 0,
+      surfaces: [],
       capabilities: [],
       features: [],
     };
@@ -193,6 +252,7 @@ export function computeAppProgress(input: ProgressInput): AppProgress {
 
   const capabilities: CapabilityProgress[] = [];
   const features: FeatureProgress[] = [];
+  const perSurface = new Map<string, { weight: bigint; spec: bigint; built: bigint }>();
   let mappedBp = 0;
   let specNum = 0;
   let builtNum = 0;
@@ -211,6 +271,15 @@ export function computeAppProgress(input: ProgressInput): AppProgress {
       features.push(fp);
       capSpec += f.weightBp * fp.specifiedBp;
       capBuilt += f.weightBp * fp.builtBp;
+      for (const s of fp.surfaces) {
+        // BigInt: weight products reach 1e12 and times 1e4 exceed 2^53.
+        const w = BigInt(cap.weightBp) * BigInt(f.weightBp) * BigInt(s.weightBp);
+        const acc = perSurface.get(s.surface) ?? { weight: 0n, spec: 0n, built: 0n };
+        acc.weight += w;
+        acc.spec += w * BigInt(s.specifiedBp);
+        acc.built += w * BigInt(s.builtBp);
+        perSurface.set(s.surface, acc);
+      }
     }
     mappedBp += cap.weightBp;
     specNum += cap.weightBp * capSpec;
@@ -223,6 +292,13 @@ export function computeAppProgress(input: ProgressInput): AppProgress {
       builtBp: Math.floor(capBuilt / FULL),
     });
   }
+  const surfaces: AppSurfaceProgress[] = [...perSurface.entries()]
+    .map(([surface, a]) => ({
+      surface: surface as Surface,
+      specifiedBp: a.weight === 0n ? 0 : Number(a.spec / a.weight),
+      builtBp: a.weight === 0n ? 0 : Number(a.built / a.weight),
+    }))
+    .sort(bySurface);
   return {
     target: input.target,
     roadmapVersion: r.version,
@@ -232,6 +308,7 @@ export function computeAppProgress(input: ProgressInput): AppProgress {
     mappedBp,
     specifiedBp: Math.floor(specNum / (FULL * FULL)),
     builtBp: Math.floor(builtNum / (FULL * FULL)),
+    surfaces,
     capabilities,
     features,
   };

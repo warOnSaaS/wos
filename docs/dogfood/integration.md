@@ -28,3 +28,18 @@ Branch `integration`, built from `architect` (contracts 3.1.0) plus `ws/context-
 | Date | Context at start | Scope | Merge conflicts | Glue edits | Repair loops | Result |
 |---|---|---|---|---|---|---|
 | 2026-09-29 | ~320k (carried architect session) | 4 blocker rulings (3.1.0), migration 0004, integration of 4 branches, gate run | 7 add/add on blocker files, 0 in source | 16 (above) | 9 (typecheck of event payload, eligibility fixture type, template ids, worktree capture, bundle, golden hashes, readLocalDocument, manifest uniqueness, stale test-DB template) | gate PASS except the two items marked PENDING in WAVE-1-REPORT.md |
+
+## D13/D14 contracts 4.0.0 (architect, on `architect`, 2026-09-29)
+
+Adaptations made in other workstreams' paths so `main` stays green; owners review in Wave 2 (WORKSTREAMS sections 8-9):
+
+| File (owner) | Edit |
+|---|---|
+| `services/control-plane/src/domain/progress.ts` | surface weights from `app_feature_surfaces` (fallback: one web surface), requirement surface tags, per-surface acceptance |
+| `services/control-plane/src/domain/webhooks.ts` | acceptance check names `wos-acceptance/<f>/<t>/<surface>`; `verification.recorded.surface` |
+| `services/control-plane/src/handlers/public.ts` | per-surface views, journeys, requirement surfaces; `productPath` removed (D14) |
+| `services/control-plane/test/**` | fixtures for 4.0.0 schemas (surfaces, journeys, per-surface acceptance, ABU repo); per-surface check name |
+| `packages/verification/src/vectors.ts`, `templates/product/**`, `packages/verification/test/templates.test.ts`, `packages/verification/ci/*` | repo manifest `apps`, `toolchainRequirements`, `browsers`; CI profiles and acceptance per surface with runner selection; bundle regenerated; `templates/suite` → `templates/product` |
+| `packages/context-engine/test/**`, `packages/orchestrator/test/support/harness.ts`, `packages/github/test/local.test.ts` | `repo` in ABU fixtures; product repo name; golden hashes |
+| `tests/adversarial/**` | S-34..S-36 in the coverage map; platform repo `waronsaas/wos` in a DB assertion |
+| repo-wide | `waronsaas/suite` and later `waronsaas/replacements` → `waronsaas/product`; `waronsaas/waronsaas` → `waronsaas/wos` (not in apps/web, not in historical records) |

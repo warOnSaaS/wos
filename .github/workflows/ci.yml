@@ -1,4 +1,4 @@
-# Platform CI for waronsaas/waronsaas (owner: verification workstream).
+# Platform CI for waronsaas/wos (owner: verification workstream).
 # Runs on every PR, in the merge queue and on main. Holds no secrets: `permissions: contents: read`,
 # no environments. The ship gate (scripts/ship.sh) refuses to deploy a HEAD whose `ci` checks are not green.
 name: ci

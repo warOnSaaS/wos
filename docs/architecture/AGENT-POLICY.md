@@ -208,6 +208,10 @@ or not eligible with every failing reason. Steps, in order, all evaluated (reaso
 The server calls it inside the claim transaction and persists the label on the review. Clients call it
 to grey out work they cannot claim (`AbuSummary.claimable`).
 
+### Toolchain eligibility (D13)
+
+For `builder` and revision claims, after step 5: compute the target repository's `toolchainRequirements` whose paths can intersect the ABU's write scopes; each must be satisfied by the device's latest toolchain attestation (os in the allowed list, every tool present at or above `minVersion`), otherwise not eligible with the requirement id as the reason. Reviewers need no toolchain (they run no code). The evaluator receives the attestation and the requirements as inputs; it reads nothing itself.
+
 ## 6. Bootstrap mode (D2)
 
 At launch the founder is the only contributor. `platform_settings.bootstrap_mode = {"enabled": true}`.

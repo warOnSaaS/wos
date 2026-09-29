@@ -1,12 +1,13 @@
-# wOS trusted verification for the product repo (waronsaas/suite). Template owned by the verification
-# workstream in the platform repo (templates/suite/); changed in the product repo only by a maintainer PR.
+# wOS trusted verification for the product repo (waronsaas/product). Template owned by the verification
+# workstream in the platform repo (templates/product/); changed in the product repo only by a maintainer PR.
 #
 # SECURITY.md S-20: no secrets, `permissions: contents: read`, no environments, no privileged triggers.
 # B-0005: the REQUIRED job (wos-verify) restores every wos.json toolchainPaths file from the base commit
 # and runs the BASE wos.json install/verify steps, so a candidate cannot redefine what "passing" means.
 # wos-verify-candidate-toolchain (not required) shows how the candidate's own toolchain fares.
 # On pushes to the default branch every feature profile's acceptance suite runs as its own check run
-# named wos-acceptance/<feature>/<target> (profileAcceptanceCheckName, contracts 3.0.0).
+# PER SURFACE, named wos-acceptance/<feature>/<target>/<surface> (profileAcceptanceCheckName, contracts 4.0.0,
+# D13). Only suites whose runner is "macos" (native iOS builds and E2E) use a macOS runner.
 name: wos-verify
 
 on:
@@ -87,10 +88,10 @@ jobs:
         run: node .github/wos/wos-ci.mjs profiles >> "$GITHUB_OUTPUT"
 
   acceptance:
-    name: wos-acceptance/${{ matrix.profile.feature }}/${{ matrix.profile.target }}
+    name: wos-acceptance/${{ matrix.profile.feature }}/${{ matrix.profile.target }}/${{ matrix.profile.surface }}
     needs: profiles
     if: needs.profiles.outputs.matrix != '[]'
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.profile.runner == 'macos' && 'macos-15' || 'ubuntu-latest' }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -99,6 +100,7 @@ jobs:
     env:
       FEATURE: ${{ matrix.profile.feature }}
       TARGET: ${{ matrix.profile.target }}
+      SURFACE: ${{ matrix.profile.surface }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -106,4 +108,4 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node .github/wos/wos-ci.mjs acceptance "$FEATURE" "$TARGET"
+      - run: node .github/wos/wos-ci.mjs acceptance "$FEATURE" "$TARGET" "$SURFACE"

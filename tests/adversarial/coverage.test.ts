@@ -79,6 +79,10 @@ const COVERAGE: Record<string, { status: Status; where: string }> = {
     where:
       "vectors TOOLCHAIN_WITHOUT_RESOURCE; templates.test base-restore, base wos.json, candidate-toolchain job, acceptance check names",
   },
+  // Added by the architect with contracts 4.0.0 (D13); the verification workstream owns the tests (WORKSTREAMS section 8).
+  "S-34": { status: "pending", where: "toolchain eligibility table rows (context-policy) and claim refusal from Linux (control-plane)" },
+  "S-35": { status: "pending", where: "workflow lint: EAS signing secrets only in the release environment of waronsaas/product" },
+  "S-36": { status: "now", where: "policy.test D13 rules (trade dress is material for roadmap, contract and implementation reviewers)" },
 };
 
 describe("security-hardening: every SECURITY.md control is mapped", () => {

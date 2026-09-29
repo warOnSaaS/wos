@@ -52,11 +52,11 @@ end $$;
 
 -- one canonical open roadmap per target -------------------------------------------------------
 insert into wos.documents (id, kind, target_id, version, state, branch, repo_full_name)
-select '00000000-0000-0000-0000-0000000000d1', 'roadmap', id, 1, 'drafting', 'wos/roadmap/salesforce/v1', 'waronsaas/suite' from wos.targets where slug = 'salesforce';
+select '00000000-0000-0000-0000-0000000000d1', 'roadmap', id, 1, 'drafting', 'wos/roadmap/salesforce/v1', 'waronsaas/product' from wos.targets where slug = 'salesforce';
 select wos_test.expect_error($$insert into wos.documents (kind, target_id, version, state, branch, repo_full_name)
-  select 'roadmap', id, 1, 'drafting', 'x', 'waronsaas/suite' from wos.targets where slug = 'waronsaas'$$, 'TGT-00 roadmap outside the platform repo', 'parent is in');
+  select 'roadmap', id, 1, 'drafting', 'x', 'waronsaas/product' from wos.targets where slug = 'waronsaas'$$, 'TGT-00 roadmap outside the platform repo', 'parent is in');
 select wos_test.expect_error($$insert into wos.documents (kind, target_id, version, state, branch, repo_full_name)
-  select 'roadmap', id, 2, 'drafting', 'x', 'waronsaas/suite' from wos.targets where slug = 'salesforce'$$, 'second open roadmap for same target');
+  select 'roadmap', id, 2, 'drafting', 'x', 'waronsaas/product' from wos.targets where slug = 'salesforce'$$, 'second open roadmap for same target');
 
 -- rounds, tasks, leases -----------------------------------------------------------------------
 insert into wos.rounds (id, subject_kind, document_id, round_number, head_sha, submission_sha256, state)

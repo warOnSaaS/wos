@@ -53,13 +53,14 @@ export const RepoFullName = z.string().regex(/^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/)
 export type RepoFullName = z.infer<typeof RepoFullName>;
 
 export const OFFICIAL_GITHUB_ORG = "waronsaas" as const;
-/** wOS itself + the public website. */
-export const PLATFORM_REPO = "waronsaas/waronsaas" as const;
+/** wOS itself + the public website. Renamed from waronsaas/wos (D14). */
+export const PLATFORM_REPO = "waronsaas/wos" as const;
 /**
  * The ONE product repository holding every replacement app (D10: shared features => shared code).
- * Name is a FOUNDER DECISION (GAPS.md G-05); "waronsaas/suite" is the recommendation.
+ * DECIDED by the founder 2026-09-29 (GAPS.md G-05): "waronsaas/product" (founder override of the earlier "waronsaas/replacements"). Web and
+ * mobile (React Native + Expo) apps of every replacement live here (D13).
  */
-export const PRODUCT_REPO = "waronsaas/suite" as const;
+export const PRODUCT_REPO = "waronsaas/product" as const;
 
 export const GithubLogin = z.string().regex(/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/);
 export type GithubLogin = z.infer<typeof GithubLogin>;
@@ -110,3 +111,19 @@ export const SemVer = z.string().regex(/^\d+\.\d+\.\d+$/);
 export const Cursor = z.string().max(200);
 
 export const Page = <T extends z.ZodType>(item: T) => z.object({ items: z.array(item), nextCursor: Cursor.nullable() });
+
+/**
+ * Client surfaces a product ships (D13). "ios" covers iPhone and iPad; "desktop" covers the vendor's
+ * desktop apps (platforms listed in the inventory); "cli" exists for TGT-00 (wOS ships a CLI).
+ */
+export const Surface = z.enum(["web", "ios", "android", "desktop", "cli", "browser_extension", "email_addin", "other"]);
+export type Surface = z.infer<typeof Surface>;
+
+/**
+ * Browsers the web surface's acceptance runs in (D13 browser parity, decided 2026-09-29): current Chrome
+ * (chromium) and Edge, Safari on macOS (webkit) and iOS (mobile_safari, phone viewport), Firefox, and a
+ * phone-sized Android viewport (mobile_chrome). Desktop and phone viewports both.
+ */
+export const Browser = z.enum(["chromium", "edge", "webkit", "firefox", "mobile_safari", "mobile_chrome"]);
+export type Browser = z.infer<typeof Browser>;
+export const MINIMUM_BROWSERS = ["chromium", "edge", "webkit", "firefox", "mobile_safari", "mobile_chrome"] as const;

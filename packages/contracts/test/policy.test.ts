@@ -45,6 +45,25 @@ describe("agent-policy.v1", () => {
     }
   });
 
+  it("D13: authors must cover surfaces, journeys and surface weights; reviewers treat gaps and trade-dress copying as material", () => {
+    const author = policy.roles.find((r) => r.role === "roadmap_author")!;
+    const text = author.obligations.join(" ");
+    expect(text).toMatch(/SURFACES \(D13\)/);
+    expect(text).toMatch(/EXPERIENCE \(D13\)/);
+    expect(text).toMatch(/SURFACE WEIGHTS/);
+    expect(text).toMatch(/trade dress/);
+    for (const slot of ["roadmap_reviewer_astra", "roadmap_reviewer_fable"]) {
+      const rules = policy.roles.find((x) => x.role === slot)!.materialFindingRules.join(" ");
+      expect(rules).toMatch(/client surface the vendor ships/);
+      expect(rules).toMatch(/without a journey/);
+      expect(rules).toMatch(/SURFACE MIS-WEIGHTING/);
+      expect(rules).toMatch(/trade dress/);
+    }
+    for (const slot of ["feature_reviewer_astra", "feature_reviewer_fable"]) {
+      expect(policy.roles.find((x) => x.role === slot)!.materialFindingRules.join(" ")).toMatch(/browser of the matrix/);
+    }
+  });
+
   it("context budget + working reserve fits every allowed model's window", () => {
     for (const r of policy.roles) {
       for (const ref of r.allowedModels) {

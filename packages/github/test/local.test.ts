@@ -14,7 +14,7 @@ import {
 } from "../src/local/index.js";
 import { changeset, cleanup, git, makeApp, makeUpstream, tempDir } from "./support/setup.js";
 
-const REPO = "waronsaas/suite";
+const REPO = "waronsaas/product";
 
 let upstream: { dir: string; base: string };
 let root: string;
@@ -59,7 +59,7 @@ describe("createWorktree / removeWorktree", () => {
     expect(wt.path.endsWith("/worktrees/lease-1")).toBe(true);
     expect(git(wt.path, "rev-parse", "HEAD")).toBe(upstream.base);
     expect(git(wt.path, "rev-parse", "--abbrev-ref", "HEAD")).toBe("HEAD");
-    expect(existsSync(join(root, "repos", "waronsaas", "suite.git", "HEAD"))).toBe(true);
+    expect(existsSync(join(root, "repos", "waronsaas", "product.git", "HEAD"))).toBe(true);
     // Repo symlinks are checked out as plain files (core.symlinks=false).
     expect(readFileSync(join(wt.path, "readme-link"), "utf8")).toBe("README.md");
     // Upstream moving on does not move the lease's base.
@@ -76,7 +76,7 @@ describe("createWorktree / removeWorktree", () => {
 
     await removeWorktree(wt);
     expect(existsSync(wt.path)).toBe(false);
-    expect(git(join(root, "repos", "waronsaas", "suite.git"), "worktree", "list")).not.toContain("lease-1");
+    expect(git(join(root, "repos", "waronsaas", "product.git"), "worktree", "list")).not.toContain("lease-1");
     await removeWorktree(wt); // idempotent
     expect(existsSync(wt2.path)).toBe(true);
   });

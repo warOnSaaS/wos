@@ -10,7 +10,7 @@ code and must be regenerated if it changes.
 | Term | Meaning |
 |---|---|
 | Target (application) | A rented product we replace, e.g. Salesforce. One row in `wos.targets`. The spec uses "Sniper Target" and "application" for the same thing; wOS has one entity. TGT-00 is warOnSaaS itself (rank 0). |
-| Replacement product | Our open-source app for a target, named in its roadmap (`productName`), living in `products/<target>/` of the product repo. |
+| Replacement product | The ONE modular suite in `waronsaas/product` (D14). A target's roadmap `productName` names how we present the replacement for that target (e.g. on its website page); there is no per-target codebase or store listing. |
 | Inventory | The enumerated public surface of the target (`roadmaps/<target>/INVENTORY.yaml`). Completeness evidence reviewers check the roadmap against. Items weigh 1 and do not drive progress. |
 | Roadmap | Per target, versioned. Lists ALL capabilities with reasoned weights (D12); mapped capabilities list catalog features with reasoned weights. |
 | Capability | A grouping inside one app's roadmap, e.g. `crm` for Salesforce. Keys are per app. |
@@ -52,7 +52,7 @@ for every role, and `wos_app` has only SELECT, INSERT); P = private (RLS restric
 
 | Table | Kind | Purpose and invariants |
 |---|---|---|
-| `targets` | M | Seeded: `waronsaas` rank 0 (platform repo, path `.`), then the ten targets rank 1..10 in `waronsaas/suite` under `products/<slug>`. `hosted_url` https only; `self_hostable` set by maintainer action `set_hosting`. |
+| `targets` | M | Seeded: `waronsaas` rank 0 (platform repo `waronsaas/wos`), then the ten targets rank 1..10, whose parity profiles are served by the one suite in `waronsaas/product` (D14; `product_path` dropped in 0005). `hosted_url` https only; `self_hostable` set by maintainer action `set_hosting`. |
 | `follows` | | Account follows a target (non-contributor feature, GAPS G-27). |
 | `documents` | M | Canonical workflows. `kind = roadmap` has `target_id` and no feature; `kind = feature_contract` has `catalog_feature_id` and no target. `(target, version)` and `(catalog_feature, version)` unique. At most one open (not merged/abandoned) per subject: `documents_one_open_roadmap`, `documents_one_open_contract`. `merged` iff `merged_sha` set; `abandoned` requires `ended_reason`. |
 | `inventory_versions` | | Per target, versioned; `proposed -> frozen -> superseded`; at most one frozen per target (`inventory_one_frozen`). Frozen when the roadmap version that carries it merges. |
@@ -436,7 +436,7 @@ Initial: `open`. Terminal: `resolved,rejected`.
   `scopesOverlap` (prefix algebra in `packages/verification`) is true; two logical locks with the same
   key conflict unless both are `shared`. Then it inserts the new locks. Locks are released when the
   attempt reaches any terminal state. The lock is per repository because every app shares
-  `waronsaas/suite` (D10).
+  `waronsaas/product` (D10).
 - Ledger inserts are serialised by `pg_advisory_xact_lock(7313371)` inside the chain trigger.
 - The migration runner takes `pg_advisory_lock(7313370)`.
 - Webhooks are deduplicated by `X-GitHub-Delivery` (`webhook_deliveries` primary key), stored first,
@@ -457,3 +457,16 @@ Initial: `open`. Terminal: `resolved,rejected`.
   progress.
 - Implementation PR: attempt `merged`, ABU `merged`, unlock dependents, contribution `accepted`,
   rewards, progress.
+
+## 7. Surfaces (D13, migration 0005)
+
+| Table | Purpose |
+|---|---|
+| `repositories` | Registry of official repos and their family (`platform`, `product`). An ABU's repo must be in the family of its contract's repo (trigger `check_repo_consistency`). |
+| `target_surfaces` | Per app: each vendor surface `in_scope` (repo + path) or `excluded` (reason), from the merged roadmap version. |
+| `app_feature_surfaces` | Per app feature: reasoned surface weight and rationale (frozen per roadmap version). `app_features.journeys` holds the roadmap journeys. |
+| `requirement_surfaces` | Surface tags of each contract requirement. |
+| `verification_runs.surface` | Per-surface profile acceptance results (required for `profile_acceptance`). |
+| `toolchain_attestations` | Append-only device toolchain reports used for path-based toolchain eligibility. |
+
+Migration 0005 also moves every product target to `waronsaas/product`.

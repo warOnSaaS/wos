@@ -8,6 +8,9 @@ import {
   type AppFeatureDetail,
   type AppProgress,
   type CatalogFeatureDetail,
+  type FeatureProgress,
+  type Journey,
+  type Surface,
   CONTRACTS_VERSION,
   DomainEvent,
   type Progress,
@@ -38,7 +41,6 @@ interface TargetRow {
   rank: number;
   what_it_is: string;
   repo_full_name: string;
-  product_path: string;
   product_name: string | null;
   hosted_url: string | null;
   self_hostable: boolean;
@@ -120,7 +122,6 @@ async function targetSummary(tx: Tx, t: TargetRow): Promise<TargetSummary> {
     whatItIs: t.what_it_is,
     productName: t.product_name,
     repo: t.repo_full_name,
-    productPath: t.product_path,
     progress,
     roadmap: await documentSummary(tx, { targetId: t.id }),
     hosted: { available: t.hosted_url !== null, url: t.hosted_url },
@@ -236,8 +237,9 @@ async function catalogRefs(tx: Tx, featureId: string) {
 
 async function requirementViews(tx: Tx, contractDocId: string | null, onlyTargetId: string | null) {
   if (!contractDocId) return [];
-  const reqs = await tx<{ id: string; key: string; kind: string; statement: string; profiles: string[] }[]>`
+  const reqs = await tx<{ id: string; key: string; kind: string; statement: string; profiles: string[]; surfaces: Surface[] }[]>`
     select r.id, r.key, r.kind, r.statement,
+           coalesce((select array_agg(rs.surface order by rs.surface) from wos.requirement_surfaces rs where rs.requirement_id = r.id), '{}') as surfaces,
            coalesce((select array_agg(t.slug order by t.slug) from wos.requirement_profiles rp join wos.targets t on t.id = rp.target_id
                       where rp.requirement_id = r.id), '{}') as profiles
       from wos.requirements r where r.document_id = ${contractDocId}
@@ -255,9 +257,38 @@ async function requirementViews(tx: Tx, contractDocId: string | null, onlyTarget
       abus: abus.map((a) => a.key),
       built: abus.length > 0 && abus.every((a) => a.state === "merged"),
       profiles: r.profiles,
+      surfaces: r.surfaces,
     });
   }
   return out;
+}
+
+/**
+ * D13 (contracts 4.0.0): per-surface progress with the roadmap's weights and rationales, and the journeys.
+ * Features materialised before D13 have no surface rows and show one implicit web surface.
+ */
+async function featureSurfaces(tx: Tx, appFeatureId: string, fp: FeatureProgress | undefined) {
+  const rows = await tx<{ surface: Surface; weight_bp: number; weight_rationale: string }[]>`
+    select surface, weight_bp, weight_rationale from wos.app_feature_surfaces where app_feature_id = ${appFeatureId} order by surface`;
+  const [j] = await tx<{ journeys: Journey[] }[]>`select journeys from wos.app_features where id = ${appFeatureId}`;
+  const base =
+    rows.length > 0
+      ? rows
+      : [{ surface: "web" as Surface, weight_bp: 10_000, weight_rationale: "Implicit single surface for a feature mapped before D13." }];
+  const surfaces = base.map((r) => {
+    const sp = fp?.surfaces.find((x) => x.surface === r.surface);
+    return {
+      surface: r.surface,
+      weightBp: r.weight_bp,
+      weightRationale: r.weight_rationale,
+      specifiedBp: sp?.specifiedBp ?? 0,
+      builtBp: sp?.builtBp ?? 0,
+      relevantPoints: sp?.relevantPoints ?? 0,
+      mergedPoints: sp?.mergedPoints ?? 0,
+      acceptancePassed: sp?.acceptancePassed ?? false,
+    };
+  });
+  return { surfaces, journeys: j?.journeys ?? [] };
 }
 
 export const publicHandlers: Pick<
@@ -315,6 +346,7 @@ export const publicHandlers: Pick<
       for (const c of caps) {
         const feats = await tx<
           {
+            app_feature_id: string;
             feature_id: string;
             key: string;
             title: string;
@@ -325,7 +357,7 @@ export const publicHandlers: Pick<
             shared_with: string[];
           }[]
         >`
-          select f.id as feature_id, f.key, f.title, f.summary, af.state, af.weight_bp, af.weight_rationale,
+          select af.id as app_feature_id, f.id as feature_id, f.key, f.title, f.summary, af.state, af.weight_bp, af.weight_rationale,
                  coalesce((select array_agg(t2.slug order by t2.rank) from wos.app_features o join wos.targets t2 on t2.id = o.target_id
                             where o.catalog_feature_id = f.id and o.target_id <> ${t.id} and o.state <> 'descoped'), '{}') as shared_with
             from wos.app_features af join wos.catalog_features f on f.id = af.catalog_feature_id
@@ -346,6 +378,7 @@ export const publicHandlers: Pick<
             builtBp: fp?.builtBp ?? 0,
             relevantPoints: fp?.relevantPoints ?? 0,
             mergedPoints: fp?.mergedPoints ?? 0,
+            ...(await featureSurfaces(tx, f.app_feature_id, fp)),
             sharedWith: f.shared_with,
             contract: await documentSummary(tx, { featureId: f.feature_id }),
           });
@@ -368,7 +401,14 @@ export const publicHandlers: Pick<
           from wos.inventory_dispositions d join wos.inventory_items i on i.id = d.inventory_item_id
           join wos.inventory_versions v on v.id = d.inventory_version_id
          where v.target_id = ${t.id} and v.state = 'frozen' and d.excluded_reason is not null order by i.key`;
-      return { ...summary, capabilities, excluded };
+      // D13: every surface of the app (in scope or excluded) with per-surface app progress.
+      const surfRows = await tx<{ surface: Surface; status: "in_scope" | "excluded"; reason: string | null; repo: string | null }[]>`
+        select surface, status, reason, repo_full_name as repo from wos.target_surfaces where target_id = ${t.id} order by surface`;
+      const surfaces = surfRows.map((r) => {
+        const sp = detail?.surfaces.find((x) => x.surface === r.surface);
+        return { ...r, specifiedBp: sp?.specifiedBp ?? 0, builtBp: sp?.builtBp ?? 0 };
+      });
+      return { ...summary, surfaces, capabilities, excluded };
     });
   },
 
@@ -414,6 +454,7 @@ export const publicHandlers: Pick<
       const t = await loadTarget(tx, ctx.params.slug);
       const [f] = await tx<
         {
+          app_feature_id: string;
           feature_id: string;
           key: string;
           title: string;
@@ -427,7 +468,7 @@ export const publicHandlers: Pick<
           shared_with: string[];
         }[]
       >`
-        select f.id as feature_id, f.key, f.title, f.summary, af.state, af.weight_bp, af.weight_rationale, c.key as capability,
+        select af.id as app_feature_id, f.id as feature_id, f.key, f.title, f.summary, af.state, af.weight_bp, af.weight_rationale, c.key as capability,
                c.weight_bp as capability_weight, f.current_contract_document_id as contract_doc,
                coalesce((select array_agg(t2.slug order by t2.rank) from wos.app_features o join wos.targets t2 on t2.id = o.target_id
                           where o.catalog_feature_id = f.id and o.target_id <> ${t.id} and o.state <> 'descoped'), '{}') as shared_with
@@ -460,6 +501,7 @@ export const publicHandlers: Pick<
         builtBp: fp?.builtBp ?? 0,
         relevantPoints: fp?.relevantPoints ?? 0,
         mergedPoints: fp?.mergedPoints ?? 0,
+        ...(await featureSurfaces(tx, f.app_feature_id, fp)),
         sharedWith: f.shared_with,
         contract: await documentSummary(tx, { featureId: f.feature_id }),
         target: t.slug,

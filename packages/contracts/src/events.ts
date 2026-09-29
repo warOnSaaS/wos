@@ -87,6 +87,8 @@ export const DomainEventBody = z.discriminatedUnion("type", [
     subjectId: z.string(),
     headSha: GitSha,
     conclusion: z.string(),
+    /** Set for profile_acceptance (per-surface checks, D13). */
+    surface: z.string().nullable(),
   }),
   e("attempt.manifest_recorded", "private", { attemptId: Uuid, manifestSha256: Sha256 }),
   e("attempt.pr_opened", "public", { attemptId: Uuid, abu: AbuKey, prNumber: z.number().int(), prUrl: z.string() }),

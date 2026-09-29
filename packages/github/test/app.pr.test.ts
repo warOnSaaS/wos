@@ -18,7 +18,7 @@ import { canonicalJson, provenanceSha256 } from "@waronsaas/contracts/canonical"
 import type { FakeGithub } from "./support/fake-github.js";
 import { changeset, cleanup, git, makeApp, makeUpstream, upsert } from "./support/setup.js";
 
-const REPO = "waronsaas/suite";
+const REPO = "waronsaas/product";
 const ATTEMPT = "0192ab3c-7d1e-7000-8000-00000000abcd";
 
 let upstream: { dir: string; base: string };

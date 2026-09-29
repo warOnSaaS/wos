@@ -43,9 +43,9 @@ describe.skipIf(!HAS_DB)("Wave 1 gate: contracts 3.0.0 shapes and rulings", () =
       target: null,
       feature: "shared",
       relevantTo: ["hubspot", "salesforce"],
-      repo: "waronsaas/suite",
+      repo: "waronsaas/product",
     });
-    expect(claim.body.attempt).toMatchObject({ feature: "shared", relevantTo: ["hubspot", "salesforce"], repo: "waronsaas/suite" });
+    expect(claim.body.attempt).toMatchObject({ feature: "shared", relevantTo: ["hubspot", "salesforce"], repo: "waronsaas/product" });
     expect(claim.body.contextPlan).toMatchObject({ target: null, feature: "shared", taskKind: "abu_build" });
     const work = await h.call("GET", "/v1/me/work", { token: b.token });
     expect(work.body.tasks[0].relevantTo).toEqual(["hubspot", "salesforce"]);
@@ -64,7 +64,7 @@ describe.skipIf(!HAS_DB)("Wave 1 gate: contracts 3.0.0 shapes and rulings", () =
       target: "shopify",
       feature: null,
       relevantTo: ["shopify"],
-      repo: "waronsaas/suite",
+      repo: "waronsaas/product",
     });
     expect((await h.call("GET", "/v1/tasks?feature=shared", { token: maint.token })).body.items).toEqual([]);
   });
@@ -75,15 +75,15 @@ describe.skipIf(!HAS_DB)("Wave 1 gate: contracts 3.0.0 shapes and rulings", () =
       target: "waronsaas",
       abus: [{ n: "01", write: ["services/control-plane/**"] }],
     });
-    h.github.heads.set("waronsaas/waronsaas", "7".repeat(40));
+    h.github.heads.set("waronsaas/wos", "7".repeat(40));
     const b = await h.contributor("dogfooder");
     const claim = await h.call("POST", `/v1/abus/${seeded.abus.get("01")}/claim`, {
       token: b.token,
       idem: true,
       body: { deviceId: b.deviceId },
     });
-    expect(claim.body.contextPlan.source).toEqual({ repo: "waronsaas/waronsaas", commit: "7".repeat(40) });
-    expect(claim.body.task.repo).toBe("waronsaas/waronsaas");
+    expect(claim.body.contextPlan.source).toEqual({ repo: "waronsaas/wos", commit: "7".repeat(40) });
+    expect(claim.body.task.repo).toBe("waronsaas/wos");
   });
 
   it("serves a planned server document by query ref, and 403 for any ref outside the lease plan", async () => {
@@ -182,7 +182,7 @@ describe.skipIf(!HAS_DB)("Wave 1 gate: contracts 3.0.0 shapes and rulings", () =
     const head = h.github.commits.at(-1)!.sha;
     await hook("check_suite", {
       action: "completed",
-      repository: { full_name: "waronsaas/suite" },
+      repository: { full_name: "waronsaas/product" },
       check_suite: { id: 31, head_sha: head, conclusion: "success" },
     });
     const astra = await h.contributor("bind-astra");
@@ -249,7 +249,7 @@ describe.skipIf(!HAS_DB)("Wave 1 gate: contracts 3.0.0 shapes and rulings", () =
     const head = h.github.commits.at(-1)!.sha;
     await hook("check_suite", {
       action: "completed",
-      repository: { full_name: "waronsaas/suite" },
+      repository: { full_name: "waronsaas/product" },
       check_suite: { id: 41, head_sha: head, conclusion: "success" },
     });
     await reviewAs(h, await h.contributor("accept-astra"), "astra", "implementation_review", verdict("NO_MATERIAL_GAPS"));
@@ -258,18 +258,24 @@ describe.skipIf(!HAS_DB)("Wave 1 gate: contracts 3.0.0 shapes and rulings", () =
     const pr = h.github.prs.at(-1)!;
     expect(pr.labels).toContain("wos:toolchain");
     expect(pr.body).toContain("@waronsaas/maintainers");
-    expect(h.github.deleted).toContain(`waronsaas/suite:wos/candidate/${b.attemptId}`);
+    expect(h.github.deleted).toContain(`waronsaas/product:wos/candidate/${b.attemptId}`);
     await hook("pull_request", {
       action: "closed",
-      repository: { full_name: "waronsaas/suite" },
+      repository: { full_name: "waronsaas/product" },
       pull_request: { number: pr.number, merged: true, merge_commit_sha: "4".repeat(40) },
     });
     const before = await h.call("GET", "/v1/public/targets/zoom/features/accept");
     expect(before.body).toMatchObject({ specifiedBp: 10000, builtBp: 9999 }); // capped until acceptance passes
     const run = {
       action: "completed",
-      repository: { full_name: "waronsaas/suite" },
-      check_run: { id: 501, name: "wos-acceptance/accept/zoom", head_sha: "4".repeat(40), conclusion: "success", check_suite: { id: 502 } },
+      repository: { full_name: "waronsaas/product" },
+      check_run: {
+        id: 501,
+        name: "wos-acceptance/accept/zoom/web",
+        head_sha: "4".repeat(40),
+        conclusion: "success",
+        check_suite: { id: 502 },
+      },
     };
     expect((await hook("check_run", run)).status).toBe(200);
     const after = await h.call("GET", "/v1/public/targets/zoom/features/accept");

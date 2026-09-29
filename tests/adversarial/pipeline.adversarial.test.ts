@@ -255,7 +255,7 @@ const planFor = (role: AgentRole): ContextPlan => {
     abu: role === "builder" ? "contacts#04" : null,
     attemptId: null,
     roundId: null,
-    source: { repo: "waronsaas/suite", commit: "a".repeat(40) },
+    source: { repo: "waronsaas/product", commit: "a".repeat(40) },
     artifacts: [],
     excludeGlobs: [],
     // Integration glue: reviewer slots share one template per family (CONTEXT-PROTOCOL.md section 3).
@@ -311,8 +311,8 @@ const reviewerPlan = (): ContextPlan => ({
   ...planFor("implementation_reviewer_astra"),
   roundId: "0192ab3c-0000-7000-8000-000000000009",
   artifacts: [
-    { kind: "repo_file", repo: "waronsaas/suite", path: "modules/contacts/list.ts", required: true },
-    { kind: "repo_file", repo: "waronsaas/suite", path: "modules/contacts/injected.ts", required: true },
+    { kind: "repo_file", repo: "waronsaas/product", path: "modules/contacts/list.ts", required: true },
+    { kind: "repo_file", repo: "waronsaas/product", path: "modules/contacts/injected.ts", required: true },
   ],
 });
 const contextReady = await implementedAsync(() => buildContext(reviewerPlan(), reader, policy));
@@ -376,7 +376,7 @@ function worktreeWith(setup: (dir: string) => void) {
   r.git(["worktree", "add", "-q", "--detach", wt, base]);
   worktreeDirs.push(wt);
   setup(wt);
-  return { path: wt, repo: "waronsaas/suite", baseSha: base, branch: "HEAD" };
+  return { path: wt, repo: "waronsaas/product", baseSha: base, branch: "HEAD" };
 }
 const captureReady = await implementedAsync(() => captureChanges(worktreeWith(() => undefined)));
 

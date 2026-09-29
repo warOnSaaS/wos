@@ -77,6 +77,7 @@ export class FakeProcesses implements ProcessRunner {
 }
 
 const ABU_SPEC: AbuSpec = {
+  repo: "waronsaas/product",
   key: ABU_KEY,
   title: "Contact list endpoint",
   objective: "Return the contact list for the signed-in tenant, paginated.",

@@ -2,7 +2,7 @@
   "schema": "wos-roadmap-bundle.v1",
   "status": "PROPOSED",
   "targetCode": "TGT-00",
-  "note": "PROPOSED by the Lead Architect on 2026-09-29 as the V1 roadmap of wOS itself (dogfood). It has NOT been through Astra/Fable review; weights and requirements are the architect's first reasoning, not consensus. The V1 build is tracked against it exactly like a target (docs/architecture/WORKSTREAMS.md).",
+  "note": "PROPOSED by the Lead Architect on 2026-09-29 as the V1 roadmap of wOS itself (dogfood). It has NOT been through Astra/Fable review; weights and requirements are the architect's first reasoning, not consensus. The V1 build is tracked against it exactly like a target (docs/architecture/WORKSTREAMS.md). Updated for D13 (2026-09-29): surfaces, journeys, per-surface weights and the multi-surface capability.",
   "inventory": {
     "schema": "wos-inventory.v1",
     "target": "waronsaas",
@@ -10,12 +10,12 @@
     "sources": [
       {
         "title": "warOnSaaS V1 specification",
-        "url": "https://github.com/waronsaas/waronsaas/blob/main/docs/V1-SPEC.md",
+        "url": "https://github.com/waronsaas/wos/blob/main/docs/V1-SPEC.md",
         "retrievedOn": "2026-09-29"
       },
       {
         "title": "warOnSaaS founder decisions",
-        "url": "https://github.com/waronsaas/waronsaas/blob/main/docs/DECISIONS.md",
+        "url": "https://github.com/waronsaas/wos/blob/main/docs/DECISIONS.md",
         "retrievedOn": "2026-09-29"
       }
     ],
@@ -347,6 +347,82 @@
         "description": "Sign-in and notification mail from a sending subdomain (D5, D8).",
         "source": 1,
         "weight": 1
+      },
+      {
+        "key": "INV-0042",
+        "area": "Surfaces",
+        "title": "Multi-repo products",
+        "description": "Build graphs whose ABUs live in several repositories of one family, each ABU in exactly one repo (D13).",
+        "source": 1,
+        "weight": 1
+      },
+      {
+        "key": "INV-0043",
+        "area": "Surfaces",
+        "title": "Toolchain eligibility",
+        "description": "An ABU touching native code is leasable only on a device whose attested toolchain (macOS + Xcode, Android SDK) meets the repo's path-based requirements (D13).",
+        "source": 1,
+        "weight": 1
+      },
+      {
+        "key": "INV-0044",
+        "area": "Surfaces",
+        "title": "Native CI runners",
+        "description": "Native iOS builds and end-to-end checks on macOS runners, everything else on Linux, keeping Apple-machine minutes low (D13).",
+        "source": 1,
+        "weight": 1
+      },
+      {
+        "key": "INV-0045",
+        "area": "Surfaces",
+        "title": "Per-surface acceptance",
+        "description": "Journey acceptance per surface: Playwright across the browser matrix for web, Maestro flows for iOS and Android (D13).",
+        "source": 1,
+        "weight": 1
+      },
+      {
+        "key": "INV-0046",
+        "area": "Surfaces",
+        "title": "Mobile app signing and delivery",
+        "description": "EAS Build signs and delivers the replacement apps' iOS and Android builds in CI only, with credentials separate from wOS Desktop's (D7, D13).",
+        "source": 1,
+        "weight": 1
+      }
+    ],
+    "surfaces": [
+      {
+        "surface": "web",
+        "title": "warOnSaaS website and public drilldown",
+        "source": 0,
+        "platforms": [],
+        "browsers": [
+          "chromium",
+          "edge",
+          "webkit",
+          "firefox",
+          "mobile_safari",
+          "mobile_chrome"
+        ]
+      },
+      {
+        "surface": "desktop",
+        "title": "wOS Desktop",
+        "source": 0,
+        "platforms": [
+          "macOS",
+          "Linux"
+        ],
+        "browsers": []
+      },
+      {
+        "surface": "cli",
+        "title": "wOS CLI",
+        "source": 0,
+        "platforms": [
+          "macOS",
+          "Linux"
+        ],
+        "browsers": []
       }
     ]
   },
@@ -358,7 +434,7 @@
     "productName": "wOS",
     "summary": "wOS V1: the platform that lets contributors build open-source replacements with their own AI agents, from roadmap consensus to gated, reviewed, rewarded pull requests, with a public website of honest progress.",
     "architecture": {
-      "overview": "Monorepo waronsaas/waronsaas: control plane (Hono on Vercel, Postgres on Supabase), Electron Desktop and a CLI over one shared orchestrator package, and the Next.js public site. See docs/architecture/ARCHITECTURE.md.",
+      "overview": "Monorepo waronsaas/wos: control plane (Hono on Vercel, Postgres on Supabase), Electron Desktop and a CLI over one shared orchestrator package, and the Next.js public site. See docs/architecture/ARCHITECTURE.md.",
       "composition": "Shared packages (contracts, db, agent-policy, context-engine, verification, github, planning, rewards, orchestrator) composed by services/control-plane, apps/desktop, apps/cli and apps/web.",
       "appSpecificData": "Everything lives in the wos Postgres schema defined by packages/db/migrations.",
       "selfHosting": "Not a V1 goal for wOS itself; the control plane is one Vercel project plus one Supabase database."
@@ -385,7 +461,71 @@
               "INV-0001"
             ],
             "appNotes": "",
-            "phase": "core"
+            "phase": "core",
+            "surfaces": [
+              {
+                "surface": "cli",
+                "weightBp": 3000,
+                "weightRationale": "The cli surface reaches fewer people for magic-link-sign-in than desktop, but the journey must still work there end to end."
+              },
+              {
+                "surface": "desktop",
+                "weightBp": 4000,
+                "weightRationale": "Most contributors meet magic-link-sign-in on the desktop surface first, so it carries the largest share of the feature's experience."
+              },
+              {
+                "surface": "web",
+                "weightBp": 3000,
+                "weightRationale": "The web surface reaches fewer people for magic-link-sign-in than desktop, but the journey must still work there end to end."
+              }
+            ],
+            "journeys": [
+              {
+                "key": "J-001",
+                "surface": "cli",
+                "title": "From the wos CLI: Email magic-link sign-in",
+                "steps": [
+                  "Run wos status to confirm readiness",
+                  "Run the wos command for email magic-link sign-in",
+                  "Read the printed result and exit code"
+                ],
+                "entryPoints": [
+                  "wos command"
+                ],
+                "platformBehaviour": "Prints progress as it happens; exits with a documented code; resumes active leases after a restart.",
+                "nativeCapabilities": []
+              },
+              {
+                "key": "J-002",
+                "surface": "desktop",
+                "title": "In wOS Desktop: Email magic-link sign-in",
+                "steps": [
+                  "Open wOS Desktop and sign in",
+                  "Open email magic-link sign-in",
+                  "Complete the task and see its status in the activity pane"
+                ],
+                "entryPoints": [
+                  "Desktop sidebar"
+                ],
+                "platformBehaviour": "Keeps working while agents run; shows a clear state if the network drops and resumes on reconnect.",
+                "nativeCapabilities": []
+              },
+              {
+                "key": "J-003",
+                "surface": "web",
+                "title": "On waronsaas.com: Email magic-link sign-in",
+                "steps": [
+                  "Open waronsaas.com",
+                  "Go to the page for email magic-link sign-in",
+                  "Complete the task and see the result reflected"
+                ],
+                "entryPoints": [
+                  "site navigation"
+                ],
+                "platformBehaviour": "Responsive from phone to desktop width in every supported browser; no offline mode.",
+                "nativeCapabilities": []
+              }
+            ]
           },
           {
             "feature": "github-identity-link",
@@ -395,7 +535,71 @@
               "INV-0002"
             ],
             "appNotes": "",
-            "phase": "core"
+            "phase": "core",
+            "surfaces": [
+              {
+                "surface": "cli",
+                "weightBp": 3000,
+                "weightRationale": "The cli surface reaches fewer people for github-identity-link than desktop, but the journey must still work there end to end."
+              },
+              {
+                "surface": "desktop",
+                "weightBp": 4000,
+                "weightRationale": "Most contributors meet github-identity-link on the desktop surface first, so it carries the largest share of the feature's experience."
+              },
+              {
+                "surface": "web",
+                "weightBp": 3000,
+                "weightRationale": "The web surface reaches fewer people for github-identity-link than desktop, but the journey must still work there end to end."
+              }
+            ],
+            "journeys": [
+              {
+                "key": "J-004",
+                "surface": "cli",
+                "title": "From the wos CLI: GitHub identity link",
+                "steps": [
+                  "Run wos status to confirm readiness",
+                  "Run the wos command for github identity link",
+                  "Read the printed result and exit code"
+                ],
+                "entryPoints": [
+                  "wos command"
+                ],
+                "platformBehaviour": "Prints progress as it happens; exits with a documented code; resumes active leases after a restart.",
+                "nativeCapabilities": []
+              },
+              {
+                "key": "J-005",
+                "surface": "desktop",
+                "title": "In wOS Desktop: GitHub identity link",
+                "steps": [
+                  "Open wOS Desktop and sign in",
+                  "Open github identity link",
+                  "Complete the task and see its status in the activity pane"
+                ],
+                "entryPoints": [
+                  "Desktop sidebar"
+                ],
+                "platformBehaviour": "Keeps working while agents run; shows a clear state if the network drops and resumes on reconnect.",
+                "nativeCapabilities": []
+              },
+              {
+                "key": "J-006",
+                "surface": "web",
+                "title": "On waronsaas.com: GitHub identity link",
+                "steps": [
+                  "Open waronsaas.com",
+                  "Go to the page for github identity link",
+                  "Complete the task and see the result reflected"
+                ],
+                "entryPoints": [
+                  "site navigation"
+                ],
+                "platformBehaviour": "Responsive from phone to desktop width in every supported browser; no offline mode.",
+                "nativeCapabilities": []
+              }
+            ]
           },
           {
             "feature": "device-sessions",
@@ -405,7 +609,51 @@
               "INV-0003"
             ],
             "appNotes": "",
-            "phase": "core"
+            "phase": "core",
+            "surfaces": [
+              {
+                "surface": "cli",
+                "weightBp": 5000,
+                "weightRationale": "The CLI runs the same orchestrator as Desktop, so this weighs the same on both surfaces; power users and CI prefer the CLI."
+              },
+              {
+                "surface": "desktop",
+                "weightBp": 5000,
+                "weightRationale": "Desktop and CLI drive the same orchestrator, so contributors meet this equally on both; neither surface is primary."
+              }
+            ],
+            "journeys": [
+              {
+                "key": "J-007",
+                "surface": "cli",
+                "title": "From the wos CLI: Device sessions",
+                "steps": [
+                  "Run wos status to confirm readiness",
+                  "Run the wos command for device sessions",
+                  "Read the printed result and exit code"
+                ],
+                "entryPoints": [
+                  "wos command"
+                ],
+                "platformBehaviour": "Prints progress as it happens; exits with a documented code; resumes active leases after a restart.",
+                "nativeCapabilities": []
+              },
+              {
+                "key": "J-008",
+                "surface": "desktop",
+                "title": "In wOS Desktop: Device sessions",
+                "steps": [
+                  "Open wOS Desktop and sign in",
+                  "Open device sessions",
+                  "Complete the task and see its status in the activity pane"
+                ],
+                "entryPoints": [
+                  "Desktop sidebar"
+                ],
+                "platformBehaviour": "Keeps working while agents run; shows a clear state if the network drops and resumes on reconnect.",
+                "nativeCapabilities": []
+              }
+            ]
           },
           {
             "feature": "contributor-profile",
@@ -415,7 +663,51 @@
               "INV-0004"
             ],
             "appNotes": "",
-            "phase": "core"
+            "phase": "core",
+            "surfaces": [
+              {
+                "surface": "desktop",
+                "weightBp": 4000,
+                "weightRationale": "The desktop surface reaches fewer people for contributor-profile than web, but the journey must still work there end to end."
+              },
+              {
+                "surface": "web",
+                "weightBp": 6000,
+                "weightRationale": "Most contributors meet contributor-profile on the web surface first, so it carries the largest share of the feature's experience."
+              }
+            ],
+            "journeys": [
+              {
+                "key": "J-009",
+                "surface": "desktop",
+                "title": "In wOS Desktop: Contributor profile",
+                "steps": [
+                  "Open wOS Desktop and sign in",
+                  "Open contributor profile",
+                  "Complete the task and see its status in the activity pane"
+                ],
+                "entryPoints": [
+                  "Desktop sidebar"
+                ],
+                "platformBehaviour": "Keeps working while agents run; shows a clear state if the network drops and resumes on reconnect.",
+                "nativeCapabilities": []
+              },
+              {
+                "key": "J-010",
+                "surface": "web",
+                "title": "On waronsaas.com: Contributor profile",
+                "steps": [
+                  "Open waronsaas.com",
+                  "Go to the page for contributor profile",
+                  "Complete the task and see the result reflected"
+                ],
+                "entryPoints": [
+                  "site navigation"
+                ],
+                "platformBehaviour": "Responsive from phone to desktop width in every supported browser; no offline mode.",
+                "nativeCapabilities": []
+              }
+            ]
           }
         ]
       },
@@ -423,7 +715,7 @@
         "key": "planning",
         "title": "Roadmaps, catalog and contracts",
         "summary": "The consensus machinery: canonical roadmaps, the global catalog, feature contracts and build graphs.",
-        "weightBp": 2200,
+        "weightBp": 2000,
         "weightRationale": "The part of wOS nobody else offers and the V1 test depends on (roadmap consensus, contract consensus, a build graph); second only to the build pipeline.",
         "inventoryItems": [
           "INV-0005",
@@ -446,7 +738,31 @@
               "INV-0006"
             ],
             "appNotes": "",
-            "phase": "core"
+            "phase": "core",
+            "surfaces": [
+              {
+                "surface": "web",
+                "weightBp": 10000,
+                "weightRationale": "This feature is experienced only on the web surface in V1, so that surface carries the whole of its weight."
+              }
+            ],
+            "journeys": [
+              {
+                "key": "J-011",
+                "surface": "web",
+                "title": "On waronsaas.com: Feature catalog",
+                "steps": [
+                  "Open waronsaas.com",
+                  "Go to the page for feature catalog",
+                  "Complete the task and see the result reflected"
+                ],
+                "entryPoints": [
+                  "site navigation"
+                ],
+                "platformBehaviour": "Responsive from phone to desktop width in every supported browser; no offline mode.",
+                "nativeCapabilities": []
+              }
+            ]
           },
           {
             "feature": "roadmap-consensus",
@@ -458,7 +774,71 @@
               "INV-0009"
             ],
             "appNotes": "",
-            "phase": "core"
+            "phase": "core",
+            "surfaces": [
+              {
+                "surface": "cli",
+                "weightBp": 3000,
+                "weightRationale": "The cli surface reaches fewer people for roadmap-consensus than desktop, but the journey must still work there end to end."
+              },
+              {
+                "surface": "desktop",
+                "weightBp": 4000,
+                "weightRationale": "Most contributors meet roadmap-consensus on the desktop surface first, so it carries the largest share of the feature's experience."
+              },
+              {
+                "surface": "web",
+                "weightBp": 3000,
+                "weightRationale": "The web surface reaches fewer people for roadmap-consensus than desktop, but the journey must still work there end to end."
+              }
+            ],
+            "journeys": [
+              {
+                "key": "J-012",
+                "surface": "cli",
+                "title": "From the wos CLI: Roadmap consensus",
+                "steps": [
+                  "Run wos status to confirm readiness",
+                  "Run the wos command for roadmap consensus",
+                  "Read the printed result and exit code"
+                ],
+                "entryPoints": [
+                  "wos command"
+                ],
+                "platformBehaviour": "Prints progress as it happens; exits with a documented code; resumes active leases after a restart.",
+                "nativeCapabilities": []
+              },
+              {
+                "key": "J-013",
+                "surface": "desktop",
+                "title": "In wOS Desktop: Roadmap consensus",
+                "steps": [
+                  "Open wOS Desktop and sign in",
+                  "Open roadmap consensus",
+                  "Complete the task and see its status in the activity pane"
+                ],
+                "entryPoints": [
+                  "Desktop sidebar"
+                ],
+                "platformBehaviour": "Keeps working while agents run; shows a clear state if the network drops and resumes on reconnect.",
+                "nativeCapabilities": []
+              },
+              {
+                "key": "J-014",
+                "surface": "web",
+                "title": "On waronsaas.com: Roadmap consensus",
+                "steps": [
+                  "Open waronsaas.com",
+                  "Go to the page for roadmap consensus",
+                  "Complete the task and see the result reflected"
+                ],
+                "entryPoints": [
+                  "site navigation"
+                ],
+                "platformBehaviour": "Responsive from phone to desktop width in every supported browser; no offline mode.",
+                "nativeCapabilities": []
+              }
+            ]
           },
           {
             "feature": "feature-contract-consensus",
@@ -468,7 +848,51 @@
               "INV-0010"
             ],
             "appNotes": "",
-            "phase": "core"
+            "phase": "core",
+            "surfaces": [
+              {
+                "surface": "cli",
+                "weightBp": 5000,
+                "weightRationale": "The CLI runs the same orchestrator as Desktop, so this weighs the same on both surfaces; power users and CI prefer the CLI."
+              },
+              {
+                "surface": "desktop",
+                "weightBp": 5000,
+                "weightRationale": "Desktop and CLI drive the same orchestrator, so contributors meet this equally on both; neither surface is primary."
+              }
+            ],
+            "journeys": [
+              {
+                "key": "J-015",
+                "surface": "cli",
+                "title": "From the wos CLI: Feature contract consensus",
+                "steps": [
+                  "Run wos status to confirm readiness",
+                  "Run the wos command for feature contract consensus",
+                  "Read the printed result and exit code"
+                ],
+                "entryPoints": [
+                  "wos command"
+                ],
+                "platformBehaviour": "Prints progress as it happens; exits with a documented code; resumes active leases after a restart.",
+                "nativeCapabilities": []
+              },
+              {
+                "key": "J-016",
+                "surface": "desktop",
+                "title": "In wOS Desktop: Feature contract consensus",
+                "steps": [
+                  "Open wOS Desktop and sign in",
+                  "Open feature contract consensus",
+                  "Complete the task and see its status in the activity pane"
+                ],
+                "entryPoints": [
+                  "Desktop sidebar"
+                ],
+                "platformBehaviour": "Keeps working while agents run; shows a clear state if the network drops and resumes on reconnect.",
+                "nativeCapabilities": []
+              }
+            ]
           },
           {
             "feature": "build-graph-validation",
@@ -478,7 +902,51 @@
               "INV-0011"
             ],
             "appNotes": "",
-            "phase": "core"
+            "phase": "core",
+            "surfaces": [
+              {
+                "surface": "cli",
+                "weightBp": 5000,
+                "weightRationale": "The CLI runs the same orchestrator as Desktop, so this weighs the same on both surfaces; power users and CI prefer the CLI."
+              },
+              {
+                "surface": "desktop",
+                "weightBp": 5000,
+                "weightRationale": "Desktop and CLI drive the same orchestrator, so contributors meet this equally on both; neither surface is primary."
+              }
+            ],
+            "journeys": [
+              {
+                "key": "J-017",
+                "surface": "cli",
+                "title": "From the wos CLI: Build graph validation",
+                "steps": [
+                  "Run wos status to confirm readiness",
+                  "Run the wos command for build graph validation",
+                  "Read the printed result and exit code"
+                ],
+                "entryPoints": [
+                  "wos command"
+                ],
+                "platformBehaviour": "Prints progress as it happens; exits with a documented code; resumes active leases after a restart.",
+                "nativeCapabilities": []
+              },
+              {
+                "key": "J-018",
+                "surface": "desktop",
+                "title": "In wOS Desktop: Build graph validation",
+                "steps": [
+                  "Open wOS Desktop and sign in",
+                  "Open build graph validation",
+                  "Complete the task and see its status in the activity pane"
+                ],
+                "entryPoints": [
+                  "Desktop sidebar"
+                ],
+                "platformBehaviour": "Keeps working while agents run; shows a clear state if the network drops and resumes on reconnect.",
+                "nativeCapabilities": []
+              }
+            ]
           },
           {
             "feature": "proposals-and-resolution",
@@ -489,7 +957,51 @@
               "INV-0013"
             ],
             "appNotes": "",
-            "phase": "core"
+            "phase": "core",
+            "surfaces": [
+              {
+                "surface": "cli",
+                "weightBp": 5000,
+                "weightRationale": "The CLI runs the same orchestrator as Desktop, so this weighs the same on both surfaces; power users and CI prefer the CLI."
+              },
+              {
+                "surface": "desktop",
+                "weightBp": 5000,
+                "weightRationale": "Desktop and CLI drive the same orchestrator, so contributors meet this equally on both; neither surface is primary."
+              }
+            ],
+            "journeys": [
+              {
+                "key": "J-019",
+                "surface": "cli",
+                "title": "From the wos CLI: Proposals and resolution",
+                "steps": [
+                  "Run wos status to confirm readiness",
+                  "Run the wos command for proposals and resolution",
+                  "Read the printed result and exit code"
+                ],
+                "entryPoints": [
+                  "wos command"
+                ],
+                "platformBehaviour": "Prints progress as it happens; exits with a documented code; resumes active leases after a restart.",
+                "nativeCapabilities": []
+              },
+              {
+                "key": "J-020",
+                "surface": "desktop",
+                "title": "In wOS Desktop: Proposals and resolution",
+                "steps": [
+                  "Open wOS Desktop and sign in",
+                  "Open proposals and resolution",
+                  "Complete the task and see its status in the activity pane"
+                ],
+                "entryPoints": [
+                  "Desktop sidebar"
+                ],
+                "platformBehaviour": "Keeps working while agents run; shows a clear state if the network drops and resumes on reconnect.",
+                "nativeCapabilities": []
+              }
+            ]
           }
         ]
       },
@@ -497,7 +1009,7 @@
         "key": "pipeline",
         "title": "Build pipeline",
         "summary": "LEASE -> BUILD -> VERIFY -> REVIEW -> QUALIFY -> PR, shared by Desktop and CLI.",
-        "weightBp": 3200,
+        "weightBp": 2900,
         "weightRationale": "The core of the product and of the V1 integration test (steps 8 to 26); the most code, the most risk and the most security surface, so it carries the largest share.",
         "inventoryItems": [
           "INV-0014",
@@ -524,7 +1036,51 @@
               "INV-0018"
             ],
             "appNotes": "",
-            "phase": "core"
+            "phase": "core",
+            "surfaces": [
+              {
+                "surface": "cli",
+                "weightBp": 5000,
+                "weightRationale": "The CLI runs the same orchestrator as Desktop, so this weighs the same on both surfaces; power users and CI prefer the CLI."
+              },
+              {
+                "surface": "desktop",
+                "weightBp": 5000,
+                "weightRationale": "Desktop and CLI drive the same orchestrator, so contributors meet this equally on both; neither surface is primary."
+              }
+            ],
+            "journeys": [
+              {
+                "key": "J-021",
+                "surface": "cli",
+                "title": "From the wos CLI: Agent policy",
+                "steps": [
+                  "Run wos status to confirm readiness",
+                  "Run the wos command for agent policy",
+                  "Read the printed result and exit code"
+                ],
+                "entryPoints": [
+                  "wos command"
+                ],
+                "platformBehaviour": "Prints progress as it happens; exits with a documented code; resumes active leases after a restart.",
+                "nativeCapabilities": []
+              },
+              {
+                "key": "J-022",
+                "surface": "desktop",
+                "title": "In wOS Desktop: Agent policy",
+                "steps": [
+                  "Open wOS Desktop and sign in",
+                  "Open agent policy",
+                  "Complete the task and see its status in the activity pane"
+                ],
+                "entryPoints": [
+                  "Desktop sidebar"
+                ],
+                "platformBehaviour": "Keeps working while agents run; shows a clear state if the network drops and resumes on reconnect.",
+                "nativeCapabilities": []
+              }
+            ]
           },
           {
             "feature": "leases-and-locks",
@@ -534,7 +1090,51 @@
               "INV-0015"
             ],
             "appNotes": "",
-            "phase": "core"
+            "phase": "core",
+            "surfaces": [
+              {
+                "surface": "cli",
+                "weightBp": 5000,
+                "weightRationale": "The CLI runs the same orchestrator as Desktop, so this weighs the same on both surfaces; power users and CI prefer the CLI."
+              },
+              {
+                "surface": "desktop",
+                "weightBp": 5000,
+                "weightRationale": "Desktop and CLI drive the same orchestrator, so contributors meet this equally on both; neither surface is primary."
+              }
+            ],
+            "journeys": [
+              {
+                "key": "J-023",
+                "surface": "cli",
+                "title": "From the wos CLI: Leases and locks",
+                "steps": [
+                  "Run wos status to confirm readiness",
+                  "Run the wos command for leases and locks",
+                  "Read the printed result and exit code"
+                ],
+                "entryPoints": [
+                  "wos command"
+                ],
+                "platformBehaviour": "Prints progress as it happens; exits with a documented code; resumes active leases after a restart.",
+                "nativeCapabilities": []
+              },
+              {
+                "key": "J-024",
+                "surface": "desktop",
+                "title": "In wOS Desktop: Leases and locks",
+                "steps": [
+                  "Open wOS Desktop and sign in",
+                  "Open leases and locks",
+                  "Complete the task and see its status in the activity pane"
+                ],
+                "entryPoints": [
+                  "Desktop sidebar"
+                ],
+                "platformBehaviour": "Keeps working while agents run; shows a clear state if the network drops and resumes on reconnect.",
+                "nativeCapabilities": []
+              }
+            ]
           },
           {
             "feature": "context-engine",
@@ -544,7 +1144,51 @@
               "INV-0017"
             ],
             "appNotes": "",
-            "phase": "core"
+            "phase": "core",
+            "surfaces": [
+              {
+                "surface": "cli",
+                "weightBp": 5000,
+                "weightRationale": "The CLI runs the same orchestrator as Desktop, so this weighs the same on both surfaces; power users and CI prefer the CLI."
+              },
+              {
+                "surface": "desktop",
+                "weightBp": 5000,
+                "weightRationale": "Desktop and CLI drive the same orchestrator, so contributors meet this equally on both; neither surface is primary."
+              }
+            ],
+            "journeys": [
+              {
+                "key": "J-025",
+                "surface": "cli",
+                "title": "From the wos CLI: Context engine",
+                "steps": [
+                  "Run wos status to confirm readiness",
+                  "Run the wos command for context engine",
+                  "Read the printed result and exit code"
+                ],
+                "entryPoints": [
+                  "wos command"
+                ],
+                "platformBehaviour": "Prints progress as it happens; exits with a documented code; resumes active leases after a restart.",
+                "nativeCapabilities": []
+              },
+              {
+                "key": "J-026",
+                "surface": "desktop",
+                "title": "In wOS Desktop: Context engine",
+                "steps": [
+                  "Open wOS Desktop and sign in",
+                  "Open context engine",
+                  "Complete the task and see its status in the activity pane"
+                ],
+                "entryPoints": [
+                  "Desktop sidebar"
+                ],
+                "platformBehaviour": "Keeps working while agents run; shows a clear state if the network drops and resumes on reconnect.",
+                "nativeCapabilities": []
+              }
+            ]
           },
           {
             "feature": "local-orchestrator",
@@ -555,7 +1199,51 @@
               "INV-0019"
             ],
             "appNotes": "",
-            "phase": "core"
+            "phase": "core",
+            "surfaces": [
+              {
+                "surface": "cli",
+                "weightBp": 5000,
+                "weightRationale": "The CLI runs the same orchestrator as Desktop, so this weighs the same on both surfaces; power users and CI prefer the CLI."
+              },
+              {
+                "surface": "desktop",
+                "weightBp": 5000,
+                "weightRationale": "Desktop and CLI drive the same orchestrator, so contributors meet this equally on both; neither surface is primary."
+              }
+            ],
+            "journeys": [
+              {
+                "key": "J-027",
+                "surface": "cli",
+                "title": "From the wos CLI: Local orchestrator",
+                "steps": [
+                  "Run wos status to confirm readiness",
+                  "Run the wos command for local orchestrator",
+                  "Read the printed result and exit code"
+                ],
+                "entryPoints": [
+                  "wos command"
+                ],
+                "platformBehaviour": "Prints progress as it happens; exits with a documented code; resumes active leases after a restart.",
+                "nativeCapabilities": []
+              },
+              {
+                "key": "J-028",
+                "surface": "desktop",
+                "title": "In wOS Desktop: Local orchestrator",
+                "steps": [
+                  "Open wOS Desktop and sign in",
+                  "Open local orchestrator",
+                  "Complete the task and see its status in the activity pane"
+                ],
+                "entryPoints": [
+                  "Desktop sidebar"
+                ],
+                "platformBehaviour": "Keeps working while agents run; shows a clear state if the network drops and resumes on reconnect.",
+                "nativeCapabilities": []
+              }
+            ]
           },
           {
             "feature": "scope-verification",
@@ -566,7 +1254,51 @@
               "INV-0021"
             ],
             "appNotes": "",
-            "phase": "core"
+            "phase": "core",
+            "surfaces": [
+              {
+                "surface": "cli",
+                "weightBp": 5000,
+                "weightRationale": "The CLI runs the same orchestrator as Desktop, so this weighs the same on both surfaces; power users and CI prefer the CLI."
+              },
+              {
+                "surface": "desktop",
+                "weightBp": 5000,
+                "weightRationale": "Desktop and CLI drive the same orchestrator, so contributors meet this equally on both; neither surface is primary."
+              }
+            ],
+            "journeys": [
+              {
+                "key": "J-029",
+                "surface": "cli",
+                "title": "From the wos CLI: Scope verification",
+                "steps": [
+                  "Run wos status to confirm readiness",
+                  "Run the wos command for scope verification",
+                  "Read the printed result and exit code"
+                ],
+                "entryPoints": [
+                  "wos command"
+                ],
+                "platformBehaviour": "Prints progress as it happens; exits with a documented code; resumes active leases after a restart.",
+                "nativeCapabilities": []
+              },
+              {
+                "key": "J-030",
+                "surface": "desktop",
+                "title": "In wOS Desktop: Scope verification",
+                "steps": [
+                  "Open wOS Desktop and sign in",
+                  "Open scope verification",
+                  "Complete the task and see its status in the activity pane"
+                ],
+                "entryPoints": [
+                  "Desktop sidebar"
+                ],
+                "platformBehaviour": "Keeps working while agents run; shows a clear state if the network drops and resumes on reconnect.",
+                "nativeCapabilities": []
+              }
+            ]
           },
           {
             "feature": "review-rounds",
@@ -576,7 +1308,51 @@
               "INV-0022"
             ],
             "appNotes": "",
-            "phase": "core"
+            "phase": "core",
+            "surfaces": [
+              {
+                "surface": "cli",
+                "weightBp": 5000,
+                "weightRationale": "The CLI runs the same orchestrator as Desktop, so this weighs the same on both surfaces; power users and CI prefer the CLI."
+              },
+              {
+                "surface": "desktop",
+                "weightBp": 5000,
+                "weightRationale": "Desktop and CLI drive the same orchestrator, so contributors meet this equally on both; neither surface is primary."
+              }
+            ],
+            "journeys": [
+              {
+                "key": "J-031",
+                "surface": "cli",
+                "title": "From the wos CLI: Review rounds",
+                "steps": [
+                  "Run wos status to confirm readiness",
+                  "Run the wos command for review rounds",
+                  "Read the printed result and exit code"
+                ],
+                "entryPoints": [
+                  "wos command"
+                ],
+                "platformBehaviour": "Prints progress as it happens; exits with a documented code; resumes active leases after a restart.",
+                "nativeCapabilities": []
+              },
+              {
+                "key": "J-032",
+                "surface": "desktop",
+                "title": "In wOS Desktop: Review rounds",
+                "steps": [
+                  "Open wOS Desktop and sign in",
+                  "Open review rounds",
+                  "Complete the task and see its status in the activity pane"
+                ],
+                "entryPoints": [
+                  "Desktop sidebar"
+                ],
+                "platformBehaviour": "Keeps working while agents run; shows a clear state if the network drops and resumes on reconnect.",
+                "nativeCapabilities": []
+              }
+            ]
           },
           {
             "feature": "gated-pull-requests",
@@ -587,7 +1363,51 @@
               "INV-0024"
             ],
             "appNotes": "",
-            "phase": "core"
+            "phase": "core",
+            "surfaces": [
+              {
+                "surface": "cli",
+                "weightBp": 5000,
+                "weightRationale": "The CLI runs the same orchestrator as Desktop, so this weighs the same on both surfaces; power users and CI prefer the CLI."
+              },
+              {
+                "surface": "desktop",
+                "weightBp": 5000,
+                "weightRationale": "Desktop and CLI drive the same orchestrator, so contributors meet this equally on both; neither surface is primary."
+              }
+            ],
+            "journeys": [
+              {
+                "key": "J-033",
+                "surface": "cli",
+                "title": "From the wos CLI: Gated pull requests",
+                "steps": [
+                  "Run wos status to confirm readiness",
+                  "Run the wos command for gated pull requests",
+                  "Read the printed result and exit code"
+                ],
+                "entryPoints": [
+                  "wos command"
+                ],
+                "platformBehaviour": "Prints progress as it happens; exits with a documented code; resumes active leases after a restart.",
+                "nativeCapabilities": []
+              },
+              {
+                "key": "J-034",
+                "surface": "desktop",
+                "title": "In wOS Desktop: Gated pull requests",
+                "steps": [
+                  "Open wOS Desktop and sign in",
+                  "Open gated pull requests",
+                  "Complete the task and see its status in the activity pane"
+                ],
+                "entryPoints": [
+                  "Desktop sidebar"
+                ],
+                "platformBehaviour": "Keeps working while agents run; shows a clear state if the network drops and resumes on reconnect.",
+                "nativeCapabilities": []
+              }
+            ]
           },
           {
             "feature": "provenance-and-merge",
@@ -598,7 +1418,51 @@
               "INV-0026"
             ],
             "appNotes": "",
-            "phase": "core"
+            "phase": "core",
+            "surfaces": [
+              {
+                "surface": "cli",
+                "weightBp": 5000,
+                "weightRationale": "The CLI runs the same orchestrator as Desktop, so this weighs the same on both surfaces; power users and CI prefer the CLI."
+              },
+              {
+                "surface": "desktop",
+                "weightBp": 5000,
+                "weightRationale": "Desktop and CLI drive the same orchestrator, so contributors meet this equally on both; neither surface is primary."
+              }
+            ],
+            "journeys": [
+              {
+                "key": "J-035",
+                "surface": "cli",
+                "title": "From the wos CLI: Provenance and merge",
+                "steps": [
+                  "Run wos status to confirm readiness",
+                  "Run the wos command for provenance and merge",
+                  "Read the printed result and exit code"
+                ],
+                "entryPoints": [
+                  "wos command"
+                ],
+                "platformBehaviour": "Prints progress as it happens; exits with a documented code; resumes active leases after a restart.",
+                "nativeCapabilities": []
+              },
+              {
+                "key": "J-036",
+                "surface": "desktop",
+                "title": "In wOS Desktop: Provenance and merge",
+                "steps": [
+                  "Open wOS Desktop and sign in",
+                  "Open provenance and merge",
+                  "Complete the task and see its status in the activity pane"
+                ],
+                "entryPoints": [
+                  "Desktop sidebar"
+                ],
+                "platformBehaviour": "Keeps working while agents run; shows a clear state if the network drops and resumes on reconnect.",
+                "nativeCapabilities": []
+              }
+            ]
           }
         ]
       },
@@ -606,7 +1470,7 @@
         "key": "clients",
         "title": "Desktop and CLI",
         "summary": "The two contributor front ends over one orchestration.",
-        "weightBp": 1500,
+        "weightBp": 1400,
         "weightRationale": "Two full clients are required by the spec and Desktop carries signing and IPC security; large UI surface but thin logic, so below the pipeline and planning.",
         "inventoryItems": [
           "INV-0027",
@@ -623,7 +1487,31 @@
               "INV-0028"
             ],
             "appNotes": "",
-            "phase": "core"
+            "phase": "core",
+            "surfaces": [
+              {
+                "surface": "desktop",
+                "weightBp": 10000,
+                "weightRationale": "This feature is experienced only on the desktop surface in V1, so that surface carries the whole of its weight."
+              }
+            ],
+            "journeys": [
+              {
+                "key": "J-037",
+                "surface": "desktop",
+                "title": "In wOS Desktop: wOS Desktop",
+                "steps": [
+                  "Open wOS Desktop and sign in",
+                  "Open wos desktop",
+                  "Complete the task and see its status in the activity pane"
+                ],
+                "entryPoints": [
+                  "Desktop sidebar"
+                ],
+                "platformBehaviour": "Keeps working while agents run; shows a clear state if the network drops and resumes on reconnect.",
+                "nativeCapabilities": []
+              }
+            ]
           },
           {
             "feature": "wos-cli",
@@ -633,7 +1521,31 @@
               "INV-0029"
             ],
             "appNotes": "",
-            "phase": "core"
+            "phase": "core",
+            "surfaces": [
+              {
+                "surface": "cli",
+                "weightBp": 10000,
+                "weightRationale": "This feature is experienced only on the cli surface in V1, so that surface carries the whole of its weight."
+              }
+            ],
+            "journeys": [
+              {
+                "key": "J-038",
+                "surface": "cli",
+                "title": "From the wos CLI: wOS CLI",
+                "steps": [
+                  "Run wos status to confirm readiness",
+                  "Run the wos command for wos cli",
+                  "Read the printed result and exit code"
+                ],
+                "entryPoints": [
+                  "wos command"
+                ],
+                "platformBehaviour": "Prints progress as it happens; exits with a documented code; resumes active leases after a restart.",
+                "nativeCapabilities": []
+              }
+            ]
           }
         ]
       },
@@ -641,7 +1553,7 @@
         "key": "web",
         "title": "Public website",
         "summary": "The Sniper List and every public drilldown, from real data only.",
-        "weightBp": 1300,
+        "weightBp": 1200,
         "weightRationale": "A major V1 product per the spec, but it reads data the control plane already computes; the static site already exists, so the remaining work is switching to the API.",
         "inventoryItems": [
           "INV-0030",
@@ -660,7 +1572,31 @@
               "INV-0034"
             ],
             "appNotes": "",
-            "phase": "core"
+            "phase": "core",
+            "surfaces": [
+              {
+                "surface": "web",
+                "weightBp": 10000,
+                "weightRationale": "This feature is experienced only on the web surface in V1, so that surface carries the whole of its weight."
+              }
+            ],
+            "journeys": [
+              {
+                "key": "J-039",
+                "surface": "web",
+                "title": "On waronsaas.com: Sniper List site",
+                "steps": [
+                  "Open waronsaas.com",
+                  "Go to the page for sniper list site",
+                  "Complete the task and see the result reflected"
+                ],
+                "entryPoints": [
+                  "site navigation"
+                ],
+                "platformBehaviour": "Responsive from phone to desktop width in every supported browser; no offline mode.",
+                "nativeCapabilities": []
+              }
+            ]
           },
           {
             "feature": "progress-drilldown",
@@ -670,7 +1606,31 @@
               "INV-0031"
             ],
             "appNotes": "",
-            "phase": "core"
+            "phase": "core",
+            "surfaces": [
+              {
+                "surface": "web",
+                "weightBp": 10000,
+                "weightRationale": "This feature is experienced only on the web surface in V1, so that surface carries the whole of its weight."
+              }
+            ],
+            "journeys": [
+              {
+                "key": "J-040",
+                "surface": "web",
+                "title": "On waronsaas.com: Progress drilldown",
+                "steps": [
+                  "Open waronsaas.com",
+                  "Go to the page for progress drilldown",
+                  "Complete the task and see the result reflected"
+                ],
+                "entryPoints": [
+                  "site navigation"
+                ],
+                "platformBehaviour": "Responsive from phone to desktop width in every supported browser; no offline mode.",
+                "nativeCapabilities": []
+              }
+            ]
           },
           {
             "feature": "activity-and-profiles",
@@ -681,7 +1641,31 @@
               "INV-0033"
             ],
             "appNotes": "",
-            "phase": "core"
+            "phase": "core",
+            "surfaces": [
+              {
+                "surface": "web",
+                "weightBp": 10000,
+                "weightRationale": "This feature is experienced only on the web surface in V1, so that surface carries the whole of its weight."
+              }
+            ],
+            "journeys": [
+              {
+                "key": "J-041",
+                "surface": "web",
+                "title": "On waronsaas.com: Activity and profiles",
+                "steps": [
+                  "Open waronsaas.com",
+                  "Go to the page for activity and profiles",
+                  "Complete the task and see the result reflected"
+                ],
+                "entryPoints": [
+                  "site navigation"
+                ],
+                "platformBehaviour": "Responsive from phone to desktop width in every supported browser; no offline mode.",
+                "nativeCapabilities": []
+              }
+            ]
           }
         ]
       },
@@ -705,7 +1689,31 @@
               "INV-0035"
             ],
             "appNotes": "",
-            "phase": "core"
+            "phase": "core",
+            "surfaces": [
+              {
+                "surface": "web",
+                "weightBp": 10000,
+                "weightRationale": "This feature is experienced only on the web surface in V1, so that surface carries the whole of its weight."
+              }
+            ],
+            "journeys": [
+              {
+                "key": "J-042",
+                "surface": "web",
+                "title": "On waronsaas.com: Token ledger",
+                "steps": [
+                  "Open waronsaas.com",
+                  "Go to the page for token ledger",
+                  "Complete the task and see the result reflected"
+                ],
+                "entryPoints": [
+                  "site navigation"
+                ],
+                "platformBehaviour": "Responsive from phone to desktop width in every supported browser; no offline mode.",
+                "nativeCapabilities": []
+              }
+            ]
           },
           {
             "feature": "reward-rules",
@@ -716,7 +1724,31 @@
               "INV-0037"
             ],
             "appNotes": "",
-            "phase": "core"
+            "phase": "core",
+            "surfaces": [
+              {
+                "surface": "web",
+                "weightBp": 10000,
+                "weightRationale": "This feature is experienced only on the web surface in V1, so that surface carries the whole of its weight."
+              }
+            ],
+            "journeys": [
+              {
+                "key": "J-043",
+                "surface": "web",
+                "title": "On waronsaas.com: Reward rules",
+                "steps": [
+                  "Open waronsaas.com",
+                  "Go to the page for reward rules",
+                  "Complete the task and see the result reflected"
+                ],
+                "entryPoints": [
+                  "site navigation"
+                ],
+                "platformBehaviour": "Responsive from phone to desktop width in every supported browser; no offline mode.",
+                "nativeCapabilities": []
+              }
+            ]
           }
         ]
       },
@@ -741,7 +1773,31 @@
               "INV-0038"
             ],
             "appNotes": "",
-            "phase": "core"
+            "phase": "core",
+            "surfaces": [
+              {
+                "surface": "cli",
+                "weightBp": 10000,
+                "weightRationale": "This feature is experienced only on the cli surface in V1, so that surface carries the whole of its weight."
+              }
+            ],
+            "journeys": [
+              {
+                "key": "J-044",
+                "surface": "cli",
+                "title": "From the wos CLI: Ship gate and migrations",
+                "steps": [
+                  "Run wos status to confirm readiness",
+                  "Run the wos command for ship gate and migrations",
+                  "Read the printed result and exit code"
+                ],
+                "entryPoints": [
+                  "wos command"
+                ],
+                "platformBehaviour": "Prints progress as it happens; exits with a documented code; resumes active leases after a restart.",
+                "nativeCapabilities": []
+              }
+            ]
           },
           {
             "feature": "integration-and-e2e",
@@ -751,7 +1807,31 @@
               "INV-0039"
             ],
             "appNotes": "",
-            "phase": "core"
+            "phase": "core",
+            "surfaces": [
+              {
+                "surface": "cli",
+                "weightBp": 10000,
+                "weightRationale": "This feature is experienced only on the cli surface in V1, so that surface carries the whole of its weight."
+              }
+            ],
+            "journeys": [
+              {
+                "key": "J-045",
+                "surface": "cli",
+                "title": "From the wos CLI: Integration and end-to-end tests",
+                "steps": [
+                  "Run wos status to confirm readiness",
+                  "Run the wos command for integration and end-to-end tests",
+                  "Read the printed result and exit code"
+                ],
+                "entryPoints": [
+                  "wos command"
+                ],
+                "platformBehaviour": "Prints progress as it happens; exits with a documented code; resumes active leases after a restart.",
+                "nativeCapabilities": []
+              }
+            ]
           },
           {
             "feature": "security-hardening",
@@ -761,7 +1841,31 @@
               "INV-0040"
             ],
             "appNotes": "",
-            "phase": "core"
+            "phase": "core",
+            "surfaces": [
+              {
+                "surface": "cli",
+                "weightBp": 10000,
+                "weightRationale": "This feature is experienced only on the cli surface in V1, so that surface carries the whole of its weight."
+              }
+            ],
+            "journeys": [
+              {
+                "key": "J-046",
+                "surface": "cli",
+                "title": "From the wos CLI: Security hardening",
+                "steps": [
+                  "Run wos status to confirm readiness",
+                  "Run the wos command for security hardening",
+                  "Read the printed result and exit code"
+                ],
+                "entryPoints": [
+                  "wos command"
+                ],
+                "platformBehaviour": "Prints progress as it happens; exits with a documented code; resumes active leases after a restart.",
+                "nativeCapabilities": []
+              }
+            ]
           },
           {
             "feature": "transactional-email",
@@ -771,7 +1875,257 @@
               "INV-0041"
             ],
             "appNotes": "",
-            "phase": "core"
+            "phase": "core",
+            "surfaces": [
+              {
+                "surface": "web",
+                "weightBp": 10000,
+                "weightRationale": "This feature is experienced only on the web surface in V1, so that surface carries the whole of its weight."
+              }
+            ],
+            "journeys": [
+              {
+                "key": "J-047",
+                "surface": "web",
+                "title": "On waronsaas.com: Transactional email",
+                "steps": [
+                  "Open waronsaas.com",
+                  "Go to the page for transactional email",
+                  "Complete the task and see the result reflected"
+                ],
+                "entryPoints": [
+                  "site navigation"
+                ],
+                "platformBehaviour": "Responsive from phone to desktop width in every supported browser; no offline mode.",
+                "nativeCapabilities": []
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "key": "surfaces",
+        "title": "Multi-surface building",
+        "summary": "What wOS needs to build replacements on every surface: multi-repo graphs, toolchain eligibility, native CI, per-surface acceptance and mobile signing (D13).",
+        "weightBp": 700,
+        "weightRationale": "Needed before any mobile or cross-browser work can be built, but mostly configuration around the pipeline; a share just above rewards and operations.",
+        "inventoryItems": [
+          "INV-0042",
+          "INV-0043",
+          "INV-0044",
+          "INV-0045",
+          "INV-0046"
+        ],
+        "features": [
+          {
+            "feature": "multi-repo-products",
+            "weightBp": 2000,
+            "weightRationale": "A schema and routing change more than new machinery, since ABUs already carry a repository; a modest share.",
+            "inventoryItems": [
+              "INV-0042"
+            ],
+            "appNotes": "",
+            "phase": "core",
+            "surfaces": [
+              {
+                "surface": "cli",
+                "weightBp": 5000,
+                "weightRationale": "The CLI runs the same orchestrator as Desktop, so this weighs the same on both surfaces; power users and CI prefer the CLI."
+              },
+              {
+                "surface": "desktop",
+                "weightBp": 5000,
+                "weightRationale": "Desktop and CLI drive the same orchestrator, so contributors meet this equally on both; neither surface is primary."
+              }
+            ],
+            "journeys": [
+              {
+                "key": "J-048",
+                "surface": "cli",
+                "title": "From the wos CLI: Multi-repo products",
+                "steps": [
+                  "Run wos status to confirm readiness",
+                  "Run the wos command for multi-repo products",
+                  "Read the printed result and exit code"
+                ],
+                "entryPoints": [
+                  "wos command"
+                ],
+                "platformBehaviour": "Prints progress as it happens; exits with a documented code; resumes active leases after a restart.",
+                "nativeCapabilities": []
+              },
+              {
+                "key": "J-049",
+                "surface": "desktop",
+                "title": "In wOS Desktop: Multi-repo products",
+                "steps": [
+                  "Open wOS Desktop and sign in",
+                  "Open multi-repo products",
+                  "Complete the task and see its status in the activity pane"
+                ],
+                "entryPoints": [
+                  "Desktop sidebar"
+                ],
+                "platformBehaviour": "Keeps working while agents run; shows a clear state if the network drops and resumes on reconnect.",
+                "nativeCapabilities": []
+              }
+            ]
+          },
+          {
+            "feature": "toolchain-eligibility",
+            "weightBp": 2500,
+            "weightRationale": "Stops a Linux contributor from claiming native work they cannot build; touches eligibility, attestation and claims, so the largest share.",
+            "inventoryItems": [
+              "INV-0043"
+            ],
+            "appNotes": "",
+            "phase": "core",
+            "surfaces": [
+              {
+                "surface": "cli",
+                "weightBp": 5000,
+                "weightRationale": "The CLI runs the same orchestrator as Desktop, so this weighs the same on both surfaces; power users and CI prefer the CLI."
+              },
+              {
+                "surface": "desktop",
+                "weightBp": 5000,
+                "weightRationale": "Desktop and CLI drive the same orchestrator, so contributors meet this equally on both; neither surface is primary."
+              }
+            ],
+            "journeys": [
+              {
+                "key": "J-050",
+                "surface": "cli",
+                "title": "From the wos CLI: Toolchain eligibility",
+                "steps": [
+                  "Run wos status to confirm readiness",
+                  "Run the wos command for toolchain eligibility",
+                  "Read the printed result and exit code"
+                ],
+                "entryPoints": [
+                  "wos command"
+                ],
+                "platformBehaviour": "Prints progress as it happens; exits with a documented code; resumes active leases after a restart.",
+                "nativeCapabilities": []
+              },
+              {
+                "key": "J-051",
+                "surface": "desktop",
+                "title": "In wOS Desktop: Toolchain eligibility",
+                "steps": [
+                  "Open wOS Desktop and sign in",
+                  "Open toolchain eligibility",
+                  "Complete the task and see its status in the activity pane"
+                ],
+                "entryPoints": [
+                  "Desktop sidebar"
+                ],
+                "platformBehaviour": "Keeps working while agents run; shows a clear state if the network drops and resumes on reconnect.",
+                "nativeCapabilities": []
+              }
+            ]
+          },
+          {
+            "feature": "native-ci-runners",
+            "weightBp": 1500,
+            "weightRationale": "Workflow configuration plus a cost budget for macOS minutes; small but must be right to keep costs down.",
+            "inventoryItems": [
+              "INV-0044"
+            ],
+            "appNotes": "",
+            "phase": "core",
+            "surfaces": [
+              {
+                "surface": "cli",
+                "weightBp": 10000,
+                "weightRationale": "This feature is experienced only on the cli surface in V1, so that surface carries the whole of its weight."
+              }
+            ],
+            "journeys": [
+              {
+                "key": "J-052",
+                "surface": "cli",
+                "title": "From the wos CLI: Native CI runners",
+                "steps": [
+                  "Run wos status to confirm readiness",
+                  "Run the wos command for native ci runners",
+                  "Read the printed result and exit code"
+                ],
+                "entryPoints": [
+                  "wos command"
+                ],
+                "platformBehaviour": "Prints progress as it happens; exits with a documented code; resumes active leases after a restart.",
+                "nativeCapabilities": []
+              }
+            ]
+          },
+          {
+            "feature": "per-surface-acceptance",
+            "weightBp": 2500,
+            "weightRationale": "Browser-matrix and mobile flow checks decide when a feature is BUILT per surface; as heavy as toolchain eligibility.",
+            "inventoryItems": [
+              "INV-0045"
+            ],
+            "appNotes": "",
+            "phase": "core",
+            "surfaces": [
+              {
+                "surface": "cli",
+                "weightBp": 10000,
+                "weightRationale": "This feature is experienced only on the cli surface in V1, so that surface carries the whole of its weight."
+              }
+            ],
+            "journeys": [
+              {
+                "key": "J-053",
+                "surface": "cli",
+                "title": "From the wos CLI: Per-surface acceptance",
+                "steps": [
+                  "Run wos status to confirm readiness",
+                  "Run the wos command for per-surface acceptance",
+                  "Read the printed result and exit code"
+                ],
+                "entryPoints": [
+                  "wos command"
+                ],
+                "platformBehaviour": "Prints progress as it happens; exits with a documented code; resumes active leases after a restart.",
+                "nativeCapabilities": []
+              }
+            ]
+          },
+          {
+            "feature": "mobile-app-signing",
+            "weightBp": 1500,
+            "weightRationale": "CI-only signing with separate credentials is mostly setup work, needed only once the first mobile app ships.",
+            "inventoryItems": [
+              "INV-0046"
+            ],
+            "appNotes": "",
+            "phase": "later",
+            "surfaces": [
+              {
+                "surface": "cli",
+                "weightBp": 10000,
+                "weightRationale": "This feature is experienced only on the cli surface in V1, so that surface carries the whole of its weight."
+              }
+            ],
+            "journeys": [
+              {
+                "key": "J-054",
+                "surface": "cli",
+                "title": "From the wos CLI: Mobile app signing",
+                "steps": [
+                  "Run wos status to confirm readiness",
+                  "Run the wos command for mobile app signing",
+                  "Read the printed result and exit code"
+                ],
+                "entryPoints": [
+                  "wos command"
+                ],
+                "platformBehaviour": "Prints progress as it happens; exits with a documented code; resumes active leases after a restart.",
+                "nativeCapabilities": []
+              }
+            ]
           }
         ]
       }
@@ -792,6 +2146,10 @@
       "leases-and-locks",
       "local-orchestrator",
       "magic-link-sign-in",
+      "mobile-app-signing",
+      "multi-repo-products",
+      "native-ci-runners",
+      "per-surface-acceptance",
       "progress-drilldown",
       "proposals-and-resolution",
       "provenance-and-merge",
@@ -803,11 +2161,35 @@
       "ship-gate-and-migrations",
       "sniper-list-site",
       "token-ledger",
+      "toolchain-eligibility",
       "transactional-email",
       "wos-cli",
       "wos-desktop"
     ],
-    "proposals": []
+    "proposals": [],
+    "surfaces": [
+      {
+        "surface": "web",
+        "status": "in_scope",
+        "reason": null,
+        "repo": "waronsaas/wos",
+        "path": "apps/web"
+      },
+      {
+        "surface": "desktop",
+        "status": "in_scope",
+        "reason": null,
+        "repo": "waronsaas/wos",
+        "path": "apps/desktop"
+      },
+      {
+        "surface": "cli",
+        "status": "in_scope",
+        "reason": null,
+        "repo": "waronsaas/wos",
+        "path": "apps/cli"
+      }
+    ]
   },
   "catalog": [
     {
@@ -910,6 +2292,34 @@
     },
     {
       "schema": "wos-catalog-entry.v1",
+      "key": "mobile-app-signing",
+      "title": "Mobile app signing",
+      "summary": "CI-only signing and delivery of iOS and Android builds with credentials separate from other apps.",
+      "aliasOf": null
+    },
+    {
+      "schema": "wos-catalog-entry.v1",
+      "key": "multi-repo-products",
+      "title": "Multi-repo products",
+      "summary": "Build graphs whose units live in several repositories of one family, each unit in exactly one repository.",
+      "aliasOf": null
+    },
+    {
+      "schema": "wos-catalog-entry.v1",
+      "key": "native-ci-runners",
+      "title": "Native CI runners",
+      "summary": "Linux runners for everything except native builds and end-to-end checks, which run on macOS runners.",
+      "aliasOf": null
+    },
+    {
+      "schema": "wos-catalog-entry.v1",
+      "key": "per-surface-acceptance",
+      "title": "Per-surface acceptance",
+      "summary": "Journey acceptance checks per surface: browser-matrix web tests and mobile flow tests.",
+      "aliasOf": null
+    },
+    {
+      "schema": "wos-catalog-entry.v1",
       "key": "progress-drilldown",
       "title": "Progress drilldown",
       "summary": "Public pages from application to capability, feature, requirement, unit and PR, with traceable numbers.",
@@ -987,6 +2397,13 @@
     },
     {
       "schema": "wos-catalog-entry.v1",
+      "key": "toolchain-eligibility",
+      "title": "Toolchain eligibility",
+      "summary": "Path-based toolchain requirements per repository matched against attested contributor toolchains at claim time.",
+      "aliasOf": null
+    },
+    {
+      "schema": "wos-catalog-entry.v1",
       "key": "transactional-email",
       "title": "Transactional email",
       "summary": "Sign-in and notification email from a sending subdomain with SPF, DKIM and DMARC.",
@@ -1017,6 +2434,9 @@
           "statement": "Activity MUST show only public events and profiles MUST show scores only for opted-in contributors.",
           "acceptance": [
             "A contributor who did not opt in has no score on their profile."
+          ],
+          "surfaces": [
+            "web"
           ]
         }
       ]
@@ -1030,6 +2450,10 @@
           "statement": "Each role MUST specify allowed models, required reasoning, sandbox, tools, budget, lease timing, independence and obligations as data.",
           "acceptance": [
             "The policy document parses against its schema."
+          ],
+          "surfaces": [
+            "cli",
+            "desktop"
           ]
         },
         {
@@ -1038,6 +2462,10 @@
           "statement": "Eligibility MUST refuse a reviewer who authored the subject or holds the other slot of the round, except under labelled bootstrap rules.",
           "acceptance": [
             "An author claiming a review of their own attempt is refused."
+          ],
+          "surfaces": [
+            "cli",
+            "desktop"
           ]
         }
       ]
@@ -1051,6 +2479,10 @@
           "statement": "The validator MUST reject cycles, uncovered requirements, parallel ABUs with overlapping write scopes or exclusive resources, and ABUs over the builder context budget.",
           "acceptance": [
             "Each rejection is reported with its error code and ABU key."
+          ],
+          "surfaces": [
+            "cli",
+            "desktop"
           ]
         }
       ]
@@ -1064,6 +2496,10 @@
           "statement": "The same context plan and snapshot MUST produce a byte-identical prompt and manifest.",
           "acceptance": [
             "Two runs over the same inputs produce the same manifest sha256."
+          ],
+          "surfaces": [
+            "cli",
+            "desktop"
           ]
         },
         {
@@ -1072,6 +2508,10 @@
           "statement": "A reviewer's context MUST NOT include the other slot's verdict for the current round.",
           "acceptance": [
             "Manifests of both reviewers of a round contain no reference to the other's verdict."
+          ],
+          "surfaces": [
+            "cli",
+            "desktop"
           ]
         }
       ]
@@ -1085,6 +2525,10 @@
           "statement": "A contributor MUST be able to see their contributions, token history and leaderboard opt-in, and change the opt-in.",
           "acceptance": [
             "Toggling opt-in adds or removes the contributor from the public leaderboard."
+          ],
+          "surfaces": [
+            "desktop",
+            "web"
           ]
         }
       ]
@@ -1098,6 +2542,10 @@
           "statement": "Refresh tokens MUST rotate on use and reuse of a rotated token MUST revoke the whole session family.",
           "acceptance": [
             "Replaying an old refresh token revokes every session in the family."
+          ],
+          "surfaces": [
+            "cli",
+            "desktop"
           ]
         },
         {
@@ -1106,6 +2554,10 @@
           "statement": "Desktop and CLI MUST store the session only in the OS keychain.",
           "acceptance": [
             "No session material is written to plain files."
+          ],
+          "surfaces": [
+            "cli",
+            "desktop"
           ]
         }
       ]
@@ -1119,6 +2571,9 @@
           "statement": "Every roadmap feature reference MUST resolve to exactly one active catalog feature.",
           "acceptance": [
             "A roadmap referencing an unknown or aliased feature fails validation."
+          ],
+          "surfaces": [
+            "web"
           ]
         },
         {
@@ -1127,6 +2582,9 @@
           "statement": "A duplicate catalog feature MUST be mergeable into another by an alias change that carries its requirements and profiles.",
           "acceptance": [
             "After an alias merge, apps that referenced the duplicate show the target feature."
+          ],
+          "surfaces": [
+            "web"
           ]
         }
       ]
@@ -1140,6 +2598,10 @@
           "statement": "A feature contract MUST contain one requirement profile per app that references the feature and has been specified.",
           "acceptance": [
             "Salesforce and HubSpot profiles can list different requirement ids of one contract."
+          ],
+          "surfaces": [
+            "cli",
+            "desktop"
           ]
         },
         {
@@ -1148,6 +2610,10 @@
           "statement": "A new version of a shared contract MUST list every impacted app, and reviewers MUST receive those apps' profiles.",
           "acceptance": [
             "A version without impactedTargets fails validation."
+          ],
+          "surfaces": [
+            "cli",
+            "desktop"
           ]
         }
       ]
@@ -1161,6 +2627,10 @@
           "statement": "Only the wOS GitHub App MUST open official PRs, and only after qualification succeeded.",
           "acceptance": [
             "A PR opened by any other author is closed automatically."
+          ],
+          "surfaces": [
+            "cli",
+            "desktop"
           ]
         },
         {
@@ -1169,6 +2639,10 @@
           "statement": "The App MUST build commits from validated submissions via the Git Data API with a Co-authored-by trailer for the contributor.",
           "acceptance": [
             "The PR commit's tree equals the reviewed candidate tree."
+          ],
+          "surfaces": [
+            "cli",
+            "desktop"
           ]
         }
       ]
@@ -1182,6 +2656,11 @@
           "statement": "An account MUST link at most one GitHub identity, and a GitHub identity MUST be linked to at most one account.",
           "acceptance": [
             "Linking a GitHub already linked elsewhere returns GITHUB_LINKED_ELSEWHERE."
+          ],
+          "surfaces": [
+            "cli",
+            "desktop",
+            "web"
           ]
         },
         {
@@ -1191,6 +2670,11 @@
           "acceptance": [
             "Unlink during an active lease returns 409.",
             "Linking a reserved identity to another account returns GITHUB_RESERVED."
+          ],
+          "surfaces": [
+            "cli",
+            "desktop",
+            "web"
           ]
         }
       ]
@@ -1204,6 +2688,9 @@
           "statement": "The end-to-end suite MUST run two builders on independent ABUs of one feature at the same time without conflicts.",
           "acceptance": [
             "Both attempts reach pr_open and merge cleanly."
+          ],
+          "surfaces": [
+            "cli"
           ]
         }
       ]
@@ -1217,6 +2704,10 @@
           "statement": "A task MUST have at most one active lease, and leases MUST expire when heartbeats stop.",
           "acceptance": [
             "A lease without heartbeats expires after its TTL and the task reopens."
+          ],
+          "surfaces": [
+            "cli",
+            "desktop"
           ]
         },
         {
@@ -1225,6 +2716,10 @@
           "statement": "Two ABUs MUST NOT be in progress at once when their write scopes overlap or they claim the same exclusive resource.",
           "acceptance": [
             "Claiming an ABU whose scope overlaps a live attempt returns RESOURCE_LOCKED."
+          ],
+          "surfaces": [
+            "cli",
+            "desktop"
           ]
         }
       ]
@@ -1238,6 +2733,10 @@
           "statement": "Desktop and CLI MUST drive every workflow through the same orchestrator interface.",
           "acceptance": [
             "The CLI and Desktop produce identical event streams for the same fake run."
+          ],
+          "surfaces": [
+            "cli",
+            "desktop"
           ]
         },
         {
@@ -1246,6 +2745,10 @@
           "statement": "The orchestrator MUST launch claude and codex with the model, reasoning and restrictions the Agent Policy requires.",
           "acceptance": [
             "describeInvocation output matches the policy for every role."
+          ],
+          "surfaces": [
+            "cli",
+            "desktop"
           ]
         }
       ]
@@ -1260,6 +2763,11 @@
           "acceptance": [
             "Redeeming the same link twice fails the second time.",
             "A token older than 15 minutes is rejected."
+          ],
+          "surfaces": [
+            "cli",
+            "desktop",
+            "web"
           ]
         },
         {
@@ -1268,6 +2776,11 @@
           "statement": "Redemption MUST require the poll secret held by the client that started the sign-in.",
           "acceptance": [
             "A link opened by a different client cannot complete another client's sign-in."
+          ],
+          "surfaces": [
+            "cli",
+            "desktop",
+            "web"
           ]
         },
         {
@@ -1277,6 +2790,87 @@
           "acceptance": [
             "Responses for known and unknown emails are byte-identical apart from ids.",
             "The sixth start for one email within an hour is refused."
+          ],
+          "surfaces": [
+            "cli",
+            "desktop",
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "feature": "mobile-app-signing",
+      "requirements": [
+        {
+          "key": "R-001",
+          "kind": "security",
+          "statement": "Mobile signing credentials MUST exist only in the CI release environment and MUST be separate from wOS Desktop's signing identity.",
+          "acceptance": [
+            "No workflow outside the release environment can read the signing secrets."
+          ],
+          "surfaces": [
+            "cli"
+          ]
+        }
+      ]
+    },
+    {
+      "feature": "multi-repo-products",
+      "requirements": [
+        {
+          "key": "R-001",
+          "kind": "data",
+          "statement": "Every ABU MUST name exactly one repository, and a build graph MAY span repositories of the same family with dependencies by global ABU key.",
+          "acceptance": [
+            "An ABU in a repository outside its contract's family is rejected by the database."
+          ],
+          "surfaces": [
+            "cli",
+            "desktop"
+          ]
+        }
+      ]
+    },
+    {
+      "feature": "native-ci-runners",
+      "requirements": [
+        {
+          "key": "R-001",
+          "kind": "operability",
+          "statement": "Only checks that need native builds MUST run on macOS runners; typecheck, lint and unit tests MUST run on Linux.",
+          "acceptance": [
+            "The workflow's macOS jobs are limited to native build and end-to-end steps."
+          ],
+          "surfaces": [
+            "cli"
+          ]
+        }
+      ]
+    },
+    {
+      "feature": "per-surface-acceptance",
+      "requirements": [
+        {
+          "key": "R-001",
+          "kind": "functional",
+          "statement": "Each profile MUST have one acceptance check per surface named wos-acceptance/<feature>/<target>/<surface>, and web acceptance MUST run the full browser matrix.",
+          "acceptance": [
+            "A web acceptance run missing Firefox fails validation."
+          ],
+          "surfaces": [
+            "cli"
+          ]
+        },
+        {
+          "key": "R-002",
+          "kind": "functional",
+          "statement": "A feature MUST NOT count as BUILT on a surface until that surface's acceptance check passed on the default branch.",
+          "acceptance": [
+            "An iOS pass does not complete Android."
+          ],
+          "surfaces": [
+            "cli"
           ]
         }
       ]
@@ -1290,6 +2884,9 @@
           "statement": "Every percentage MUST link to the weights and records it was computed from.",
           "acceptance": [
             "From any app percentage a visitor can reach the PRs behind it."
+          ],
+          "surfaces": [
+            "web"
           ]
         }
       ]
@@ -1303,6 +2900,10 @@
           "statement": "wos propose MUST record a proposal that the next author round sees and answers.",
           "acceptance": [
             "An accepted proposal appears in the next revision's proposals list."
+          ],
+          "surfaces": [
+            "cli",
+            "desktop"
           ]
         },
         {
@@ -1311,6 +2912,10 @@
           "statement": "An escalated finding MUST be ruled upheld or overruled by a resolver and confirmed by a maintainer before the workflow continues.",
           "acceptance": [
             "An unconfirmed ruling keeps the document escalated."
+          ],
+          "surfaces": [
+            "cli",
+            "desktop"
           ]
         }
       ]
@@ -1324,6 +2929,10 @@
           "statement": "Every official PR MUST have a provenance record naming builders, reviewers, models, reasoning, manifests and CI results.",
           "acceptance": [
             "The provenance record hash is shown in the PR body."
+          ],
+          "surfaces": [
+            "cli",
+            "desktop"
           ]
         },
         {
@@ -1332,6 +2941,10 @@
           "statement": "A merge MUST mark the ABU merged, unlock dependents and trigger progress recomputation.",
           "acceptance": [
             "A dependent ABU becomes ready after its last dependency merges."
+          ],
+          "surfaces": [
+            "cli",
+            "desktop"
           ]
         }
       ]
@@ -1345,6 +2958,10 @@
           "statement": "Verdicts MUST stay sealed until both slots have submitted, then be revealed atomically.",
           "acceptance": [
             "A reviewer cannot read the other slot's verdict before reveal."
+          ],
+          "surfaces": [
+            "cli",
+            "desktop"
           ]
         },
         {
@@ -1353,6 +2970,10 @@
           "statement": "Verdicts MUST be bound to the reviewed head sha and submission hash.",
           "acceptance": [
             "A verdict for a different head sha is rejected."
+          ],
+          "surfaces": [
+            "cli",
+            "desktop"
           ]
         }
       ]
@@ -1366,6 +2987,9 @@
           "statement": "Accepted work MUST earn tokens exactly once per unit, never for merely opening a PR.",
           "acceptance": [
             "Replaying the same acceptance event writes no second award."
+          ],
+          "surfaces": [
+            "web"
           ]
         },
         {
@@ -1374,6 +2998,9 @@
           "statement": "A per-app completion pool MUST fire when that app's profile of a feature is complete.",
           "acceptance": [
             "Completing HubSpot's profile of a shared feature does not fire Salesforce's pool."
+          ],
+          "surfaces": [
+            "web"
           ]
         }
       ]
@@ -1387,6 +3014,11 @@
           "statement": "There MUST be at most one open roadmap workflow per application.",
           "acceptance": [
             "Opening a second roadmap for the same app returns 409."
+          ],
+          "surfaces": [
+            "cli",
+            "desktop",
+            "web"
           ]
         },
         {
@@ -1395,6 +3027,11 @@
           "statement": "A roadmap MUST reach consensus only when both reviewer slots return NO_MATERIAL_GAPS on the same head sha in the same round.",
           "acceptance": [
             "One MATERIAL_GAPS verdict sends the roadmap back to revision."
+          ],
+          "surfaces": [
+            "cli",
+            "desktop",
+            "web"
           ]
         },
         {
@@ -1403,6 +3040,11 @@
           "statement": "Every capability and feature MUST carry a weight with a written rationale, and weights MUST sum to 10000 at each level.",
           "acceptance": [
             "A roadmap missing a rationale or with wrong sums fails schema validation."
+          ],
+          "surfaces": [
+            "cli",
+            "desktop",
+            "web"
           ]
         }
       ]
@@ -1416,6 +3058,10 @@
           "statement": "Submissions touching protected, generated, workflow or symlink paths, or lockfiles and migrations without the declared resource, MUST be rejected.",
           "acceptance": [
             "Each forbidden case is rejected with its error code."
+          ],
+          "surfaces": [
+            "cli",
+            "desktop"
           ]
         }
       ]
@@ -1429,6 +3075,9 @@
           "statement": "The test suite MUST attempt modified-client submissions, fabricated verdicts, self-review and path escapes, and each MUST be refused.",
           "acceptance": [
             "Every adversarial case in SECURITY.md has a test that fails if the defence is removed."
+          ],
+          "surfaces": [
+            "cli"
           ]
         }
       ]
@@ -1442,6 +3091,9 @@
           "statement": "Production MUST be migrated only by the ship gate, which refuses a dirty tree, an unpushed commit or red CI.",
           "acceptance": [
             "Running the gate with a dirty tree exits non-zero before migrating."
+          ],
+          "surfaces": [
+            "cli"
           ]
         }
       ]
@@ -1455,6 +3107,9 @@
           "statement": "The site MUST show MAPPED, SPECIFIED and BUILT for every target from live data, and 0% when nothing exists.",
           "acceptance": [
             "No target shows a number that the API does not return."
+          ],
+          "surfaces": [
+            "web"
           ]
         }
       ]
@@ -1468,6 +3123,27 @@
           "statement": "Ledger entries MUST be append-only and hash-chained, and balances MUST be derived, never stored.",
           "acceptance": [
             "UPDATE and DELETE on the ledger fail for every role."
+          ],
+          "surfaces": [
+            "web"
+          ]
+        }
+      ]
+    },
+    {
+      "feature": "toolchain-eligibility",
+      "requirements": [
+        {
+          "key": "R-001",
+          "kind": "functional",
+          "statement": "A claim of an ABU whose write scope touches a repo's toolchain-requirement paths MUST be refused unless the device's latest toolchain attestation satisfies that requirement.",
+          "acceptance": [
+            "A Linux device cannot claim an ABU writing apps/mobile/ios/**.",
+            "The same device can claim a JS-only mobile ABU."
+          ],
+          "surfaces": [
+            "cli",
+            "desktop"
           ]
         }
       ]
@@ -1481,6 +3157,9 @@
           "statement": "Mail MUST be sent from a subdomain with SPF, DKIM and DMARC, leaving the apex MX untouched.",
           "acceptance": [
             "Sign-in mail passes DMARC alignment in a Gmail inbox."
+          ],
+          "surfaces": [
+            "web"
           ]
         }
       ]
@@ -1494,6 +3173,9 @@
           "statement": "The CLI MUST provide wos build, roadmap, propose, resolve, review and status over the shared orchestrator.",
           "acceptance": [
             "Each command appears in wos --help and calls the orchestrator."
+          ],
+          "surfaces": [
+            "cli"
           ]
         }
       ]
@@ -1507,6 +3189,9 @@
           "statement": "The renderer MUST run sandboxed with context isolation and no Node access; privileged work MUST happen in the main process.",
           "acceptance": [
             "window.require and process are undefined in the renderer."
+          ],
+          "surfaces": [
+            "desktop"
           ]
         },
         {
@@ -1515,6 +3200,9 @@
           "statement": "A contributor MUST be able to sign in, pick Salesforce -> CRM -> a feature -> an eligible ABU, and press BUILD.",
           "acceptance": [
             "The BUILD button starts the shared orchestrator and streams its events."
+          ],
+          "surfaces": [
+            "desktop"
           ]
         }
       ]

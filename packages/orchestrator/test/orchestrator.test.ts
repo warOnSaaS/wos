@@ -248,7 +248,7 @@ describe("api client", () => {
     const r = await h
       .make("cli")
       .propose({ target: TARGET, feature: null, title: "Add a contacts export", body: "Contacts should export to CSV like Salesforce." });
-    expect(r.issueUrl).toBe("https://github.com/waronsaas/suite/issues/1");
+    expect(r.issueUrl).toBe("https://github.com/waronsaas/product/issues/1");
     expect(h.server.calls.at(-1)).toMatchObject({ route: "createProposal" });
     expect(h.server.calls.at(-1)!.idempotencyKey).toMatch(/^[0-9a-f-]{36}$/);
   });

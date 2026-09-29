@@ -17,14 +17,14 @@
 #   WOS_SHIP_CI_CMD       prints GitHub check-runs JSON for the sha in $WOS_SHIP_SHA
 #   WOS_SHIP_MIGRATE_CMD  called as `<cmd> check` then `<cmd> apply`
 #   WOS_SHIP_DEPLOY_CMD   called once to deploy
-# Configuration: WOS_SHIP_BRANCH (main), WOS_SHIP_REMOTE (origin), WOS_SHIP_REPO (waronsaas/waronsaas),
+# Configuration: WOS_SHIP_BRANCH (main), WOS_SHIP_REMOTE (origin), WOS_SHIP_REPO (waronsaas/wos),
 #   WOS_SHIP_REQUIRED_CHECKS ('|'-separated check-run names; default: the jobs of .github/workflows/ci.yml).
 set -euo pipefail
 
 REQUIRED_AUTHOR="adventurini <anthonydventurini@gmail.com>"
 BRANCH="${WOS_SHIP_BRANCH:-main}"
 REMOTE="${WOS_SHIP_REMOTE:-origin}"
-REPO="${WOS_SHIP_REPO:-waronsaas/waronsaas}"
+REPO="${WOS_SHIP_REPO:-waronsaas/wos}"
 REQUIRED_CHECKS="${WOS_SHIP_REQUIRED_CHECKS:-typecheck, lint, test|db:test|adversarial db suite}"
 DRY_RUN=0
 for arg in "$@"; do

@@ -13,7 +13,7 @@ Round mechanics are in REVIEW-PROTOCOL.md; the lifecycle table in ROADMAP-PROTOC
 
 ## 1. One contract per catalog feature (D10)
 
-- The Feature Catalog is global and app-independent: `catalog/<key>.yaml` in `waronsaas/suite` (G-05). Keys are like `contacts`, `threaded-messaging`, `e-signature-envelope`. A key is never reused, even after aliasing.
+- The Feature Catalog is global and app-independent: `catalog/<key>.yaml` in `waronsaas/product` (G-05). Keys are like `contacts`, `threaded-messaging`, `e-signature-envelope`. A key is never reused, even after aliasing.
 - Each catalog feature has at most one open contract workflow (`documents_one_open_contract`) and a sequence of merged versions. The latest merged version is the one progress and building use.
 - One contract, one build graph, built once. Every app that references the feature gets a **profile**: the list of requirement ids it needs.
 
@@ -25,7 +25,7 @@ Round mechanics are in REVIEW-PROTOCOL.md; the lifecycle table in ROADMAP-PROTOC
 | `features/<key>/BUILD-GRAPH.yaml` | `wos-build-graph.v1` |
 | `features/<key>/acceptance/**` | acceptance tests; one suite per profile (`profiles[].acceptance.dir`) |
 | `modules/<key>/**` | the shared implementation (written by ABUs) |
-| `products/<target>/**` | app-specific surface (written by ABUs whose scope names it) |
+| `apps/web/**`, `apps/mobile/**` | the suite's app shells (D14); a module adds its screens through the app-shell contracts |
 
 ## 2. Contract content
 
@@ -57,7 +57,7 @@ The build graph is written and reviewed together with the contract, in the same 
 | `requirements[]` | at least one requirement key of this contract |
 | `dependsOn[]` | ABU keys of the same graph |
 | `sizePoints` | 1, 2, 3, 5 or 8; drives BUILT % and rewards |
-| `scope.write[]` | exact file paths or `<dir>/**` only; must be under `modules/<feature>/`, `products/<target>/` or `features/<feature>/acceptance/` |
+| `scope.write[]` | exact file paths or `<dir>/**` only; must be under `modules/<feature>/`, the app shells `apps/web/` or `apps/mobile/` (only where a module registers its screens), or `features/<feature>/acceptance/` |
 | `scope.read[]` | extra read globs |
 | `resources[]` | logical resources: `db:`, `api:`, `schema:`, `lockfile:`, `config:`, `event:`, `ui:`, `dep:` prefixes, mode `exclusive` or `shared` |
 | `acceptance.checks[]` | commands that must exit 0, locally and in CI |
@@ -86,6 +86,17 @@ Run on every revision before a round opens. Any error returns the document to `r
 | `MIGRATION_WITHOUT_RESOURCE` | an ABU writing under `migrationsDir` must claim `db:migrations` exclusive |
 | `TEST_OUTSIDE_SCOPE` | `acceptance.tests` inside `scope.write` |
 | `OVER_CONTEXT_BUDGET` | the context engine's estimate of the builder context for the ABU exceeds the builder role's `contextBudgetTokens` (120000); such an ABU must be decomposed further (spec Agent 5) |
+
+### Surfaces, journeys and the shared API (D13, contracts 4.0.0)
+
+- Every requirement lists the `surfaces` it applies to. A requirement on the shared API lists every surface that consumes it.
+- `journeys` restate the apps' roadmap journeys per surface and link each to the requirements that implement it. Acceptance tests journeys, not only endpoints.
+- `sharedApi` is required when requirements span more than one surface: the typed API in `modules/<feature>` that the web app and the React Native app both consume (one codebase, shared types and validation, D10).
+- Native capabilities a journey needs (push, background audio/video, CallKit, share sheet, offline storage) are named in the journey, and the build graph contains the ABUs that add the native modules (`NATIVE_CAPABILITY_UNPLANNED` otherwise).
+- Each profile has one `SurfaceAcceptance` per surface: web runs Playwright across the whole browser matrix (`MINIMUM_BROWSERS`: Chrome, Edge, Safari on macOS, Firefox, iPhone and Android phone viewports); iOS and Android run Maestro flows, separately; `runner: macos` only for native iOS builds and end-to-end runs.
+- Every ABU names its one `repo`. A graph may span repositories of the same family (registry `wos.repositories`); cross-repo dependencies use global ABU keys. With mobile inside `waronsaas/product`, most graphs stay in one repo.
+- Keep JS/TS-only mobile work in ABUs separate from native changes (`ios/`, `android/`, config plugins, native modules): only the latter need a macOS + Xcode or Android SDK machine (path-based `toolchainRequirements` in `wos.json`).
+- New validator codes: `ABU_REPO_UNKNOWN`, `SHARED_API_MISSING`, `JOURNEY_UNCOVERED`, `REQUIREMENT_SURFACE_NOT_IN_SCOPE`, `NATIVE_CAPABILITY_UNPLANNED`.
 
 ## 4. Lifecycle
 

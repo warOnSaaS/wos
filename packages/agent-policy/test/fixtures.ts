@@ -51,7 +51,7 @@ export function planFor(role: AgentRole, overrides: Partial<ContextPlan> = {}): 
     abu: role === "builder" || role.startsWith("implementation_") ? "contacts#04" : null,
     attemptId: role === "builder" || role.startsWith("implementation_") ? "0190f000-0000-7000-8000-000000000003" : null,
     roundId: rp.reviewerSlot ? "0190f000-0000-7000-8000-000000000004" : null,
-    source: { repo: "waronsaas/suite", commit: "1111111111111111111111111111111111111111" },
+    source: { repo: "waronsaas/product", commit: "1111111111111111111111111111111111111111" },
     artifacts: [],
     excludeGlobs: [],
     promptTemplateId: TEMPLATE_BY_ROLE[role],

@@ -24,8 +24,8 @@ One roadmap per application (Sniper Target). It answers three questions, and rev
 
 | App | Repository | Files |
 |---|---|---|
-| The ten Sniper Targets | `waronsaas/suite` (the product repo, name is FOUNDER DECISION G-05) | `roadmaps/<target>/INVENTORY.yaml`, `roadmaps/<target>/ROADMAP.yaml`, new `catalog/<key>.yaml` files |
-| TGT-00 warOnSaaS (wOS itself) | `waronsaas/waronsaas` (platform repo) | `docs/roadmap/waronsaas.roadmap.json` (a `RoadmapBundle`, status PROPOSED) |
+| The ten Sniper Targets | `waronsaas/product` (the product repo, name is FOUNDER DECISION G-05) | `roadmaps/<target>/INVENTORY.yaml`, `roadmaps/<target>/ROADMAP.yaml`, new `catalog/<key>.yaml` files |
+| TGT-00 warOnSaaS (wOS itself) | `waronsaas/wos` (platform repo) | `docs/roadmap/waronsaas.roadmap.json` (a `RoadmapBundle`, status PROPOSED) |
 
 ## 2. Artifact rules
 
@@ -43,7 +43,7 @@ One roadmap per application (Sniper Target). It answers three questions, and rev
 | `version` | 1 for the first merged roadmap; exactly previous merged version + 1 afterwards |
 | `inventoryVersion` | the inventory this version is checked against |
 | `productName` | our name, never the vendor's trademark |
-| `architecture` | how `products/<target>` composes shared `modules/<feature>` code, app-specific data, self-hosting |
+| `architecture` | how the target's parity profile maps onto modules of the one suite (D14), target-specific data needs, self-hosting |
 | `capabilities[]` | ALL capabilities of the app, every version (the skeleton) |
 | `capabilities[].weightBp`, `.weightRationale` | D12: capability share of the app; all capabilities sum to exactly 10000; rationale at least 40 characters |
 | `capabilities[].inventoryItems` | every inventory item is in exactly one capability or in `excluded` |
@@ -70,6 +70,21 @@ A revision is valid only if all of these pass. Failure moves the document `valid
    - no reference to an `aliased` catalog feature;
    - `version = previousMergedVersion + 1` (1 when none).
 4. The changeset touched only document paths: `roadmaps/<target>/**` and `catalog/<key>.yaml` for keys in `newCatalogFeatures` (see BUILD-PROTOCOL.md "Submissions"; error `OUT_OF_SCOPE`).
+
+### One suite, many profiles (D14, contracts 4.0.0)
+
+A roadmap does not plan an app. It defines the target's parity profile against the ONE suite: which modules (catalog features) replace which parts of the product, with what weights, on which surfaces. It reuses the app-shell features (workspace modules, navigation, tenancy, roles, notifications) that every target references. A roadmap that plans a target-specific app, shell, login, data store or store listing is a material finding (policy rule).
+
+### Surfaces and experience (D13, contracts 4.0.0)
+
+Parity means features AND experience, on every surface the rented product ships.
+
+- **Inventory surfaces.** `INVENTORY.yaml` lists every client surface the vendor ships with cited public evidence: `web` (with the vendor's supported browsers), `ios` (iPhone and iPad), `android`, `desktop` (with platforms), `browser_extension`, `email_addin`, `other`. A missing surface is a material finding.
+- **Roadmap surfaces.** `ROADMAP.yaml` `surfaces` marks each inventory surface `in_scope` (with the repository and app shell that serve it: web in `apps/web`, iPhone and Android in `apps/mobile`, both in `waronsaas/product`, shared by every target, D14) or `excluded` with a reason a customer would accept. Android is in scope and built from the same React Native code as iPhone (D13, decided).
+- **Journeys.** Every feature ref lists key user journeys, at least one per surface it exists on: the steps a user takes, entry points, navigation, and offline, notification, background and responsive behaviour; mobile journeys name the native capabilities they need (push, background audio or video, CallKit, share sheet, offline storage, camera). Schema: `Journey` in `artifacts.ts`.
+- **Surface weights.** Every feature ref gives each of its surfaces a `weightBp` with a `weightRationale` (D12 applied to D13), summing to 10000, frozen with the version. The Roadmap Agent is told to reason about them and both reviewers treat an unjustified split as SURFACE MIS-WEIGHTING (policy data).
+- **Not trade dress.** Parity is functional and experiential, explicitly NOT a copy of the vendor's trade dress, logos, icons, colours, layouts or wording. Our look is the warOnSaaS monochrome design system. Copying the vendor's visual design is a material finding at every review level.
+- The schema (`Roadmap.superRefine`) rejects: surface weights not summing to 10000, a feature on a surface that is not in scope, a surface without a journey, an excluded surface without a reason, an in-scope surface without repo and path.
 
 ## 3. Lifecycle
 
@@ -154,6 +169,10 @@ Display: `formatPercent(bp)`: `0%`; `<1%` for 1..99 bp; whole percent floored, m
 - If the newest `app` snapshot for the target already has the same `input_sha256`, nothing is written (idempotent).
 - Snapshots are append-only (DB trigger). `v_target_progress` serves the latest app row; history via `GET /v1/public/targets/:slug/progress`.
 - Traceability: every number on the web links to the weights (the merged roadmap file at `merged_sha`), the profile (the merged contract), the ABUs and their PRs. The `detail` JSON contains `relevantPoints`, `mergedPoints` and per-requirement ABU lists, so any percentage can be re-derived from records.
+
+### Per-surface progress (D13, contracts 4.0.0)
+
+`progress.ts` computes every feature per surface: a surface is SPECIFIED when the merged contract's profile for the app has requirements tagged with it, and BUILT by the size points of the ABUs relevant to those requirements, capped at 9999 until the surface's own acceptance check `wos-acceptance/<feature>/<target>/<surface>` passed. The feature's numbers are the surface-weighted sum, so a feature reaches 10000 only when every in-scope surface is complete; iOS and Android are separate surfaces with separate checks. `AppProgress.surfaces` gives per-surface app progress (over the features that include the surface) for the drilldown, and each `AppFeatureSummary.surfaces` shows the weights, rationales and numbers.
 
 ## 7. Failure paths
 

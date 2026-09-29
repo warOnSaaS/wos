@@ -8,7 +8,7 @@ import { parse as parseYaml } from "yaml";
 import { lintProductWorkflow, validateChangeset } from "../src/index.js";
 import { REPO_ROOT, TempRepo } from "./support/git-fixture.js";
 
-const SUITE = join(REPO_ROOT, "templates/suite");
+const SUITE = join(REPO_ROOT, "templates/product");
 const read = (p: string) => readFileSync(join(REPO_ROOT, p), "utf8");
 type Wf = {
   on: Record<string, unknown>;
@@ -16,8 +16,8 @@ type Wf = {
   jobs: Record<string, { name?: string; if?: string; needs?: string; steps: { run?: string; uses?: string; if?: string }[] }>;
 };
 
-describe("templates/suite: wos.json", () => {
-  const manifest = RepoManifest.parse(JSON.parse(read("templates/suite/wos.json")));
+describe("templates/product: wos.json", () => {
+  const manifest = RepoManifest.parse(JSON.parse(read("templates/product/wos.json")));
 
   it("parses as RepoManifest and never runs lifecycle scripts on install (S-7)", () => {
     expect(manifest.install).toEqual(["npm", "ci", "--ignore-scripts"]);
@@ -63,7 +63,7 @@ describe("templates/suite: wos.json", () => {
   });
 });
 
-describe("templates/suite: workflows (S-20)", () => {
+describe("templates/product: workflows (S-20)", () => {
   const dir = join(SUITE, ".github/workflows");
   const files = readdirSync(dir).filter((f) => /\.ya?ml$/.test(f));
 
@@ -106,7 +106,9 @@ describe("templates/suite: workflows (S-20)", () => {
   it("per-profile acceptance check runs are named by profileAcceptanceCheckName and run only on the default branch", () => {
     const job = wf.jobs.acceptance!;
     // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub expression, not a JS template
-    expect(job.name).toBe(profileAcceptanceCheckName("${{ matrix.profile.feature }}", "${{ matrix.profile.target }}"));
+    expect(job.name).toBe(
+      profileAcceptanceCheckName("${{ matrix.profile.feature }}", "${{ matrix.profile.target }}", "${{ matrix.profile.surface }}"),
+    );
     expect(job.needs).toBe("profiles");
     expect(wf.jobs.profiles!.if).toContain("github.event.repository.default_branch");
   });
@@ -116,15 +118,15 @@ describe("templates/suite: workflows (S-20)", () => {
   }, 60_000);
 });
 
-describe("templates/suite: CODEOWNERS and rulesets", () => {
+describe("templates/product: CODEOWNERS and rulesets", () => {
   it("CODEOWNERS owns the gate's files", () => {
-    const owners = read("templates/suite/.github/CODEOWNERS");
+    const owners = read("templates/product/.github/CODEOWNERS");
     for (const p of ["/.github/", "/wos.json", "package.json", "tsconfig*.json", "/db/migrations/"])
       expect(owners).toMatch(new RegExp(`^${p.replace(/[.*/]/g, "\\$&")}\\s+@`, "m"));
   });
 
   it("the main ruleset has no bypass actors and requires wos-verify (Actions) and wos/qualified (App)", () => {
-    const blocks = [...read("templates/suite/RULESETS.md").matchAll(/```json\n([\s\S]*?)```/g)].map((m) => JSON.parse(m[1] ?? ""));
+    const blocks = [...read("templates/product/RULESETS.md").matchAll(/```json\n([\s\S]*?)```/g)].map((m) => JSON.parse(m[1] ?? ""));
     const main = blocks.find((b) => b.name === "main");
     expect(main.bypass_actors).toEqual([]);
     const checks = main.rules.find((r: { type: string }) => r.type === "required_status_checks").parameters.required_status_checks;
@@ -138,7 +140,7 @@ describe("templates/suite: CODEOWNERS and rulesets", () => {
   });
 });
 
-describe("templates/suite: wos-ci.mjs in a real git repo", () => {
+describe("templates/product: wos-ci.mjs in a real git repo", () => {
   const repos: TempRepo[] = [];
   afterAll(() => {
     for (const r of repos) r.remove();
@@ -148,7 +150,8 @@ describe("templates/suite: wos-ci.mjs in a real git repo", () => {
 feature: contacts
 contractVersion: 1
 abus:
-  - key: "contacts#04"
+  - repo: waronsaas/product
+    key: "contacts#04"
     title: List endpoint
     objective: Add the paginated contacts list endpoint with tests.
     requirements: [R-001]
@@ -164,7 +167,7 @@ abus:
     repos.push(r);
     cpSync(join(SUITE, ".github"), join(r.dir, ".github"), { recursive: true });
     const manifest = {
-      ...JSON.parse(read("templates/suite/wos.json")),
+      ...JSON.parse(read("templates/product/wos.json")),
       verify: [{ id: "env", run: ["node", "-e", "process.exit(process.env.FAKE_SECRET ? 7 : 0)"], timeoutSeconds: 60 }],
       ...manifestOver,
     };
@@ -267,8 +270,11 @@ abus:
     const profile = (target: string) => `  - target: ${target}
     requirements: [R-001]
     acceptance:
-      dir: features/contacts/acceptance/${target}
-      run: ["node", "-e", "require('fs').writeFileSync('ACC_${target}','')"]
+      - surface: web
+        dir: features/contacts/acceptance/${target}
+        run: ["node", "-e", "require('fs').writeFileSync('ACC_${target}','')"]
+        browsers: [chromium, edge, webkit, firefox, mobile_safari, mobile_chrome]
+        runner: linux
 `;
     r.write(
       "features/contacts/CONTRACT.yaml",
@@ -278,17 +284,16 @@ abus:
     expect(list.status, list.out).toBe(0);
     const matrix = JSON.parse(list.out.trim().replace(/^matrix=/, ""));
     expect(matrix).toEqual([
-      { feature: "contacts", target: "salesforce" },
-      { feature: "contacts", target: "hubspot" },
+      { feature: "contacts", target: "salesforce", surface: "web", runner: "linux" },
+      { feature: "contacts", target: "hubspot", surface: "web", runner: "linux" },
     ]);
-    expect(matrix.map((m: { feature: string; target: string }) => profileAcceptanceCheckName(m.feature, m.target))).toEqual([
-      "wos-acceptance/contacts/salesforce",
-      "wos-acceptance/contacts/hubspot",
-    ]);
-    const acc = r.run(process.execPath, [".github/wos/wos-ci.mjs", "acceptance", "contacts", "hubspot"]);
+    expect(
+      matrix.map((m: { feature: string; target: string; surface: string }) => profileAcceptanceCheckName(m.feature, m.target, m.surface)),
+    ).toEqual(["wos-acceptance/contacts/salesforce/web", "wos-acceptance/contacts/hubspot/web"]);
+    const acc = r.run(process.execPath, [".github/wos/wos-ci.mjs", "acceptance", "contacts", "hubspot", "web"]);
     expect(acc.status, acc.out).toBe(0);
     expect(existsSync(join(r.dir, "ACC_hubspot"))).toBe(true);
     expect(existsSync(join(r.dir, "ACC_salesforce"))).toBe(false);
-    expect(r.run(process.execPath, [".github/wos/wos-ci.mjs", "acceptance", "contacts", "zoom"]).status).toBe(1);
+    expect(r.run(process.execPath, [".github/wos/wos-ci.mjs", "acceptance", "contacts", "zoom", "web"]).status).toBe(1);
   }, 60_000);
 });

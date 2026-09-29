@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // wOS CI runner for the product repo (template owned by the verification workstream, platform repo
-// templates/suite/). Lives under .github/, which no submission can change (S-17), and uses the SAME
+// templates/product/). Lives under .github/, which no submission can change (S-17), and uses the SAME
 // validator and canonical hashing as the client and the control plane (wos-ci-lib.mjs is generated
 // from @waronsaas/verification and @waronsaas/contracts/canonical). No secrets, minimal environment (S-7).
 //
@@ -12,8 +12,11 @@
 //   restore-toolchain             put every toolchainPaths file back to its base content (delete added ones)
 //   verify [--candidate-toolchain] install + verify steps (+ the ABU's acceptance checks)
 //   touches-toolchain             prints touched=true|false (for $GITHUB_OUTPUT)
-//   profiles                      prints matrix=<json> of every profile acceptance suite at HEAD
-//   acceptance <feature> <target> runs that profile's acceptance command (check wos-acceptance/<f>/<t>)
+//   profiles                      prints matrix=<json> of every profile acceptance suite per surface at HEAD
+//   acceptance <feature> <target> <surface>
+//                                 runs that profile's acceptance command for one surface
+//                                 (check wos-acceptance/<f>/<t>/<surface>, contracts 4.0.0, D13); the web
+//                                 browser matrix is passed to the command as WOS_BROWSERS
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import {
@@ -175,13 +178,20 @@ function readProfiles() {
   return out;
 }
 
-function acceptance(feature, target) {
-  const profile = readProfiles().find((p) => p.feature === feature && p.target === target);
-  if (!profile) fail(`no profile ${feature}/${target} at HEAD`);
+function surfaceSuites() {
+  return readProfiles().flatMap(({ feature, target, acceptance }) =>
+    acceptance.map((a) => ({ feature, target, surface: a.surface, runner: a.runner, browsers: a.browsers, run: a.run })),
+  );
+}
+
+function acceptance(feature, target, surface) {
+  const suite = surfaceSuites().find((p) => p.feature === feature && p.target === target && p.surface === surface);
+  if (!suite) fail(`no ${surface} acceptance for profile ${feature}/${target} at HEAD`);
   const manifest = RepoManifest.parse(JSON.parse(readFileSync("wos.json", "utf8")));
   assertInstallIsSafe(manifest.install);
   run("install", manifest.install, 1800);
-  run(`wos-acceptance/${feature}/${target}`, profile.acceptance.run, 1800);
+  process.env.WOS_BROWSERS = suite.browsers.join(",");
+  run(`wos-acceptance/${feature}/${target}/${surface}`, suite.run, 1800);
 }
 
 const [command, ...args] = process.argv.slice(2);
@@ -190,7 +200,11 @@ else if (command === "restore-toolchain") restoreToolchain();
 else if (command === "verify") verify(args.includes("--candidate-toolchain"));
 else if (command === "touches-toolchain") console.log(`touched=${toolchainChanges(baseCommit()).changed.length > 0}`);
 else if (command === "profiles")
-  console.log(`matrix=${JSON.stringify(readProfiles().map(({ feature, target }) => ({ feature, target })))}`);
-else if (command === "acceptance") acceptance(args[0], args[1]);
+  console.log(
+    `matrix=${JSON.stringify(surfaceSuites().map(({ feature, target, surface, runner }) => ({ feature, target, surface, runner })))}`,
+  );
+else if (command === "acceptance") acceptance(args[0], args[1], args[2]);
 else
-  fail("usage: wos-ci.mjs scope|restore-toolchain|verify [--candidate-toolchain]|touches-toolchain|profiles|acceptance <feature> <target>");
+  fail(
+    "usage: wos-ci.mjs scope|restore-toolchain|verify [--candidate-toolchain]|touches-toolchain|profiles|acceptance <feature> <target> <surface>",
+  );

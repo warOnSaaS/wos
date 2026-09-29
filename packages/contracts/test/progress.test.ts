@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { computeAppProgress, computeFeatureProgress, formatPercent, type ProgressFeatureInput, type ProgressInput } from "../src/index.js";
+import {
+  computeAppProgress,
+  computeFeatureProgress,
+  formatPercent,
+  type ProgressFeatureInput,
+  type ProgressInput,
+  type Surface,
+} from "../src/index.js";
 
 const abu = (key: string, sizePoints: 1 | 2 | 3 | 5 | 8, requirements: string[], merged: boolean) => ({
   key,
@@ -7,26 +14,40 @@ const abu = (key: string, sizePoints: 1 | 2 | 3 | 5 | 8, requirements: string[],
   requirements,
   merged,
   superseded: false,
-  prUrl: merged ? `https://github.com/waronsaas/suite/pull/${key.length}` : null,
+  prUrl: merged ? `https://github.com/waronsaas/product/pull/${key.length}` : null,
 });
 
-/** "contacts": R-001/R-002 shared, R-003 Salesforce-only, R-004 HubSpot-only. */
-const contactsContract = (profile: string[], merged: { [k: string]: boolean }, acceptance = false) => ({
+/**
+ * "contacts": R-001/R-002 shared (web + mobile), R-003 Salesforce-only (web), R-004 HubSpot-only (web),
+ * R-005 offline list on phones (ios + android).
+ */
+const TAGS: Record<string, Surface[]> = {
+  "R-001": ["web", "ios", "android"],
+  "R-002": ["web", "ios", "android"],
+  "R-003": ["web"],
+  "R-004": ["web"],
+  "R-005": ["ios", "android"],
+};
+const contactsContract = (profile: string[], merged: Record<string, boolean>, acceptance: Partial<Record<Surface, boolean>> = {}) => ({
   version: 1,
   profile,
-  profileAcceptancePassed: acceptance,
+  requirementSurfaces: TAGS,
+  acceptancePassed: acceptance,
   abus: [
     abu("contacts#01", 3, ["R-001"], merged["contacts#01"] ?? false),
     abu("contacts#02", 5, ["R-002"], merged["contacts#02"] ?? false),
     abu("contacts#03", 2, ["R-003"], merged["contacts#03"] ?? false),
     abu("contacts#04", 8, ["R-004"], merged["contacts#04"] ?? false),
+    abu("contacts#05", 3, ["R-005"], merged["contacts#05"] ?? false),
   ],
 });
 
+const WEB_ONLY = [{ surface: "web" as Surface, weightBp: 10_000 }];
 const feature = (over: Partial<ProgressFeatureInput>): ProgressFeatureInput => ({
   feature: "contacts",
   capability: "crm",
   weightBp: 10_000,
+  surfaces: WEB_ONLY,
   contract: null,
   ...over,
 });
@@ -54,12 +75,12 @@ describe("feature progress (D10)", () => {
     expect(sf.builtBp).toBe(3000); // 3 of 10 points
   });
 
-  it("caps at 9999 until every relevant ABU is merged AND the profile acceptance suite passed", () => {
+  it("caps at 9999 until every relevant ABU is merged AND the surface's acceptance check passed", () => {
     const all = { "contacts#01": true, "contacts#02": true, "contacts#03": true };
-    const noAcceptance = computeFeatureProgress(feature({ contract: contactsContract(["R-001", "R-002", "R-003"], all, false) }), 10_000);
+    const noAcceptance = computeFeatureProgress(feature({ contract: contactsContract(["R-001", "R-002", "R-003"], all) }), 10_000);
     expect(noAcceptance.builtBp).toBe(9_999);
     expect(noAcceptance.complete).toBe(false);
-    const done = computeFeatureProgress(feature({ contract: contactsContract(["R-001", "R-002", "R-003"], all, true) }), 10_000);
+    const done = computeFeatureProgress(feature({ contract: contactsContract(["R-001", "R-002", "R-003"], all, { web: true }) }), 10_000);
     expect(done.builtBp).toBe(10_000);
     expect(done.requirements.every((r) => r.built)).toBe(true);
   });
@@ -71,7 +92,55 @@ describe("feature progress (D10)", () => {
   });
 });
 
-describe("app progress (D11/D12)", () => {
+describe("per-surface progress (D13)", () => {
+  const MULTI: ProgressFeatureInput["surfaces"] = [
+    { surface: "web", weightBp: 5_000 },
+    { surface: "ios", weightBp: 2_500 },
+    { surface: "android", weightBp: 2_500 },
+  ];
+  const profile = ["R-001", "R-002", "R-003", "R-005"];
+
+  it("a surface with no requirement in the app's profile is not specified", () => {
+    const fp = computeFeatureProgress(feature({ surfaces: MULTI, contract: contactsContract(["R-003"], {}) }), 10_000);
+    expect(fp.surfaces.find((s) => s.surface === "web")!.specifiedBp).toBe(10_000);
+    expect(fp.surfaces.find((s) => s.surface === "ios")!.specifiedBp).toBe(0);
+    expect(fp.specifiedBp).toBe(5_000);
+  });
+
+  it("the web done does not make the feature done: every in-scope surface must be complete", () => {
+    const merged = { "contacts#01": true, "contacts#02": true, "contacts#03": true };
+    const fp = computeFeatureProgress(feature({ surfaces: MULTI, contract: contactsContract(profile, merged, { web: true }) }), 10_000);
+    const web = fp.surfaces.find((s) => s.surface === "web")!;
+    const ios = fp.surfaces.find((s) => s.surface === "ios")!;
+    expect(web.builtBp).toBe(10_000);
+    expect(ios.relevantPoints).toBe(11); // R-001, R-002 shared + R-005 mobile
+    expect(ios.mergedPoints).toBe(8);
+    expect(fp.complete).toBe(false);
+    expect(fp.builtBp).toBeLessThan(10_000);
+  });
+
+  it("iOS and Android are separate surfaces: an iOS acceptance pass does not complete Android", () => {
+    const merged = { "contacts#01": true, "contacts#02": true, "contacts#03": true, "contacts#05": true };
+    const fp = computeFeatureProgress(
+      feature({ surfaces: MULTI, contract: contactsContract(profile, merged, { web: true, ios: true }) }),
+      10_000,
+    );
+    expect(fp.surfaces.find((s) => s.surface === "ios")!.complete).toBe(true);
+    expect(fp.surfaces.find((s) => s.surface === "android")!.builtBp).toBe(9_999);
+    const all = computeFeatureProgress(
+      feature({ surfaces: MULTI, contract: contactsContract(profile, merged, { web: true, ios: true, android: true }) }),
+      10_000,
+    );
+    expect(all.builtBp).toBe(10_000);
+    expect(all.complete).toBe(true);
+  });
+
+  it("rejects surface weights that do not sum to 10000", () => {
+    expect(() => computeFeatureProgress(feature({ surfaces: [{ surface: "web", weightBp: 9_000 }] }), 10_000)).toThrow(/sum to 10000/);
+  });
+});
+
+describe("app progress (D11/D12/D13)", () => {
   const input = (capabilities: NonNullable<ProgressInput["roadmap"]>["capabilities"]): ProgressInput => ({
     target: "salesforce",
     roadmap: { version: 1, inventoryVersion: 1, inventoryItems: 120, excludedItems: 4, capabilities },
@@ -83,6 +152,7 @@ describe("app progress (D11/D12)", () => {
       specifiedBp: 0,
       builtBp: 0,
       roadmapVersion: null,
+      surfaces: [],
     });
   });
 
@@ -106,7 +176,7 @@ describe("app progress (D11/D12)", () => {
           capability: "crm",
           weightBp: 5_000,
           features: [
-            feature({ feature: "contacts", weightBp: 7_000, contract: contactsContract(["R-001", "R-002", "R-003"], all, true) }),
+            feature({ feature: "contacts", weightBp: 7_000, contract: contactsContract(["R-001", "R-002", "R-003"], all, { web: true }) }),
             feature({ feature: "deals", weightBp: 3_000 }),
           ],
         },
@@ -114,22 +184,44 @@ describe("app progress (D11/D12)", () => {
       ]),
     );
     expect(p.mappedBp).toBe(5_000);
-    expect(p.specifiedBp).toBe(3_500); // 5000 * 7000 * 10000 / 1e8
+    expect(p.specifiedBp).toBe(3_500);
     expect(p.builtBp).toBe(3_500);
     expect(p.features.find((f) => f.feature === "contacts")?.effectiveAppWeightBp).toBe(3_500);
     expect(p.builtBp).toBeLessThanOrEqual(p.specifiedBp);
     expect(p.specifiedBp).toBeLessThanOrEqual(p.mappedBp);
   });
 
-  it("never reports 100% unless everything is complete", () => {
-    const almost = { "contacts#01": true, "contacts#02": true, "contacts#03": true };
+  it("reports per-surface app progress over the features that include each surface", () => {
+    const merged = { "contacts#01": true, "contacts#02": true, "contacts#03": true };
     const p = computeAppProgress(
       input([
         {
           capability: "crm",
           weightBp: 10_000,
-          features: [feature({ contract: contactsContract(["R-001", "R-002", "R-003"], almost, false) })],
+          features: [
+            feature({
+              feature: "contacts",
+              weightBp: 10_000,
+              surfaces: [
+                { surface: "web", weightBp: 5_000 },
+                { surface: "ios", weightBp: 5_000 },
+              ],
+              contract: contactsContract(["R-001", "R-002", "R-003", "R-005"], merged, { web: true }),
+            }),
+          ],
         },
+      ]),
+    );
+    expect(p.surfaces.map((s) => s.surface)).toEqual(["ios", "web"]);
+    expect(p.surfaces.find((s) => s.surface === "web")!.builtBp).toBe(10_000);
+    expect(p.surfaces.find((s) => s.surface === "ios")!.builtBp).toBe(Math.floor((10_000 * 8) / 11));
+  });
+
+  it("never reports 100% unless everything is complete", () => {
+    const almost = { "contacts#01": true, "contacts#02": true, "contacts#03": true };
+    const p = computeAppProgress(
+      input([
+        { capability: "crm", weightBp: 10_000, features: [feature({ contract: contactsContract(["R-001", "R-002", "R-003"], almost) })] },
       ]),
     );
     expect(p.builtBp).toBe(9_999);

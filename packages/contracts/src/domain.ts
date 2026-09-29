@@ -9,6 +9,7 @@ import {
   GitSha,
   GithubLogin,
   RepoFullName,
+  Surface,
   RequirementKey,
   TargetSlug,
   Timestamp,
@@ -28,6 +29,7 @@ import {
   RoundStates,
   TaskStates,
 } from "./state-machines.js";
+import { Journey } from "./artifacts.js";
 import { LedgerEntryKind, RewardCategory, LedgerBucket } from "./rewards.js";
 
 /**
@@ -97,10 +99,8 @@ export const TargetSummary = z.object({
   whatItIs: z.string(),
   /** Name of our replacement product, null until the roadmap names it. */
   productName: z.string().nullable(),
-  /** Always the product repo (waronsaas/suite) for replacements; the platform repo for TGT-00 warOnSaaS. */
+  /** Always the product repo (waronsaas/product) for replacements; the platform repo for TGT-00 warOnSaaS. */
   repo: RepoFullName,
-  /** products/<slug> in the repo. */
-  productPath: z.string(),
   progress: Progress,
   roadmap: DocumentWorkflowSummary.nullable(),
   hosted: z.object({ available: z.boolean(), url: z.url().nullable() }),
@@ -122,6 +122,21 @@ export const AppFeatureSummary = z.object({
   builtBp: BasisPoints,
   relevantPoints: z.number().int().nonnegative(),
   mergedPoints: z.number().int().nonnegative(),
+  /** Per-surface progress, weights and rationales (D13: the drilldown shows progress per surface). */
+  surfaces: z.array(
+    z.object({
+      surface: Surface,
+      weightBp: z.number().int().positive(),
+      weightRationale: z.string(),
+      specifiedBp: BasisPoints,
+      builtBp: BasisPoints,
+      relevantPoints: z.number().int().nonnegative(),
+      mergedPoints: z.number().int().nonnegative(),
+      acceptancePassed: z.boolean(),
+    }),
+  ),
+  /** Key user journeys per surface from the roadmap (D13). */
+  journeys: z.array(Journey),
   /** Other apps whose roadmaps reference the same catalog feature (D10 cross-reference). */
   sharedWith: z.array(TargetSlug),
   contract: DocumentWorkflowSummary.nullable(),
@@ -141,6 +156,17 @@ export const CapabilitySummary = z.object({
 });
 
 export const TargetDetail = TargetSummary.extend({
+  /** D13: every surface the vendor ships, in scope or excluded, with per-surface app progress. */
+  surfaces: z.array(
+    z.object({
+      surface: Surface,
+      status: z.enum(["in_scope", "excluded"]),
+      reason: z.string().nullable(),
+      repo: RepoFullName.nullable(),
+      specifiedBp: BasisPoints,
+      builtBp: BasisPoints,
+    }),
+  ),
   capabilities: z.array(CapabilitySummary),
   excluded: z.array(z.object({ item: z.string(), title: z.string(), reason: z.string() })),
 });
@@ -155,6 +181,8 @@ export const RequirementView = z.object({
   built: z.boolean(),
   /** Apps whose profile includes this requirement. */
   profiles: z.array(TargetSlug),
+  /** Surfaces the requirement applies to (D13). */
+  surfaces: z.array(Surface),
 });
 
 export const AbuSummary = z.object({

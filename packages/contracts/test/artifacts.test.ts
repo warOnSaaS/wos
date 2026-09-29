@@ -22,6 +22,11 @@ const baseRoadmap = (): RoadmapT => ({
   productName: "Pipeline",
   summary: "An open-source CRM.",
   architecture: { overview: "o", composition: "c", appSpecificData: "d", selfHosting: "s" },
+  surfaces: [
+    { surface: "web", status: "in_scope", reason: null, repo: "waronsaas/product", path: "products/salesforce/web" },
+    { surface: "ios", status: "in_scope", reason: null, repo: "waronsaas/product", path: "products/salesforce/mobile" },
+    { surface: "desktop", status: "excluded", reason: "The vendor's desktop app is a wrapper around the web app.", repo: null, path: null },
+  ],
   capabilities: [
     {
       key: "crm",
@@ -35,6 +40,34 @@ const baseRoadmap = (): RoadmapT => ({
           feature: "contacts",
           weightBp: 6_000,
           weightRationale: "Contacts are the core record every other CRM screen hangs off, so the larger share.",
+          surfaces: [
+            { surface: "web", weightBp: 6_000, weightRationale: "Most contact editing and bulk work happens at a desk in the browser." },
+            {
+              surface: "ios",
+              weightBp: 4_000,
+              weightRationale: "Reps look up and call contacts from the phone between meetings, often offline.",
+            },
+          ],
+          journeys: [
+            {
+              key: "J-001",
+              surface: "web",
+              title: "Find and update a contact",
+              steps: ["Open Contacts from the main navigation", "Search by name", "Edit the phone number and save"],
+              entryPoints: ["main navigation"],
+              platformBehaviour: "Responsive down to phone width; keyboard shortcuts on desktop.",
+              nativeCapabilities: [],
+            },
+            {
+              key: "J-002",
+              surface: "ios",
+              title: "Call a contact before a meeting",
+              steps: ["Open the app from a meeting notification", "Tap the contact", "Tap call"],
+              entryPoints: ["push notification", "home tab"],
+              platformBehaviour: "Recently viewed contacts are available offline.",
+              nativeCapabilities: ["push", "offline_storage"],
+            },
+          ],
           inventoryItems: ["INV-0001"],
           appNotes: "",
           phase: "core",
@@ -43,6 +76,24 @@ const baseRoadmap = (): RoadmapT => ({
           feature: "deals",
           weightBp: 4_000,
           weightRationale: "Deals are central to sales but depend on contacts and have a smaller surface here.",
+          surfaces: [
+            {
+              surface: "web",
+              weightBp: 10_000,
+              weightRationale: "Pipeline management is a desk task; the vendor's phone app only shows deals.",
+            },
+          ],
+          journeys: [
+            {
+              key: "J-003",
+              surface: "web",
+              title: "Move a deal to the next stage",
+              steps: ["Open the pipeline board", "Drag the deal to the next column"],
+              entryPoints: ["main navigation"],
+              platformBehaviour: "none",
+              nativeCapabilities: [],
+            },
+          ],
           inventoryItems: ["INV-0002"],
           appNotes: "",
           phase: "core",
@@ -82,6 +133,46 @@ describe("roadmap schema: reasoned weights (D12)", () => {
     const r2 = baseRoadmap();
     r2.capabilities[0]!.weightBp = 9_000;
     expect(Roadmap.safeParse(r2).error?.issues[0]?.message).toMatch(/sum to 10000/);
+  });
+});
+
+describe("roadmap schema: surfaces and journeys (D13)", () => {
+  it("rejects a feature on a surface without a journey", () => {
+    const r = baseRoadmap();
+    r.capabilities[0]!.features[0]!.journeys = r.capabilities[0]!.features[0]!.journeys.filter((j) => j.surface !== "ios");
+    expect(
+      Roadmap.safeParse(r)
+        .error?.issues.map((i) => i.message)
+        .join(" "),
+    ).toMatch(/no journey for surface ios/);
+  });
+
+  it("rejects a feature weighted on a surface that is not in scope", () => {
+    const r = baseRoadmap();
+    r.capabilities[0]!.features[1]!.surfaces = [{ surface: "desktop", weightBp: 10_000, weightRationale: "x".repeat(40) }];
+    expect(
+      Roadmap.safeParse(r)
+        .error?.issues.map((i) => i.message)
+        .join(" "),
+    ).toMatch(/desktop of deals is not in scope/);
+  });
+
+  it("rejects surface weights that do not sum to 10000, or without a rationale", () => {
+    const r = baseRoadmap();
+    r.capabilities[0]!.features[0]!.surfaces[1]!.weightBp = 3_000;
+    expect(Roadmap.safeParse(r).success).toBe(false);
+    const r2 = baseRoadmap();
+    r2.capabilities[0]!.features[0]!.surfaces[1]!.weightRationale = "phones";
+    expect(Roadmap.safeParse(r2).success).toBe(false);
+  });
+
+  it("rejects an excluded surface without a reason and an in-scope surface without a repo", () => {
+    const r = baseRoadmap();
+    r.surfaces[2]!.reason = null;
+    expect(Roadmap.safeParse(r).success).toBe(false);
+    const r2 = baseRoadmap();
+    r2.surfaces[0]!.repo = null;
+    expect(Roadmap.safeParse(r2).success).toBe(false);
   });
 });
 
@@ -129,7 +220,13 @@ describe("TGT-00 warOnSaaS roadmap (docs/roadmap/waronsaas.roadmap.json)", () =>
         capabilities: b.roadmap.capabilities.map((c) => ({
           capability: c.key,
           weightBp: c.weightBp,
-          features: c.features.map((f) => ({ feature: f.feature, capability: c.key, weightBp: f.weightBp, contract: null })),
+          features: c.features.map((f) => ({
+            feature: f.feature,
+            capability: c.key,
+            weightBp: f.weightBp,
+            surfaces: f.surfaces.map((s) => ({ surface: s.surface, weightBp: s.weightBp })),
+            contract: null,
+          })),
         })),
       },
     });

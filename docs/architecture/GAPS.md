@@ -10,7 +10,7 @@ Sources: `docs/V1-SPEC.md` (the spec), `docs/DECISIONS.md` (D1–D12 and the nam
 
 | Rank | Id | Gap | Blocks | Founder? |
 |---|---|---|---|---|
-| 1 | G-05 | Where the replacement code lives, its repo name and its stack | Wave 3 (the first real Build Graph) and every Feature Contract's write scopes | **FOUNDER DECISION** |
+| 1 | G-05 | Where the replacement code lives, its repo name and its stack | Wave 3 | DECIDED 2026-09-29: `waronsaas/product`, TypeScript; web Next.js, mobile React Native + Expo (D13) |
 | 2 | G-03 | Orchestrating contributors' Claude/ChatGPT subscriptions may conflict with consumer terms | Public launch of contribution | **FOUNDER DECISION** (legal) |
 | 3 | G-29 | No licence, no contributor terms (DCO/CLA), unclear ownership of AI-written code | Accepting the first outside contribution | **FOUNDER DECISION** (legal) |
 | 4 | G-02 | Bootstrap: nobody else can review; D2 forbids self-review | Every consensus and every implementation review until others join | **FOUNDER DECISION** |
@@ -97,7 +97,7 @@ Sources: `docs/V1-SPEC.md` (the spec), `docs/DECISIONS.md` (D1–D12 and the nam
 
 ### G-10 Candidate refs before qualification vs. D9's "after qualification the App creates the branch"
 - **Gap.** D9 lists "CI re-verification passes" as a qualification criterion, but also says the branch is created after qualification. CI cannot run on something that is not on GitHub, and reviewers on other machines need the exact bytes.
-- **Resolution.** The App pushes the validated submission to an App-only ref `wos/candidate/<attemptId>` (not a PR, not mergeable, ruleset-restricted to the App); CI and reviewers use it; after qualification the App creates the official branch `wos/<unit>-<attempt8>` at the same commit and opens the PR, then deletes the candidate ref. The reviewed bytes and the PR bytes are identical by construction. **Founder confirms** that pre-qualification refs in the official repo are acceptable. Alternative (rejected): a separate `waronsaas/suite-candidates` repo — safer isolation of unreviewed code, but every qualified change would be re-uploaded blob by blob to the official repo.
+- **Resolution.** The App pushes the validated submission to an App-only ref `wos/candidate/<attemptId>` (not a PR, not mergeable, ruleset-restricted to the App); CI and reviewers use it; after qualification the App creates the official branch `wos/<unit>-<attempt8>` at the same commit and opens the PR, then deletes the candidate ref. The reviewed bytes and the PR bytes are identical by construction. **Founder confirms** that pre-qualification refs in the official repo are acceptable. Alternative (rejected): a separate `waronsaas/product-candidates` repo — safer isolation of unreviewed code, but every qualified change would be re-uploaded blob by blob to the official repo.
 
 ### G-09 "Restrict pull request creation to collaborators" vs. the GitHub App — UNVERIFIED
 - **Gap.** D9 relies on GitHub's 2026-02-13 setting. Whether an App installation token counts as a collaborator for it is unverified, and so is the equivalent for issues.
@@ -126,9 +126,10 @@ Sources: `docs/V1-SPEC.md` (the spec), `docs/DECISIONS.md` (D1–D12 and the nam
 
 ## C. What is being built, and where
 
-### G-05 Where the replacement code lives, its repo name, and its stack — FOUNDER DECISION
+### G-05 Where the replacement code lives, its repo name, and its stack — DECIDED (2026-09-29)
+- **Decision.** One product repository, `waronsaas/product` (founder, final name after overriding "replacements"). ONE modular suite (D14): `apps/web`, `apps/mobile` (React Native + Expo, iPhone and Android), `modules/**`; targets are parity profiles, not codebases. The text below is the original analysis.
 - **Gap.** The spec never says where Salesforce's replacement source lives or in what stack. D10 (shared features) changes the answer.
-- **Recommendation (implemented as the default: `PRODUCT_REPO = "waronsaas/suite"`).** One public product repository for every replacement: `catalog/`, `roadmaps/<target>/`, `features/<key>/` (contract, build graph, acceptance), `modules/<key>/` (the shared implementation), `products/<target>/` (each app's surface: navigation, branding, composition). Separate from the platform repo `waronsaas/waronsaas` so contributor-built code never touches wOS's own CI, secrets or release process.
+- **Recommendation (implemented as the default: `PRODUCT_REPO = "waronsaas/product"`).** One public product repository for every replacement: `catalog/`, `roadmaps/<target>/`, `features/<key>/` (contract, build graph, acceptance), `modules/<key>/` (the shared implementation), `products/<target>/` (each app's surface: navigation, branding, composition). Separate from the platform repo `waronsaas/wos` so contributor-built code never touches wOS's own CI, secrets or release process.
 - **Trade-off stated plainly.** One repo: shared modules are ordinary imports, cross-feature refactors are one PR, one CI config, one merge queue. Cost: every merge from every app queues behind every other, CI grows with the whole suite, and a broken main blocks everyone. Repo per target: independent queues and CI, but shared features must be published as versioned packages and every change to Contacts becomes N coordinated PRs across N repos — the opposite of D10. For V1 (one target building) the single repo is clearly cheaper.
 - **Founder decides:** the repo name (`suite` is a placeholder; the founder's naming rule is that names say what we do), and G-06.
 
@@ -230,3 +231,18 @@ Sources: `docs/V1-SPEC.md` (the spec), `docs/DECISIONS.md` (D1–D12 and the nam
 ### G-54 One catalog per repository (contracts 3.0.0)
 - **Gap.** TGT-00's features (sign-in, leases...) live in the platform repo; the replacement apps' features live in the product repo. A single global catalog would let a Salesforce roadmap reference code that lives in another repository.
 - **Resolution.** `catalog_features`, `documents` and `abus` carry `repo_full_name` (migration 0003, consistency trigger); a roadmap may reference only catalog features of its own repository (planning's `validateRoadmap`). If the product suite later needs e.g. magic-link sign-in, it gets its own catalog feature in the product repo. No founder decision.
+
+
+## I. Found with D13 (contracts 4.0.0)
+
+### G-55 macOS runner cost
+- Native iOS builds and iOS end-to-end flows need macOS runners, billed at roughly ten times Linux minutes on GitHub-hosted runners (public repos currently get free standard runners; confirm the current policy for macOS on public repos before relying on it). Mitigation in the contracts: Linux for everything else, macOS jobs only when iOS paths or iOS acceptance are involved, EAS Build for store builds. **Founder** should set a monthly CI budget alarm once the repo exists.
+
+### G-56 A wOS phone app for contributors — post-V1 idea
+- Decided: no wOS phone app in V1 (contributors use Desktop or the CLI). The TGT-00 roadmap cannot hold an "unweighted candidate" cleanly (every capability and feature needs a weight of at least 1 bp), so it is recorded here instead: a phone app for following one's leases, reviewing findings and approving maintainer actions would be the natural first version.
+
+### G-57 Store accounts and app names — FOUNDER DECISION
+- The suite ships as ONE App Store and ONE Google Play listing (D14). The founder must hold the Apple Developer organisation account (shared with wOS Desktop, separate certificates), a Google Play Console developer account, and an Expo account with an EAS token. The store name must not use any vendor's trademark (G-23). **Founder decides** the suite's store name and the publisher name shown in both stores.
+
+### G-58 Expo SDK and React Native pairing is UNVERIFIED
+- `expo` 57.0.26 is the latest SDK on npm (2026-09-29); its `jest-expo` presets target React Native 0.86.x, while `react-native` 0.87.1 is already published. The exact pairing must be taken from `npx expo install --check` when the first mobile app is scaffolded (verification or the first mobile ABU), not guessed.

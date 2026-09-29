@@ -339,6 +339,19 @@ export const ProviderAttestation = z.object({
 });
 export type ProviderAttestation = z.infer<typeof ProviderAttestation>;
 
+/**
+ * The device's toolchain, reported by `wos status` / Desktop (D13). Matched against a repo's path-based
+ * `toolchainRequirements` at claim time: e.g. an ABU touching apps/mobile/ios/** needs os "macos" and
+ * tool "xcode" >= the repo's minVersion. An attestation, like ProviderAttestation (SECURITY.md S-13).
+ */
+export const ToolchainAttestation = z.object({
+  os: z.enum(["macos", "linux", "windows"]),
+  osVersion: z.string().min(1),
+  tools: z.array(z.object({ name: z.string().min(1), version: z.string().min(1) })),
+  checkedAt: Timestamp,
+});
+export type ToolchainAttestation = z.infer<typeof ToolchainAttestation>;
+
 export const ReviewIndependence = z.enum(["independent", "bootstrap_maintainer", "bootstrap_self"]);
 export type ReviewIndependence = z.infer<typeof ReviewIndependence>;
 

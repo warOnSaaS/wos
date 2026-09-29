@@ -267,3 +267,9 @@ changesets and provenance.
 | This round's other verdict | never | never |
 | Reviewer identities | no | no |
 | Builder/author identity | yes (it is public on GitHub) | yes |
+
+## 9. D13 additions (contracts 4.0.0)
+
+- The roadmap author's and both roadmap reviewers' contexts render, verbatim from the policy, the D13 obligations and rules: surfaces with evidence, journeys per surface, reasoned surface weights, and the no-trade-dress line. The inventory's `surfaces` and the roadmap's `surfaces` are always included (required artifacts, never truncated).
+- Feature author and reviewer contexts include every impacted app's roadmap ref with its surfaces, surface weights and journeys (`wos:app-refs/<featureKey>`), so requirements can be tagged per surface and journeys checked.
+- Builder contexts include the ABU's `repo` and, when the ABU touches native paths, the matching `toolchainRequirements` of `wos.json`.

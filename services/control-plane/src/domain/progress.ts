@@ -3,7 +3,7 @@
  * calls `computeAppProgress` (contracts, pure), appends snapshots when the input changed, and derives
  * app-feature states (the only writer of that column besides ingestion on merge).
  */
-import { type AppProgress, computeAppProgress, type ProgressCapabilityInput, type ProgressInput } from "@waronsaas/contracts";
+import { type AppProgress, computeAppProgress, type ProgressCapabilityInput, type ProgressInput, type Surface } from "@waronsaas/contracts";
 import type { Tx } from "@waronsaas/db";
 import type { Deps } from "../deps.js";
 import { insertEvent } from "../db/events.js";
@@ -38,6 +38,13 @@ export async function buildProgressInput(
     const features = [];
     for (const f of feats) {
       featureIds.set(f.key, f.id);
+      // D13 surface weights from the merged roadmap; a feature materialised before D13 has one implicit web surface.
+      const surfaceRows = await tx<{ surface: Surface; weight_bp: number }[]>`
+        select surface, weight_bp from wos.app_feature_surfaces where app_feature_id = ${f.id} order by surface`;
+      const surfaces =
+        surfaceRows.length > 0
+          ? surfaceRows.map((r) => ({ surface: r.surface, weightBp: r.weight_bp }))
+          : [{ surface: "web" as Surface, weightBp: 10_000 }];
       let contract: ProgressCapabilityInput["features"][number]["contract"] = null;
       if (f.contract_doc) {
         const profile = await tx<{ key: string }[]>`
@@ -51,14 +58,17 @@ export async function buildProgressInput(
                             where ar.abu_id = a.id), '{}') as requirements,
                  (select p.url from wos.pull_requests p join wos.attempts at on at.id = p.attempt_id where at.abu_id = a.id and p.state = 'merged' limit 1) as pr_url
             from wos.abus a where a.catalog_feature_id = ${f.catalog_feature_id} and a.state <> 'superseded' order by a.key`;
-        // The latest recorded acceptance run after the last merged relevant ABU concluded success (B-0007-architect).
-        const [acc] = await tx<{ passed: boolean }[]>`
-          select coalesce((
-            select v.conclusion = 'success' from wos.verification_runs v
-             where v.subject = 'profile_acceptance' and v.catalog_feature_id = ${f.catalog_feature_id} and v.profile_target_id = ${targetId}
-               and v.created_at >= coalesce((select max(p.merged_at) from wos.pull_requests p join wos.attempts at on at.id = p.attempt_id
-                                              join wos.abus a on a.id = at.abu_id where a.catalog_feature_id = ${f.catalog_feature_id}), '-infinity')
-             order by v.created_at desc, v.id desc limit 1), false) as passed`;
+        // Per surface (contracts 4.0.0, D13): the latest recorded acceptance run after the last merged ABU concluded success.
+        const accRows = await tx<{ surface: Surface; passed: boolean }[]>`
+          select distinct on (v.surface) v.surface, v.conclusion = 'success' as passed from wos.verification_runs v
+           where v.subject = 'profile_acceptance' and v.catalog_feature_id = ${f.catalog_feature_id} and v.profile_target_id = ${targetId}
+             and v.created_at >= coalesce((select max(p.merged_at) from wos.pull_requests p join wos.attempts at on at.id = p.attempt_id
+                                            join wos.abus a on a.id = at.abu_id where a.catalog_feature_id = ${f.catalog_feature_id}), '-infinity')
+           order by v.surface, v.created_at desc, v.id desc`;
+        const tagRows = await tx<{ key: string; surfaces: Surface[] }[]>`
+          select r.key, coalesce(array_agg(rs.surface order by rs.surface) filter (where rs.surface is not null), '{}') as surfaces
+            from wos.requirements r left join wos.requirement_surfaces rs on rs.requirement_id = r.id
+           where r.document_id = ${f.contract_doc} group by r.key`;
         contract = {
           version: f.version ?? 1,
           profile: profile.map((p) => p.key),
@@ -70,10 +80,14 @@ export async function buildProgressInput(
             superseded: false,
             prUrl: a.pr_url,
           })),
-          profileAcceptancePassed: acc?.passed ?? false,
+          // Integration adaptation (4.0.0): untagged requirements (pre-D13 contracts) count for the feature's surfaces.
+          requirementSurfaces: Object.fromEntries(
+            tagRows.map((r) => [r.key, r.surfaces.length > 0 ? r.surfaces : surfaces.map((s) => s.surface)]),
+          ),
+          acceptancePassed: Object.fromEntries(accRows.map((r) => [r.surface, r.passed])),
         };
       }
-      features.push({ feature: f.key, capability: c.key, weightBp: f.weight_bp, contract });
+      features.push({ feature: f.key, capability: c.key, weightBp: f.weight_bp, surfaces, contract });
     }
     capabilities.push({ capability: c.key, weightBp: c.weight_bp, features });
   }

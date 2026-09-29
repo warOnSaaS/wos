@@ -266,7 +266,7 @@ describe.skipIf(!process.env.WOS_VERIFY_DATABASE_URL)(`security-hardening: datab
       expect(t!.repo_full_name).toBe(PLATFORM_REPO_NAME);
       const insert = (repo: string) =>
         sql`insert into wos.documents (kind, target_id, version, state, branch, repo_full_name) values ('roadmap', ${t!.id}, 1, 'drafting', 'wos/roadmap/waronsaas/v1', ${repo})`;
-      expect(await failure(insert(SUITE_REPO))).toMatch(/parent is in waronsaas\/waronsaas/);
+      expect(await failure(insert(SUITE_REPO))).toMatch(/parent is in waronsaas\/wos/);
       expect(await failure(insert(PLATFORM_REPO_NAME))).toBeNull();
     });
 

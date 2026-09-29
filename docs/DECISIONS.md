@@ -83,3 +83,29 @@ These override `docs/V1-SPEC.md` where they differ. Date: 2026-09-29.
 ## Naming rule (founder, 2026-09-29)
 - The name is always `warOnSaaS`; the system short name is `wOS`. Lowercase `waronsaas` only where a technical identifier requires it (domain, npm scope, GitHub org and repo, package names).
 - warOnSaaS is its own first target: TGT-00 warOnSaaS (wOS), ahead of the ten. Its V1 roadmap lives at `docs/roadmap/waronsaas.roadmap.json`.
+
+## D13. Parity means features AND experience, on every surface the rented product ships
+- Founder's words: "We need to add a rule to the roadmap. It's not just feature mirroring. It's also experience. iPhone app — which will need a new repo, added to our own roadmap and parity with their apps, plus browser parity as well."
+- Surfaces are first-class: each inventory lists the product's client surfaces (web app and supported browsers, iPhone/iPad, Android, desktop, extensions, add-ins) with cited public evidence. A shipped surface is in scope unless excluded with a reason.
+- Experience, not only capability: roadmaps and Feature Contracts describe the key user journeys per surface, and acceptance tests journeys. Parity is functional and experiential, explicitly NOT copying the vendor's trade dress, logos or visual design (our look is the warOnSaaS monochrome system).
+- Requirements are tagged per surface; a feature is SPECIFIED/BUILT for an app only when every requirement on every in-scope surface its profile references is. Surface weights are reasoned per D12. The web drilldown shows progress per surface.
+- Browser parity: web acceptance runs across the vendor-supported browsers (at minimum Chromium, WebKit/Safari, Firefox and a mobile Safari viewport). Acceptance checks are per surface.
+- Feature Contracts spanning surfaces specify the shared API; each ABU stays in one repo; cross-repo ABU dependencies use global ABU keys.
+- wOS must be able to build it: multi-repo products, per-repo toolchain eligibility, macOS CI for native checks, per-surface acceptance checks, suite-app signing in CI only (D7), all added to TGT-00's roadmap.
+
+### D13 corrections and delegated choices (founder, same day)
+- Mobile apps are React Native with Expo and EAS, TypeScript like the rest of the suite (this supersedes native Swift and a separate iOS repo).
+- DECIDED (delegated to the architect): the mobile apps live INSIDE the product repo, one app per replacement product (`products/<target>/mobile`) sharing `modules/**` with web. No separate mobile repo.
+- DECIDED: Android is in scope and built alongside iPhone from the same code, with separate per-surface acceptance for iOS and Android.
+- DECIDED: JS/TS-only mobile ABUs build and test on any OS; only ABUs touching native code or config (ios/, android/, config plugins, native modules) need a macOS + Xcode or Android SDK attestation, expressed as path-based toolchain requirements in wos.json.
+- DECIDED: native journeys (push, background audio/video, CallKit, share sheets, offline) are specified per surface and the Feature Contract names the native modules they need.
+- DECIDED: no wOS phone app for contributors in V1 (contributors use Desktop or the CLI); recorded as a post-V1 idea.
+- DECIDED: browser support is current Chrome and Edge, Safari on macOS and iOS, and Firefox, in phone-sized and desktop viewports.
+- DECIDED by the founder: the product repository is `waronsaas/product` (an earlier same-day choice, `waronsaas/replacements`, was overridden).
+
+## D14. One suite, and the platform repo is `waronsaas/wos`
+- The platform repository is renamed `waronsaas/wos` (was `waronsaas/waronsaas`); releases at `https://github.com/waronsaas/wos/releases/latest`. This supersedes the repo name in D4 and D6.
+- Founder: "Isn't it just one web and one phone app?" The product is ONE web app and ONE mobile app: a single modular suite (think Odoo or Zoho One) with one account, one navigation and one data model, and feature modules a workspace turns on or off.
+- Targets (Salesforce, Slack...) stay the Sniper List and become parity PROFILES: the definition of what the suite must do to fully replace each product. They are not separate codebases or store listings. Per-target "replacement complete" is still computed from that target's profile.
+- `waronsaas/product` mirrors wos: `apps/web`, `apps/mobile` (React Native + Expo), `modules/<featureKey>/**`, plus `catalog/`, `roadmaps/<target>/`, `features/<key>/`. No `products/<target>/**`.
+- The app shell (workspace modules, navigation, accounts, tenancy) is itself catalog features every target references. Self-hosting deploys the one suite with the modules you enable. Marketing pages per target stay on the site.

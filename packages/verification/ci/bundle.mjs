@@ -1,13 +1,13 @@
 // Builds the self-contained validator bundle the product repo's wos-verify workflow runs, so CI re-runs the
 // SAME validateChangeset as the client and control plane (BUILD-PROTOCOL.md section 8). Output is committed to
-// templates/suite/.github/wos/ and copied into the product repo by a maintainer PR (it is a protected path).
+// templates/product/.github/wos/ and copied into the product repo by a maintainer PR (it is a protected path).
 // Usage: node packages/verification/ci/bundle.mjs [--check]   (--check fails if the committed bundle is stale)
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { build } from "rolldown";
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
-const out = here("../../../templates/suite/.github/wos/wos-ci-lib.mjs");
+const out = here("../../../templates/product/.github/wos/wos-ci-lib.mjs");
 const bundle = await build({
   input: here("./entry.ts"),
   platform: "node",
@@ -23,7 +23,7 @@ const code = `${header}\n${bundle.output[0].code}`;
 if (process.argv.includes("--check")) {
   const current = readFileSync(out, "utf8");
   if (current !== code) {
-    console.error("templates/suite/.github/wos/wos-ci-lib.mjs is stale: run node packages/verification/ci/bundle.mjs");
+    console.error("templates/product/.github/wos/wos-ci-lib.mjs is stale: run node packages/verification/ci/bundle.mjs");
     process.exit(1);
   }
   console.log("CI bundle is current");

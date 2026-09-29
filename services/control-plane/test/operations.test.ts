@@ -138,7 +138,7 @@ describe.skipIf(!HAS_DB)("maintainer actions, sweeper and submission security", 
           action: "award_security",
           handle: "reporter",
           severity: "medium",
-          reference: "https://github.com/waronsaas/suite/security/advisories/1",
+          reference: "https://github.com/waronsaas/product/security/advisories/1",
         })
       ).status,
     ).toBe(200);
@@ -161,7 +161,7 @@ describe.skipIf(!HAS_DB)("maintainer actions, sweeper and submission security", 
           action: "award_security",
           handle: "reporter",
           severity: "medium",
-          reference: "https://github.com/waronsaas/suite/security/advisories/1",
+          reference: "https://github.com/waronsaas/product/security/advisories/1",
         })
       ).body.error.code,
     ).toBe("CONFLICT");
@@ -201,7 +201,7 @@ describe.skipIf(!HAS_DB)("maintainer actions, sweeper and submission security", 
     const head = h.github.commits.at(-1)!.sha;
     const suite = {
       action: "completed",
-      repository: { full_name: "waronsaas/suite" },
+      repository: { full_name: "waronsaas/product" },
       check_suite: { id: 11, head_sha: head, conclusion: "timed_out" },
     };
     await h.call("POST", "/v1/github/webhook", { body: suite, headers: webhookHeaders("check_suite", suite) });
@@ -283,11 +283,11 @@ describe.skipIf(!HAS_DB)("maintainer actions, sweeper and submission security", 
   it("closes a PR not opened by the App (S-18 fallback)", async () => {
     const pr = {
       action: "opened",
-      repository: { full_name: "waronsaas/suite" },
+      repository: { full_name: "waronsaas/product" },
       pull_request: { number: 999, user: { login: "someone", type: "User" } },
     };
     await h.call("POST", "/v1/github/webhook", { body: pr, headers: webhookHeaders("pull_request", pr) });
-    expect(h.github.closed).toContainEqual({ repo: "waronsaas/suite", number: 999 });
+    expect(h.github.closed).toContainEqual({ repo: "waronsaas/product", number: 999 });
     const dupe = await h.call("POST", "/v1/github/webhook", { body: pr, headers: webhookHeaders("pull_request", pr, "fixed-delivery") });
     expect(dupe.status).toBe(200);
     const again = await h.call("POST", "/v1/github/webhook", { body: pr, headers: webhookHeaders("pull_request", pr, "fixed-delivery") });

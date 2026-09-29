@@ -1,12 +1,12 @@
 [
-  "jwt GET /repos/waronsaas/suite/installation",
+  "jwt GET /repos/waronsaas/product/installation",
   "jwt POST /app/installations/4242/access_tokens",
-  "installation GET /repos/waronsaas/suite/git/commits/<sha>",
-  "installation POST /repos/waronsaas/suite/git/blobs",
-  "installation POST /repos/waronsaas/suite/git/blobs",
-  "installation POST /repos/waronsaas/suite/git/blobs",
-  "installation POST /repos/waronsaas/suite/git/blobs",
-  "installation POST /repos/waronsaas/suite/git/trees",
-  "installation POST /repos/waronsaas/suite/git/commits",
-  "installation POST /repos/waronsaas/suite/git/refs"
+  "installation GET /repos/waronsaas/product/git/commits/<sha>",
+  "installation POST /repos/waronsaas/product/git/blobs",
+  "installation POST /repos/waronsaas/product/git/blobs",
+  "installation POST /repos/waronsaas/product/git/blobs",
+  "installation POST /repos/waronsaas/product/git/blobs",
+  "installation POST /repos/waronsaas/product/git/trees",
+  "installation POST /repos/waronsaas/product/git/commits",
+  "installation POST /repos/waronsaas/product/git/refs"
 ]

@@ -91,7 +91,7 @@ describe.skipIf(!HAS_DB)("transitions write exactly one event, atomically", () =
     const head = h.github.commits.at(-1)!.sha;
     const suite = {
       action: "completed",
-      repository: { full_name: "waronsaas/suite" },
+      repository: { full_name: "waronsaas/product" },
       check_suite: { id: 1, head_sha: head, conclusion: "success" },
     };
     await h.call("POST", "/v1/github/webhook", { body: suite, headers: webhookHeaders("check_suite", suite) });
@@ -101,7 +101,7 @@ describe.skipIf(!HAS_DB)("transitions write exactly one event, atomically", () =
     const pr = h.github.prs.at(-1)!;
     const merged = {
       action: "closed",
-      repository: { full_name: "waronsaas/suite" },
+      repository: { full_name: "waronsaas/product" },
       pull_request: { number: pr.number, merged: true, merge_commit_sha: "9".repeat(40) },
     };
     await h.call("POST", "/v1/github/webhook", { body: merged, headers: webhookHeaders("pull_request", merged) });

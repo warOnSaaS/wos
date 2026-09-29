@@ -46,7 +46,7 @@ vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 
 export const WEBHOOK_SECRET = "test-webhook-secret";
 export const CRON_SECRET = "test-cron-secret";
-export const PRODUCT_REPO = "waronsaas/suite";
+export const PRODUCT_REPO = "waronsaas/product";
 export const BASE_SHA = "b".repeat(40);
 
 const sha1 = (s: string) => createHash("sha1").update(s).digest("hex");
@@ -355,7 +355,7 @@ export async function createHarness(overrides: Partial<Logic> = {}): Promise<Har
       tokenPepper: "test-pepper",
       ipHashSecret: "test-ip-secret",
       productRepo: PRODUCT_REPO,
-      platformRepo: "waronsaas/waronsaas",
+      platformRepo: "waronsaas/wos",
       cookieDomain: null,
       githubRetries: 1,
       appBotLogin: "waronsaas-wos[bot]",
@@ -528,6 +528,7 @@ export async function seedFeature(
   for (const a of opts.abus) {
     const key = `${feature}#${a.n}`;
     const spec: AbuSpec = {
+      repo,
       key,
       title: `Unit ${a.n}`,
       objective: "Build this unit so that its acceptance checks pass.",

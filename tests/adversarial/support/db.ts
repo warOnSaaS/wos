@@ -18,8 +18,8 @@ export const DB_REASON = ADMIN_URL ? "" : " [PENDING: set WOS_VERIFY_DATABASE_UR
 
 export type Sql = postgres.Sql;
 export type Tx = postgres.TransactionSql;
-export const SUITE_REPO = "waronsaas/suite";
-export const PLATFORM_REPO_NAME = "waronsaas/waronsaas";
+export const SUITE_REPO = "waronsaas/product";
+export const PLATFORM_REPO_NAME = "waronsaas/wos";
 
 export async function freshDatabase(): Promise<{ sql: Sql; url: string; drop: () => Promise<void> }> {
   const name = `wos_adv_${randomBytes(6).toString("hex")}`;

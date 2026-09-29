@@ -25,6 +25,8 @@ const inventory = {
   target: "salesforce",
   version: 1,
   sources: [{ title: "Vendor docs", url: "https://example.com/docs", retrievedOn: "2026-09-01" }],
+  // contracts 4.0.0 (D13) fixture update by the architect: surfaces are required.
+  surfaces: [{ surface: "web", title: "Web app", source: 0, platforms: [], browsers: ["chromium", "firefox"] }],
   items: [
     { key: "INV-0001", area: "Sales", title: "Contacts", description: "Contact records", source: 0, weight: 1 },
     { key: "INV-0002", area: "Analytics", title: "Reports", description: "Reports and dashboards", source: 0, weight: 1 },
@@ -40,10 +42,11 @@ const roadmap = (crmWeight: number) => ({
   summary: "An open-source CRM.",
   architecture: {
     overview: "Modules composed per app.",
-    composition: "products/salesforce",
+    composition: "Contacts module of the one suite (D14).",
     appSpecificData: "None yet.",
     selfHosting: "Docker.",
   },
+  surfaces: [{ surface: "web", status: "in_scope", reason: null, repo: "waronsaas/product", path: "apps/web" }],
   capabilities: [
     {
       key: "crm",
@@ -57,6 +60,18 @@ const roadmap = (crmWeight: number) => ({
           feature: "contacts",
           weightBp: 10000,
           weightRationale: WHY,
+          surfaces: [{ surface: "web", weightBp: 10000, weightRationale: WHY }],
+          journeys: [
+            {
+              key: "J-001",
+              surface: "web",
+              title: "Find a contact",
+              steps: ["Open Contacts", "Search by name"],
+              entryPoints: ["navigation"],
+              platformBehaviour: "none",
+              nativeCapabilities: [],
+            },
+          ],
           inventoryItems: ["INV-0001"],
           appNotes: "Accounts and people.",
           phase: "core",
@@ -91,19 +106,47 @@ const contract = {
   title: "Contacts",
   summary: "People and companies.",
   requirements: [
-    { key: "R-001", kind: "functional", statement: "Users MUST be able to list contacts.", acceptance: ["the list shows every contact"] },
+    {
+      key: "R-001",
+      kind: "functional",
+      statement: "Users MUST be able to list contacts.",
+      acceptance: ["the list shows every contact"],
+      surfaces: ["web"],
+    },
     {
       key: "R-002",
       kind: "functional",
       statement: "Users MUST be able to open one contact.",
       acceptance: ["the detail shows the contact"],
+      surfaces: ["web"],
     },
   ],
+  journeys: [
+    {
+      key: "J-001",
+      surface: "web",
+      title: "Find a contact",
+      steps: ["Open Contacts", "Search by name"],
+      entryPoints: ["navigation"],
+      platformBehaviour: "none",
+      nativeCapabilities: [],
+      requirements: ["R-001", "R-002"],
+    },
+  ],
+  sharedApi: null,
   profiles: [
     {
       target: "salesforce",
       requirements: ["R-001", "R-002"],
-      acceptance: { dir: "features/contacts/acceptance/salesforce", run: ["npm", "test"] },
+      acceptance: [
+        {
+          surface: "web",
+          dir: "features/contacts/acceptance/salesforce",
+          run: ["npm", "test"],
+          browsers: ["chromium", "edge", "webkit", "firefox", "mobile_safari", "mobile_chrome"],
+          runner: "linux",
+        },
+      ],
     },
   ],
   impactedTargets: [],
@@ -112,6 +155,7 @@ const contract = {
   openQuestions: [],
 };
 const unit = (n: string, req: string, write: string, deps: string[], size: number) => ({
+  repo: "waronsaas/product",
   key: `contacts#${n}`,
   title: `Unit ${n}`,
   objective: "Build this unit so that its acceptance checks pass.",
@@ -257,7 +301,7 @@ describe.skipIf(!HAS_DB)("roadmap and feature contract workflows", () => {
     // Merge -> materialisation.
     const merged = {
       action: "closed",
-      repository: { full_name: "waronsaas/suite" },
+      repository: { full_name: "waronsaas/product" },
       pull_request: { number: draft.number, merged: true, merge_commit_sha: d2!.head_sha },
     };
     expect((await h.call("POST", "/v1/github/webhook", { body: merged, headers: webhookHeaders("pull_request", merged) })).status).toBe(
@@ -303,7 +347,7 @@ describe.skipIf(!HAS_DB)("roadmap and feature contract workflows", () => {
     expect(cd!.state).toBe("consensus");
     const mergedContract = {
       action: "closed",
-      repository: { full_name: "waronsaas/suite" },
+      repository: { full_name: "waronsaas/product" },
       pull_request: { number: contractPr.number, merged: true, merge_commit_sha: cd!.head_sha },
     };
     await h.call("POST", "/v1/github/webhook", { body: mergedContract, headers: webhookHeaders("pull_request", mergedContract) });

@@ -11,7 +11,7 @@ import picomatch from "picomatch";
 import { PROMPT_TEMPLATE_BY_ROLE, renderPolicyDocument, type SnapshotReader, sha256Of } from "../src/index.js";
 
 export const policy = AGENT_POLICY_V1;
-export const REPO = "waronsaas/suite";
+export const REPO = "waronsaas/product";
 export const COMMIT = "1111111111111111111111111111111111111111";
 export const ROUND = "0190f000-0000-7000-8000-000000000004";
 export const OTHER_ROUND = "0190f000-0000-7000-8000-0000000000ff";

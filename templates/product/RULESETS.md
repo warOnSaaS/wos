@@ -1,7 +1,7 @@
 # warOnSaaS suite: branch rulesets and repository settings
 
-Template for the product repo `waronsaas/suite` (owner: verification workstream, platform repo
-`templates/suite/`). Applied by the founder on day one (FOUNDER-CHECKLIST.md). Implements D9 and
+Template for the product repo `waronsaas/product` (owner: verification workstream, platform repo
+`templates/product/`). Applied by the founder on day one (FOUNDER-CHECKLIST.md). Implements D9 and
 SECURITY.md S-17 to S-20. Field names follow the GitHub REST rulesets API
 (`POST /repos/{owner}/{repo}/rulesets`). UNVERIFIED until applied: the exact JSON is accepted by the API,
 and whether the App installation counts as a collaborator for the PR-creation restriction (S-18 day-one
@@ -104,7 +104,7 @@ The App is the only bypass actor, so it alone creates candidate refs, force-move
 ## 5. Trusted verification and the toolchain (B-0005, contracts 3.0.0)
 
 `wos-verify` runs `npm run typecheck`, `npm run lint` and `npm test`, whose meaning is defined by
-`package.json` scripts and tool configs. So `templates/suite/wos.json` lists every
+`package.json` scripts and tool configs. So `templates/product/wos.json` lists every
 `DEFAULT_TOOLCHAIN_PATHS` entry in `toolchainPaths`, and:
 
 - a submission may change a toolchain file only when its ABU holds the exclusive resource

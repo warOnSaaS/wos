@@ -8,7 +8,7 @@ Secrets never go in the repo. Every secret below goes into the place named (Verc
 
 | Id | Decision | Recommendation | Blocks |
 |---|---|---|---|
-| G-05 / G-06 | Product repo name and stack | one repo `waronsaas/suite` (rename freely); TypeScript, Node 22, Postgres, Next.js | Wave 3 |
+| G-05 / G-06 | Product repo name and stack | one repo `waronsaas/product` (rename freely); TypeScript, Node 22, Postgres, Next.js | Wave 3 |
 | G-29 | Licences and contributor sign-off | platform Apache-2.0 or MIT; suite AGPL-3.0 or Apache-2.0; DCO sign-off | first outside contribution |
 | G-03 | Legal read of Anthropic and OpenAI consumer terms | get it before public launch | launch |
 | G-02 | Bootstrap thresholds; recruit 4–6 seed reviewers (2+ with Codex/ChatGPT, 2+ with Claude) | yes | real independence in the V1 test |
@@ -24,8 +24,8 @@ Secrets never go in the repo. Every secret below goes into the place named (Verc
 ## 1. GitHub organisation and repositories (blocks Wave 1 GitHub work)
 
 1. Finish renaming the organisation login to `waronsaas` (D4). All contracts use `waronsaas`.
-2. Create `waronsaas/waronsaas` (public) if it does not exist and push `main` (the platform monorepo).
-3. Create `waronsaas/suite` (public, default branch `main`, add a README so `main` exists). Rename if you chose another name in G-05 — then tell the architect; `PRODUCT_REPO` changes in one place.
+2. Create `waronsaas/wos` (public) and push `main` (the platform monorepo; renamed from `waronsaas/waronsaas`, D14). If `waronsaas/waronsaas` already exists, rename it in Settings (GitHub redirects the old URL) and update the local remote.
+3. Create `waronsaas/product` (public, default branch `main`, add a README so `main` exists). Rename if you chose another name in G-05 — then tell the architect; `PRODUCT_REPO` changes in one place.
 4. Org settings → Member privileges: base permission **Read**. Contributors are never collaborators (D9).
 
 ## 2. The wOS GitHub App (blocks github-build and control-plane)
@@ -69,15 +69,15 @@ Subscribe to events: Check run, Check suite, Issue comment, Issues, Merge group,
 After creating:
 - Generate a private key (`.pem`) → `GITHUB_APP_PRIVATE_KEY`.
 - Note App ID → `GITHUB_APP_ID`, Client ID → `GITHUB_APP_CLIENT_ID`, generate a client secret → `GITHUB_APP_CLIENT_SECRET`, and the app slug → `GITHUB_APP_SLUG`.
-- Install it on `waronsaas/waronsaas` and `waronsaas/suite` only. Note each installation id (URL of the installation page) → `GITHUB_APP_INSTALLATION_ID`.
+- Install it on `waronsaas/wos` and `waronsaas/product` only. Note each installation id (URL of the installation page) → `GITHUB_APP_INSTALLATION_ID`.
 
 ## 3. Repository settings, rulesets and the D9 day-one test (blocks the first official PR)
 
-For `waronsaas/suite` (and the same for `waronsaas/waronsaas` once wOS dogfoods itself):
+For `waronsaas/product` (and the same for `waronsaas/wos` once wOS dogfoods itself):
 
 1. Settings → General → Pull Requests: enable **merge queue** support; allow squash merge only; enable auto-merge; automatically delete head branches.
 2. Settings → General: **Restrict pull request creation to collaborators** (GitHub, 2026-02-13). If the same control exists for issues, enable it too (CONFIRM IN UI).
-3. Settings → Actions → General: allow GitHub-owned and verified actions only; **Workflow permissions: Read repository contents**; do not allow Actions to create or approve PRs. Add **no** Actions secrets or variables to `waronsaas/suite`.
+3. Settings → Actions → General: allow GitHub-owned and verified actions only; **Workflow permissions: Read repository contents**; do not allow Actions to create or approve PRs. Add **no** Actions secrets or variables to `waronsaas/product`.
 4. **Day-one test (GAPS G-09):** with the App installation token, create a test branch and open a PR. If GitHub refuses because the App is not a collaborator, add the App as a collaborator with Write if GitHub allows it for Apps, otherwise leave the restriction off and rely on the fallback (the webhook auto-closes non-App PRs, and the required `wos/qualified` status makes them unmergeable). Record the result in `docs/architecture/GAPS.md` G-09.
 5. Rulesets → New branch ruleset `main`:
    - Target: default branch. Enforcement: Active. Bypass list: **empty** (not even admins).
@@ -85,7 +85,7 @@ For `waronsaas/suite` (and the same for `waronsaas/waronsaas` once wOS dogfoods 
    - Require a pull request before merging (0 approvals for implementation PRs; see 6 for documents).
    - Require status checks: `wos/qualified` with source **the wOS App**, and `wos-verify` with source **GitHub Actions**. Require branches up to date.
    - Require merge queue (build concurrency 5, merge method squash, minimum group size 1).
-6. CODEOWNERS (in `waronsaas/suite`, maintainer-owned): `/roadmaps/ @waronsaas/maintainers`, `/catalog/ @waronsaas/maintainers`, `/features/*/CONTRACT.yaml @waronsaas/maintainers`, `/wos.json @waronsaas/maintainers`, `/.github/ @waronsaas/maintainers`; in the `main` ruleset enable "Require review from Code Owners" (this is the bootstrap maintainer approval for document PRs, G-04).
+6. CODEOWNERS (in `waronsaas/product`, maintainer-owned): `/roadmaps/ @waronsaas/maintainers`, `/catalog/ @waronsaas/maintainers`, `/features/*/CONTRACT.yaml @waronsaas/maintainers`, `/wos.json @waronsaas/maintainers`, `/.github/ @waronsaas/maintainers`; in the `main` ruleset enable "Require review from Code Owners" (this is the bootstrap maintainer approval for document PRs, G-04).
 7. Rulesets → New branch ruleset `wos-refs`: target `wos/**`; restrict creations, updates and deletions; bypass list: **the wOS App** only.
 8. Create team `waronsaas/maintainers` with yourself.
 
@@ -104,7 +104,7 @@ For `waronsaas/suite` (and the same for `waronsaas/waronsaas` once wOS dogfoods 
 
 ## 5. Vercel (team `battle-juice`, D5)
 
-Project `waronsaas-api` (new): Git repository `waronsaas/waronsaas`, Root Directory `services/control-plane`, framework preset Other (Hono), Node.js 22.x, Function region **`pdx1` (Portland, Oregon)** to sit beside Supabase us-west-2 (D5, D7), domain `api.waronsaas.com`. Cron jobs (in the project's `vercel.json`, written by the control-plane workstream): `/v1/cron/sweep` and `/v1/cron/dispatch` every minute.
+Project `waronsaas-api` (new): Git repository `waronsaas/wos`, Root Directory `services/control-plane`, framework preset Other (Hono), Node.js 22.x, Function region **`pdx1` (Portland, Oregon)** to sit beside Supabase us-west-2 (D5, D7), domain `api.waronsaas.com`. Cron jobs (in the project's `vercel.json`, written by the control-plane workstream): `/v1/cron/sweep` and `/v1/cron/dispatch` every minute.
 
 Environment variables for `waronsaas-api` (Production; Preview gets its own database or none):
 
@@ -118,7 +118,7 @@ Environment variables for `waronsaas-api` (Production; Preview gets its own data
 | `GITHUB_APP_PRIVATE_KEY` | full PEM, newlines preserved | yes |
 | `GITHUB_APP_INSTALLATION_ID` | installation id on the product repo | no |
 | `GITHUB_WEBHOOK_SECRET` | webhook secret | yes |
-| `PRODUCT_REPO` | `waronsaas/suite` | no |
+| `PRODUCT_REPO` | `waronsaas/product` | no |
 | `RESEND_API_KEY` | from Resend | yes |
 | `EMAIL_FROM` | `warOnSaaS <signin@notify.waronsaas.com>` | no |
 | `SESSION_TOKEN_PEPPER` | 32 random bytes, hex (HMAC key for hashing session and sign-in tokens) | yes |
@@ -150,16 +150,26 @@ Remember D7: Vercel CLI deploys are blocked unless the HEAD commit author is `ad
 1. Apple Developer Program as an **Organisation** (needs a D-U-N-S number; allow a week or more).
 2. Create a **Developer ID Application** certificate; export as `.p12` with a password.
 3. App Store Connect → Users and Access → Integrations → **App Store Connect API** key with Developer access; download the `.p8` once.
-4. In `waronsaas/waronsaas` create GitHub Actions environment `release` (required reviewer: you) with secrets: `CSC_LINK` (base64 of the .p12), `CSC_KEY_PASSWORD`, `APPLE_API_KEY` (contents of the .p8), `APPLE_API_KEY_ID`, `APPLE_API_ISSUER`. Notarisation runs only in Actions (D7).
+4. In `waronsaas/wos` create GitHub Actions environment `release` (required reviewer: you) with secrets: `CSC_LINK` (base64 of the .p12), `CSC_KEY_PASSWORD`, `APPLE_API_KEY` (contents of the .p8), `APPLE_API_KEY_ID`, `APPLE_API_ISSUER`. Notarisation runs only in Actions (D7).
 5. Windows (only if G-18 says so): an Azure Trusted Signing account or an OV code-signing certificate.
 
 ## 8. npm (blocks publishing `@waronsaas/cli`)
 
 1. Create the npm organisation `waronsaas`.
-2. On the package `@waronsaas/cli` (after first publish) configure **Trusted Publishing** for GitHub Actions from `waronsaas/waronsaas`, workflow `release.yml`, environment `release`. No long-lived npm token.
+2. On the package `@waronsaas/cli` (after first publish) configure **Trusted Publishing** for GitHub Actions from `waronsaas/wos`, workflow `release.yml`, environment `release`. No long-lived npm token.
 
 ## 9. Before public launch
 
 - ToS and privacy policy pages (G-42), licence files (G-29), trademark review (G-23), subscription-terms review (G-03).
 - Recruit and onboard the seed reviewers (G-02).
 - Run the V1 integration test from the spec end to end with real accounts, then turn bootstrap off only when the exit rule is met.
+
+
+## 10. Mobile apps and cross-browser acceptance (D13)
+
+1. `waronsaas/product` is the product repository (decided). It holds web and mobile apps; no separate mobile repo.
+2. **Expo:** create an Expo account/organisation `waronsaas`; create an EAS access token → GitHub Actions secret `EXPO_TOKEN` in the `release` environment of `waronsaas/product` (required reviewer: you).
+3. **Apple (suite apps):** in the same Apple Developer organisation as wOS Desktop, let EAS manage an **Apple Distribution** certificate and provisioning profiles for the replacement apps (separate from the Developer ID Application certificate wOS Desktop uses). Create an App Store Connect API key with App Manager role → `EXPO_APPLE_API_KEY` (p8 contents), `EXPO_APPLE_API_KEY_ID`, `EXPO_APPLE_API_ISSUER_ID` in that same `release` environment. Create ONE App Store Connect app record for the suite when its first build is ready (D14). CONFIRM IN UI the exact EAS secret names with `eas credentials`.
+4. **Google Play:** create a Google Play Console developer account (one-time fee), a service account JSON with release permissions → `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` in the `release` environment; let EAS generate and hold the upload keystore.
+5. **CI budget:** set a spending limit and alert for GitHub Actions macOS minutes on the org (G-55).
+6. The suite's store name and publisher name for both stores (G-57).

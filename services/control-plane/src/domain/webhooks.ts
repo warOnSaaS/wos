@@ -2,7 +2,7 @@
  * GitHub webhook processing (actor `github`). Deliveries are stored first (dedupe by X-GitHub-Delivery),
  * then processed; processing is idempotent because every effect is a guarded transition.
  */
-import { profileAcceptanceCheckName } from "@waronsaas/contracts";
+import { profileAcceptanceCheckName, Surface } from "@waronsaas/contracts";
 import { inTransaction, type Tx } from "@waronsaas/db";
 import type { Deps } from "../deps.js";
 import { ApiFailure } from "../errors.js";
@@ -135,10 +135,11 @@ async function verificationRecorded(
   subjectId: string,
   headSha: string,
   conclusion: string,
+  surface: string | null = null,
 ): Promise<void> {
   await insertEvent(
     tx,
-    { type: "verification.recorded", v: 1, visibility: "public", payload: { subject, subjectId, headSha, conclusion } },
+    { type: "verification.recorded", v: 1, visibility: "public", payload: { subject, subjectId, headSha, conclusion, surface } },
     { aggregateKind: "verification", aggregateId: subjectId, actor: "github", actorAccountId: null },
   );
 }
@@ -151,8 +152,9 @@ async function onCheckRun(deps: Deps, p: Payload): Promise<void> {
   const run = p.check_run;
   const repo = p.repository?.full_name;
   if (p.action !== "completed" || !run?.name || !run.head_sha || !repo) return;
-  const m = /^wos-acceptance\/([a-z][a-z0-9-]*)\/([a-z][a-z0-9-]*)$/.exec(run.name);
-  if (!m || profileAcceptanceCheckName(m[1]!, m[2]!) !== run.name) return;
+  // contracts 4.0.0 (D13): one check per surface, wos-acceptance/<feature>/<target>/<surface>.
+  const m = /^wos-acceptance\/([a-z][a-z0-9-]*)\/([a-z][a-z0-9-]*)\/([a-z_]+)$/.exec(run.name);
+  if (!m || !Surface.safeParse(m[3]).success || profileAcceptanceCheckName(m[1]!, m[2]!, m[3]!) !== run.name) return;
   const conclusion = run.conclusion && CONCLUSIONS.has(run.conclusion) ? run.conclusion : "neutral";
   const suiteId = run.check_suite?.id ?? run.id;
   if (suiteId === undefined) return;
@@ -163,12 +165,12 @@ async function onCheckRun(deps: Deps, p: Payload): Promise<void> {
     if (!ids) return;
     const [dupe] = await tx`
       select 1 as x from wos.verification_runs where subject = 'profile_acceptance' and catalog_feature_id = ${ids.feature_id}
-         and profile_target_id = ${ids.target_id} and head_sha = ${run.head_sha!} and github_check_suite_id = ${suiteId} and conclusion = ${conclusion}`;
+         and profile_target_id = ${ids.target_id} and surface = ${m[3]!} and head_sha = ${run.head_sha!} and github_check_suite_id = ${suiteId} and conclusion = ${conclusion}`;
     if (dupe) return;
-    await tx`insert into wos.verification_runs (id, subject, catalog_feature_id, profile_target_id, source, head_sha, conclusion, github_check_suite_id, details)
-             values (${uuidv7()}, 'profile_acceptance', ${ids.feature_id}, ${ids.target_id}, 'ci', ${run.head_sha!}, ${conclusion}, ${suiteId},
+    await tx`insert into wos.verification_runs (id, subject, catalog_feature_id, profile_target_id, surface, source, head_sha, conclusion, github_check_suite_id, details)
+             values (${uuidv7()}, 'profile_acceptance', ${ids.feature_id}, ${ids.target_id}, ${m[3]!}, 'ci', ${run.head_sha!}, ${conclusion}, ${suiteId},
                      ${tx.json({ checkRunId: run.id ?? null, name: run.name } as never)})`;
-    await verificationRecorded(tx, "profile_acceptance", `${m[1]}/${m[2]}`, run.head_sha!, conclusion);
+    await verificationRecorded(tx, "profile_acceptance", `${m[1]}/${m[2]}/${m[3]}`, run.head_sha!, conclusion, m[3]!);
   });
 }
 

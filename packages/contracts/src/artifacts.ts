@@ -10,10 +10,14 @@ import {
   TargetSlug,
   Uuid,
   WriteScope,
+  RepoFullName,
+  Surface,
+  Browser,
+  MINIMUM_BROWSERS,
 } from "./primitives.js";
 
 /**
- * Canonical artifacts that live as files in the PRODUCT repo (waronsaas/suite, D10).
+ * Canonical artifacts that live as files in the PRODUCT repo (waronsaas/product, D10).
  * GitHub is the public record; the control plane ingests these on merge.
  * Humans and agents author them as YAML; they are validated with these schemas after parsing.
  *
@@ -26,7 +30,11 @@ import {
  *   features/<featureKey>/BUILD-GRAPH.yaml    BuildGraph
  *   features/<featureKey>/acceptance/**       feature acceptance tests (per-app profile suites)
  *   modules/<featureKey>/**                   shared implementation of the feature
- *   products/<target>/**                      per-app product surface (navigation, branding, composition)
+ *   apps/web/**                               the ONE web app shell of the suite (D14)
+ *   apps/mobile/**                            the ONE React Native/Expo app (iPhone and Android) of the suite (D14)
+ *
+ * D14: the product is ONE modular suite (one account, one navigation, one data model); every module ships its
+ * web and mobile UI inside the two app shells. Targets are parity PROFILES, not codebases or store listings.
  */
 
 export const ARTIFACT_PATHS = {
@@ -39,7 +47,8 @@ export const ARTIFACT_PATHS = {
   buildGraph: (feature: string) => `features/${feature}/BUILD-GRAPH.yaml`,
   acceptanceDir: (feature: string) => `features/${feature}/acceptance`,
   module: (feature: string) => `modules/${feature}`,
-  product: (target: string) => `products/${target}`,
+  webApp: "apps/web",
+  mobileApp: "apps/mobile",
 } as const;
 
 // ---------------------------------------------------------------------------------------------
@@ -56,13 +65,14 @@ export const VerifyStep = z.object({
 
 /**
  * Profile acceptance results (D10/D11, contracts 3.0.0). The wos-verify workflow, on every push to the
- * default branch, runs each profile's acceptance suite as its own check run named by this function. The
+ * default branch, runs each profile's acceptance suite PER SURFACE (D13) as its own check run named by this function. The
  * control plane records each concluded check run as verification_runs(subject 'profile_acceptance',
  * catalog_feature_id, profile_target_id, head_sha, conclusion) and emits verification.recorded.
- * ProgressFeatureInput.contract.profileAcceptancePassed = the latest recorded run for (feature, target)
+ * ProgressFeatureInput.contract.acceptancePassed[surface] = the latest recorded run for (feature, target, surface)
  * on a default-branch commit that contains the last merged relevant ABU concluded "success".
  */
-export const profileAcceptanceCheckName = (feature: string, target: string) => `wos-acceptance/${feature}/${target}`;
+export const profileAcceptanceCheckName = (feature: string, target: string, surface: string) =>
+  `wos-acceptance/${feature}/${target}/${surface}`;
 
 /** The minimum toolchain set every wos.json must list (it may add more). */
 export const DEFAULT_TOOLCHAIN_PATHS = [
@@ -85,8 +95,8 @@ export const DEFAULT_TOOLCHAIN_PATHS = [
 export const RepoManifest = z.object({
   schema: z.literal("wos-repo.v1"),
   displayName: z.string(),
-  /** Every app whose product surface lives here, with its path (products/<slug>). */
-  products: z.array(z.object({ target: TargetSlug, path: RepoPath })).default([]),
+  /** The suite's app shells in this repo, one per surface (D14): e.g. web -> apps/web, ios and android -> apps/mobile. */
+  apps: z.array(z.object({ surface: Surface, path: RepoPath })).default([]),
   defaultBranch: z.string().default("main"),
   stack: z.object({
     language: z.string(),
@@ -119,6 +129,27 @@ export const RepoManifest = z.object({
   migrationsDir: RepoPath.nullable(),
   /** Max bytes of one changeset (hard cap 4_000_000 because of the API body limit). */
   maxChangesetBytes: z.number().int().positive().max(4_000_000),
+  /**
+   * Path-based toolchain requirements (D13). An ABU needs a requirement when one of its write scopes can
+   * touch one of `paths`; the claim is then eligible only for a device whose ToolchainAttestation satisfies
+   * it. JS/TS-only mobile ABUs need nothing special; ABUs touching ios/, android/, app config plugins or
+   * native modules need macOS + Xcode (or the Android SDK).
+   */
+  toolchainRequirements: z
+    .array(
+      z.object({
+        id: z.string().regex(/^[a-z][a-z0-9-]*$/),
+        paths: z.array(z.string().min(1)).min(1),
+        os: z.array(z.enum(["macos", "linux", "windows"])).min(1),
+        tools: z.array(z.object({ name: z.string().min(1), minVersion: z.string().min(1) })).default([]),
+      }),
+    )
+    .default([]),
+  /** Browser matrix for web acceptance (D13); must include MINIMUM_BROWSERS. */
+  browsers: z
+    .array(Browser)
+    .default([...MINIMUM_BROWSERS])
+    .refine((xs) => MINIMUM_BROWSERS.every((b) => xs.includes(b)), "browsers must include every MINIMUM_BROWSERS entry"),
 });
 export type RepoManifest = z.infer<typeof RepoManifest>;
 
@@ -144,9 +175,46 @@ export const Inventory = z.object({
   version: z.number().int().positive(),
   /** Public vendor documentation the inventory was built from. No logins, no scraped private data. */
   sources: z.array(z.object({ title: z.string(), url: z.url(), retrievedOn: z.iso.date() })).min(1),
+  /**
+   * Client surfaces the vendor ships (D13), each with cited public evidence (index into `sources`). A surface
+   * listed here is in scope for the roadmap unless the roadmap excludes it with a reason.
+   */
+  surfaces: z
+    .array(
+      z.object({
+        surface: Surface,
+        title: z.string().min(1),
+        source: z.number().int().nonnegative(),
+        /** e.g. ["iPhone", "iPad"], ["macOS", "Windows"]. */
+        platforms: z.array(z.string()).default([]),
+        /** Web only: browsers the vendor supports. */
+        browsers: z.array(Browser).default([]),
+      }),
+    )
+    .min(1),
   items: z.array(InventoryItem).min(1),
 });
 export type Inventory = z.infer<typeof Inventory>;
+
+/**
+ * A key user journey on one surface (D13: experience parity, not only capability). Describes what the user
+ * does, never how the vendor's product looks: our visual design is the warOnSaaS monochrome system, and
+ * copying the vendor's trade dress, logos or visual design is forbidden.
+ */
+export const Journey = z.object({
+  key: z.string().regex(/^J-\d{3}$/),
+  surface: Surface,
+  title: z.string().min(1),
+  /** The steps a user takes to do the job, in order. */
+  steps: z.array(z.string().min(3)).min(2),
+  /** Where the journey starts: navigation item, deep link, notification, share sheet... */
+  entryPoints: z.array(z.string().min(2)).min(1),
+  /** Offline, notification, background and responsive behaviour on this surface (write "none" if none). */
+  platformBehaviour: z.string().min(4),
+  /** Native capabilities the journey needs (push, background_audio, callkit, share_sheet, offline_storage, camera...). */
+  nativeCapabilities: z.array(z.string().regex(/^[a-z][a-z0-9_]*$/)).default([]),
+});
+export type Journey = z.infer<typeof Journey>;
 
 // ---------------------------------------------------------------------------------------------
 // Feature Catalog (D10): global, app-independent features.
@@ -177,7 +245,15 @@ export const ReasonedWeight = z.object({
 export type ReasonedWeight = z.infer<typeof ReasonedWeight>;
 
 /** A roadmap's reference to a catalog feature, for this app. */
+/** A feature's reasoned share per surface (D12 applied to D13); sums to 10000 across the feature's surfaces. */
+export const SurfaceWeight = ReasonedWeight.extend({ surface: Surface });
+export type SurfaceWeight = z.infer<typeof SurfaceWeight>;
+
 export const RoadmapFeatureRef = ReasonedWeight.extend({
+  /** In-scope surfaces this feature exists on for this app, with reasoned weights summing to 10000 (D13). */
+  surfaces: z.array(SurfaceWeight).min(1),
+  /** Key user journeys, at least one per listed surface (D13). */
+  journeys: z.array(Journey).min(1),
   feature: FeatureKey,
   /** Inventory items (of this app) this feature replaces; together the capability's refs cover its items exactly. */
   inventoryItems: z.array(InventoryItemKey).min(1),
@@ -215,13 +291,29 @@ export const Roadmap = z
     /** Name of the replacement product (never the vendor's trademark). */
     productName: z.string().min(1),
     summary: z.string().min(1),
-    /** The app's product surface in products/<target>: how it composes shared modules. */
+    /** How this target's parity profile maps onto the suite's modules and app shells (D14): no per-target codebase. */
     architecture: z.object({
       overview: z.string().min(1),
       composition: z.string().min(1),
       appSpecificData: z.string().min(1),
       selfHosting: z.string().min(1),
     }),
+    /**
+     * The app's surfaces (D13). Every surface in the inventory appears here: in_scope (with the repository and
+     * path that implement it) or excluded (with a reason a customer would accept).
+     */
+    surfaces: z
+      .array(
+        z.object({
+          surface: Surface,
+          status: z.enum(["in_scope", "excluded"]),
+          reason: z.string().min(10).nullable(),
+          repo: RepoFullName.nullable(),
+          /** The suite app shell that serves this surface (D14): "apps/web" or "apps/mobile" in waronsaas/product. */
+          path: z.string().nullable(),
+        }),
+      )
+      .min(1),
     /** ALL capabilities of the app, with weights summing to 10000; mapped ones list their features. */
     capabilities: z.array(RoadmapCapability).min(1),
     /** Items deliberately not replaced, with a reason. Removed from the denominator, shown publicly. */
@@ -233,6 +325,13 @@ export const Roadmap = z
   })
   .superRefine((r, ctx) => {
     // D12 sum constraints. Item coverage and catalog checks live in @waronsaas/planning validateRoadmap.
+    for (const [k, s] of r.surfaces.entries()) {
+      if (s.status === "excluded" && !s.reason)
+        ctx.addIssue({ code: "custom", path: ["surfaces", k, "reason"], message: `excluded surface ${s.surface} needs a reason` });
+      if (s.status === "in_scope" && (!s.repo || !s.path))
+        ctx.addIssue({ code: "custom", path: ["surfaces", k], message: `in-scope surface ${s.surface} needs repo and path` });
+    }
+    const inScope = new Set(r.surfaces.filter((s) => s.status === "in_scope").map((s) => s.surface));
     const capTotal = sum(r.capabilities);
     if (capTotal !== 10_000) {
       ctx.addIssue({ code: "custom", path: ["capabilities"], message: `capability weights must sum to 10000 bp, got ${capTotal}` });
@@ -246,11 +345,33 @@ export const Roadmap = z
         });
       }
       const keys = new Set<string>();
-      for (const f of c.features) {
+      c.features.forEach((f, j) => {
+        const here = ["capabilities", i, "features", j];
         if (keys.has(f.feature))
           ctx.addIssue({ code: "custom", path: ["capabilities", i, "features"], message: `feature ${f.feature} listed twice in ${c.key}` });
         keys.add(f.feature);
-      }
+        // D13: reasoned surface weights sum to 10000; each surface is in scope and has at least one journey.
+        if (sum(f.surfaces) !== 10_000)
+          ctx.addIssue({
+            code: "custom",
+            path: [...here, "surfaces"],
+            message: `surface weights of ${f.feature} must sum to 10000 bp, got ${sum(f.surfaces)}`,
+          });
+        const seen = new Set<string>();
+        for (const s of f.surfaces) {
+          if (seen.has(s.surface))
+            ctx.addIssue({ code: "custom", path: [...here, "surfaces"], message: `surface ${s.surface} listed twice for ${f.feature}` });
+          seen.add(s.surface);
+          if (!inScope.has(s.surface))
+            ctx.addIssue({ code: "custom", path: [...here, "surfaces"], message: `surface ${s.surface} of ${f.feature} is not in scope` });
+          if (!f.journeys.some((jr) => jr.surface === s.surface))
+            ctx.addIssue({
+              code: "custom",
+              path: [...here, "journeys"],
+              message: `feature ${f.feature} has no journey for surface ${s.surface}`,
+            });
+        }
+      });
     });
   });
 export type Roadmap = z.infer<typeof Roadmap>;
@@ -265,7 +386,21 @@ export const Requirement = z.object({
   /** One testable statement using MUST / MUST NOT. */
   statement: z.string().min(10),
   acceptance: z.array(z.string().min(5)).min(1),
+  /** Surfaces this requirement applies to (D13). A requirement on the shared API lists every surface consuming it. */
+  surfaces: z.array(Surface).min(1),
 });
+
+/** A per-surface acceptance suite of one app profile (D13); its check run is profileAcceptanceCheckName(feature, target, surface). */
+export const SurfaceAcceptance = z.object({
+  surface: Surface,
+  dir: RepoPath,
+  run: CommandArgv,
+  /** Web: the browser matrix (must include MINIMUM_BROWSERS). Mobile: Maestro flows run per platform. */
+  browsers: z.array(Browser).default([]),
+  /** CI runner class; only native iOS builds and E2E use macOS runners (Apple minutes are expensive). */
+  runner: z.enum(["linux", "macos"]),
+});
+export type SurfaceAcceptance = z.infer<typeof SurfaceAcceptance>;
 
 /**
  * Per-app parity profile (D10): the requirement ids app `target` needs. The feature is SPECIFIED for
@@ -275,8 +410,14 @@ export const Requirement = z.object({
 export const RequirementProfile = z.object({
   target: TargetSlug,
   requirements: z.array(RequirementKey).min(1),
-  /** Acceptance suite for this profile (subset of the feature's acceptance tests). */
-  acceptance: z.object({ dir: RepoPath, run: CommandArgv }),
+  /** One acceptance suite per surface this profile's requirements touch (D13). */
+  acceptance: z
+    .array(SurfaceAcceptance)
+    .min(1)
+    .refine(
+      (xs) => xs.filter((x) => x.surface === "web").every((x) => MINIMUM_BROWSERS.every((b) => x.browsers.includes(b))),
+      "web acceptance must run every MINIMUM_BROWSERS entry",
+    ),
 });
 export type RequirementProfile = z.infer<typeof RequirementProfile>;
 
@@ -287,6 +428,17 @@ export const FeatureContract = z.object({
   title: z.string().min(1),
   summary: z.string().min(1),
   requirements: z.array(Requirement).min(1),
+  /**
+   * Key user journeys per surface (D13), each linked to the requirements that implement it; acceptance tests
+   * journeys, not only endpoints. Journeys needing native capabilities name them (the contract must then
+   * include the ABUs that add the native modules).
+   */
+  journeys: z.array(Journey.extend({ requirements: z.array(RequirementKey).min(1) })).min(1),
+  /**
+   * The API every surface consumes (D13). Required when the contract's requirements span more than one
+   * surface: web and mobile use the same typed client from modules/<feature>. Null for single-surface features.
+   */
+  sharedApi: z.string().min(20).nullable(),
   /** One profile per app that references this feature and has been specified. */
   profiles: z.array(RequirementProfile).min(1),
   /**
@@ -326,6 +478,11 @@ export type ResourceClaim = z.infer<typeof ResourceClaim>;
 export const AbuSizePoints = z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(5), z.literal(8)]);
 
 export const AbuSpec = z.object({
+  /**
+   * The ONE repository this ABU writes to (D13). A graph may span repos; cross-repo dependencies use global ABU
+   * keys in dependsOn.
+   */
+  repo: RepoFullName,
   key: AbuKey,
   title: z.string().min(1),
   /** What "done" means for this unit, in one paragraph the builder can act on. */
@@ -374,6 +531,11 @@ export const BuildGraphErrorCode = z.enum([
   "TEST_OUTSIDE_SCOPE",
   "OVER_CONTEXT_BUDGET",
   "WRITE_OUTSIDE_MODULE_OR_PRODUCT",
+  "ABU_REPO_UNKNOWN",
+  "SHARED_API_MISSING",
+  "JOURNEY_UNCOVERED",
+  "REQUIREMENT_SURFACE_NOT_IN_SCOPE",
+  "NATIVE_CAPABILITY_UNPLANNED",
 ]);
 export type BuildGraphErrorCode = z.infer<typeof BuildGraphErrorCode>;
 

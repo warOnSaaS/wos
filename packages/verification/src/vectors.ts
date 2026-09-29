@@ -15,6 +15,7 @@ import {
   type ChangesetErrorCode,
   type ChangesetFile,
   DEFAULT_TOOLCHAIN_PATHS,
+  MINIMUM_BROWSERS,
   type RepoManifest,
 } from "@waronsaas/contracts";
 import {
@@ -73,7 +74,7 @@ function tryDiffHash(parent: string, files: ChangesetFile[]): string {
 export const vectorManifest = (over: Partial<RepoManifest> = {}): RepoManifest => ({
   schema: "wos-repo.v1",
   displayName: "warOnSaaS suite",
-  products: [],
+  apps: [],
   defaultBranch: "main",
   stack: { language: "typescript", runtime: "node", packageManager: "npm" },
   install: ["npm", "ci", "--ignore-scripts"],
@@ -84,10 +85,13 @@ export const vectorManifest = (over: Partial<RepoManifest> = {}): RepoManifest =
   generatedPaths: ["modules/contacts/dist/**"],
   migrationsDir: "db/migrations",
   maxChangesetBytes: 4_000_000,
+  toolchainRequirements: [],
+  browsers: [...MINIMUM_BROWSERS],
   ...over,
 });
 
 export const vectorAbu = (over: Partial<AbuSpec> = {}): AbuSpec => ({
+  repo: "waronsaas/product",
   key: "contacts#04",
   title: "Contacts list endpoint",
   objective: "Add the paginated contacts list endpoint with its tests.",

@@ -1,7 +1,7 @@
-# wOS product repo code owners (template: platform repo templates/suite/.github/CODEOWNERS).
+# wOS product repo code owners (template: platform repo templates/product/.github/CODEOWNERS).
 #
 # Only the files that define the gate are owned. Implementation PRs opened by the wOS App touch
-# modules/** and products/** only, so they need no code owner. Any PR that touches one of these paths
+# modules/** and the app shells apps/** only, so they need no code owner. Any PR that touches one of these paths
 # needs a maintainer's review (ruleset: require code owner review). The toolchain block mirrors
 # wos.json toolchainPaths (DEFAULT_TOOLCHAIN_PATHS, B-0005): changing how verification runs needs both an
 # exclusive toolchain:<path> resource and a maintainer.

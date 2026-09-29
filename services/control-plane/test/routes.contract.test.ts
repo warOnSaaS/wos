@@ -284,7 +284,7 @@ describe.skipIf(!HAS_DB)("every route: existence, auth mode, input validation, r
     const head = h.github.commits.at(-1)!.sha;
     const suite = {
       action: "completed",
-      repository: { full_name: "waronsaas/suite" },
+      repository: { full_name: "waronsaas/product" },
       check_suite: { id: 9, head_sha: head, conclusion: "success" },
     };
     await call("POST", "/v1/github/webhook", { body: suite, headers: webhookHeaders("check_suite", suite) });
@@ -302,7 +302,7 @@ describe.skipIf(!HAS_DB)("every route: existence, auth mode, input validation, r
     const pr = h.github.prs.at(-1)!;
     const merged = {
       action: "closed",
-      repository: { full_name: "waronsaas/suite" },
+      repository: { full_name: "waronsaas/product" },
       pull_request: { number: pr.number, merged: true, merge_commit_sha: "8".repeat(40) },
     };
     await call("POST", "/v1/github/webhook", { body: merged, headers: webhookHeaders("pull_request", merged) });

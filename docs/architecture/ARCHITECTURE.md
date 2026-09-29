@@ -30,8 +30,8 @@ then lets the wOS GitHub App open a pull request (D9). The public website shows 
  +--------------------------------------------------------+                               v
                                                                    +-------------------------------------------------------+
  waronsaas.com (Vercel project waronsaas-web, apps/web)  ---GET--> |  github.com/waronsaas                                  |
-   public Sniper List and drilldowns, reads /v1/public/*           |    waronsaas/waronsaas  platform repo (wOS + web)      |
-                                                                   |    waronsaas/suite      product repo (all replacements) |
+   public Sniper List and drilldowns, reads /v1/public/*           |    waronsaas/wos  platform repo (wOS + web)      |
+                                                                   |    waronsaas/product      product repo (all replacements) |
                                                                    |    Actions: wos-verify (no secrets), merge queue        |
                                                                    +-------------------------------------------------------+
 ```
@@ -43,8 +43,8 @@ and never open PRs (D9). wOS never holds model credentials (D1).
 
 | Repo | Visibility | Holds | Who writes |
 |---|---|---|---|
-| `waronsaas/waronsaas` | public | this monorepo: wOS (control plane, Desktop, CLI, shared packages) and `apps/web`. Also TGT-00 warOnSaaS, whose roadmap is `docs/roadmap/waronsaas.roadmap.json`. | V1 is built by the founder's implementation agents in worktrees (WORKSTREAMS.md). |
-| `waronsaas/suite` | public | the ONE product repository for every replacement app. Name is a FOUNDER DECISION (GAPS G-05); `PRODUCT_REPO` in `primitives.ts` holds it. | Only the wOS GitHub App (D9). |
+| `waronsaas/wos` | public | this monorepo: wOS (control plane, Desktop, CLI, shared packages) and `apps/web`. Also TGT-00 warOnSaaS, whose roadmap is `docs/roadmap/waronsaas.roadmap.json`. | V1 is built by the founder's implementation agents in worktrees (WORKSTREAMS.md). |
+| `waronsaas/product` | public | the ONE product repository for every replacement app. Name is a FOUNDER DECISION (GAPS G-05); `PRODUCT_REPO` in `primitives.ts` holds it. | Only the wOS GitHub App (D9). |
 
 Product repo layout (from `ARTIFACT_PATHS` in `packages/contracts/src/artifacts.ts`):
 
@@ -57,7 +57,7 @@ features/<featureKey>/CONTRACT.yaml       FeatureContract - app-independent, wit
 features/<featureKey>/BUILD-GRAPH.yaml    BuildGraph - Atomic Build Units
 features/<featureKey>/acceptance/**       acceptance suites (one per app profile)
 modules/<featureKey>/**                   shared implementation of a feature (built once)
-products/<target>/**                      per-app product surface: navigation, branding, composition
+apps/web/**, apps/mobile/**              the ONE suite's web shell and React Native app (D14)
 ```
 
 Decision: one product repo, not one repo per target. Rejected alternative: `waronsaas/crm`,
@@ -169,8 +169,8 @@ Hard rules:
 | Control plane | Vercel project `waronsaas-api`, functions pinned to `pdx1` | `api.waronsaas.com` | Node runtime; Vercel Cron for `/v1/cron/*` |
 | Database | Supabase Postgres, AWS `us-west-2` (same region as `pdx1`, D7) | n/a | app connects through the Supabase transaction pooler as `wos_app`; migrations connect directly as the owner |
 | Mail | Resend, sending domain `notify.waronsaas.com` | n/a | apex MX stays with ImprovMX (D5) |
-| GitHub | org `waronsaas`, the wOS GitHub App installed on `waronsaas/suite` and `waronsaas/waronsaas` | n/a | App has no `workflows` permission (SECURITY.md S-19) |
-| Releases | GitHub Releases on `waronsaas/waronsaas` | `github.com/waronsaas/waronsaas/releases/latest` | Desktop builds from Actions; CLI on npm as `@waronsaas/cli` |
+| GitHub | org `waronsaas`, the wOS GitHub App installed on `waronsaas/product` and `waronsaas/wos` | n/a | App has no `workflows` permission (SECURITY.md S-19) |
+| Releases | GitHub Releases on `waronsaas/wos` | `github.com/waronsaas/wos/releases/latest` | Desktop builds from Actions; CLI on npm as `@waronsaas/cli` |
 
 Every Postgres transaction opened by the control plane first runs:
 
@@ -285,7 +285,7 @@ without edits in Phase 0. In Wave 2 the web workstream:
 | Environment | Database | API | Notes |
 |---|---|---|---|
 | local | Docker `postgres:17-alpine` or `supabase/postgres:17.4.1.048` via `packages/db/scripts/test-migrations.sh` | `vercel dev` or node | no GitHub App writes; fakes for GitHub and CLIs |
-| preview | a separate Supabase project (FOUNDER-CHECKLIST.md) | Vercel preview deployments of `waronsaas-api` | GitHub App pointed at a sandbox org or repo, never `waronsaas/suite` |
+| preview | a separate Supabase project (FOUNDER-CHECKLIST.md) | Vercel preview deployments of `waronsaas-api` | GitHub App pointed at a sandbox org or repo, never `waronsaas/product` |
 | production | Supabase us-west-2 | `api.waronsaas.com` | migrated only by the ship gate |
 
 Ship gate (D7), implemented by the verification workstream as `scripts/ship.sh` (Wave 1):
@@ -299,3 +299,23 @@ Ship gate (D7), implemented by the verification workstream as `scripts/ship.sh` 
    append-only and checksummed; an edited or deleted migration stops the runner.
 
 Static assets served immutable must have hashed filenames (D7); Next.js and Vite already do this.
+
+## 11. Replacement apps on every surface (D13, contracts 4.0.0)
+
+- **Product repository:** `waronsaas/product` (founder decision). Layout (D14, mirrors wos): `apps/web` (Next.js), `apps/mobile` (React Native + Expo, one App Store and one Play listing for the whole suite), `modules/<featureKey>/**` (shared types, API clients, validation, feature logic and each module's web and mobile UI), plus `catalog/`, `roadmaps/<target>/`, `features/<key>/`.
+- **Mobile stack (decided):** React Native with Expo and EAS, TypeScript. Versions checked on npm 2026-09-29: `expo` 57.0.26 (SDK 57); React Native 0.86.x is the line SDK 57's `jest-expo` presets target (UNVERIFIED pairing, confirm with `npx expo install --check` when the first app is created; `react-native` 0.87.1 is published but newer than SDK 57); `eas-cli` 24.8.0; Maestro CLI 2.11.0; Playwright 1.63.0. Node 22 satisfies all of them.
+- **Rejected alternatives.** A separate app per target (one CRM app, one chat app...): duplicated shells, auth and data stores; cross-product data (contacts shared by CRM and helpdesk) becomes integration work; N App Store listings to maintain. A separate mobile repository (the founder's first instinct, "new repo"): it would duplicate types, API clients and validation or force publishing them as packages, and every shared-feature change would become two coordinated PRs, the opposite of D10. Native Swift/SwiftUI plus Kotlin: two more codebases and languages per app, and most contributors could not build them.
+- **One codebase, two surfaces:** iPhone and Android ship from the same code; they are still separate surfaces for journeys, acceptance and progress.
+- **Browsers (decided):** current Chrome and Edge, Safari on macOS and iOS, Firefox, in phone-sized and desktop viewports (`MINIMUM_BROWSERS`).
+- **No wOS phone app in V1:** contributors use Desktop or the CLI (GAPS G-56).
+
+## 12. One modular suite (D14)
+
+The product is ONE web app and ONE mobile app: a modular suite in the spirit of Odoo or Zoho One. One account, one navigation, one data model; feature modules (CRM, team chat, meetings, helpdesk, e-signature, issue tracking, accounting, commerce, ERP...) that each workspace turns on or off.
+
+- **Targets are parity profiles.** Salesforce, Slack and the rest stay the Sniper List and the definition of what the suite must do to fully replace each product (their D10 profiles, D12 weights, D13 surfaces). A target's "replacement complete" is still computed from its own profile (`progress.ts`, unchanged in meaning). They are not codebases, repositories or store listings. Marketing pages per target stay on the website.
+- **The app shell is catalog features.** Workspace module enable/disable, navigation and information architecture, accounts and tenancy, roles and permissions, notifications, search, settings: these are catalog features like any other, owned by their Feature Contracts, and every target's roadmap references them (usually in a `platform` capability). Navigation is owned by the app-shell navigation contract; a module registers its entries through that contract's interface, never by editing the shell ad hoc.
+- **Module enable/disable per workspace.** A module declares its dependencies on other modules (contacts before CRM deals); enabling a module enables its dependencies; disabling one hides its navigation and routes but never deletes data. The workspace-modules catalog feature specifies this; its data lives in the one data model.
+- **Self-hosting** deploys the one suite (web app, API, database) with the modules the operator enables; there is no per-target deployment.
+- **Mobile:** one React Native app (`apps/mobile`) for iPhone and Android; modules ship their mobile screens inside it; per-surface acceptance still separates web, iOS and Android.
+- **Rejected:** a separate app per target. It duplicates shells, auth and data; turns shared data (a contact used by CRM, helpdesk and e-signature) into integration work; and multiplies App Store and Play listings, signing and review cycles by the number of targets.

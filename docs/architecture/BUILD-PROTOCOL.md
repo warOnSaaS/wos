@@ -75,6 +75,10 @@ Concurrency: two builders claiming ABUs of the same feature succeed simultaneous
 
 Heartbeats: `POST /v1/leases/:id/heartbeat` every 60 s from the same device; extends `expires_at` to `min(now + 30 min, hard_deadline_at)`. The sweeper (`GET /v1/cron/sweep`, every minute) expires active leases with `expires_at <= now` (checked again inside the UPDATE) and applies `lease_lapsed` to the attempt.
 
+### Toolchain eligibility (D13, contracts 4.0.0)
+
+`wos.json` `toolchainRequirements` are path-based: `{ id, paths, os, tools: [{name, minVersion}] }`. At claim time the control plane computes the requirements whose `paths` can intersect the ABU's write scopes and refuses the claim (`NOT_ELIGIBLE`) unless the device's latest `ToolchainAttestation` (posted by `wos status` / Desktop with `postAttestation`) satisfies every one. Example for `waronsaas/product`: `apps/mobile/ios/**`, `**/app.plugin.*` and native module directories need `os: ["macos"]` and `xcode >= <min>`; `apps/mobile/android/**` needs the Android SDK; everything else (the React Native TypeScript) needs nothing beyond Node 22. The attestation is a claim like any other (SECURITY.md S-13); CI proves the result.
+
 ## 4. BUILD
 
 On the builder's machine, all through `@waronsaas/orchestrator` (CLI and Desktop call the same code):
@@ -157,6 +161,14 @@ Workflow `wos-verify` in the product repo (owned by the verification workstream)
 - Steps: base `wos.json` install and verify steps; the ABU's acceptance checks (ABU found via the `wOS-Abu` trailer, spec read from `BUILD-GRAPH.yaml` at the base); `verification.validateChangeset` re-run against the base (scope check in CI).
 - A second job, `wos-verify-candidate-toolchain`, runs only when the candidate changes a toolchain path, uses the candidate's own files and is NOT a required check; its result is shown to reviewers and to the maintainer whose CODEOWNERS approval such a PR needs before merge.
 - Result reaches the control plane via the `check_suite` webhook and is stored in `verification_runs` (source `ci`). Only a result for exactly `attempts.head_sha` moves the attempt.
+
+### Runners and mobile builds (D13)
+
+- Typecheck, lint and unit tests (including React Native component tests) run on Linux runners.
+- macOS runners (`macos-15`) run only the checks that need them: native iOS builds and iOS end-to-end flows. Every macOS job is gated on the ABU or profile actually touching iOS, because Apple-machine minutes cost roughly ten times Linux minutes.
+- End-to-end mobile journeys use **Maestro** (CLI 2.11.0 verified 2026-09-29): YAML flows, black-box, works against Expo development and release builds on the iOS simulator and the Android emulator with no test code inside the app. Detox (20.51.4) was rejected: grey-box synchronisation is stronger but it needs native test harness configuration in every app and is more fragile across React Native upgrades.
+- Store builds and signing use **EAS Build** (eas-cli 24.8.0 verified) from the protected `release` environment only (D7). Suite-app signing credentials (Apple distribution certificate and App Store Connect key, Google Play upload key) are separate from wOS Desktop's Developer ID identity.
+- Web acceptance uses Playwright (1.63.0 verified) with the browser matrix from the profile.
 
 ## 9. REVIEW and QUALIFY
 

@@ -14,7 +14,7 @@ import {
 import type { FakeGithub } from "./support/fake-github.js";
 import { changeset, cleanup, del, git, makeApp, makeUpstream, tempDir, upsert, writeFiles } from "./support/setup.js";
 
-const REPO = "waronsaas/suite";
+const REPO = "waronsaas/product";
 const ATTEMPT = "0192ab3c-7d1e-7000-8000-00000000abcd";
 const FIXTURE = join(import.meta.dirname, "fixtures", "commit-changeset.exchange.json");
 

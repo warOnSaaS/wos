@@ -7,6 +7,7 @@ import {
   ContextManifest,
   ContextPlan,
   ProviderAttestation,
+  ToolchainAttestation,
   ReviewVerdict,
   Ruling,
   TaskKind,
@@ -465,7 +466,12 @@ export const Routes = {
     idempotent: true,
     params: None,
     query: None,
-    body: z.object({ deviceId: Uuid, providers: z.array(ProviderAttestation) }),
+    body: z.object({
+      deviceId: Uuid,
+      providers: z.array(ProviderAttestation),
+      /** D13: absent or null means the device may not claim ABUs with toolchain requirements. */
+      toolchain: ToolchainAttestation.nullable().optional(),
+    }),
     response: Me,
     errors: ["VALIDATION_FAILED", "FORBIDDEN"],
     summary: "Records local CLI readiness (wos status). An attestation, not proof (SECURITY.md).",

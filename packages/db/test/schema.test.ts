@@ -14,6 +14,7 @@ import {
   ProposalStates,
   RewardCategory,
   RoundStates,
+  Surface,
   TaskKind,
   TaskStates,
 } from "../../contracts/src/index.js";
@@ -62,6 +63,13 @@ describe("SQL CHECK lists mirror the contracts", () => {
     );
     const updateGrant = /grant select, insert, update on([\s\S]*?)to wos_app;/.exec(sql)![1]!;
     for (const t of appendOnly) expect(updateGrant.includes(`wos.${t},`) || updateGrant.includes(`wos.${t}\n`), t).toBe(false);
+  });
+
+  it("surface CHECK lists in 0005 mirror Surface (D13)", () => {
+    const s5 = readFileSync(fileURLToPath(new URL("../migrations/0005_surfaces.sql", import.meta.url)), "utf8");
+    const lists = [...s5.matchAll(/surface in \(([^)]*)\)/g)].map((m) => [...m[1]!.matchAll(/'([^']+)'/g)].map((x) => x[1]!).sort());
+    expect(lists.length).toBeGreaterThanOrEqual(4);
+    for (const l of lists) expect(l).toEqual([...Surface.options].sort());
   });
 
   it("enables RLS on every table", () => {

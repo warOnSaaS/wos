@@ -51,7 +51,7 @@ describe.skipIf(!HAS_DB)("implementation pipeline (Postgres, fake GitHub)", () =
     // CI on exactly the candidate head opens a round with one task per slot.
     const suite = {
       action: "completed",
-      repository: { full_name: "waronsaas/suite" },
+      repository: { full_name: "waronsaas/product" },
       check_suite: { id: 77, head_sha: head.sha, conclusion: "success", app: { slug: "github-actions" } },
     };
     const hook = await h.call("POST", "/v1/github/webhook", { body: suite, headers: webhookHeaders("check_suite", suite) });
@@ -123,8 +123,8 @@ describe.skipIf(!HAS_DB)("implementation pipeline (Postgres, fake GitHub)", () =
     expect(dispatch.status).toBe(200);
     expect(h.github.prs).toHaveLength(1);
     const pr = h.github.prs[0]!;
-    expect(h.github.branches.get(`waronsaas/suite:${pr.head}`)).toBe(head.sha);
-    expect(h.github.statuses).toContainEqual({ repo: "waronsaas/suite", sha: head.sha, context: "wos/qualified", state: "success" });
+    expect(h.github.branches.get(`waronsaas/product:${pr.head}`)).toBe(head.sha);
+    expect(h.github.statuses).toContainEqual({ repo: "waronsaas/product", sha: head.sha, context: "wos/qualified", state: "success" });
     const [prov] = await h.owner<
       { record: { authors: unknown[]; reviews: unknown[]; agentRuns: unknown[]; ci: unknown[]; headSha: string } }[]
     >`
@@ -142,7 +142,7 @@ describe.skipIf(!HAS_DB)("implementation pipeline (Postgres, fake GitHub)", () =
     // Merge: ABU merged, dependent unlocked, progress recomputed.
     const merged = {
       action: "closed",
-      repository: { full_name: "waronsaas/suite" },
+      repository: { full_name: "waronsaas/product" },
       pull_request: { number: pr.number, merged: true, merge_commit_sha: "f".repeat(40), user: { login: "waronsaas-wos[bot]" } },
     };
     expect((await h.call("POST", "/v1/github/webhook", { body: merged, headers: webhookHeaders("pull_request", merged) })).status).toBe(
@@ -179,7 +179,7 @@ describe.skipIf(!HAS_DB)("implementation pipeline (Postgres, fake GitHub)", () =
     const head = h.github.commits.at(-1)!;
     const suite = {
       action: "completed",
-      repository: { full_name: "waronsaas/suite" },
+      repository: { full_name: "waronsaas/product" },
       check_suite: { id: 78, head_sha: head.sha, conclusion: "failure" },
     };
     await h.call("POST", "/v1/github/webhook", { body: suite, headers: webhookHeaders("check_suite", suite) });

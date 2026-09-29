@@ -42,3 +42,22 @@ MINOR. Rulings in the four blocker files below.
 - `@waronsaas/github/app` `requestTeamReview(creds, repo, prNumber, teamSlug)` ratified; `document.opened.target` nullable and `relevantTo` added (default []). The nullable widening is recorded as MINOR by architect decision: its only producer requested it and nothing consumes it yet. (B-0005-control-plane)
 - Migration `0004_manifest_per_lease.sql`: a context manifest is unique per (lease, manifest sha), not globally, because a deterministic engine gives a re-claimed task the same manifest (found at the integration gate).
 - Built-in builder rule: inside `features/` only `features/<f>/acceptance/**` is writable; `features/**` removed from the suite template's protectedPaths. (B-0006-verification)
+
+## 4.0.0 — 2026-09-29 (D13: features AND experience, on every surface)
+
+MAJOR.
+
+- `Surface` and `Browser` enums, `MINIMUM_BROWSERS` (Chrome, Edge, Safari macOS, Firefox, iPhone and Android phone viewports).
+- Inventory `surfaces` (with evidence and browsers); Roadmap `surfaces` (in scope with repo and path, or excluded with reason); `RoadmapFeatureRef.surfaces` (reasoned surface weights summing to 10000) and `journeys` (`Journey`: steps, entry points, platform behaviour, native capabilities); schema checks for all of it.
+- `Requirement.surfaces`; `FeatureContract.journeys` (linked to requirements) and `sharedApi`; `RequirementProfile.acceptance` is per surface (`SurfaceAcceptance`: browsers, runner); `AbuSpec.repo`; new build-graph codes.
+- `RepoManifest.toolchainRequirements` (path-based) and `browsers`; `ToolchainAttestation` in `postAttestation`.
+- `profileAcceptanceCheckName(feature, target, surface)` → `wos-acceptance/<feature>/<target>/<surface>`.
+- Progress per surface (`FeatureProgress.surfaces`, `AppProgress.surfaces`); a feature is complete only when every in-scope surface is.
+- Views: `TargetDetail.surfaces`, `AppFeatureSummary.surfaces` and `journeys`, `RequirementView.surfaces`; event `verification.recorded.surface`.
+- Policy data: D13 obligations for roadmap and feature authors and the builder; material-finding rules for all reviewers (missing surface, missing journey, surface mis-weighting, missing browser, native capability unplanned, vendor trade dress).
+- `PRODUCT_REPO = "waronsaas/product"` (founder; briefly `waronsaas/replacements` the same day); templates renamed to `templates/product`.
+- Migration `0005_surfaces.sql`: repository registry and family rule for ABUs, `target_surfaces`, `app_feature_surfaces`, `app_features.journeys`, `requirement_surfaces`, `verification_runs.surface`, `toolchain_attestations`; product targets moved to `waronsaas/product`.
+- TGT-00 roadmap: surfaces (web, desktop, CLI), journeys and surface weights for every feature, and the new capability `surfaces` (multi-repo products, toolchain eligibility, native CI runners, per-surface acceptance, mobile app signing).
+
+Integration adaptations made by the architect so `main` stays green (owners review in Wave 2): control-plane progress input (surfaces from `app_feature_surfaces`, requirement tags, per-surface acceptance; features mapped before D13 fall back to one web surface), per-surface check-run parsing in webhooks, public views; verification CI (`wos-ci.mjs` profiles and acceptance per surface, workflow job name and runner), vectors and template fixtures; `repo` in ABU fixtures of context-engine, orchestrator and control-plane tests; golden hashes.
+- D14 (folded into 4.0.0): `PLATFORM_REPO = "waronsaas/wos"`; the product is ONE suite: `RepoManifest.products` replaced by `apps` (surface → app shell path), `ARTIFACT_PATHS.product` replaced by `webApp`/`mobileApp`, `TargetSummary.productPath` removed (`targets.product_path` dropped in 0005), repository registry uses `waronsaas/wos`; roadmap author obligation and reviewer rule against target-specific apps.

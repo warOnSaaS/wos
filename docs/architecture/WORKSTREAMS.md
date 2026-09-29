@@ -23,7 +23,7 @@ The V1 build of wOS is itself TGT-00 warOnSaaS: every workstream is mapped to fe
 | 0 | architect | this commit: contracts, schema, policy, docs; `npm run check` and `npm run db:test` green |
 | 1 | control-plane, github-build (App + local git), context-policy, verification | Migrations apply via the runner in Docker; control plane serves auth (email code), GitHub link, claim → heartbeat → expire → release against Postgres with a fake GitHub; scope validator passes the shared vector suite; `buildInvocation` snapshots match the policy for all ten roles; CI workflow `wos-verify` runs in the platform repo |
 | 2 | planning, rewards, orchestrator (github-build continues), cli, desktop, web | A fake end-to-end run: CLI and Desktop both drive the orchestrator through LEASE → … → PR against the control plane with a fake GitHub and fake agent CLIs; a roadmap document goes through two fake rounds to consensus; rewards written for a fake merge; the web renders real API data with 0% everywhere |
-| 3 | all (end to end), led by verification | The spec's FINAL V1 INTEGRATION TEST with real accounts, the real App on `waronsaas/suite`, real Claude Code and Codex, the Salesforce roadmap v1 mapping the CRM capability, one Feature Contract at consensus, two ABUs of one feature built in parallel |
+| 3 | all (end to end), led by verification | The spec's FINAL V1 INTEGRATION TEST with real accounts, the real App on `waronsaas/product`, real Claude Code and Codex, the Salesforce roadmap v1 mapping the CRM capability, one Feature Contract at consensus, two ABUs of one feature built in parallel |
 
 After every wave the architect: runs the full suite, inspects contract violations, merges `ws/*` branches into `integration` in dependency order (contracts consumers after providers), resolves conflicts on purpose, updates the constitution, bumps contracts if a blocker was accepted, then starts the next wave.
 
@@ -101,7 +101,7 @@ Roadmap features referenced below are keys in `docs/roadmap/waronsaas.roadmap.js
 
 ### verification (spec Agent 8) — Waves 1–3
 
-- **Owns:** `packages/verification/**`, `tests/**` (integration and e2e suites at the repo root), `.github/workflows/**` of the platform repo, `templates/suite/**` (the product repo's `wos.json`, `wos-verify.yml`, CODEOWNERS and ruleset documentation), `scripts/ship.sh` (the ship gate, D7), `docs/dogfood/verification.md`.
+- **Owns:** `packages/verification/**`, `tests/**` (integration and e2e suites at the repo root), `.github/workflows/**` of the platform repo, `templates/product/**` (the product repo's `wos.json`, `wos-verify.yml`, CODEOWNERS and ruleset documentation), `scripts/ship.sh` (the ship gate, D7), `docs/dogfood/verification.md`.
 - **May read:** everything. **May not change:** other packages' source (report defects as blockers or issues to the owner).
 - **Honours:** SECURITY.md (every S-control needs a test that fails when the control is removed); BUILD-PROTOCOL.md scope algebra and qualification list; D2 (CI is the trusted verification); D7 ship gate rules.
 - **Roadmap features:** scope-verification, integration-and-e2e, security-hardening, ship-gate-and-migrations (gate half).
@@ -227,7 +227,7 @@ What changed: canonical module; `RepoManifest.toolchainPaths` + `DEFAULT_TOOLCHA
 You must:
 1. Delete `src/jcs.ts`, the local `computeSubmissionSha256`, `changesetSigningPayload`, `ed25519Key`; use `@waronsaas/contracts/canonical` (`submissionSha256`, `verifyChangesetSignature`). PEM/SPKI keys are now invalid.
 2. `validateChangeset`: emit `TOOLCHAIN_WITHOUT_RESOURCE` for any path matching `repoManifest.toolchainPaths` (picomatch) unless the ABU holds exclusive `toolchain:<path>`.
-3. `templates/suite/wos.json`: `toolchainPaths` includes every `DEFAULT_TOOLCHAIN_PATHS` entry. `wos-verify.yml`: (a) the required job restores every toolchain path from the base commit and reads install/verify steps from the base `wos.json`; (b) a non-required `wos-verify-candidate-toolchain` job when the candidate touches toolchain paths; (c) on push to the default branch, one check run per profile named `wos-acceptance/<feature>/<target>` running that profile's acceptance command.
+3. `templates/product/wos.json`: `toolchainPaths` includes every `DEFAULT_TOOLCHAIN_PATHS` entry. `wos-verify.yml`: (a) the required job restores every toolchain path from the base commit and reads install/verify steps from the base `wos.json`; (b) a non-required `wos-verify-candidate-toolchain` job when the candidate touches toolchain paths; (c) on push to the default branch, one check run per profile named `wos-acceptance/<feature>/<target>` running that profile's acceptance command.
 4. Adversarial DB suite: drop the five `it.fails` markers (B-0003 is closed by 0002); give fixtures real task/lease/manifest/agent-run bindings (`reviews.agent_run_id` is now required), `repo_full_name` on documents/catalog features/ABUs, and the maintainer role for bootstrap cases. Add: review citing another lease's agent run is rejected; TGT-00 roadmap outside the platform repo is rejected. Move suites to `tests/**` if you want.
 
 Proving tests: vector suite passes via contracts canonical; one test per toolchain case (package.json edit with and without the resource); workflow lint asserting the base-restore step and acceptance check names; the five former KNOWN GAP tests green as plain `it`; mutation check: removing the 0002/0003 triggers turns them red.
@@ -237,7 +237,7 @@ Proving tests: vector suite passes via contracts canonical; one test per toolcha
 What changed: everything above plus the events and route changes from your blockers.
 
 You must:
-1. Apply migrations 0002 and 0003 (runner). Write `repo_full_name` on catalog features, documents and ABUs from their parent (TGT-00 = `waronsaas/waronsaas`); pass it to every GitHub call.
+1. Apply migrations 0002 and 0003 (runner). Write `repo_full_name` on catalog features, documents and ABUs from their parent (TGT-00 = `waronsaas/wos`); pass it to every GitHub call.
 2. Views and plans: `TaskView`/`AttemptView` with `target | feature`, `relevantTo`, `repo`; `ContextPlan.target` null for feature work; `taskKind` in every plan; `listOpenTasks` `feature` filter. Remove the lowest-rank-app workaround.
 3. Serve `getLeaseDocument` at `GET /v1/leases/:id/documents?ref=` from your existing renderer; 403 for refs outside the lease plan. Accept several manifests per lease.
 4. Events: `attempt.created` on attempt creation (no state_changed from "none"); your six workaround events become the contract types and PUBLIC; `verification.recorded` when you store any `verification_runs` row.
@@ -249,3 +249,25 @@ You must:
 10. Token hashing stays HMAC-SHA256 with `SESSION_TOKEN_PEPPER` (now normative).
 
 Proving tests: the "every 2xx parses with its route schema" scenario on the new shapes; server-document fetch by query ref and 403 for an unplanned ref; a feature-work task view with `target: null` and two `relevantTo` apps; submit with a failing fake App commit records nothing and a retry with the same key succeeds; a verdict whose agent run belongs to another lease is refused; a profile-acceptance check run moves a feature to BUILT 10000 in the fake end-to-end run; every emitted event parses as `DomainEvent`.
+
+## 8. D13 (contracts 4.0.0): who builds surfaces and experience in Wave 2
+
+| Workstream | Owns for D13 | Proving tests |
+|---|---|---|
+| planning | `validateRoadmap`: every inventory surface appears in `roadmap.surfaces`; `validateBuildGraph`: `ABU_REPO_UNKNOWN` (repo not in the family), `SHARED_API_MISSING`, `JOURNEY_UNCOVERED`, `REQUIREMENT_SURFACE_NOT_IN_SCOPE`, `NATIVE_CAPABILITY_UNPLANNED`; planning-role templates render the D13 obligations and rules | one failing fixture per new code; the TGT-00 bundle converted to files passes |
+| control-plane | materialise `target_surfaces`, `app_feature_surfaces` and `app_features.journeys` on roadmap merge, `requirement_surfaces` on contract merge (remove the one-web-surface fallback once written); store `ToolchainAttestation` from `postAttestation` into `toolchain_attestations`; compute toolchain requirements at claim; record per-surface acceptance (already adapted) | a roadmap with web + ios materialises both; a Linux device cannot claim an ABU under `apps/mobile/ios/**`; iOS and Android acceptance recorded separately |
+| context-policy | eligibility step for toolchain requirements (AGENT-POLICY.md section 5); builder context includes matching `toolchainRequirements`; roadmap and feature contexts include surfaces and journeys | eligibility table rows for macOS/Xcode present, missing, too old; JS-only mobile ABU eligible on Linux |
+| github-build | `wos status` / Desktop collect a `ToolchainAttestation` (os, version, `xcodebuild -version`, Android SDK, Node) and post it | status output snapshot on macOS and Linux fakes |
+| verification | `templates/product`: Playwright browser-matrix runner for web suites (`WOS_BROWSERS`), Maestro runner for iOS and Android suites, macOS jobs only for native iOS, EAS release workflow in the protected environment; `wos.json` template with `toolchainRequirements` for `ios/`, `android/`, config plugins and native modules; adversarial: a web suite missing a browser, a native ABU claimed from Linux | workflow lint (runner selection, secrets only in `release`), fixture repo runs each surface suite |
+| web | per-surface progress and journeys on app and feature pages (`TargetDetail.surfaces`, `AppFeatureSummary.surfaces`, `journeys`); excluded surfaces with reasons | a page test that renders web, iOS and Android numbers from the API response |
+| cli, desktop | nothing new beyond the attestation shown in status | — |
+
+TGT-00 mapping for the new capability `surfaces` (weight 700): multi-repo-products → control-plane + planning; toolchain-eligibility → context-policy + control-plane + github-build; native-ci-runners → verification; per-surface-acceptance → verification + control-plane; mobile-app-signing → verification.
+
+## 9. D14: web copy and URL changes (for the web workstream; the architect does not edit apps/web)
+
+- `lib/site.ts` `LINKS`: `repo` → `https://github.com/waronsaas/wos`, `releases` → `https://github.com/waronsaas/wos/releases/latest`, `pullRequests` → `https://github.com/waronsaas/wos/pulls` (and add `product: https://github.com/waronsaas/product` for the suite's code). `DOWNLOADS` hrefs follow `releases`.
+- Any copy that says we build "an app for each product" or "a Salesforce app": the replacements are modules of ONE open-source suite (one account, one navigation, one data model, one phone app for iPhone and Android); each Sniper List target page describes the parity profile (what the suite must do to fully replace that product) and its progress per surface (web, iPhone, Android).
+- `data/targets.ts` / API switch: drop any per-target product path; `TargetSummary.productPath` no longer exists in contracts 4.0.0.
+- `llms.txt` / `llms-full.txt` and the about/how-it-works pages: the same repository names and the one-suite model.
+- TGT-00 page: repository `waronsaas/wos`; roadmap from `docs/roadmap/waronsaas.roadmap.json` (now with surfaces, journeys and the `surfaces` capability).

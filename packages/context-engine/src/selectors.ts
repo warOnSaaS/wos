@@ -1,7 +1,7 @@
 import type { AbuSpec, ArtifactSelector } from "@waronsaas/contracts";
 
 export interface BuilderSelectorInput {
-  /** The product repo, e.g. "waronsaas/suite". */
+  /** The product repo, e.g. "waronsaas/product". */
   repo: string;
   feature: string;
   abu: AbuSpec;

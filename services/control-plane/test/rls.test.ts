@@ -64,7 +64,7 @@ describe.skipIf(!HAS_DB)("row-level security through the control plane", () => {
     const head = h.github.commits.at(-1)!.sha;
     const suite = {
       action: "completed",
-      repository: { full_name: "waronsaas/suite" },
+      repository: { full_name: "waronsaas/product" },
       check_suite: { id: 5, head_sha: head, conclusion: "success" },
     };
     await h.call("POST", "/v1/github/webhook", { body: suite, headers: webhookHeaders("check_suite", suite) });

@@ -38,7 +38,7 @@ export function git(cwd: string, ...args: string[]): string {
   return execFileSync("git", args, { cwd, env: GIT_ENV, encoding: "utf8" }).trim();
 }
 
-export const REPO = "waronsaas/suite";
+export const REPO = "waronsaas/product";
 export const TARGET = "salesforce";
 export const FEATURE = "contacts";
 export const ABU_KEY = "contacts#04";
@@ -458,7 +458,7 @@ export class FakeControlPlane {
         return this.leaseView(l);
       }
       case "createProposal":
-        return { proposalId: this.id(), issueUrl: "https://github.com/waronsaas/suite/issues/1" };
+        return { proposalId: this.id(), issueUrl: "https://github.com/waronsaas/product/issues/1" };
       default:
         throw new HttpErr(501, "INTERNAL", `fake control plane does not serve ${name}`);
     }
@@ -486,7 +486,7 @@ export class FakeControlPlane {
         return;
       case "qualified":
         this.move(a, "pr_open");
-        a.pr = { number: 7, url: "https://github.com/waronsaas/suite/pull/7" };
+        a.pr = { number: 7, url: "https://github.com/waronsaas/product/pull/7" };
         return;
       case "pr_open":
         if ((this.outcomes.merge.shift() ?? "merged") === "merged") this.move(a, "merged");

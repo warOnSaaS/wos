@@ -5,6 +5,7 @@ import { literalGlob } from "../src/selectors.js";
 import { docSelector, makeReader, planFor, policy, policyDoc, REPO, scenario } from "./fixtures.js";
 
 const abu = (over: Partial<AbuSpec> = {}): AbuSpec => ({
+  repo: "waronsaas/product",
   key: "contacts#04",
   title: "Contact list API",
   objective: "Serve the contact list over the API with paging and sorting.",

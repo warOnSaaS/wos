@@ -8,7 +8,7 @@ owns making every listed test exist and fail when its control is removed.
 
 | Asset | Why it matters |
 |---|---|
-| The official repos (`waronsaas/suite`, `waronsaas/waronsaas`) | Malicious code merged there ships to everyone who self-hosts or uses a hosted app. |
+| The official repos (`waronsaas/product`, `waronsaas/wos`) | Malicious code merged there ships to everyone who self-hosts or uses a hosted app. |
 | The WOS token ledger and leaderboard | Public reputation; must not be forgeable or silently editable. |
 | Progress numbers | The public promise "no fake progress". |
 | Sealed verdicts | Independence of Astra and Fable (spec) depends on nobody seeing the other's current conclusion. |
@@ -361,3 +361,11 @@ control-plane (qualification), context-policy (policy rule rendering).
 Orchestrating contributors' Claude and ChatGPT subscriptions for platform work may conflict with the
 providers' consumer terms. wOS does not proxy or store credentials and runs the official CLIs as the
 signed-in user on their own machine, but this is not a legal opinion. See GAPS.md; FOUNDER DECISION.
+
+## 4. Contracts 4.0.0 additions (D13)
+
+**S-34 Toolchain attestations are claims.** `ToolchainAttestation` (os, version, tools) decides only who may claim native ABUs; a false one wastes the lessee's time, never lets unverified code in, because CI and reviews still decide. Stored append-only (`wos.toolchain_attestations`, own rows only under RLS). Workstream: context-policy (eligibility), control-plane.
+
+**S-35 Mobile signing is CI-only and separate.** EAS Build signs iOS and Android builds of the replacement apps only from the protected `release` environment of `waronsaas/product`; the credentials (Apple distribution certificate, App Store Connect API key, Google Play upload key, EAS token) never reach contributor machines or candidate CI, and are separate from wOS Desktop's Developer ID. Workstream: verification (workflows).
+
+**S-36 No vendor trade dress.** Reviewers at roadmap, contract and implementation level treat copying the vendor's trade dress, logos, icons or visual design as a material finding (policy `materialFindingRules`). This limits legal exposure (GAPS G-23) and keeps the product ours.
