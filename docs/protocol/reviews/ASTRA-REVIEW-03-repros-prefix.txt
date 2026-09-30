@@ -1,0 +1,52 @@
+# Astra review 03 — reproductions on the PRE-FIX code (commit 639b4fb), 2026-09-30T04:42Z
+# SQL: bash tools/astra-03-sql-repros.sh (Postgres 17 in Docker, after the full db-assertions fixture). ACCEPTED = the finding reproduced.
+# TS:  node tools/astra-03-ts-probes.mjs (built contracts).
+
+---- HIGH 1: entitlements not backed by allocations, maturity or settlement domain
+H1a two release_now rows for one reward => ACCEPTED: 3 release_now rows with no allocation source
+H1b holdback tranche matured in its own epoch => ACCEPTED: tranche of epoch 3 matured in epoch 3
+H1c devnet entitlement in a mainnet leaf => ACCEPTED: devnet (test-epoch) entitlement attached to a mainnet-beta leaf
+---- HIGH 2: a paid entitlement paid again through another leaf
+H2a void a settled leaf with an unrelated action, re-claim, settle again => ACCEPTED: entitlement e001 confirmed in 2 leaves
+---- HIGH 3: appeals do not determine settlement; stakes not reserved
+H3a reversed appeal still settles 40 excess and a bounty => ACCEPTED: appeal reversed to 100 but settlement derived excess 40, bounty 8, no stake forfeited
+H3b settle before the appeal window, then appeal => ACCEPTED: settled immediately, timely appeal filed against an immutable settlement
+H3c three disputes staking the same 1 WOS => ACCEPTED: 3000000 staked against a pending balance of 1000000
+---- HIGH 4: confiscation skips due process; partial recovery mishandled
+H4a upheld immediately with an unrelated action, then seized => ACCEPTED: seized at notice time, both windows skipped
+H4b the remaining 90 of a partly confiscated entitlement is unclaimable => REJECTED: ERROR:  wos: entitlement 00000000-0000-0000-0000-00000000e104 was confiscated
+H4c tranche 100, confiscate 10, mature 100 => ACCEPTED: 10 confiscated and 100 matured from a 100 tranche
+---- HIGH 5: qualification accepts assertions
+H5a empty-evidence qualification, arbitrary revision, usage reused by a second receipt => ACCEPTED: usage receipt ad001 now backs 2 contributions
+---- HIGH 6: audit verdicts not bound to assignment, packet or provider
+H6a one claude run submitted as a codex verdict to two unrelated quorums => ACCEPTED: one run, no assignment, declared codex_cli, used in 2 quorums
+---- HIGH 7: authorization does not bind the exact operation
+H7a one record_offset action reused for two offsets of different amounts => ACCEPTED: 2 offsets from one action
+H7b revoke with a one-person resolve_dispute action and no resolution => ACCEPTED: receipt revoked by one maintainer without any dispute resolution
+H7c confiscation appeal decided with any action => ACCEPTED: upheld with start_test_epochs
+---- HIGH 9: settlement finality
+H9a confirmed with NULL commitment => ACCEPTED: confirmed outcome with commitment NULL
+H9c failed_before_broadcast of signed bytes, then a second signed attempt => ACCEPTED: two signed transactions for one leaf, the first never proven expired
+---- MEDIUM 12: Genesis reference population not frozen
+M12a reference receipt approved, then its account added as a Genesis beneficiary => ACCEPTED: dave is both in the reference population and a Genesis beneficiary
+M12b overlapping commit evidence under two keys, no commit claims => ACCEPTED: one commit credited under two retro keys
+---- review-02 residuals named in review 03
+M17 wallet bound without the publication disclosure => ACCEPTED: carol bound a wallet without consent
+---- concurrency (two sessions; fixtures committed in the throwaway container)
+H2b one entitlement attached to two leaves concurrently => s1:  | s2:  | ACCEPTED: e201 in 2 live leaves
+H4d two 50 sources against 60 proven excess concurrently => s1:  | s2:  | ACCEPTED: 100000000 confiscated against 60000000 proven
+H9b attempt created while a pause and migration snapshot commit => s1:  | s2: snapshot written | ACCEPTED: an unresolved old-generation attempt exists beside a drained snapshot
+M14(r02) a duty offer ended twice concurrently => s1:  | s2:  | ACCEPTED: 2 terminal events
+
+---- TypeScript probes
+return_identified_only_by_event_not_entitlement => {"remainingReserve":"1000","poolBalances":{},"securityReserve":"0","cumulativeIssued":"0","holdback":[],"offsets":{},"lossCarry":"0"}
+confiscation_exceeds_proven_excess => {"remainingReserve":"1000","poolBalances":{},"securityReserve":"0","cumulativeIssued":"0","holdback":[],"offsets":{},"lossCarry":"0"}
+holdback_policy_changes_old_tranches => {"a":{"beneficiaryId":"a","gross":"0","offsetRecovered":"0","releasedNow":"0","heldBack":"0","maturedHoldback":"50"}}
+caps_before_eligibility => {"feasible":true,"orgLockedShareOfEligibleBp":10000,"tally":{"passes":false,"tier":"routine","lockedYes":"11111111","lockedNo":"0","contributionYes":"11111111","contributionNo":"0","lockedTurnoutBp":10000,"contributionTurnoutBp":999,"reasons":["contribution turnout below minimum"]}}
+feasible_lost_on_copy => ["locked weight below the routine threshold","contribution weight below the routine threshold","locked turnout below minimum","contribution turnout below minimum"]
+aggregate_usage_overflow => {"usage":{"inputTokens":18014398509481982,"cachedInputTokens":0,"cacheWriteInputTokens":0,"outputTokens":0,"reasoningOutputTokens":0},"eventIds":["m1","m2"],"modelsReported":[],"reasoningObserved":null,"subagentEvents":0,"unknownEvents":0,"resultUsage":null,"errors":[],"ok":true}
+missing_rollout_response_id => {"usage":{"inputTokens":0,"cachedInputTokens":0,"cacheWriteInputTokens":0,"outputTokens":0,"reasoningOutputTokens":0},"eventIds":[],"modelsReported":[],"reasoningObserved":null,"subagentEvents":0,"unknownEvents":0,"cumulative":null,"errors":[],"ok":true}
+empty_adapter => {"usage":{"inputTokens":0,"cachedInputTokens":0,"cacheWriteInputTokens":0,"outputTokens":0,"reasoningOutputTokens":0},"eventIds":[],"modelsReported":[],"reasoningObserved":null,"subagentEvents":0,"unknownEvents":0,"resultUsage":null,"errors":[],"ok":true}
+split_sponsored_rounding => {"one":{"a":{"beneficiaryId":"a","gross":"300000","offsetRecovered":"0","releasedNow":"300000","heldBack":"0","maturedHoldback":"0"},"b":{"beneficiaryId":"b","gross":"300000","offsetRecovered":"0","releasedNow":"300000","heldBack":"0","maturedHoldback":"0"}},"split":{"a":{"beneficiaryId":"a","gross":"600000","offsetRecovered":"0","releasedNow":"600000","heldBack":"0","maturedHoldback":"0"},"b":{"beneficiaryId":"b","gross":"0","offsetRecovered":"0","releasedNow":"0","heldBack":"0","maturedHoldback":"0"}}}
+trailing_rate_not_previous_epoch_bound => {"trailing":"75250000","ceiling":"98675825"}
+late_completion_correction_after_payout => THROWS correction k must be within pool paid
