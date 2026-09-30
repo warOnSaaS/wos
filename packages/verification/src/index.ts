@@ -73,6 +73,24 @@ function decodeStrictBase64(b64: unknown): Buffer | null {
   return buf.toString("base64") === b64 ? buf : null;
 }
 
+/**
+ * For `pre/*\/post` (RepoManifest.appMigrationsDir): returns the app id when a path lies under `pre/<id>/post/`,
+ * compared case-folded like every deny check, and the id as the canonical lower-case app id; else null.
+ */
+function appMigrationsMatcher(pattern: string): (path: string) => string | null {
+  const [pre, post] = pattern.split("/*/") as [string, string];
+  const preParts = fold(pre).split("/");
+  const postParts = fold(post).split("/");
+  return (path) => {
+    const parts = fold(path).split("/");
+    if (parts.length < preParts.length + postParts.length + 2) return null;
+    if (!preParts.every((p, i) => parts[i] === p)) return null;
+    const id = parts[preParts.length]!;
+    if (!postParts.every((p, i) => parts[preParts.length + 1 + i] === p)) return null;
+    return id;
+  };
+}
+
 function hasResource(abu: AbuSpec | null, key: string): boolean {
   return !!abu?.resources?.some((r) => r.key === key && r.mode === "exclusive");
 }
@@ -99,6 +117,9 @@ export function validateChangeset(changeset: Changeset, ctx: ScopeContext): Chan
   const allowed: WriteScope[] = isDocument ? ctx.documentPaths : (ctx.abu?.scope.write ?? []);
   const lockfiles = manifest.lockfiles ?? [];
   const migrationsDir = manifest.migrationsDir;
+  // contracts 5.6.0 (B-0003-suite-shell): per-app migrations, e.g. "applications/*/migrations"; the `*` is the app id and
+  // writing there needs `db:migrations:<id>` exclusive (the planning rule in validateBuildGraph, enforced here too).
+  const appMigrations = manifest.appMigrationsDir ? appMigrationsMatcher(manifest.appMigrationsDir) : null;
   // Deny direction: case-insensitive, dotfiles included (".npmrc", "**/.eslintrc*").
   const toolchain = picomatch(manifest.toolchainPaths ?? [], { dot: true, nocase: true });
 
@@ -150,6 +171,10 @@ export function validateChangeset(changeset: Changeset, ctx: ScopeContext): Chan
     }
     if (migrationsDir && matchesDeny(path, `${migrationsDir}/**`) && (isDocument || !hasResource(ctx.abu, "db:migrations"))) {
       add("MIGRATION_WITHOUT_RESOURCE", path, "needs an exclusive db:migrations resource");
+    }
+    const appId = appMigrations?.(path) ?? null;
+    if (appId !== null && (isDocument || !hasResource(ctx.abu, `db:migrations:${appId}`))) {
+      add("MIGRATION_WITHOUT_RESOURCE", path, `needs an exclusive db:migrations:${appId} resource`);
     }
     if (toolchain(path) && (isDocument || !hasResource(ctx.abu, `toolchain:${path}`))) {
       add("TOOLCHAIN_WITHOUT_RESOURCE", path, `defines how verification runs; needs an exclusive toolchain:${path} resource`);
