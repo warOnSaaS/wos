@@ -78,8 +78,23 @@ interface LedgerRow {
  * Applies pending migrations (or, with checkOnly, only reports them). Throws MigrationError when an
  * applied migration was edited, renamed or deleted; nothing is applied in that case.
  */
-export async function runMigrations(input: { databaseUrl: string; migrationsDir: string; checkOnly: boolean }): Promise<MigrationReport> {
-  const files = await readMigrations(input.migrationsDir);
+/** A migration whose header says it must never reach production (the draft protocol migrations 0007 and 0010). */
+export const PRODUCTION_EXCLUSION_MARKER = "DO NOT APPLY TO PRODUCTION";
+
+/** True when the marker appears in the file's leading comment block (the first 10 lines). */
+export function isExcludedFromProduction(file: MigrationFile): boolean {
+  return file.sql.split("\n", 10).some((line) => line.startsWith("--") && line.includes(PRODUCTION_EXCLUSION_MARKER));
+}
+
+export async function runMigrations(input: {
+  databaseUrl: string;
+  migrationsDir: string;
+  checkOnly: boolean;
+  /** Leave out files marked DO NOT APPLY TO PRODUCTION (the production CLI's default). */
+  excludeMarked?: boolean;
+}): Promise<MigrationReport> {
+  const all = await readMigrations(input.migrationsDir);
+  const files = input.excludeMarked ? all.filter((f) => !isExcludedFromProduction(f)) : all;
   // One connection: the session-level advisory lock must be held by the connection that migrates.
   const sql = postgres(input.databaseUrl, { max: 1, onnotice: () => {}, idle_timeout: 5, connect_timeout: 15 });
   try {
