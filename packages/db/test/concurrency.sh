@@ -33,6 +33,14 @@ insert into wos.confiscations (id, beneficiary_kind, beneficiary_id, proven_exce
 values ('$X-0000000000c0', 'person', '$B', 60, 'race fixture',
         wos_test.aa('confiscate', 'confiscation', '$X-0000000000c0', '{"beneficiary_id": "$B", "proven_excess_base": 60}'), now() + interval '73 hours', now() + interval '242 hours');
 insert into wos.duty_events (offer_id, seq, account_id, epoch_number, kind, deadline_at) values ('$X-0000000000d0', 1, '$B', 20, 'offered', now() + interval '1 day');
+-- D49: epoch 21 has room for one 3-ACU task (300 WOS of 500).
+insert into wos.epochs (epoch_number, mode, cluster, starts_at, ends_at, risk_review_hours, challenge_hours, policy_versions, issuance_rate_base_per_acu, task_capacity_base)
+values (21, 'test', 'devnet', now() - interval '1 day', now() + interval '6 days', 48, 48, '{}', 100000000, 500000000);
+insert into wos.epoch_transitions (epoch_number, from_state, to_state, actor) values (21, null, 'OPEN', 'system');
+set session_replication_role = replica;
+insert into wos.tasks (id, kind, state, role, abu_id) values ('$X-0000000000a1', 'abu_build', 'open', 'builder', gen_random_uuid()), ('$X-0000000000a2', 'abu_build', 'open', 'builder', gen_random_uuid());
+set session_replication_role = origin;
+insert into wos.acceptance_objectives (id, kind, ref, budget_acu_micro, budget_model_version) values ('$X-0000000000b0', 'feature_criterion', 'race', 100000000, 'budget-model.v1');
 SQL
 
 fail=0
@@ -72,5 +80,9 @@ race "M14 (review 02): a duty offer ended twice concurrently" \
   "insert into wos.duty_events (offer_id, seq, account_id, epoch_number, kind) values ('$X-0000000000d0', 2, '$B', 20, 'completed');" \
   "insert into wos.duty_events (offer_id, seq, account_id, epoch_number, kind) values ('$X-0000000000d0', 3, '$B', 20, 'expired_no_fault');" \
   "select case when count(*) = 1 then 'ok' else count(*) || ' terminal events' end from wos.duty_events where offer_id = '$X-0000000000d0' and seq > 1;"
+race "D49: two task issuances racing for the last epoch capacity" \
+  "insert into wos.task_budgets (task_id, objective_id, kind, budget_acu_micro, model_acu_micro, basis, budget_model_version, proposer_account_id, issued_epoch) values ('$X-0000000000a1', '$X-0000000000b0', 'execution', 3000000, 3000000, '{}', 'budget-model.v1', '$B', 21);" \
+  "insert into wos.task_budgets (task_id, objective_id, kind, budget_acu_micro, model_acu_micro, basis, budget_model_version, proposer_account_id, issued_epoch) values ('$X-0000000000a2', '$X-0000000000b0', 'execution', 3000000, 3000000, '{}', 'budget-model.v1', '$B', 21);" \
+  "select case when sum(reserved_base) <= 500000000 then 'ok' else sum(reserved_base) || ' reserved against 500000000' end from wos.task_budgets where issued_epoch = 21;"
 [ "$fail" = 0 ] && echo "all concurrency races hold"
 exit "$fail"

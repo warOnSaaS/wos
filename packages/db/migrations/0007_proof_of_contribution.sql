@@ -1,4 +1,5 @@
--- 0007_proof_of_contribution.sql — DRAFT v3 (after Astra review 03), pending Astra review 04. Owner: Lead Architect.
+-- 0007_proof_of_contribution.sql — DRAFT v4 (budget-based rewards, D49; after Astra review 03), pending Astra review 05.
+-- Owner: Lead Architect.
 -- DO NOT APPLY TO PRODUCTION. It applies cleanly on 0006 and is exercised by db:test so the design is executable.
 --
 -- Proof of Contribution (Amendment 02, D18–D48). Evidence tables are append-only for every role (the ledger's rule);
@@ -14,6 +15,9 @@
 -- confiscation holds at notice with a real appeal step (A3-4); qualification evidence as relationships (A3-5); server
 -- audit assignments (A3-6); operation-bound, separately approved, single-use admin actions (A3-7); settlement finality
 -- and a shared fence with pause/snapshot (A3-9); a frozen Genesis reference manifest (A3-12).
+-- v4 (D49): execution rewards are BUDGET-BASED. Every commissioned task carries a budget in ACU fixed before work
+-- starts (section 5b: acceptance objectives, task budgets, reservation at issuance against the epoch's pinned task
+-- capacity and issuance rate); acceptance pays the budget split by declared shares; usage receipts are telemetry.
 
 -- ============================================================================================
 -- 0. Helpers
@@ -50,7 +54,7 @@ create table wos.admin_actions (
     'approve_genesis_reference', 'award_security', 'bootstrap_merge', 'ratify_receipt', 'reject_ratification',
     'resolve_dispute', 'decide_appeal', 'clip_receipt', 'correct_accrual', 'end_bootstrap', 'start_test_epochs',
     'end_test_epochs', 'pause_settlement', 'resume_settlement', 'switch_adapter', 'void_leaf', 'confiscate',
-    'decide_confiscation_appeal', 'exclude', 'write_off', 'bind_org_wallet')),
+    'decide_confiscation_appeal', 'exclude', 'write_off', 'bind_org_wallet', 'approve_budget')),
   target_kind            text not null,
   target_id              text not null,
   reason                 text not null check (length(btrim(reason)) >= 20),
@@ -71,7 +75,7 @@ create or replace function wos.two_person_action(a text) returns boolean
 language sql immutable as $$
   select a in ('invalidate_receipt', 'suspend_account', 'record_offset', 'activate_policy', 'activate_oracle',
                'record_genesis', 'approve_genesis_reference', 'confiscate', 'exclude', 'clip_receipt',
-               'switch_adapter', 'write_off', 'decide_confiscation_appeal')
+               'switch_adapter', 'write_off', 'decide_confiscation_appeal', 'approve_budget')
 $$;
 
 -- A3-7: the canonical operation an action authorizes. The co-signer approves THIS hash, and consumers bind the payload.
@@ -559,8 +563,14 @@ create table wos.epochs (
   max_stake_bp        integer not null default 1000 check (max_stake_bp between 0 and 10000),
   min_stake_base      bigint not null default 1000000 check (min_stake_base >= 0),
   bounty_bp_of_recovered integer not null default 2000 check (bounty_bp_of_recovered between 0 and 10000),
-  holdback_bp         integer not null default 5000 check (holdback_bp between 0 and 10000),    -- A3-1: pinned per epoch
-  holdback_epochs     integer not null default 13 check (holdback_epochs > 0),
+  holdback_bp         integer not null default 2000 check (holdback_bp between 0 and 10000),    -- pinned per epoch (D49: 20%/6 recommended, F15)
+  holdback_epochs     integer not null default 6 check (holdback_epochs > 0),
+  -- D49: pinned when the epoch is defined (from the engine and the policy); no task is issued without them.
+  issuance_rate_base_per_acu bigint check (issuance_rate_base_per_acu > 0),
+  task_capacity_base  bigint check (task_capacity_base >= 0),
+  budget_expiry_epochs integer not null default 4 check (budget_expiry_epochs > 0),
+  budget_human_above_bp integer not null default 12500 check (budget_human_above_bp >= 10000),
+  budget_hard_max_bp  integer not null default 20000 check (budget_hard_max_bp >= 10000),
   policy_versions     jsonb not null,
   created_at          timestamptz not null default now(),
   check (ends_at > starts_at),
@@ -625,6 +635,117 @@ end $$;
 create trigger epoch_transitions_check before insert on wos.epoch_transitions for each row execute function wos.check_epoch_transition();
 
 -- ============================================================================================
+-- 5b. D49 task budgets: acceptance objectives, budgets fixed before work, reservation at issuance
+-- ============================================================================================
+-- An acceptance objective (a contract criterion, a planning deliverable, a review round, an audit, a resolution) has a
+-- budget fixed at consensus; all task budgets under it together never exceed it, so splitting work into more tasks
+-- cannot raise the total paid for the same acceptance (anti-stacking).
+create table wos.acceptance_objectives (
+  id                    uuid primary key default gen_random_uuid(),
+  kind                  text not null check (kind in ('feature_criterion', 'planning_deliverable', 'review_round', 'audit', 'resolution')),
+  ref                   text not null,
+  budget_acu_micro      bigint not null check (budget_acu_micro > 0),
+  budget_model_version  text not null,
+  consensus_round_id    uuid references wos.rounds (id),
+  created_at            timestamptz not null default now()
+);
+
+-- A task's reward budget: set by a proposer from the budget model before any lease exists, reviewed in consensus (an
+-- unjustified budget is a material finding), above the human threshold approved by a two-person `approve_budget`
+-- action bound to the amount, never above the hard maximum. At insert, budget x the epoch's pinned issuance rate is
+-- RESERVED against the epoch's pinned task capacity; if it does not fit, the task is not issued.
+create table wos.task_budgets (
+  task_id                     uuid primary key,
+  objective_id                uuid not null references wos.acceptance_objectives (id),
+  kind                        text not null check (kind in ('execution', 'planning', 'human_review')),
+  budget_acu_micro            bigint not null check (budget_acu_micro > 0),
+  model_acu_micro             bigint not null check (model_acu_micro > 0),
+  basis                       jsonb not null,               -- expected compute, size points, difficulty, importance, shared dependency
+  justification               text not null default '' check (length(justification) <= 4000),
+  budget_model_version        text not null,
+  proposer_account_id         uuid not null references wos.accounts (id),
+  approval_admin_action_id    uuid references wos.admin_actions (id),
+  issued_epoch                integer not null references wos.epochs (epoch_number),
+  issuance_rate_base_per_acu  bigint not null default 0,    -- server-set from the epoch
+  reserved_base               bigint not null default 0,    -- server-set: budget x rate / 1e6
+  expires_epoch               integer not null default 0,   -- server-set: issued epoch + the epoch's budget expiry
+  created_at                  timestamptz not null default now()
+);
+create or replace function wos.check_task_budget() returns trigger
+language plpgsql security definer set search_path = wos, pg_temp as $$
+declare
+  ep wos.epochs%rowtype;
+  t wos.tasks%rowtype;
+  o wos.acceptance_objectives%rowtype;
+begin
+  new.created_at := clock_timestamp();
+  perform pg_advisory_xact_lock(hashtext('wos.issuance:' || new.issued_epoch::text));
+  perform pg_advisory_xact_lock(hashtext('wos.objective:' || new.objective_id::text));
+  select * into ep from wos.epochs where epoch_number = new.issued_epoch;
+  if (wos.epoch_state(new.issued_epoch) = 'OPEN') is not true or ep.issuance_rate_base_per_acu is null or ep.task_capacity_base is null then
+    raise exception 'wos: tasks are issued only in an OPEN epoch with a pinned issuance rate and task capacity' using errcode = 'check_violation';
+  end if;
+  if ep.cluster = 'mainnet-beta' then
+    raise exception 'wos: no task is issued on mainnet in this draft (MAINNET-READINESS gate)' using errcode = 'check_violation';
+  end if;
+  if new.kind <> 'human_review' then
+    select * into t from wos.tasks where id = new.task_id;
+    if t.id is null or ((t.kind in ('roadmap_author', 'feature_author')) <> (new.kind = 'planning')) then
+      raise exception 'wos: a % budget must name an existing task of that kind', new.kind using errcode = 'check_violation';
+    end if;
+    -- Fixed BEFORE work starts: no lease may exist yet.
+    if exists (select 1 from wos.leases l where l.task_id = new.task_id) then
+      raise exception 'wos: a budget is fixed before work starts (task % already has a lease)', new.task_id using errcode = 'check_violation';
+    end if;
+  end if;
+  if new.budget_acu_micro::numeric > new.model_acu_micro::numeric * ep.budget_hard_max_bp / 10000 then
+    raise exception 'wos: budget exceeds the hard maximum (% bp of the model)', ep.budget_hard_max_bp using errcode = 'check_violation';
+  end if;
+  if new.budget_acu_micro::numeric > new.model_acu_micro::numeric * ep.budget_human_above_bp / 10000 then
+    if length(btrim(new.justification)) < 40 then
+      raise exception 'wos: a budget above the model needs a written justification' using errcode = 'check_violation';
+    end if;
+    perform wos.require_admin_action(new.approval_admin_action_id, array['approve_budget'], 'task', new.task_id::text,
+      jsonb_build_object('budget_acu_micro', new.budget_acu_micro));
+  end if;
+  select * into o from wos.acceptance_objectives where id = new.objective_id;
+  if coalesce((select sum(b.budget_acu_micro) from wos.task_budgets b where b.objective_id = o.id
+                 and not exists (select 1 from wos.task_budget_releases r where r.task_id = b.task_id)), 0) + new.budget_acu_micro > o.budget_acu_micro then
+    raise exception 'wos: task budgets under objective % would exceed its budget (splitting cannot raise the total)', o.id using errcode = 'check_violation';
+  end if;
+  new.issuance_rate_base_per_acu := ep.issuance_rate_base_per_acu;
+  new.reserved_base := (new.budget_acu_micro::numeric * ep.issuance_rate_base_per_acu / 1000000)::bigint;
+  new.expires_epoch := new.issued_epoch + ep.budget_expiry_epochs;
+  if new.reserved_base <= 0 then
+    raise exception 'wos: the budget reserves nothing at this rate' using errcode = 'check_violation';
+  end if;
+  if coalesce((select sum(b.reserved_base) from wos.task_budgets b where b.issued_epoch = new.issued_epoch), 0) + new.reserved_base > ep.task_capacity_base then
+    raise exception 'wos: epoch % task capacity is exhausted: the task is not issued (reservation at issuance, never scaled)', new.issued_epoch
+      using errcode = 'check_violation';
+  end if;
+  return new;
+end $$;
+create trigger task_budgets_check before insert on wos.task_budgets for each row execute function wos.check_task_budget();
+
+-- Failed, abandoned, cancelled or expired tasks release their reservation (Q -> R in the engine). Never after acceptance.
+create table wos.task_budget_releases (
+  task_id     uuid primary key references wos.task_budgets (task_id),
+  reason      text not null check (reason in ('expired', 'failed', 'abandoned', 'cancelled', 'repriced')),
+  created_at  timestamptz not null default now()
+);
+
+-- D49: the proposer of a budget (or a related account) never builds, authors or reviews under it.
+create or replace function wos.check_lease_budget_proposer() returns trigger
+language plpgsql security definer set search_path = wos, pg_temp as $$
+begin
+  if exists (select 1 from wos.task_budgets b where b.task_id = new.task_id and wos.related_accounts(b.proposer_account_id, new.account_id)) then
+    raise exception 'wos: the proposer of this task''s budget (or a related account) may not take its lease' using errcode = 'check_violation';
+  end if;
+  return new;
+end $$;
+create trigger leases_budget_proposer before insert on wos.leases for each row execute function wos.check_lease_budget_proposer();
+
+-- ============================================================================================
 -- 6. Contribution receipts: immutable, qualified, one dedup namespace shared with Genesis (H7)
 -- ============================================================================================
 create table wos.work_dedup_keys (
@@ -640,15 +761,15 @@ create table wos.contribution_receipts (
     'ARCHITECTURE_RESOLUTION', 'IMPLEMENTATION', 'AGENT_REVIEW', 'HUMAN_REVIEW', 'SECURITY', 'INTEGRATION',
     'DOCUMENTATION', 'OTHER_PROTOCOL_APPROVED', 'PROPOSAL', 'BUG_REPORT', 'AUDIT_RERUN')),
   slice                 text not null check (slice in ('execution', 'planning', 'human_review', 'outcomes', 'security_reserve')),
-  evidence_class        text not null check (evidence_class in ('attested_usage', 'accepted_output', 'outcome')),
+  evidence_class        text not null check (evidence_class in ('accepted_budget', 'outcome')),
   acceptance_event      text not null,
   independence          text not null check (independence in ('independent', 'founder_bootstrap')),
   initial_status        text not null check (initial_status in ('ACTIVE', 'PROVISIONAL')),
-  weight_micro          bigint not null check (weight_micro >= 0),
-  attested_acu_micro    bigint not null check (attested_acu_micro >= 0),
-  cap_acu_micro         bigint not null check (cap_acu_micro >= 0),
-  lowest_verification   text not null check (lowest_verification in ('VERIFIED', 'ATTESTED', 'ESTIMATED', 'UNVERIFIED')),
-  usage_receipt_ids     uuid[] not null default '{}',
+  weight_micro          bigint not null check (weight_micro >= 0),   -- D49: the task budget, or an outcome's ACU-equivalent
+  task_id               uuid references wos.task_budgets (task_id),  -- D49: the budget this receipt is paid from
+  share_bp              integer check (share_bp between 1 and 10000), -- D49: this contributor's declared share
+  lowest_verification   text check (lowest_verification in ('VERIFIED', 'ATTESTED', 'ESTIMATED', 'UNVERIFIED')),  -- telemetry only
+  usage_receipt_ids     uuid[] not null default '{}',                 -- telemetry only
   qualification_id      uuid references wos.qualification_results (id),
   beneficiary_org_id    uuid references wos.organizations (id),
   beneficiary_org_share_bp integer not null default 0 check (beneficiary_org_share_bp between 0 and 10000),
@@ -664,8 +785,9 @@ create table wos.contribution_receipts (
   qualified_at          timestamptz not null,
   created_at            timestamptz not null default now(),
   check ((independence = 'independent') = (initial_status = 'ACTIVE')),
-  check (evidence_class <> 'attested_usage' or weight_micro <= cap_acu_micro),
-  check (evidence_class <> 'attested_usage' or weight_micro <= attested_acu_micro),
+  check ((evidence_class = 'accepted_budget') = (task_id is not null)),
+  check ((task_id is null) = (share_bp is null)),
+  unique (task_id, account_id),
   check ((lease_id is null) = (lease_generation is null)),
   check ((beneficiary_org_id is null) = (sponsorship_id is null)),
   check (beneficiary_org_id is not null or beneficiary_org_share_bp = 0)
@@ -676,8 +798,7 @@ create or replace function wos.check_contribution_receipt() returns trigger
 language plpgsql security definer set search_path = wos, pg_temp as $$
 declare
   q wos.qualification_results%rowtype;
-  n_usage integer;
-  sum_acu bigint;
+  b wos.task_budgets%rowtype;
   ep wos.epochs%rowtype;
   s wos.sponsorship_links%rowtype;
 begin
@@ -693,9 +814,9 @@ begin
     raise exception 'wos: receipts are admitted only to an OPEN epoch (epoch % is %)', new.admitted_epoch, wos.epoch_state(new.admitted_epoch)
       using errcode = 'check_violation';
   end if;
-  -- Mainnet fails closed (F1): no attested-usage weight is admitted to a mainnet epoch.
-  if ep.cluster = 'mainnet-beta' and new.evidence_class = 'attested_usage' then
-    raise exception 'wos: attested usage is not eligible on mainnet until founder decision F1' using errcode = 'check_violation';
+  -- Mainnet stays closed (MAINNET-READINESS gate; D49 dissolved F1 but not the gate).
+  if ep.cluster = 'mainnet-beta' then
+    raise exception 'wos: mainnet epochs admit no receipts in this draft (MAINNET-READINESS gate)' using errcode = 'check_violation';
   end if;
   -- Subject kind must fit the type.
   if (new.contribution_type = 'IMPLEMENTATION' and new.subject_kind <> 'attempt')
@@ -718,25 +839,30 @@ begin
       raise exception 'wos: % needs a qualification of its subject on its lease generation', new.contribution_type using errcode = 'check_violation';
     end if;
   end if;
-  -- Attested usage (H7, A3-5): the weight rests on this contributor's own ATTESTED/VERIFIED usage receipts OF THIS LEASE
-  -- (the qualified run), at the epoch's pinned oracle, each receipt used by one contribution only (contribution_usage),
-  -- with the missing-log discount applied by the DB (a run without a log counts 50%) and an inconsistent log refused.
-  if new.evidence_class = 'attested_usage' then
-    if new.lowest_verification in ('ESTIMATED', 'UNVERIFIED') then
-      raise exception 'wos: attested_usage weight cannot rest on % usage (fail closed)', new.lowest_verification using errcode = 'check_violation';
+  -- D49: commissioned work is paid its task budget, fixed before work started, split by declared shares.
+  if new.evidence_class = 'accepted_budget' then
+    perform pg_advisory_xact_lock(hashtext('wos.source:' || new.task_id::text));
+    select * into b from wos.task_budgets where task_id = new.task_id;
+    if exists (select 1 from wos.task_budget_releases r where r.task_id = b.task_id) or new.admitted_epoch > b.expires_epoch then
+      raise exception 'wos: task % was released or its budget expired (re-issue it at a current price)', new.task_id using errcode = 'check_violation';
     end if;
-    if new.lease_id is null or (ep.policy_versions ->> 'oracle') is null then
-      raise exception 'wos: attested usage needs a leased run and an epoch with a pinned oracle' using errcode = 'check_violation';
-    end if;
-    perform pg_advisory_xact_lock(hashtext('wos.usage_claim:' || new.account_id::text));
-    select count(*), coalesce(sum(case when u.log_consistent then u.acu_micro else u.acu_micro / 2 end), 0) into n_usage, sum_acu
-      from wos.usage_receipts u
-     where u.id = any(new.usage_receipt_ids) and u.account_id = new.account_id and u.verification_level in ('VERIFIED', 'ATTESTED')
-       and u.lease_id = new.lease_id and u.lease_generation = new.lease_generation and u.oracle_version = ep.policy_versions ->> 'oracle'
-       and not exists (select 1 from wos.run_log_commitments k where k.agent_run_id = u.agent_run_id and not k.totals_match);
-    if n_usage = 0 or n_usage <> cardinality(new.usage_receipt_ids) or sum_acu <> new.attested_acu_micro then
-      raise exception 'wos: attested ACU must equal the sum of the contributor''s own qualifying usage receipts of this lease at the pinned oracle'
+    if new.weight_micro <> b.budget_acu_micro or new.slice <> b.kind then
+      raise exception 'wos: the receipt carries its task''s budget (%) and slice (%), never a usage figure', b.budget_acu_micro, b.kind
         using errcode = 'check_violation';
+    end if;
+    if new.lease_id is not null and not exists (select 1 from wos.leases l where l.id = new.lease_id and l.task_id = b.task_id) then
+      raise exception 'wos: the receipt''s lease is not on the budgeted task' using errcode = 'check_violation';
+    end if;
+    if coalesce((select sum(x.share_bp) from wos.contribution_receipts x where x.task_id = new.task_id), 0) + new.share_bp > 10000 then
+      raise exception 'wos: declared shares of task % exceed 10000 bp', new.task_id using errcode = 'check_violation';
+    end if;
+  end if;
+  -- Usage is TELEMETRY (D49): when attached, it must be this contributor's, of this lease, and attributed once.
+  if cardinality(new.usage_receipt_ids) > 0 then
+    perform pg_advisory_xact_lock(hashtext('wos.usage_claim:' || new.account_id::text));
+    if (select count(*) from wos.usage_receipts u where u.id = any(new.usage_receipt_ids) and u.account_id = new.account_id
+          and u.lease_id = new.lease_id) <> cardinality(new.usage_receipt_ids) then
+      raise exception 'wos: telemetry usage receipts must be the contributor''s own, of this lease' using errcode = 'check_violation';
     end if;
     if exists (select 1 from wos.contribution_usage x where x.usage_receipt_id = any(new.usage_receipt_ids)) then
       raise exception 'wos: a usage receipt already backs another contribution (usage is attributed once)' using errcode = 'check_violation';
@@ -753,6 +879,31 @@ begin
 end $$;
 create trigger contribution_receipts_check before insert on wos.contribution_receipts
   for each row execute function wos.check_contribution_receipt();
+
+-- D49: at commit, the declared shares of an accepted task sum to exactly 10000 bp.
+create or replace function wos.check_task_shares() returns trigger
+language plpgsql security definer set search_path = wos, pg_temp as $$
+begin
+  if new.task_id is not null and (select sum(share_bp) from wos.contribution_receipts where task_id = new.task_id) <> 10000 then
+    raise exception 'wos: declared shares of task % must sum to 10000 bp', new.task_id using errcode = 'check_violation';
+  end if;
+  return null;
+end $$;
+create constraint trigger contribution_receipts_shares after insert on wos.contribution_receipts deferrable initially deferred
+  for each row execute function wos.check_task_shares();
+
+-- Releasing a task's budget after any acceptance is refused.
+create or replace function wos.check_task_budget_release() returns trigger
+language plpgsql security definer set search_path = wos, pg_temp as $$
+begin
+  perform pg_advisory_xact_lock(hashtext('wos.source:' || new.task_id::text));
+  new.created_at := clock_timestamp();
+  if exists (select 1 from wos.contribution_receipts c where c.task_id = new.task_id) then
+    raise exception 'wos: task % was accepted; its budget is paid, not released', new.task_id using errcode = 'check_violation';
+  end if;
+  return new;
+end $$;
+create trigger task_budget_releases_check before insert on wos.task_budget_releases for each row execute function wos.check_task_budget_release();
 
 -- ============================================================================================
 -- 7. Receipt status: append-only events validated against ReceiptStatusMachine (D23, D28, H12)
@@ -1209,7 +1360,7 @@ create table wos.payout_canaries (
   source_receipt_id     uuid not null references wos.contribution_receipts (id),
   perturbator_version   text not null,
   seed_sha256           text not null check (seed_sha256 ~ '^sha256:[0-9a-f]{64}$'),
-  perturbation          text not null check (perturbation in ('inflated_usage', 'padded_repairs', 'context_inflation', 'model_mismatch', 'duplicated_attribution', 'wrong_split')),
+  perturbation          text not null check (perturbation in ('budget_mismatch', 'unmet_acceptance', 'split_stacking', 'duplicated_attribution', 'wrong_split')),
   magnitude_bp          integer not null check (magnitude_bp > 0),
   retired_after_epoch   integer not null,
   created_at            timestamptz not null default now()
@@ -1264,10 +1415,10 @@ begin
   if new.disposition = 'included' and not (st in ('ACTIVE', 'RATIFIED') or (ep_mode = 'test' and st <> 'REVOKED')) then
     raise exception 'wos: a % receipt cannot be included in a % epoch', st, ep_mode using errcode = 'check_violation';
   end if;
-  -- A3-1: the settlement domain is fixed at admission and rechecked here (cluster; attested usage never on mainnet).
+  -- A3-1: the settlement domain is fixed at admission and rechecked here (cluster; nothing on mainnet in this draft).
   if new.disposition = 'included' and exists (select 1 from wos.contribution_receipts c join wos.epochs a on a.epoch_number = c.admitted_epoch
       join wos.epochs m on m.epoch_number = new.epoch_number
-      where c.id = new.receipt_id and (a.cluster <> m.cluster or (m.cluster = 'mainnet-beta' and c.evidence_class = 'attested_usage'))) then
+      where c.id = new.receipt_id and (a.cluster <> m.cluster or m.cluster = 'mainnet-beta')) then
     raise exception 'wos: receipt % was admitted to another settlement domain or is not eligible on mainnet', new.receipt_id using errcode = 'check_violation';
   end if;
   return new;
@@ -1313,6 +1464,12 @@ begin
         and ((new.beneficiary_kind = 'person' and new.beneficiary_id = c.account_id and c.beneficiary_org_share_bp < 10000)
           or (new.beneficiary_kind = 'organization' and new.beneficiary_id = c.beneficiary_org_id and c.beneficiary_org_share_bp > 0))) is not true then
       raise exception 'wos: allocation of receipt % must use its slice, contributor and beneficiary', new.receipt_id using errcode = 'check_violation';
+    end if;
+    -- D49: an accepted task's allocations never exceed the amount reserved for it at issuance.
+    if c.task_id is not null and coalesce((select sum(x.amount_base) from wos.allocations x join wos.contribution_receipts r on r.id = x.receipt_id
+                                             where r.task_id = c.task_id), 0) + new.amount_base
+                                   > (select reserved_base from wos.task_budgets where task_id = c.task_id) then
+      raise exception 'wos: allocations of task % would exceed its reserved budget', c.task_id using errcode = 'check_violation';
     end if;
   end if;
   return new;
@@ -1367,7 +1524,7 @@ create table wos.dispute_gates (
 create table wos.dispute_items (
   dispute_id           uuid not null references wos.allocation_disputes (id),
   allocation_id        uuid not null references wos.allocations (id),
-  reason               text not null check (reason in ('inflated_usage', 'padded_repairs', 'context_inflation', 'model_misreported', 'misattribution', 'duplicate_work', 'split_gaming', 'other')),
+  reason               text not null check (reason in ('budget_mismatch', 'unmet_acceptance', 'defective_work', 'misattribution', 'duplicate_work', 'split_gaming', 'other')),
   evidence             jsonb not null,
   proposed_amount_base bigint check (proposed_amount_base >= 0),
   stake_base           bigint not null check (stake_base > 0),
@@ -2628,7 +2785,7 @@ begin
     'pool_accruals', 'pool_accrual_corrections', 'pool_events', 'genesis_contributions', 'genesis_commit_claims',
     'genesis_reference_manifests', 'governance_proposals', 'governance_weight_snapshots', 'governance_votes',
     'settlement_adapter_events', 'migration_snapshots', 'abuse_signals', 'risk_flags', 'admin_action_approvals',
-    'admin_action_uses', 'contribution_usage', 'payout_audit_assignments'
+    'admin_action_uses', 'contribution_usage', 'payout_audit_assignments', 'acceptance_objectives', 'task_budgets', 'task_budget_releases'
   ] loop
     perform wos.protocol_append_only(t);
   end loop;
@@ -2647,7 +2804,8 @@ begin
     'completion_pools', 'completion_definitions', 'pool_accruals', 'pool_accrual_corrections', 'pool_events',
     'genesis_contributions', 'genesis_commit_claims', 'genesis_reference_manifests', 'governance_proposals',
     'governance_weight_snapshots', 'governance_votes', 'settlement_adapter_events', 'migration_snapshots',
-    'abuse_signals', 'risk_flags', 'admin_action_approvals', 'admin_action_uses', 'contribution_usage', 'payout_audit_assignments'
+    'abuse_signals', 'risk_flags', 'admin_action_approvals', 'admin_action_uses', 'contribution_usage', 'payout_audit_assignments',
+    'acceptance_objectives', 'task_budgets', 'task_budget_releases'
   ] loop
     execute format('alter table wos.%I enable row level security', t);
     execute format('grant select, insert on wos.%I to wos_app', t);
@@ -2672,7 +2830,7 @@ begin
     'confiscation_appeal_decisions', 'confiscation_sources', 'confiscation_executions', 'exclusions', 'completion_pools', 'completion_definitions',
     'pool_accruals', 'pool_accrual_corrections', 'pool_events', 'genesis_contributions', 'genesis_commit_claims',
     'genesis_reference_manifests', 'governance_proposals', 'governance_weight_snapshots', 'settlement_adapter_events',
-    'migration_snapshots', 'admin_action_uses', 'contribution_usage'
+    'migration_snapshots', 'admin_action_uses', 'contribution_usage', 'acceptance_objectives', 'task_budgets', 'task_budget_releases'
   ] loop
     execute format('create policy public_read on wos.%I for select to wos_app using (true)', t);
     execute format('create policy privileged_write on wos.%I for insert to wos_app with check (wos.is_privileged())', t);

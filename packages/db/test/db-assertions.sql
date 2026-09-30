@@ -440,16 +440,17 @@ select wos_test.expect_error($$update wos.leases set generation = generation + 1
 -- Epochs (H6, H7); epochs 2 and 3 pin the oracle and reward policy
 select wos_test.expect_error($$insert into wos.epochs (epoch_number, mode, cluster, starts_at, ends_at, risk_review_hours, challenge_hours, policy_versions)
   values (90, 'test', 'mainnet-beta', now(), now() + interval '7 days', 48, 48, '{}')$$, 'a test epoch on mainnet (H7)');
-insert into wos.epochs (epoch_number, mode, cluster, starts_at, ends_at, risk_review_hours, challenge_hours, policy_versions)
-values (1, 'test', 'devnet', now() - interval '8 days', now() - interval '1 day', 48, 48, '{"oracle": "oracle.v1", "reward": "reward-policy.v1"}'),
-       (2, 'test', 'devnet', now() - interval '1 day', now() + interval '6 days', 48, 48, '{"oracle": "oracle.v1", "reward": "reward-policy.v1"}'),
-       (5, 'live', 'mainnet-beta', now() - interval '1 day', now() + interval '6 days', 48, 48, '{"oracle": "oracle.v1", "reward": "reward-policy.v1"}');
+insert into wos.epochs (epoch_number, mode, cluster, starts_at, ends_at, risk_review_hours, challenge_hours, policy_versions, issuance_rate_base_per_acu, task_capacity_base)
+values (1, 'test', 'devnet', now() - interval '8 days', now() - interval '1 day', 48, 48, '{"oracle": "oracle.v1", "reward": "reward-policy.v1"}', 100000000, 1000000000000),
+       (2, 'test', 'devnet', now() - interval '1 day', now() + interval '6 days', 48, 48, '{"oracle": "oracle.v1", "reward": "reward-policy.v1"}', 100000000, 1000000000000),
+       (5, 'live', 'mainnet-beta', now() - interval '1 day', now() + interval '6 days', 48, 48, '{"oracle": "oracle.v1", "reward": "reward-policy.v1"}', 100000000, 1000000000000),
+       (8, 'test', 'devnet', now() - interval '1 day', now() + interval '6 days', 48, 48, '{"reward": "reward-policy.v1"}', 100000000, 500000000);
 -- Astra-02 repro A: a first transition straight to FINALIZED skipped every window. Now rejected.
 insert into wos.epochs (epoch_number, mode, cluster, starts_at, ends_at, risk_review_hours, challenge_hours, policy_versions)
 values (99001, 'test', 'devnet', now(), now() + interval '7 days', 48, 48, '{}');
 select wos_test.expect_error($$insert into wos.epoch_transitions (epoch_number, from_state, to_state, actor) values (99001, null, 'FINALIZED', 'system')$$,
   'repro A: skipping every epoch window (H6)', 'not allowed');
-insert into wos.epoch_transitions (epoch_number, from_state, to_state, actor) values (1, null, 'OPEN', 'system'), (2, null, 'OPEN', 'system'), (5, null, 'OPEN', 'system');
+insert into wos.epoch_transitions (epoch_number, from_state, to_state, actor) values (1, null, 'OPEN', 'system'), (2, null, 'OPEN', 'system'), (5, null, 'OPEN', 'system'), (8, null, 'OPEN', 'system');
 select wos_test.expect_error($$insert into wos.epoch_transitions (epoch_number, from_state, to_state, actor) values (1, 'OPEN', 'PROPOSED', 'system')$$, 'skipping CALCULATING', 'not allowed');
 select wos_test.expect_error($$insert into wos.epoch_transitions (epoch_number, from_state, to_state, actor) values (2, 'OPEN', 'CALCULATING', 'system')$$, 'closing before the end', 'not allowed');
 select wos_test.expect_error($$insert into wos.epoch_transitions (epoch_number, from_state, to_state, actor) values (1, 'OPEN', 'CALCULATING', 'maintainer')$$,
@@ -476,8 +477,23 @@ select v.id::uuid, v.kind, v.state, v.role, v.slot, case when v.doc then t.id en
     ('00000000-0000-0000-0007-0000000000f9', 'abu_build', 'completed', 'builder', null, false, null, '00000000-0000-0000-0000-000000000ab2'),
     ('00000000-0000-0000-0007-0000000000f6', 'payout_audit', 'leased', 'payout_auditor', null, false, null, null),
     ('00000000-0000-0000-0007-0000000000f7', 'payout_audit', 'leased', 'payout_auditor', null, false, null, null),
-    ('00000000-0000-0000-0007-0000000000f8', 'roadmap_review', 'leased', 'roadmap_reviewer_astra', 'astra', true, '00000000-0000-0000-0007-0000000000e3', null)
+    ('00000000-0000-0000-0007-0000000000f8', 'roadmap_review', 'leased', 'roadmap_reviewer_astra', 'astra', true, '00000000-0000-0000-0007-0000000000e3', null),
+    ('00000000-0000-0000-0007-000000000fb1', 'abu_build', 'open', 'builder', null, false, null, '00000000-0000-0000-0000-000000000ab3'),
+    ('00000000-0000-0000-0007-000000000fb2', 'abu_build', 'open', 'builder', null, false, null, '00000000-0000-0000-0000-000000000ab4'),
+    ('00000000-0000-0000-0007-000000000fb3', 'abu_build', 'open', 'builder', null, false, null, '00000000-0000-0000-0000-000000000ab5'),
+    ('00000000-0000-0000-0007-000000000fb4', 'abu_build', 'open', 'builder', null, false, null, '00000000-0000-0000-0000-000000000ab6')
   ) as v(id, kind, state, role, slot, doc, round, abu) where t.slug = 'salesforce';
+set session_replication_role = origin;
+-- D49: budgets are fixed BEFORE any lease exists on the task. Objective ob2 has 10 ACU for its tasks.
+insert into wos.acceptance_objectives (id, kind, ref, budget_acu_micro, budget_model_version) values
+  ('00000000-0000-0000-0007-0000000000b1', 'planning_deliverable', 'salesforce roadmap v1', 10000000, 'budget-model.v1'),
+  ('00000000-0000-0000-0007-0000000000b2', 'feature_criterion', 'contacts: create and edit', 10000000, 'budget-model.v1'),
+  ('00000000-0000-0000-0007-0000000000b3', 'feature_criterion', 'contacts: import', 100000000, 'budget-model.v1');
+insert into wos.task_budgets (task_id, objective_id, kind, budget_acu_micro, model_acu_micro, basis, budget_model_version, proposer_account_id, issued_epoch) values
+  ('00000000-0000-0000-0007-0000000000f3', '00000000-0000-0000-0007-0000000000b1', 'planning', 3000000, 3000000, '{"sizePoints": null}', 'budget-model.v1', '00000000-0000-0000-0000-00000000000c', 2),
+  ('00000000-0000-0000-0007-000000000fb1', '00000000-0000-0000-0007-0000000000b2', 'execution', 6000000, 6000000, '{"sizePoints": 1}', 'budget-model.v1', '00000000-0000-0000-0000-00000000000c', 2);
+set session_replication_role = replica;
+
 insert into wos.leases (id, task_id, account_id, device_id, state, context_plan, issued_at, expires_at, hard_deadline_at, ended_at, generation) values
   ('00000000-0000-0000-0007-0000000000c3', '00000000-0000-0000-0007-0000000000f3', '00000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-0000000000db', 'completed', '{}', now() - interval '3 hours', now() - interval '1 hour', now() + interval '1 hour', now() - interval '10 minutes', 1),
   ('00000000-0000-0000-0007-0000000000c4', '00000000-0000-0000-0007-0000000000f4', '00000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-0000000000db', 'completed', '{}', now() - interval '3 hours', now() - interval '1 hour', now() + interval '1 hour', now() - interval '10 minutes', 1),
@@ -519,7 +535,7 @@ insert into wos.verification_runs (id, subject, attempt_id, source, head_sha, co
 values ('00000000-0000-0000-0007-0000000000b5', 'attempt', '00000000-0000-0000-0000-00000000a701', 'ci', repeat('c', 40), 'success', 1);
 set session_replication_role = origin;
 
--- Consent, snapshots, usage receipts (H7, A3-5)
+-- Consent, snapshots, usage receipts (H7, A3-5; D49: usage is telemetry)
 insert into wos.publication_consents (account_id, disclosure_version, disclosure_sha256) values ('00000000-0000-0000-0000-00000000000b', 'disclosure.v1', 'sha256:' || repeat('d', 64));
 insert into wos.run_policy_snapshots (lease_id, generation, body, snapshot_sha256) values
   ('00000000-0000-0000-0007-0000000000c3', 1, '{"humanReviewRequired": false}', 'sha256:' || repeat('5', 64)),
@@ -578,63 +594,119 @@ select wos_test.q('00000000-0000-0000-0000-0000000fa001', 'document', '00000000-
 select wos_test.q('00000000-0000-0000-0000-0000000fa005', 'attempt', '00000000-0000-0000-0000-00000000a701', repeat('c', 40), '00000000-0000-0000-0007-0000000000c5', 1,
   '00000000-0000-0000-0000-000000c5c005', '00000000-0000-0000-0007-0000000000e5', '00000000-0000-0000-0007-0000000000b5', '3');
 
--- Receipts (H7, A3-5): consent, qualification, own attested usage OF THIS LEASE at the pinned oracle, used once
+-- D49 task budgets: fixed before work, bounded by the model, approved above the human threshold, capped per objective,
+-- reserved against the epoch's capacity; the proposer never works under their own budget.
+create or replace function wos_test.budget(task uuid, obj text, b bigint, m bigint, epoch int, just text, aid uuid) returns void
+language sql as $$
+  insert into wos.task_budgets (task_id, objective_id, kind, budget_acu_micro, model_acu_micro, basis, justification, budget_model_version,
+    proposer_account_id, approval_admin_action_id, issued_epoch)
+  values (task, ('00000000-0000-0000-0007-0000000000' || obj)::uuid, 'execution', b, m, '{"sizePoints": 1}', just, 'budget-model.v1',
+          '00000000-0000-0000-0000-00000000000c', aid, epoch)
+$$;
+select wos_test.expect_error($$insert into wos.task_budgets (task_id, objective_id, kind, budget_acu_micro, model_acu_micro, basis, budget_model_version, proposer_account_id, issued_epoch)
+  values ('00000000-0000-0000-0007-0000000000f4', '00000000-0000-0000-0007-0000000000b1', 'planning', 1000000, 1000000, '{}', 'budget-model.v1', '00000000-0000-0000-0000-00000000000c', 2)$$,
+  'D49: a budget set after work started (the task already has a lease)', 'before work starts');
+select wos_test.expect_error($$select wos_test.budget('00000000-0000-0000-0007-000000000fb2', 'b2', 20000000, 6000000, 2, repeat('x', 40), null)$$,
+  'D49: a budget above the hard maximum of the model', 'hard maximum');
+select wos_test.expect_error($$select wos_test.budget('00000000-0000-0000-0007-000000000fb2', 'b2', 3000000, 2000000, 2, '', null)$$,
+  'D49: a budget above the model without a written justification', 'justification');
+select wos_test.expect_error($$select wos_test.budget('00000000-0000-0000-0007-000000000fb2', 'b2', 3000000, 2000000, 2, repeat('x', 40), null)$$,
+  'D49: a budget above the model without a human (two-person) approval', 'does not authorize');
+select wos_test.expect_error($$select wos_test.budget('00000000-0000-0000-0007-000000000fb2', 'b2', 5000000, 5000000, 2, '', null)$$,
+  'D49: task budgets under one objective exceeding it (splitting / stacking)', 'objective');
+select wos_test.expect_error($$select wos_test.budget('00000000-0000-0000-0007-000000000fb3', 'b3', 6000000, 6000000, 8, '', null)$$,
+  'D49: issuing beyond the epoch''s task capacity (reservation at issuance, never scaled)', 'capacity is exhausted');
+select wos_test.expect_error($$select wos_test.budget('00000000-0000-0000-0007-000000000fb3', 'b3', 1000000, 1000000, 5, '', null)$$,
+  'D49: issuing a task on mainnet', 'mainnet');
+select wos_test.budget('00000000-0000-0000-0007-000000000fb2', 'b2', 4000000, 4000000, 2, '', null);
+select wos_test.budget('00000000-0000-0000-0007-000000000fb4', 'b3', 7000000, 5000000, 2, 'shared dependency of three features: auth adapter',
+  wos_test.aa('approve_budget', 'task', '00000000-0000-0000-0007-000000000fb4', '{"budget_acu_micro": 7000000}'));
+do $$ begin
+  if (select reserved_base || '/' || expires_epoch || '/' || issuance_rate_base_per_acu from wos.task_budgets where task_id = '00000000-0000-0000-0007-000000000fb4')
+     <> '700000000/6/100000000' then
+    raise exception 'the server pins rate, reservation and expiry on the budget';
+  end if;
+  raise notice 'ok: rate, reservation and expiry are server-pinned';
+end $$;
+select wos_test.expect_error($$insert into wos.leases (task_id, account_id, device_id, state, context_plan, expires_at, hard_deadline_at)
+  values ('00000000-0000-0000-0007-000000000fb4', '00000000-0000-0000-0000-00000000000c', '00000000-0000-0000-0000-0000000000dc', 'active', '{}', now() + interval '30 minutes', now() + interval '3 hours')$$,
+  'D49: the proposer of a budget taking its lease', 'proposer');
+
+-- Receipts (H7, D49): consent, qualification, the TASK BUDGET (never a usage figure), declared shares, telemetry rules
 insert into wos.work_dedup_keys (dedup_key, source) values
   ('work:waronsaas/product:contacts#01', 'receipt'), ('work:waronsaas/product:contacts#02', 'receipt'), ('work:waronsaas/product:contacts#03', 'receipt'),
-  ('work:waronsaas/product:proposal#01', 'receipt'), ('work:waronsaas/wos:ledger#01', 'genesis'), ('work:dave#1', 'receipt');
-create or replace function wos_test.receipt(rid uuid, acct uuid, ctype text, slc text, ev text, wt bigint, att bigint, verif text, usage uuid[], qid uuid,
+  ('work:waronsaas/product:proposal#01', 'receipt'), ('work:waronsaas/wos:ledger#01', 'genesis'), ('work:dave#1', 'receipt'),
+  ('work:fb1:dave', 'receipt'), ('work:fb1:alice', 'receipt'), ('work:fb1:bob', 'receipt'), ('work:fb2:dave', 'receipt');
+create or replace function wos_test.receipt(rid uuid, acct uuid, ctype text, slc text, ev text, wt bigint, task uuid, share int, usage uuid[], qid uuid,
                                              subj_kind text, subj uuid, lease uuid, gen int, dkey text, epoch int) returns void
 language sql as $$
   insert into wos.contribution_receipts (id, account_id, contribution_type, slice, evidence_class, acceptance_event, independence, initial_status,
-    weight_micro, attested_acu_micro, cap_acu_micro, lowest_verification, usage_receipt_ids, qualification_id, subject_kind, subject_id,
+    weight_micro, task_id, share_bp, lowest_verification, usage_receipt_ids, qualification_id, subject_kind, subject_id,
     lease_id, lease_generation, dedup_key, admitted_epoch, body, receipt_sha256, qualified_at)
-  values (rid, acct, ctype, slc, ev, 'document_merged', 'independent', 'ACTIVE', wt, att, 12000000, verif, usage, qid, subj_kind, subj,
-          lease, gen, dkey, epoch, '{"feature": "contacts"}', 'sha256:' || md5(rid::text) || md5(dkey), now())
+  values (rid, acct, ctype, slc, ev, 'document_merged', 'independent', 'ACTIVE', wt, task, share, case when cardinality(usage) > 0 then 'ATTESTED' end,
+          usage, qid, subj_kind, subj, lease, gen, dkey, epoch, '{"feature": "contacts"}', 'sha256:' || md5(rid::text) || md5(dkey), now())
 $$;
-select wos_test.expect_error($$select wos_test.receipt(gen_random_uuid(), '00000000-0000-0000-0000-00000000000a', 'APPLICATION_ROADMAP', 'planning', 'attested_usage', 1, 1, 'ATTESTED',
-  '{}', null, 'document', '00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0007-0000000000c3', 1, 'work:waronsaas/product:contacts#02', 2)$$,
+select wos_test.expect_error($$select wos_test.receipt(gen_random_uuid(), '00000000-0000-0000-0000-00000000000a', 'APPLICATION_ROADMAP', 'planning', 'accepted_budget', 3000000,
+  '00000000-0000-0000-0007-0000000000f3', 10000, '{}', null, 'document', '00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0007-0000000000c3', 1, 'work:waronsaas/product:contacts#02', 2)$$,
   'a receipt without the publication disclosure (D47)', 'disclosure');
-select wos_test.expect_error($$select wos_test.receipt(gen_random_uuid(), '00000000-0000-0000-0000-00000000000b', 'APPLICATION_ROADMAP', 'planning', 'attested_usage', 12000, 12000, 'ATTESTED',
-  '{00000000-0000-0000-0000-0000000ad001}', null, 'document', '00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0007-0000000000c3', 1, 'work:waronsaas/product:contacts#02', 2)$$,
+select wos_test.expect_error($$select wos_test.receipt(gen_random_uuid(), '00000000-0000-0000-0000-00000000000b', 'APPLICATION_ROADMAP', 'planning', 'accepted_budget', 3000000,
+  '00000000-0000-0000-0007-0000000000f3', 10000, '{}', null, 'document', '00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0007-0000000000c3', 1, 'work:waronsaas/product:contacts#02', 2)$$,
   'a leased contribution without a qualification (H7)', 'qualification');
-select wos_test.expect_error($$select wos_test.receipt(gen_random_uuid(), '00000000-0000-0000-0000-00000000000b', 'APPLICATION_ROADMAP', 'planning', 'attested_usage', 5000, 5000, 'ATTESTED',
-  '{00000000-0000-0000-0000-0000000ad001}', '00000000-0000-0000-0000-0000000fa001', 'document', '00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0007-0000000000c3', 1, 'work:waronsaas/product:contacts#02', 2)$$,
-  'self-supplied attested ACU that differs from the usage receipts (H7)', 'sum');
-select wos_test.expect_error($$select wos_test.receipt(gen_random_uuid(), '00000000-0000-0000-0000-00000000000b', 'APPLICATION_ROADMAP', 'planning', 'attested_usage', 1000, 1000, 'ATTESTED',
-  '{00000000-0000-0000-0000-0000000ad002}', '00000000-0000-0000-0000-0000000fa001', 'document', '00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0007-0000000000c3', 1, 'work:waronsaas/product:contacts#02', 2)$$,
-  'A3-5: a run without a log claimed at full weight (the DB applies the 50% discount)', 'sum');
-select wos_test.expect_error($$select wos_test.receipt(gen_random_uuid(), '00000000-0000-0000-0000-00000000000b', 'APPLICATION_ROADMAP', 'planning', 'attested_usage', 12000, 12000, 'ATTESTED',
-  '{00000000-0000-0000-0000-0000000ad003}', '00000000-0000-0000-0000-0000000fa001', 'document', '00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0007-0000000000c3', 1, 'work:waronsaas/product:contacts#02', 2)$$,
-  'A3-5: usage of another run (lease) attached to this contribution', 'of this lease');
-select wos_test.expect_error($$select wos_test.receipt(gen_random_uuid(), '00000000-0000-0000-0000-00000000000b', 'IMPLEMENTATION', 'execution', 'attested_usage', 12000, 12000, 'ATTESTED',
-  '{00000000-0000-0000-0000-0000000ad001}', '00000000-0000-0000-0000-0000000fa001', 'document', '00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0007-0000000000c3', 1, 'work:waronsaas/product:contacts#02', 2)$$,
+select wos_test.expect_error($$select wos_test.receipt(gen_random_uuid(), '00000000-0000-0000-0000-00000000000b', 'APPLICATION_ROADMAP', 'planning', 'accepted_budget', 12000,
+  '00000000-0000-0000-0007-0000000000f3', 10000, '{00000000-0000-0000-0000-0000000ad001}', '00000000-0000-0000-0000-0000000fa001', 'document', '00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0007-0000000000c3', 1, 'work:waronsaas/product:contacts#02', 2)$$,
+  'D49: a receipt weighted by its usage instead of its task budget', 'never a usage figure');
+select wos_test.expect_error($$select wos_test.receipt(gen_random_uuid(), '00000000-0000-0000-0000-00000000000b', 'APPLICATION_ROADMAP', 'planning', 'accepted_budget', 3000000,
+  '00000000-0000-0000-0007-0000000000f3', 10000, '{00000000-0000-0000-0000-0000000ad003}', '00000000-0000-0000-0000-0000000fa001', 'document', '00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0007-0000000000c3', 1, 'work:waronsaas/product:contacts#02', 2)$$,
+  'A3-5 (telemetry): usage of another run (lease) attached to this contribution', 'of this lease');
+select wos_test.expect_error($$select wos_test.receipt(gen_random_uuid(), '00000000-0000-0000-0000-00000000000b', 'IMPLEMENTATION', 'execution', 'accepted_budget', 3000000,
+  '00000000-0000-0000-0007-0000000000f3', 10000, '{}', '00000000-0000-0000-0000-0000000fa001', 'document', '00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0007-0000000000c3', 1, 'work:waronsaas/product:contacts#02', 2)$$,
   'an IMPLEMENTATION receipt without a merged attempt (H7)', 'attempt');
-select wos_test.expect_error($$select wos_test.receipt(gen_random_uuid(), '00000000-0000-0000-0000-00000000000b', 'APPLICATION_ROADMAP', 'planning', 'attested_usage', 12000, 12000, 'UNVERIFIED',
-  '{00000000-0000-0000-0000-0000000ad001}', '00000000-0000-0000-0000-0000000fa001', 'document', '00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0007-0000000000c3', 1, 'work:waronsaas/product:contacts#02', 2)$$,
-  'attested weight on UNVERIFIED usage', 'fail closed');
-select wos_test.expect_error($$select wos_test.receipt(gen_random_uuid(), '00000000-0000-0000-0000-00000000000b', 'APPLICATION_ROADMAP', 'planning', 'attested_usage', 12000, 12000, 'ATTESTED',
-  '{00000000-0000-0000-0000-0000000ad001}', '00000000-0000-0000-0000-0000000fa001', 'document', '00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0007-0000000000c3', 1, 'work:waronsaas/product:contacts#02', 1)$$,
+select wos_test.expect_error($$select wos_test.receipt(gen_random_uuid(), '00000000-0000-0000-0000-00000000000b', 'APPLICATION_ROADMAP', 'planning', 'accepted_budget', 3000000,
+  '00000000-0000-0000-0007-0000000000f3', 10000, '{}', '00000000-0000-0000-0000-0000000fa001', 'document', '00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0007-0000000000c3', 1, 'work:waronsaas/product:contacts#02', 1)$$,
   'admission to an epoch that is not OPEN', 'OPEN epoch');
-select wos_test.expect_error($$select wos_test.receipt(gen_random_uuid(), '00000000-0000-0000-0000-00000000000b', 'APPLICATION_ROADMAP', 'planning', 'attested_usage', 12000, 12000, 'ATTESTED',
-  '{00000000-0000-0000-0000-0000000ad001}', '00000000-0000-0000-0000-0000000fa001', 'document', '00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0007-0000000000c3', 1, 'work:waronsaas/product:contacts#02', 5)$$,
-  'attested usage on mainnet before F1 (fail closed)', 'mainnet');
-select wos_test.receipt('00000000-0000-0000-0000-0000000cc001', '00000000-0000-0000-0000-00000000000b', 'APPLICATION_ROADMAP', 'planning', 'attested_usage', 12000, 12000, 'ATTESTED',
-  '{00000000-0000-0000-0000-0000000ad001}', '00000000-0000-0000-0000-0000000fa001', 'document', '00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0007-0000000000c3', 1, 'work:waronsaas/product:contacts#01', 2);
-select wos_test.expect_error($$select wos_test.receipt(gen_random_uuid(), '00000000-0000-0000-0000-00000000000b', 'APPLICATION_ROADMAP', 'planning', 'attested_usage', 12000, 12000, 'ATTESTED',
-  '{00000000-0000-0000-0000-0000000ad001}', '00000000-0000-0000-0000-0000000fa001', 'document', '00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0007-0000000000c3', 1, 'work:waronsaas/product:contacts#03', 2)$$,
-  'A3-5 repro: the same usage receipt backing a second contribution under a new work key', 'already backs another contribution');
+select wos_test.expect_error($$select wos_test.receipt(gen_random_uuid(), '00000000-0000-0000-0000-00000000000b', 'APPLICATION_ROADMAP', 'planning', 'accepted_budget', 3000000,
+  '00000000-0000-0000-0007-0000000000f3', 10000, '{}', '00000000-0000-0000-0000-0000000fa001', 'document', '00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0007-0000000000c3', 1, 'work:waronsaas/product:contacts#02', 5)$$,
+  'a receipt on a mainnet epoch (readiness gate)', 'mainnet');
+select wos_test.receipt('00000000-0000-0000-0000-0000000cc001', '00000000-0000-0000-0000-00000000000b', 'APPLICATION_ROADMAP', 'planning', 'accepted_budget', 3000000,
+  '00000000-0000-0000-0007-0000000000f3', 10000, '{00000000-0000-0000-0000-0000000ad001}', '00000000-0000-0000-0000-0000000fa001', 'document', '00000000-0000-0000-0000-0000000000d1', '00000000-0000-0000-0007-0000000000c3', 1, 'work:waronsaas/product:contacts#01', 2);
 insert into wos.publication_consents (account_id, disclosure_version, disclosure_sha256) values
   ('00000000-0000-0000-0000-00000000000a', 'disclosure.v1', 'sha256:' || repeat('d', 64)), ('00000000-0000-0000-0000-00000000000d', 'disclosure.v1', 'sha256:' || repeat('d', 64));
-select wos_test.receipt('00000000-0000-0000-0000-0000000cc002', '00000000-0000-0000-0000-00000000000a', 'PROPOSAL', 'outcomes', 'outcome', 10000000, 0, 'ATTESTED',
+select wos_test.receipt('00000000-0000-0000-0000-0000000cc002', '00000000-0000-0000-0000-00000000000a', 'PROPOSAL', 'outcomes', 'outcome', 10000000, null, null,
   '{}', null, 'proposal', gen_random_uuid(), null, null, 'work:waronsaas/product:proposal#01', 2);
-select wos_test.receipt('00000000-0000-0000-0000-0000000cc0d1', '00000000-0000-0000-0000-00000000000d', 'PROPOSAL', 'outcomes', 'outcome', 1, 0, 'ATTESTED',
+select wos_test.receipt('00000000-0000-0000-0000-0000000cc0d1', '00000000-0000-0000-0000-00000000000d', 'PROPOSAL', 'outcomes', 'outcome', 1, null, null,
   '{}', null, 'proposal', gen_random_uuid(), null, null, 'work:dave#1', 2);
+-- D49 declared shares: collaborators' shares of one task sum to exactly 10000 bp at commit.
+do $$ begin
+  set constraints wos.contribution_receipts_shares immediate;
+  begin
+    perform wos_test.receipt(gen_random_uuid(), '00000000-0000-0000-0000-00000000000d', 'OTHER_PROTOCOL_APPROVED', 'execution', 'accepted_budget', 6000000,
+      '00000000-0000-0000-0007-000000000fb1', 6000, '{}', null, 'proposal', gen_random_uuid(), null, null, 'work:fb1:dave', 2);
+    raise exception 'EXPECTED FAILURE did not happen: D49: declared shares of a task summing to less than 10000 bp';
+  exception when check_violation then raise notice 'ok (rejected): D49: declared shares of a task summing to less than 10000 bp';
+  end;
+end $$;
+do $$ begin
+  perform wos_test.receipt(gen_random_uuid(), '00000000-0000-0000-0000-00000000000d', 'OTHER_PROTOCOL_APPROVED', 'execution', 'accepted_budget', 6000000,
+    '00000000-0000-0000-0007-000000000fb1', 6000, '{}', null, 'proposal', gen_random_uuid(), null, null, 'work:fb1:dave', 2);
+  perform wos_test.receipt(gen_random_uuid(), '00000000-0000-0000-0000-00000000000a', 'OTHER_PROTOCOL_APPROVED', 'execution', 'accepted_budget', 6000000,
+    '00000000-0000-0000-0007-000000000fb1', 4000, '{}', null, 'proposal', gen_random_uuid(), null, null, 'work:fb1:alice', 2);
+  raise notice 'ok: two collaborators accept one task at 60/40';
+end $$;
+select wos_test.expect_error($$select wos_test.receipt(gen_random_uuid(), '00000000-0000-0000-0000-00000000000b', 'OTHER_PROTOCOL_APPROVED', 'execution', 'accepted_budget', 6000000,
+  '00000000-0000-0000-0007-000000000fb1', 1, '{}', null, 'proposal', gen_random_uuid(), null, null, 'work:fb1:bob', 2)$$,
+  'D49: a third share on a fully declared task (reward stacking)', 'exceed 10000');
+select wos_test.expect_error($$insert into wos.task_budget_releases (task_id, reason) values ('00000000-0000-0000-0007-000000000fb1', 'cancelled')$$,
+  'D49: releasing the budget of an accepted task', 'was accepted');
+insert into wos.task_budget_releases (task_id, reason) values ('00000000-0000-0000-0007-000000000fb2', 'abandoned');
+select wos_test.expect_error($$select wos_test.receipt(gen_random_uuid(), '00000000-0000-0000-0000-00000000000d', 'OTHER_PROTOCOL_APPROVED', 'execution', 'accepted_budget', 4000000,
+  '00000000-0000-0000-0007-000000000fb2', 10000, '{}', null, 'proposal', gen_random_uuid(), null, null, 'work:fb2:dave', 2)$$,
+  'D49: accepting a task whose budget was released', 'released');
 do $$ begin
   if wos.receipt_status('00000000-0000-0000-0000-0000000cc001') <> 'ACTIVE' then raise exception 'a receipt is born ACTIVE with its issued event'; end if;
   if (select receipt_id from wos.contribution_usage where usage_receipt_id = '00000000-0000-0000-0000-0000000ad001') <> '00000000-0000-0000-0000-0000000cc001' then
-    raise exception 'usage attribution is recorded durably';
+    raise exception 'usage telemetry is attributed durably';
   end if;
-  raise notice 'ok: qualified receipts issued ACTIVE; usage attributed once';
+  raise notice 'ok: receipts carry their task budgets; telemetry attributed once';
 end $$;
 select wos_test.expect_error($$insert into wos.work_dedup_keys (dedup_key, source) values ('work:waronsaas/product:contacts#01', 'genesis')$$, 'genesis credit for work that has a receipt');
 select wos_test.expect_error($$update wos.contribution_receipts set weight_micro = 1$$, 'receipts are immutable');
@@ -746,6 +818,9 @@ select wos_test.expect_error($$insert into wos.allocations (id, epoch_number, mo
 select wos_test.expect_error($$insert into wos.allocations (id, epoch_number, mode, account_id, beneficiary_kind, beneficiary_id, receipt_id, slice, weight_micro, amount_base, explanation, explanation_sha256)
   values (gen_random_uuid(), 2, 'test', '00000000-0000-0000-0000-00000000000b', 'person', '00000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-0000000cc001', 'planning', 1, 1, '{}', 'sha256:' || repeat('a', 64))$$,
   'an allocation while the epoch is OPEN', 'CALCULATING');
+select wos_test.expect_error($$insert into wos.allocations (id, epoch_number, mode, account_id, beneficiary_kind, beneficiary_id, receipt_id, slice, weight_micro, amount_base, explanation, explanation_sha256)
+  values (gen_random_uuid(), 3, 'test', '00000000-0000-0000-0000-00000000000b', 'person', '00000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-0000000cc001', 'planning', 3000000, 300000001, '{}', 'sha256:' || repeat('1', 64))$$,
+  'D49: allocating more than the task''s reserved budget', 'reserved budget');
 insert into wos.allocations (id, epoch_number, mode, account_id, beneficiary_kind, beneficiary_id, receipt_id, slice, weight_micro, amount_base, explanation, explanation_sha256) values
   ('00000000-0000-0000-0000-0000000a1001', 3, 'test', '00000000-0000-0000-0000-00000000000b', 'person', '00000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-0000000cc001', 'planning', 12000, 300000000, '{}', 'sha256:' || repeat('1', 64)),
   ('00000000-0000-0000-0000-0000000a1002', 3, 'test', '00000000-0000-0000-0000-00000000000a', 'person', '00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000cc002', 'outcomes', 10000000, 900000000, '{}', 'sha256:' || repeat('2', 64));
@@ -773,7 +848,7 @@ select wos_test.expect_error($$insert into wos.allocation_disputes (epoch_number
   'disputing one''s own allocation', 'own allocation');
 insert into wos.allocation_disputes (id, epoch_number, disputer_account_id, stake_base, note_untrusted, body)
 values ('00000000-0000-0000-0000-0000000d1001', 3, '00000000-0000-0000-0000-00000000000b', 6000000, 'usage is 3x peers for a size-2 unit',
-        '{"items": [{"allocationId": "00000000-0000-0000-0000-0000000a1002", "reason": "inflated_usage", "evidence": [{"kind": "anomaly_metric", "ref": "rank 1", "note": "3x peer P50"}]}]}');
+        '{"items": [{"allocationId": "00000000-0000-0000-0000-0000000a1002", "reason": "budget_mismatch", "evidence": [{"kind": "anomaly_metric", "ref": "rank 1", "note": "3x peer P50"}]}]}');
 select wos_test.expect_error($$insert into wos.dispute_items (dispute_id, allocation_id, reason, evidence, stake_base)
   values ('00000000-0000-0000-0000-0000000d1001', '00000000-0000-0000-0000-0000000a1001', 'other', '[]', 1)$$, 'appending an item after submission (H10)', 'frozen bundle');
 do $$ begin
@@ -835,8 +910,8 @@ select v.id::uuid, v.e, 'test', v.acct::uuid, v.bk, coalesce(v.bid::uuid, (selec
                ('00000000-0000-0000-0000-0000000a7002', 7, '00000000-0000-0000-0000-00000000000d', 'organization', null, 1000000)) v(id, e, acct, bk, bid, amt);
 set session_replication_role = origin;
 insert into wos.allocation_disputes (id, epoch_number, disputer_account_id, stake_base, body) values
-  ('00000000-0000-0000-0000-0000000d6001', 6, '00000000-0000-0000-0000-00000000000d', 1000000, '{"items": [{"allocationId": "00000000-0000-0000-0000-0000000a6001", "reason": "inflated_usage"}]}'),
-  ('00000000-0000-0000-0000-0000000d6002', 6, '00000000-0000-0000-0000-00000000000d', 1000000, '{"items": [{"allocationId": "00000000-0000-0000-0000-0000000a6003", "reason": "inflated_usage"}]}');
+  ('00000000-0000-0000-0000-0000000d6001', 6, '00000000-0000-0000-0000-00000000000d', 1000000, '{"items": [{"allocationId": "00000000-0000-0000-0000-0000000a6001", "reason": "budget_mismatch"}]}'),
+  ('00000000-0000-0000-0000-0000000d6002', 6, '00000000-0000-0000-0000-00000000000d', 1000000, '{"items": [{"allocationId": "00000000-0000-0000-0000-0000000a6003", "reason": "budget_mismatch"}]}');
 insert into wos.dispute_replies (allocation_id, account_id, body_untrusted) values
   ('00000000-0000-0000-0000-0000000a6001', '00000000-0000-0000-0000-00000000000a', 'the loops came from a flaky runner'),
   ('00000000-0000-0000-0000-0000000a6003', '00000000-0000-0000-0000-00000000000a', 'the loops came from a flaky runner');
@@ -893,11 +968,11 @@ select wos_test.expect_error($$insert into wos.entitlements (epoch_number, benef
   values (3, 'person', '00000000-0000-0000-0000-00000000000b', 'withheld_release', 'allocation', '00000000-0000-0000-0000-0000000a1001', 1)$$,
   'A3-1: entitling more than the allocation holds', 'remaining balance');
 select wos_test.expect_error($$insert into wos.entitlements (epoch_number, beneficiary_kind, beneficiary_id, kind, source_kind, source_id, amount_base)
-  values (6, 'person', '00000000-0000-0000-0000-00000000000a', 'release_now', 'allocation', '00000000-0000-0000-0000-0000000a6001', 50000001)$$,
-  'A3-1: a release that dips into the holdback share', 'holdback');
+  values (6, 'person', '00000000-0000-0000-0000-00000000000a', 'release_now', 'allocation', '00000000-0000-0000-0000-0000000a6001', 80000001)$$,
+  'A3-1: a release that dips into the holdback share (20% pinned on the epoch)', 'holdback');
 select wos_test.expect_error($$insert into wos.entitlements (epoch_number, beneficiary_kind, beneficiary_id, kind, source_kind, source_id, amount_base)
   values (3, 'person', '00000000-0000-0000-0000-00000000000b', 'holdback_matured', 'tranche', '00000000-0000-0000-0000-00000000e002', 150000000)$$,
-  'A3-1 repro: a tranche matured in its own epoch', 'matures in epoch 16');
+  'A3-1 repro: a tranche matured in its own epoch', 'matures in epoch 9');
 select wos_test.expect_error($$insert into wos.entitlements (epoch_number, beneficiary_kind, beneficiary_id, kind, source_kind, source_id, amount_base)
   values (3, 'person', '00000000-0000-0000-0000-00000000000b', 'withheld_release', 'allocation', '00000000-0000-0000-0000-0000000a1002', 1)$$,
   'A3-1: an entitlement naming someone else''s allocation', 'own epoch, mode and beneficiary');
@@ -908,7 +983,7 @@ select wos_test.expect_error($$insert into wos.entitlements (epoch_number, benef
   values (3, 'person', '00000000-0000-0000-0000-00000000000b', 'genesis_vesting', 'genesis', gen_random_uuid(), 1)$$,
   'A3-1: Genesis vesting outside the Genesis finalization (mainnet-only)', 'Genesis');
 do $$ begin
-  if (select matures_epoch from wos.entitlements where id = '00000000-0000-0000-0000-00000000e002') <> 16
+  if (select matures_epoch from wos.entitlements where id = '00000000-0000-0000-0000-00000000e002') <> 9
      or (select cluster || '/' || mode || '/' || policy_version from wos.entitlements where id = '00000000-0000-0000-0000-00000000e002') <> 'devnet/test/reward-policy.v1' then
     raise exception 'the server stamps maturity, settlement domain and policy on each entitlement';
   end if;
@@ -1022,20 +1097,20 @@ insert into wos.settlement_attempts (leaf_id, attempt, adapter_generation, signe
 values ('00000000-0000-0000-0000-0000000f1003', 1, 1, '\x31', 'sha256:' || repeat('4', 64), 'sig-31-' || repeat('a', 40), 500);
 select wos_test.expect_error($$insert into wos.leaf_voids (leaf_id, admin_action_id) values ('00000000-0000-0000-0000-0000000f1003', wos_test.aa('void_leaf', 'leaf', '00000000-0000-0000-0000-0000000f1003'))$$,
   'A3-2: voiding a leaf whose signed attempt may still land', 'may still land');
--- A3-4 repro (c): a tranche with 10 held matures only its remaining 290, and only at its pinned epoch.
+-- A3-4 repro (c): a tranche with 10 held matures only its remaining 290, and only at its pinned epoch (3 + 6).
 set session_replication_role = replica;
 insert into wos.epochs (epoch_number, mode, cluster, starts_at, ends_at, risk_review_hours, challenge_hours, policy_versions)
-values (16, 'test', 'devnet', now() - interval '10 days', now() - interval '3 days', 48, 48, '{"oracle": "oracle.v1", "reward": "reward-policy.v1"}');
+values (9, 'test', 'devnet', now() - interval '10 days', now() - interval '3 days', 48, 48, '{"oracle": "oracle.v1", "reward": "reward-policy.v1"}');
 insert into wos.epoch_transitions (epoch_number, seq, from_state, to_state, actor, receipts_root, allocations_root, result_sha256, at)
-values (16, 1, null, 'OPEN', 'system', null, null, null, now() - interval '10 days'), (16, 2, 'OPEN', 'CALCULATING', 'system', null, null, null, now() - interval '3 days'),
-       (16, 3, 'CALCULATING', 'PROPOSED', 'system', 'sha256:' || repeat('1', 64), 'sha256:' || repeat('2', 64), 'sha256:' || repeat('3', 64), now() - interval '2 days'),
-       (16, 4, 'PROPOSED', 'FINALIZED', 'system', null, null, null, now());
+values (9, 1, null, 'OPEN', 'system', null, null, null, now() - interval '10 days'), (9, 2, 'OPEN', 'CALCULATING', 'system', null, null, null, now() - interval '3 days'),
+       (9, 3, 'CALCULATING', 'PROPOSED', 'system', 'sha256:' || repeat('1', 64), 'sha256:' || repeat('2', 64), 'sha256:' || repeat('3', 64), now() - interval '2 days'),
+       (9, 4, 'PROPOSED', 'FINALIZED', 'system', null, null, null, now());
 set session_replication_role = origin;
 select wos_test.expect_error($$insert into wos.entitlements (epoch_number, beneficiary_kind, beneficiary_id, kind, source_kind, source_id, amount_base)
-  values (16, 'person', '00000000-0000-0000-0000-00000000000a', 'holdback_matured', 'tranche', '00000000-0000-0000-0000-00000000e004', 300000000)$$,
+  values (9, 'person', '00000000-0000-0000-0000-00000000000a', 'holdback_matured', 'tranche', '00000000-0000-0000-0000-00000000e004', 300000000)$$,
   'A3-4 repro: maturing the full tranche although 10 is held', 'remaining balance');
 insert into wos.entitlements (epoch_number, beneficiary_kind, beneficiary_id, kind, source_kind, source_id, amount_base)
-values (16, 'person', '00000000-0000-0000-0000-00000000000a', 'holdback_matured', 'tranche', '00000000-0000-0000-0000-00000000e004', 290000000);
+values (9, 'person', '00000000-0000-0000-0000-00000000000a', 'holdback_matured', 'tranche', '00000000-0000-0000-0000-00000000e004', 290000000);
 -- A3-4 repro (a): no decision without an actual appeal, before the reply window, or with an untargeted action.
 select wos_test.expect_error($$insert into wos.confiscation_appeal_decisions (confiscation_id, decision, admin_action_id)
   values ('00000000-0000-0000-0000-0000000c0f02', 'upheld', wos_test.aa('decide_confiscation_appeal', 'confiscation', '00000000-0000-0000-0000-0000000c0f02', '{"decision": "upheld"}'))$$,
@@ -1257,7 +1332,7 @@ do $$ begin
 end $$;
 select wos_test.expect_error($$update wos.contribution_receipts set weight_micro = 1$$, 'app role updating a receipt');
 select wos_test.expect_error($$insert into wos.epochs (epoch_number, mode, cluster, starts_at, ends_at, risk_review_hours, challenge_hours, policy_versions)
-  values (9, 'live', 'devnet', now(), now() + interval '1 day', 48, 48, '{}')$$, 'a contributor creating an epoch');
+  values (19, 'live', 'devnet', now(), now() + interval '1 day', 48, 48, '{}')$$, 'a contributor creating an epoch');
 select set_config('wos.actor_kind', 'maintainer', false);
 select set_config('wos.actor_id', '00000000-0000-0000-0000-00000000000c', false);
 select wos_test.expect_error($$insert into wos.admin_action_approvals (admin_action_id, approver_account_id, operation_sha256)
