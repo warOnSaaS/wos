@@ -1,13 +1,25 @@
 {
   "policyVersion": "reward-policy.v1",
   "status": "draft",
-  "units": { "decimals": 6, "acuMicroPerAcu": 1000000 },
-  "epoch": { "lengthDays": 7, "riskReviewHours": 72, "challengeHours": 48, "maxDeferrals": 2, "revertOffsetDays": 14 },
+  "units": {
+    "decimals": 6,
+    "acuMicroPerAcu": 1000000
+  },
+  "epoch": {
+    "lengthDays": 7,
+    "riskReviewHours": 48,
+    "challengeHours": 48,
+    "maxDeferrals": 2,
+    "revertOffsetDays": 14
+  },
   "emission": {
     "maxSupplyBase": "1000000000000000",
     "emissionReserveBase": "980000000000000",
     "budgetPpmOfRemaining": 3327,
-    "rateCeiling": { "initialBasePerAcu": "100000000", "decayPpmPerEpoch": 3327 }
+    "rateCeiling": {
+      "initialBasePerAcu": "100000000",
+      "decayPpmPerEpoch": 3327
+    }
   },
   "slicesBp": {
     "execution": 6000,
@@ -18,8 +30,14 @@
     "security_reserve": 500
   },
   "eligibility": {
-    "acceptedVerificationLevels": { "devnet": ["VERIFIED", "ATTESTED"], "mainnet": [] },
-    "acceptedEvidenceClasses": { "devnet": ["attested_usage", "accepted_output", "outcome"], "mainnet": [] },
+    "acceptedVerificationLevels": {
+      "devnet": ["VERIFIED", "ATTESTED"],
+      "mainnet": []
+    },
+    "acceptedEvidenceClasses": {
+      "devnet": ["attested_usage", "accepted_output", "outcome"],
+      "mainnet": []
+    },
     "requireReviewPolicySatisfied": true,
     "requireWalletForClaim": true
   },
@@ -126,7 +144,10 @@
   ],
   "settlement": {
     "unboundCarryEpochs": 52,
-    "mechanism": { "devnet": "push_transfer", "mainnet": "undecided" },
+    "mechanism": {
+      "devnet": "push_transfer",
+      "mainnet": "undecided"
+    },
     "maxOffsetRecoveryBp": 5000
   },
   "execution": {
@@ -149,12 +170,41 @@
   },
   "outcomes": {
     "proposalIncorporatedAcuEq": 10,
-    "bugAcuEq": { "low": 2, "medium": 6, "high": 20, "critical": 50 },
+    "bugAcuEq": {
+      "low": 2,
+      "medium": 6,
+      "high": 20,
+      "critical": 50
+    },
     "maxProposalsPaidPerAccountPerEpoch": 5
   },
   "security": {
-    "severityAcuEq": { "low": 25, "medium": 100, "high": 300, "critical": 1000 },
+    "severityAcuEq": {
+      "low": 25,
+      "medium": 100,
+      "high": 300,
+      "critical": 1000
+    },
     "maxShareOfReserveBp": 2500
   },
-  "completion": { "featurePoolsBp": 6667, "applicationPoolsBp": 3333 }
+  "completion": {
+    "featurePoolsBp": 6667,
+    "applicationPoolsBp": 3333
+  },
+  "challenge": {
+    "windowHours": 48,
+    "replyHours": 24,
+    "gateEscalateAfterHours": 120,
+    "standing": "epoch_participants",
+    "stakePerItemBp": 200,
+    "maxStakeBp": 1000,
+    "minStakeBase": "1000000",
+    "joinerStake": "min",
+    "maxItemsPerDispute": 25,
+    "maxDisputesPerAccountPerEpoch": 3,
+    "bountyBpOfExcess": 2000,
+    "sampledAuditRateBp": 500,
+    "rejectedDisputesSignalAfter": 3,
+    "publicAllocations": true
+  }
 }

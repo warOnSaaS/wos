@@ -417,25 +417,27 @@ values (1, 'test', 'devnet', now() - interval '8 days', now() - interval '1 day'
        (2, 'test', 'devnet', now() - interval '1 day', now() + interval '6 days', 72, 48, '{}');
 insert into wos.epoch_transitions (epoch_number, from_state, to_state, actor) values (1, null, 'OPEN', 'system');
 insert into wos.epoch_transitions (epoch_number, from_state, to_state, actor) values (2, null, 'OPEN', 'system');
-select wos_test.expect_error($$insert into wos.epoch_transitions (epoch_number, from_state, to_state, actor) values (1, 'OPEN', 'FINALIZED', 'system')$$,
+select wos_test.expect_error($$insert into wos.epoch_transitions (epoch_number, from_state, to_state, actor) values (1, 'OPEN', 'PROPOSED', 'system')$$,
   'skipping CALCULATING', 'not allowed');
 select wos_test.expect_error($$insert into wos.epoch_transitions (epoch_number, from_state, to_state, actor) values (2, 'OPEN', 'CALCULATING', 'system')$$,
   'closing an epoch before it ends', 'cannot close');
 insert into wos.epoch_transitions (epoch_number, from_state, to_state, actor) values (1, 'OPEN', 'CALCULATING', 'system');
 select wos_test.expect_error($$insert into wos.epoch_transitions (epoch_number, from_state, to_state, actor, receipts_root, allocations_root, result_sha256)
-  values (1, 'CALCULATING', 'FINALIZED', 'system', 'sha256:' || repeat('1', 64), 'sha256:' || repeat('2', 64), 'sha256:' || repeat('3', 64))$$,
-  'finalizing inside the risk review window', 'risk review window');
+  values (1, 'CALCULATING', 'PROPOSED', 'system', 'sha256:' || repeat('1', 64), 'sha256:' || repeat('2', 64), 'sha256:' || repeat('3', 64))$$,
+  'proposing inside the risk review window', 'risk review window');
+select wos_test.expect_error($$insert into wos.epoch_transitions (epoch_number, from_state, to_state, actor) values (1, 'CALCULATING', 'FINALIZED', 'system')$$,
+  'finalizing without a challenge window', 'not allowed');
 
 -- receipts: immutable, admitted only to an OPEN epoch, fail closed on weak evidence, one shared dedup namespace
 insert into wos.work_dedup_keys (dedup_key, source) values ('work:waronsaas/product:contacts#01', 'receipt'), ('work:waronsaas/wos:ledger#01', 'genesis');
 insert into wos.contribution_receipts (id, account_id, contribution_type, slice, evidence_class, acceptance_event, independence, initial_status,
   weight_micro, attested_acu_micro, cap_acu_micro, lowest_verification, subject_kind, subject_id, dedup_key, admitted_epoch, body, receipt_sha256, qualified_at)
 values ('00000000-0000-0000-0000-0000000cc001', '00000000-0000-0000-0000-00000000000b', 'IMPLEMENTATION', 'execution', 'attested_usage', 'pr_merged',
-        'independent', 'PENDING_RATIFICATION', 3000000, 3000000, 12000000, 'ATTESTED', 'attempt', gen_random_uuid(),
+        'independent', 'ACTIVE', 3000000, 3000000, 12000000, 'ATTESTED', 'attempt', gen_random_uuid(),
         'work:waronsaas/product:contacts#01', 2, '{"feature": "contacts"}', 'sha256:' || repeat('c', 64), now());
 do $$ begin
-  if wos.receipt_status('00000000-0000-0000-0000-0000000cc001') <> 'PENDING_RATIFICATION' then raise exception 'a receipt is born with its issued event'; end if;
-  raise notice 'ok: receipt issued PENDING_RATIFICATION';
+  if wos.receipt_status('00000000-0000-0000-0000-0000000cc001') <> 'ACTIVE' then raise exception 'a receipt is born with its issued event'; end if;
+  raise notice 'ok: receipt issued ACTIVE';
 end $$;
 select wos_test.expect_error($$insert into wos.work_dedup_keys (dedup_key, source) values ('work:waronsaas/product:contacts#01', 'genesis')$$,
   'genesis credit for work that already has a receipt');
@@ -447,35 +449,35 @@ select wos_test.expect_error($$insert into wos.contribution_receipts (account_id
 insert into wos.work_dedup_keys (dedup_key, source) values ('work:waronsaas/product:contacts#02', 'receipt');
 select wos_test.expect_error($$insert into wos.contribution_receipts (account_id, contribution_type, slice, evidence_class, acceptance_event, independence, initial_status,
   weight_micro, attested_acu_micro, cap_acu_micro, lowest_verification, subject_kind, subject_id, dedup_key, admitted_epoch, body, receipt_sha256, qualified_at)
-  values ('00000000-0000-0000-0000-00000000000a', 'IMPLEMENTATION', 'execution', 'attested_usage', 'pr_merged', 'independent', 'PENDING_RATIFICATION',
+  values ('00000000-0000-0000-0000-00000000000a', 'IMPLEMENTATION', 'execution', 'attested_usage', 'pr_merged', 'independent', 'ACTIVE',
           1, 1, 5, 'UNVERIFIED', 'attempt', gen_random_uuid(), 'work:waronsaas/product:contacts#02', 2, '{}', 'sha256:' || repeat('e', 64), now())$$,
   'attested_usage weight on UNVERIFIED usage', 'fail closed');
 select wos_test.expect_error($$insert into wos.contribution_receipts (account_id, contribution_type, slice, evidence_class, acceptance_event, independence, initial_status,
   weight_micro, attested_acu_micro, cap_acu_micro, lowest_verification, subject_kind, subject_id, dedup_key, admitted_epoch, body, receipt_sha256, qualified_at)
-  values ('00000000-0000-0000-0000-00000000000a', 'IMPLEMENTATION', 'execution', 'attested_usage', 'pr_merged', 'independent', 'PENDING_RATIFICATION',
+  values ('00000000-0000-0000-0000-00000000000a', 'IMPLEMENTATION', 'execution', 'attested_usage', 'pr_merged', 'independent', 'ACTIVE',
           9, 9, 5, 'ATTESTED', 'attempt', gen_random_uuid(), 'work:waronsaas/product:contacts#02', 2, '{}', 'sha256:' || repeat('e', 64), now())$$,
   'weight above the compute cap');
 select wos_test.expect_error($$insert into wos.contribution_receipts (account_id, contribution_type, slice, evidence_class, acceptance_event, independence, initial_status,
   weight_micro, attested_acu_micro, cap_acu_micro, lowest_verification, subject_kind, subject_id, dedup_key, admitted_epoch, body, receipt_sha256, qualified_at)
-  values ('00000000-0000-0000-0000-00000000000a', 'IMPLEMENTATION', 'execution', 'attested_usage', 'pr_merged', 'independent', 'PENDING_RATIFICATION',
+  values ('00000000-0000-0000-0000-00000000000a', 'IMPLEMENTATION', 'execution', 'attested_usage', 'pr_merged', 'independent', 'ACTIVE',
           1, 1, 5, 'ATTESTED', 'attempt', gen_random_uuid(), 'work:waronsaas/product:contacts#02', 1, '{}', 'sha256:' || repeat('e', 64), now())$$,
   'admission to an epoch that is not OPEN', 'OPEN epoch');
 select wos_test.expect_error($$update wos.contribution_receipts set weight_micro = 1$$, 'receipts are immutable');
 
 -- receipt status follows the machine; ratification needs a real quorum or a human sign-off
 select wos_test.expect_error($$insert into wos.receipt_status_events (receipt_id, from_status, to_status, kind, human_review_id)
-  values ('00000000-0000-0000-0000-0000000cc001', 'PENDING_RATIFICATION', 'RATIFIED', 'human_signoff', gen_random_uuid())$$,
-  'human sign-off without a human review', 'human sign-off');
+  values ('00000000-0000-0000-0000-0000000cc001', 'ACTIVE', 'RATIFIED', 'human_signoff', gen_random_uuid())$$,
+  'ratifying a receipt that is not provisional', 'not allowed');
 select wos_test.expect_error($$insert into wos.receipt_status_events (receipt_id, from_status, to_status, kind)
-  values ('00000000-0000-0000-0000-0000000cc001', 'PENDING_RATIFICATION', 'REVOKED', 'revoked')$$,
+  values ('00000000-0000-0000-0000-0000000cc001', 'ACTIVE', 'REVOKED', 'revoked')$$,
   'revocation without an admin action', 'not allowed');
 insert into wos.receipt_status_events (receipt_id, from_status, to_status, kind, admin_action_id)
-values ('00000000-0000-0000-0000-0000000cc001', 'PENDING_RATIFICATION', 'REVOKED', 'revoked', '00000000-0000-0000-0000-0000000aa001');
+values ('00000000-0000-0000-0000-0000000cc001', 'ACTIVE', 'REVOKED', 'revoked', '00000000-0000-0000-0000-0000000aa001');
 select wos_test.expect_error($$insert into wos.receipt_status_events (receipt_id, from_status, to_status, kind, admin_action_id)
   values ('00000000-0000-0000-0000-0000000cc001', 'REVOKED', 'RATIFIED', 'restored', '00000000-0000-0000-0000-0000000aa001')$$,
   'restoring to a status it never had', 'not allowed');
 insert into wos.receipt_status_events (receipt_id, from_status, to_status, kind, admin_action_id)
-values ('00000000-0000-0000-0000-0000000cc001', 'REVOKED', 'PENDING_RATIFICATION', 'restored', '00000000-0000-0000-0000-0000000aa001');
+values ('00000000-0000-0000-0000-0000000cc001', 'REVOKED', 'ACTIVE', 'restored', '00000000-0000-0000-0000-0000000aa001');
 
 -- human reviews: only authorized, never one's own work
 select wos_test.expect_error($$insert into wos.human_reviews (purpose, subject_kind, subject_id, context_sha256, reviewer_account_id, risk_class, verdict, review_policy_version, body, review_sha256)
@@ -490,8 +492,6 @@ select wos_test.expect_error($$insert into wos.human_reviews (purpose, subject_k
 insert into wos.human_reviews (id, purpose, subject_kind, subject_id, context_sha256, reviewer_account_id, risk_class, verdict, review_policy_version, body, review_sha256)
 values ('00000000-0000-0000-0000-0000000ab001', 'ratification_signoff', 'receipt', '00000000-0000-0000-0000-0000000cc001', 'sha256:' || repeat('1', 64),
         '00000000-0000-0000-0000-00000000000c', 'standard', 'PASS', 'review-policy.v1', '{}', 'sha256:' || repeat('9', 64));
-insert into wos.receipt_status_events (receipt_id, from_status, to_status, kind, human_review_id)
-values ('00000000-0000-0000-0000-0000000cc001', 'PENDING_RATIFICATION', 'RATIFIED', 'human_signoff', '00000000-0000-0000-0000-0000000ab001');
 
 -- payout audit quorums: the author never audits their own receipt; ratification needs the verdicts
 insert into wos.payout_audit_quorums (id, receipt_id, size, review_policy_version)
@@ -507,8 +507,9 @@ select wos_test.expect_error($$update wos.payout_audit_quorums set outcome = 'ra
 select wos_test.expect_error($$insert into wos.receipt_clips (receipt_id, new_weight_micro, admin_action_id, auditor_account_ids)
   values ('00000000-0000-0000-0000-0000000cc001', 4000000, '00000000-0000-0000-0000-0000000aa001', '{00000000-0000-0000-0000-00000000000a}')$$,
   'a clip that raises the weight', 'never raises');
-select wos_test.expect_error($$insert into wos.allocations (epoch_number, account_id, slice, weight_micro, amount_base)
-  values (2, '00000000-0000-0000-0000-00000000000b', 'execution', 1, 1)$$, 'allocations while the epoch is OPEN', 'CALCULATING');
+select wos_test.expect_error($$insert into wos.allocations (id, epoch_number, account_id, receipt_id, slice, weight_micro, amount_base, explanation, explanation_sha256)
+  values (gen_random_uuid(), 2, '00000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-0000000cc001', 'execution', 1, 1, '{}', 'sha256:' || repeat('1', 64))$$,
+  'allocations while the epoch is OPEN', 'CALCULATING');
 select wos_test.expect_error($$insert into wos.epoch_manifest_entries (epoch_number, mode, receipt_id, receipt_sha256, disposition, deferral_count)
   values (1, 'live', '00000000-0000-0000-0000-0000000cc001', 'sha256:' || repeat('c', 64), 'included', 0)$$, 'manifest mode differs from the epoch', 'mode');
 
@@ -536,6 +537,74 @@ select wos_test.expect_error($$insert into wos.wallet_bindings (account_id, clus
   values ('00000000-0000-0000-0000-00000000000b', 'devnet', 'So11111111111111111111111111111111111111112', 'external', 'bind',
           'wOS wallet binding account: 00000000-0000-0000-0000-00000000000b wallet: So11111111111111111111111111111111111111112', 'sig')$$,
   'binding a wallet held by another account', 'another account');
+
+-- optimistic payouts: an epoch in PROPOSED (fixture transitions are backdated with the check trigger disabled)
+insert into wos.work_dedup_keys (dedup_key, source) values ('work:waronsaas/product:contacts#03', 'receipt');
+insert into wos.contribution_receipts (id, account_id, contribution_type, slice, evidence_class, acceptance_event, independence, initial_status,
+  weight_micro, attested_acu_micro, cap_acu_micro, lowest_verification, subject_kind, subject_id, dedup_key, admitted_epoch, body, receipt_sha256, qualified_at)
+values ('00000000-0000-0000-0000-0000000cc002', '00000000-0000-0000-0000-00000000000a', 'IMPLEMENTATION', 'execution', 'attested_usage', 'pr_merged',
+        'independent', 'ACTIVE', 9000000, 9000000, 12000000, 'ATTESTED', 'attempt', gen_random_uuid(),
+        'work:waronsaas/product:contacts#03', 2, '{"feature": "contacts"}', 'sha256:' || repeat('b', 64), now());
+insert into wos.epochs (epoch_number, mode, cluster, starts_at, ends_at, risk_review_hours, challenge_hours, policy_versions, max_items_per_dispute)
+values (3, 'test', 'devnet', now() - interval '12 days', now() - interval '5 days', 48, 48, '{}', 2);
+alter table wos.epoch_transitions disable trigger epoch_transitions_check;
+insert into wos.epoch_transitions (epoch_number, seq, from_state, to_state, actor, at) values
+  (3, 1, null, 'OPEN', 'system', now() - interval '12 days'),
+  (3, 2, 'OPEN', 'CALCULATING', 'system', now() - interval '4 days');
+alter table wos.epoch_transitions enable trigger epoch_transitions_check;
+insert into wos.allocations (id, epoch_number, account_id, receipt_id, slice, weight_micro, amount_base, explanation, explanation_sha256) values
+  ('00000000-0000-0000-0000-0000000a1001', 3, '00000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-0000000cc001', 'execution', 3000000, 300000000, '{}', 'sha256:' || repeat('1', 64)),
+  ('00000000-0000-0000-0000-0000000a1002', 3, '00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000cc002', 'execution', 9000000, 900000000, '{}', 'sha256:' || repeat('2', 64));
+alter table wos.epoch_transitions disable trigger epoch_transitions_check;
+insert into wos.epoch_transitions (epoch_number, seq, from_state, to_state, actor, receipts_root, allocations_root, result_sha256, at) values
+  (3, 3, 'CALCULATING', 'PROPOSED', 'system', 'sha256:' || repeat('1', 64), 'sha256:' || repeat('2', 64), 'sha256:' || repeat('3', 64), now() - interval '1 hour');
+alter table wos.epoch_transitions enable trigger epoch_transitions_check;
+select wos_test.expect_error($$insert into wos.allocations (id, epoch_number, account_id, receipt_id, slice, weight_micro, amount_base, explanation, explanation_sha256)
+  values (gen_random_uuid(), 3, '00000000-0000-0000-0000-00000000000c', '00000000-0000-0000-0000-0000000cc002', 'planning', 1, 1, '{}', 'sha256:' || repeat('1', 64))$$,
+  'an allocation added after publication', 'CALCULATING');
+select wos_test.expect_error($$insert into wos.epoch_transitions (epoch_number, from_state, to_state, actor) values (3, 'PROPOSED', 'FINALIZED', 'system')$$,
+  'finalizing inside the challenge window', 'challenge window');
+select wos_test.expect_error($$insert into wos.allocation_disputes (epoch_number, disputer_account_id, stake_base, body)
+  values (3, '00000000-0000-0000-0000-00000000000c', 0, '{}')$$, 'a non-participant disputing', 'only participants');
+select wos_test.expect_error($$insert into wos.allocation_disputes (epoch_number, disputer_account_id, stake_base, body)
+  values (3, '00000000-0000-0000-0000-00000000000b', 400000000, '{}')$$, 'a stake above the disputer''s pending allocation', 'stake');
+insert into wos.allocation_disputes (id, epoch_number, disputer_account_id, stake_base, note_untrusted, body)
+values ('00000000-0000-0000-0000-0000000d1001', 3, '00000000-0000-0000-0000-00000000000b', 6000000, 'usage is 3x peers for a size-2 unit', '{}');
+select wos_test.expect_error($$insert into wos.dispute_items (dispute_id, allocation_id, reason, evidence)
+  values ('00000000-0000-0000-0000-0000000d1001', '00000000-0000-0000-0000-0000000a1001', 'other', '[]')$$, 'disputing one''s own allocation', 'own allocation');
+insert into wos.dispute_items (dispute_id, allocation_id, reason, evidence)
+values ('00000000-0000-0000-0000-0000000d1001', '00000000-0000-0000-0000-0000000a1002', 'inflated_usage', '[{"kind": "anomaly_metric", "ref": "rank 1", "note": "3x peer P50"}]');
+do $$ begin
+  if not exists (select 1 from wos.dispute_gates where allocation_id = '00000000-0000-0000-0000-0000000a1002'
+                   and first_dispute_id = '00000000-0000-0000-0000-0000000d1001') then
+    raise exception 'the first dispute opens the allocation''s gate';
+  end if;
+  raise notice 'ok: dispute opened a gate with bounty priority';
+end $$;
+select wos_test.expect_error($$insert into wos.dispute_replies (allocation_id, account_id, body_untrusted)
+  values ('00000000-0000-0000-0000-0000000a1002', '00000000-0000-0000-0000-00000000000b', 'not mine to answer')$$, 'a reply by someone other than the accused', 'accused');
+insert into wos.dispute_replies (allocation_id, account_id, body_untrusted)
+values ('00000000-0000-0000-0000-0000000a1002', '00000000-0000-0000-0000-00000000000a', 'three repair loops: the CI matrix failed twice on WebKit');
+select wos_test.expect_error($$insert into wos.dispute_item_resolutions (allocation_id, outcome, admin_action_id, resulting_amount_base, excess_base)
+  values ('00000000-0000-0000-0000-0000000a1002', 'CLIPPED', '00000000-0000-0000-0000-0000000aa001', 500000000, 100000000)$$,
+  'a resolution whose amounts do not add up', 'must equal');
+insert into wos.dispute_item_resolutions (allocation_id, outcome, admin_action_id, resulting_amount_base, excess_base)
+values ('00000000-0000-0000-0000-0000000a1002', 'CLIPPED', '00000000-0000-0000-0000-0000000aa001', 600000000, 300000000);
+select wos_test.expect_error($$insert into wos.dispute_settlements (dispute_id, total_excess_base, bounty_base, stake_forfeited_base, settled_in_epoch)
+  values ('00000000-0000-0000-0000-0000000d1001', 300000000, 60000000, 6000000, 3)$$, 'forfeiting the stake of a dispute that clipped something');
+insert into wos.dispute_settlements (dispute_id, total_excess_base, bounty_base, stake_forfeited_base, settled_in_epoch)
+values ('00000000-0000-0000-0000-0000000d1001', 300000000, 60000000, 0, 3);
+
+-- policy activations are forward-only
+insert into wos.policy_documents (kind, version, body, sha256) values ('reward', 'reward-policy.v2', '{}', 'sha256:' || repeat('1', 64));
+select wos_test.expect_error($$insert into wos.policy_activations (kind, version, effective_epoch, preview_sha256, admin_action_id)
+  values ('reward', 'reward-policy.v2', 2, 'sha256:' || repeat('2', 64), '00000000-0000-0000-0000-0000000aa001')$$,
+  'a policy change applied to the open epoch', 'next epoch');
+select wos_test.expect_error($$insert into wos.policy_activations (kind, version, effective_epoch, emergency, admin_action_id)
+  values ('reward', 'reward-policy.v2', 3, true, '00000000-0000-0000-0000-0000000aa001')$$,
+  'an emergency change on published allocations', 'published');
+insert into wos.policy_activations (kind, version, effective_epoch, preview_sha256, admin_action_id)
+values ('reward', 'reward-policy.v2', 10, 'sha256:' || repeat('2', 64), '00000000-0000-0000-0000-0000000aa001');
 
 -- RLS: canaries and abuse signals are private; the app role cannot rewrite protocol records
 insert into wos.abuse_signals (kind, severity, subject_kind, subject_id, detector, detector_version, evidence)

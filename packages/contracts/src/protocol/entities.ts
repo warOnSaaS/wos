@@ -246,7 +246,7 @@ export type AgentRunView = z.infer<typeof AgentRunView>;
 // ------------------------------------------------------------------------------------------------ ContributionReceipt
 
 export const SubjectRef = z.object({
-  kind: z.enum(["attempt", "document", "review", "human_review", "proposal", "security_report", "genesis", "audit", "ratification"]),
+  kind: z.enum(["attempt", "document", "review", "human_review", "proposal", "security_report", "genesis", "audit", "payout_audit"]),
   id: Uuid,
 });
 export type SubjectRef = z.infer<typeof SubjectRef>;
@@ -293,12 +293,12 @@ export const ContributionReceipt = z.object({
   lowestVerificationLevel: VerificationLevel,
   /**
    * D23 (founder, resolving Astra-01 item 2): merge authority is separate from reward qualification.
-   *   independent        the review policy was satisfied by non-authors; born PENDING_RATIFICATION (D25)
+   *   independent        the review policy was satisfied by non-authors; born ACTIVE
    *   founder_bootstrap  the founder's own work merged under bootstrap authority; the receipt is born PROVISIONAL
    */
   independence: z.enum(["independent", "founder_bootstrap"]),
-  /** Born PENDING_RATIFICATION (independent work) or PROVISIONAL (founder bootstrap work); see ReceiptStatus. */
-  initialStatus: z.enum(["PENDING_RATIFICATION", "PROVISIONAL"]),
+  /** Born ACTIVE (independent work) or PROVISIONAL (founder bootstrap work); see ReceiptStatus. */
+  initialStatus: z.enum(["ACTIVE", "PROVISIONAL"]),
   policyVersions: PolicyVersions,
   epochNumber: z.number().int().positive(),
   qualifiedAt: Timestamp,
@@ -306,24 +306,22 @@ export const ContributionReceipt = z.object({
 export type ContributionReceipt = z.infer<typeof ContributionReceipt>;
 
 /**
- * Receipt qualification status (D23 + D25). Receipts are immutable; status is the latest ReceiptStatusEvent.
- *   PENDING_RATIFICATION  merged independent work, waiting for its peer ratification quorum (D25)
- *   PROVISIONAL           the founder's own work merged under bootstrap authority (D23); public, test epochs only
- *   DISPUTED              a sealed peer ratification review rejected it with substance; a ruling decides
- *   RATIFIED              quorum of independent peer ratifications PASSed (or the small-pool human sign-off);
- *                         the only status that counts in live epochs; original qualifiedAt kept
- *   REVOKED               invalidated by an AdminAction; never deleted
+ * Receipt qualification status (D23, D28). Receipts are immutable; status is the latest ReceiptStatusEvent.
+ *   ACTIVE       independent merged work: counts in live epochs (payouts are verified optimistically, D28)
+ *   PROVISIONAL  the founder's own work merged under bootstrap authority (D23): public, test epochs only, and it needs
+ *                independent ratification whatever happens in any challenge window
+ *   RATIFIED     a PROVISIONAL receipt ratified by an independent audit quorum or a non-founder human; counts live,
+ *                original qualifiedAt kept
+ *   REVOKED      invalidated by an AdminAction or a dispute gate outcome; never deleted
+ * A rejected ratification keeps PROVISIONAL (rejection recorded). Clips are separate records (ReceiptClip).
  */
-export const ReceiptStatus = z.enum(["PENDING_RATIFICATION", "PROVISIONAL", "DISPUTED", "RATIFIED", "REVOKED"]);
+export const ReceiptStatus = z.enum(["ACTIVE", "PROVISIONAL", "RATIFIED", "REVOKED"]);
 export type ReceiptStatus = z.infer<typeof ReceiptStatus>;
 
 export const ReceiptStatusEventKind = z.enum([
   "issued",
   "quorum_ratified",
   "human_signoff",
-  "ratification_failed",
-  "dispute_resolved_ratify",
-  "dispute_resolved_revoke",
   "ratification_rejected",
   "revoked",
   "restored",
@@ -335,7 +333,7 @@ export const ReceiptStatusEvent = z.object({
   from: ReceiptStatus.nullable(),
   to: ReceiptStatus,
   kind: ReceiptStatusEventKind,
-  /** The ratification quorum (quorum_ratified), the human review (human_signoff), the ruling or admin action. */
+  /** The audit quorum (quorum_ratified / ratification_rejected), the human review (human_signoff) or the admin action. */
   quorumId: Uuid.nullable(),
   humanReviewId: Uuid.nullable(),
   adminActionId: Uuid.nullable(),
@@ -343,132 +341,441 @@ export const ReceiptStatusEvent = z.object({
 });
 export type ReceiptStatusEvent = z.infer<typeof ReceiptStatusEvent>;
 
-// ------------------------------------------------------------------------------------------------ Review duty (D25)
+// ------------------------------------------------------------------------------------------------ Optimistic payouts (D28, D29)
 
-/** Defect classes a ratification finding can name; canaries are generated in the same classes (D26). */
-export const DefectClass = z.enum([
-  "authorization",
-  "inverted_condition",
-  "off_by_one",
-  "missing_validation",
-  "secret_leak",
-  "scope_violation",
-  "requirement_not_met",
+/**
+ * The human-readable explanation published with every proposed allocation line, to every participant of the epoch
+ * (D28, D29). Pseudonymous: handle or a stable pseudonym plus wallet; never e-mail.
+ */
+export const AllocationExplanation = z.object({
+  schema: z.literal("wos-allocation-explanation.v1"),
+  epochNumber: z.number().int().positive(),
+  pseudonym: z.string().min(3).max(60),
+  wallet: SolanaAddress.nullable(),
+  slice: z.string().min(1),
+  amountBase: I64String,
+  /** e.g. "14,023 WOS = 312,004 attested tokens on claude-opus-5-5 -> 4.1 ACU x 3,420 WOS/ACU (epoch rate)". */
+  sentence: z.string().min(10).max(1000),
+  receipts: z.array(
+    z.object({
+      receiptId: Uuid,
+      contributionType: ContributionType,
+      model: z.string().nullable(),
+      usage: ProviderUsage.nullable(),
+      weightMicro: U64String,
+      runLogSummary: z.object({ turns: z.number().int(), repairLoops: z.number().int(), toolCalls: z.number().int() }).nullable(),
+      attribution: z.array(z.string().max(200)),
+    }),
+  ),
+  policyVersions: PolicyVersions,
+});
+export type AllocationExplanation = z.infer<typeof AllocationExplanation>;
+
+/**
+ * Deterministic anomaly metrics (engine output, reproducible, D29). The challenge UI ranks allocations by these.
+ * Ratios are in basis points of the peer P50 for a comparable key (task kind, capability class, model, size points).
+ */
+export const AnomalyMetrics = z.object({
+  accountId: Uuid,
+  epochNumber: z.number().int().positive(),
+  receipts: z.number().int().nonnegative(),
+  /** Median over the account's receipts of weight / peer P50 (bp). 10000 = exactly typical. */
+  medianPeerRatioBp: z.number().int().nonnegative(),
+  /** Share of receipts at >= 95% of their cap (bp). */
+  capSaturationBp: z.number().int().min(0).max(10_000),
+  /** Share of receipts above peer P50 (bp); a skim shows as ~10000 with a modest median ratio. */
+  aboveP50ShareBp: z.number().int().min(0).max(10_000),
+  /**
+   * Consistency statistic x 1000: sum over receipts of sign(log ratio) / sqrt(n) (a sign test). Small but consistent
+   * inflation across many receipts grows like sqrt(n) even when each receipt is only slightly high.
+   */
+  consistencyMilli: z.number().int(),
+  /** Weight per changed line relative to peers (bp), when the receipts carry diffs. */
+  perLinePeerRatioBp: z.number().int().nonnegative().nullable(),
+  /** Deterministic rank score used to order the challenge list (higher = look first). */
+  rankScore: z.number().int(),
+});
+export type AnomalyMetrics = z.infer<typeof AnomalyMetrics>;
+
+export const DisputeReason = z.enum([
+  "inflated_usage",
+  "padded_repairs",
+  "context_inflation",
+  "model_misreported",
+  "misattribution",
+  "duplicate_work",
+  "split_gaming",
   "other",
 ]);
-export type DefectClass = z.infer<typeof DefectClass>;
+export type DisputeReason = z.infer<typeof DisputeReason>;
 
-/**
- * What a duty client receives: an opaque packet (D26). It carries the diff hunks, the requirements and the relevant
- * contract excerpts, but no receipt id, merge sha or attempt id, so a real packet and a canary look the same. Quotes in
- * the verdict are hashed over the packet's own file content, which the server knows for both kinds.
- */
-export const RatificationPacket = z.object({
-  schema: z.literal("wos-ratification-packet.v1"),
-  packetId: Uuid,
-  repo: RepoFullName,
-  requirements: z.array(z.object({ key: z.string().regex(/^R-\d{3}$/), text: z.string().min(1) })).min(1),
-  contractExcerpts: z.array(z.object({ ref: z.string().min(1), text: z.string() })),
-  files: z
-    .array(z.object({ path: z.string().min(1), content: z.string(), changedLines: z.array(z.tuple([z.number().int(), z.number().int()])) }))
-    .min(1),
-  manifestSha256: Sha256,
+export const DisputeEvidence = z.object({
+  kind: z.enum(["run_log_turn", "diff", "peer_baseline", "anomaly_metric", "cluster", "other"]),
+  ref: z.string().min(1).max(300),
+  note: z.string().min(10).max(2000),
 });
-export type RatificationPacket = z.infer<typeof RatificationPacket>;
 
 /**
- * A sealed peer ratification verdict, run by the claimant's own client on their own subscription (D24, D25).
- * Minimum substance: named requirements and at least two evidence quotes whose sha256 the server recomputes over the
- * packet's lines. A bare PASS is schema-invalid and earns nothing.
+ * One dispute over ANY set of proposed allocations of the epoch (D28–D31): a single allocation, several receipts of
+ * one person, a whole "pattern", or a suspected cluster across contributors and features. Standing: any account with an
+ * allocation in the same epoch. The disputer escrows a stake (scaled by the number of items, capped) from their own
+ * pending allocation; each item is resolved independently. The note is UNTRUSTED text: auditors see it delimited.
  */
-export const RatificationVerdict = z
-  .object({
-    schema: z.literal("ratification-verdict.v1"),
-    packetId: Uuid,
-    manifestSha256: Sha256,
-    verdict: z.enum(["RATIFY", "REJECT"]),
-    requirementsChecked: z.array(z.string().regex(/^R-\d{3}$/)).min(1),
-    evidence: z
-      .array(
-        z.object({
-          path: z.string().min(1),
-          lineStart: z.number().int().positive(),
-          lineEnd: z.number().int().positive(),
-          quoteSha256: Sha256,
-          note: z.string().min(10).max(2000),
-        }),
-      )
-      .min(2)
-      .max(30),
-    findings: z
-      .array(
-        z.object({
-          severity: z.enum(["material", "minor"]),
-          defectClass: DefectClass,
-          path: z.string().min(1),
-          lineStart: z.number().int().positive(),
-          lineEnd: z.number().int().positive(),
-          title: z.string().min(1).max(200),
-          detail: z.string().min(20).max(8000),
-        }),
-      )
-      .max(30),
-    summary: z.string().min(40).max(4000),
-  })
-  .refine((v) => (v.verdict === "RATIFY") === !v.findings.some((f) => f.severity === "material"), {
-    message: "verdict must be RATIFY iff there are no material findings",
-  });
-export type RatificationVerdict = z.infer<typeof RatificationVerdict>;
-
-/**
- * A canary (honeypot) ratification case (D26): a real merged change with ONE deterministically injected defect, made
- * by a rule-based mutator (no model, zero wOS model compute). Private: never public, never mergeable, never rewarded.
- */
-export const CanaryCase = z.object({
-  schema: z.literal("wos-canary-case.v1"),
+export const AllocationDispute = z.object({
+  schema: z.literal("wos-allocation-dispute.v1"),
   id: Uuid,
-  packetId: Uuid,
-  sourceReceiptId: Uuid,
-  mutatorVersion: z.string().min(1),
-  /** sha256 of (sourceReceiptId, mutationClass, seed): the same inputs always give the same mutation. */
-  seedSha256: Sha256,
-  mutationClass: DefectClass,
-  planted: z.object({ path: z.string().min(1), lineStart: z.number().int().positive(), lineEnd: z.number().int().positive() }),
-  /** The mutation is inside a changed hunk and visible within this many lines of context (fairness rule). */
-  visibleWithinLines: z.number().int().positive(),
-  /** Typecheck of the mutated file passed in CI (a syntax error would be a giveaway). */
-  typechecks: z.boolean(),
-  retiredAfterEpoch: z.number().int().positive(),
+  epochNumber: z.number().int().positive(),
+  disputerAccountId: Uuid,
+  items: z
+    .array(
+      z.object({
+        allocationId: Uuid,
+        reason: DisputeReason,
+        evidence: z.array(DisputeEvidence).min(1).max(20),
+        proposedAmountBase: U64String.nullable(),
+      }),
+    )
+    .min(1)
+    .max(100),
+  /** Evidence shared across items (e.g. cluster linkage), shown to every item's auditors. */
+  sharedEvidence: z.array(DisputeEvidence).max(20),
+  note: z.string().max(4000),
+  stakeBase: U64String,
+  openedAt: Timestamp,
 });
-export type CanaryCase = z.infer<typeof CanaryCase>;
+export type AllocationDispute = z.infer<typeof AllocationDispute>;
 
-/** A verdict catches a canary iff it REJECTs with a material finding overlapping the planted lines (+-3) or naming its class in that file. */
-export function canaryCaught(
-  c: Pick<CanaryCase, "planted" | "mutationClass">,
-  v: Pick<RatificationVerdict, "verdict" | "findings">,
-): boolean {
-  if (v.verdict !== "REJECT") return false;
-  return v.findings.some(
-    (f) =>
-      f.severity === "material" &&
-      f.path === c.planted.path &&
-      (f.defectClass === c.mutationClass || (f.lineStart <= c.planted.lineEnd + 3 && f.lineEnd >= c.planted.lineStart - 3)),
+/** Per-allocation outcome of a dispute gate, from the allocation's point of view. */
+export const DisputeItemResolution = z.object({
+  disputeId: Uuid,
+  allocationId: Uuid,
+  outcome: z.enum(["UPHELD", "CLIPPED", "REVOKED"]),
+  quorumId: Uuid.nullable(),
+  adminActionId: Uuid.nullable(),
+  /** Amount that stands after the gate. */
+  resultingAmountBase: U64String,
+  excessBase: U64String,
+  resolvedAt: Timestamp,
+});
+export type DisputeItemResolution = z.infer<typeof DisputeItemResolution>;
+
+/** Settlement of a whole dispute: bounty on the TOTAL excess of its items; stake forfeited only if nothing was clipped. */
+export const DisputeSettlement = z.object({
+  disputeId: Uuid,
+  totalExcessBase: U64String,
+  bountyBase: U64String,
+  stakeForfeitedBase: U64String,
+  settledAt: Timestamp,
+});
+export type DisputeSettlement = z.infer<typeof DisputeSettlement>;
+
+/** Bounty = bountyBp of the total excess, with bounty priority per allocation to its FIRST disputer (D30). */
+export function disputeBounty(totalExcessBase: bigint, bountyBp: number): bigint {
+  return (totalExcessBase * BigInt(bountyBp)) / 10_000n;
+}
+
+/** Stake = stakePerItemBp of the disputer's pending allocation x items, capped at maxStakeBp, at least minStakeBase. */
+export function disputeStake(
+  pendingBase: bigint,
+  items: number,
+  p: { stakePerItemBp: number; maxStakeBp: number; minStakeBase: string },
+): bigint {
+  const raw = (pendingBase * BigInt(p.stakePerItemBp) * BigInt(items)) / 10_000n;
+  const cap = (pendingBase * BigInt(p.maxStakeBp)) / 10_000n;
+  const min = BigInt(p.minStakeBase);
+  const stake = raw < cap ? raw : cap;
+  return stake > min ? stake : min < pendingBase ? min : pendingBase;
+}
+
+/** Allocation lifecycle per (epoch, account): derived from the epoch state and disputes (PROTOCOL.md section 4.4). */
+export const AllocationState = z.enum([
+  "PROPOSED",
+  "CHALLENGE_OPEN",
+  "FINALIZED",
+  "DISPUTED",
+  "UNDER_REVIEW",
+  "UPHELD",
+  "CLIPPED",
+  "REVOKED",
+  "FINAL",
+]);
+export type AllocationState = z.infer<typeof AllocationState>;
+
+// ------------------------------------------------------------------------------------------------ Payout audit duty (D25, D27)
+
+/**
+ * Scrubbed, structured run log submitted with every AgentRun (D27). It never contains prompt or response text, tool
+ * arguments, environment values or paths outside the worktree; chunk hashes let an audit ask for the matching raw
+ * transcript chunk later. Evidence stays ATTESTED; a log that is consistent with the usage receipt and the diff ranks
+ * above bare numbers (UsageProofPolicy.logs).
+ */
+export const RunLog = z.object({
+  schema: z.literal("wos-run-log.v1"),
+  agentRunId: Uuid,
+  provider: ProviderId,
+  scrubberVersion: z.string().min(1),
+  turns: z
+    .array(
+      z.object({
+        i: z.number().int().nonnegative(),
+        startedAt: Timestamp,
+        endedAt: Timestamp,
+        /** Provider response id, hashed (P-2 dedup uses the raw ids client-side; the log carries only hashes). */
+        responseIdSha256: Sha256.nullable(),
+        usage: z.object({
+          inputTokens: z.number().int().nonnegative(),
+          cachedInputTokens: z.number().int().nonnegative(),
+          cacheWriteInputTokens: z.number().int().nonnegative(),
+          outputTokens: z.number().int().nonnegative(),
+        }),
+        toolCalls: z
+          .array(
+            z.object({
+              tool: z.string().min(1).max(40),
+              /** Repo-relative path when the call touched one, else null; never a path outside the worktree. */
+              path: z.string().max(400).nullable(),
+              argsSha256: Sha256,
+              exitCode: z.number().int().nullable(),
+            }),
+          )
+          .max(200),
+        chunkSha256: Sha256,
+      }),
+    )
+    .max(2000),
+  repairLoops: z.array(
+    z.object({
+      i: z.number().int().nonnegative(),
+      reason: z.enum(["verify_failed_locally", "review_findings", "rebase"]),
+      firstTurn: z.number().int().nonnegative(),
+      lastTurn: z.number().int().nonnegative(),
+    }),
+  ),
+});
+export type RunLog = z.infer<typeof RunLog>;
+
+/** Sum of a run log's per-turn usage; must equal the usage receipt (else the run is UNVERIFIED, fail closed). */
+export function runLogTotals(log: RunLog): {
+  inputTokens: number;
+  cachedInputTokens: number;
+  cacheWriteInputTokens: number;
+  outputTokens: number;
+} {
+  return log.turns.reduce(
+    (s, t) => ({
+      inputTokens: s.inputTokens + t.usage.inputTokens,
+      cachedInputTokens: s.cachedInputTokens + t.usage.cachedInputTokens,
+      cacheWriteInputTokens: s.cacheWriteInputTokens + t.usage.cacheWriteInputTokens,
+      outputTokens: s.outputTokens + t.usage.outputTokens,
+    }),
+    { inputTokens: 0, cachedInputTokens: 0, cacheWriteInputTokens: 0, outputTokens: 0 },
   );
 }
 
-/** One quorum per receipt: X sealed slots, randomly assigned, revealed together. */
-export const RatificationQuorum = z.object({
+/**
+ * What an auditing client receives: an opaque packet (D27). It holds the payout lines of one feature slice in an
+ * epoch (receipts referenced by packet-local refs, not ids), their run logs, the diff and contract excerpts, the
+ * attribution (authors, reviewers, proposer, planning shares) and peer baselines for comparable units. The
+ * deterministic numbers (ACU normalisation, splits, rounding) are shown for context only: anyone can recompute them.
+ * Per-run usage and logs are published only after the epoch finalizes, so a packet cannot be matched against public
+ * records during the audit window.
+ */
+export const PayoutAuditPacket = z.object({
+  schema: z.literal("wos-payout-audit-packet.v1"),
+  packetId: Uuid,
+  feature: FeatureKey.nullable(),
+  lines: z
+    .array(
+      z.object({
+        ref: z.string().regex(/^L\d{1,3}$/),
+        contributionType: ContributionType,
+        role: z.string().min(1),
+        model: z.string().min(1),
+        reasoning: ReasoningLevel,
+        sizePoints: z.number().int().positive().nullable(),
+        usage: ProviderUsage,
+        acuMicro: U64String,
+        capAcuMicro: U64String,
+        repairLoops: z.number().int().nonnegative(),
+        runLogRefs: z.array(z.string().min(1)),
+        attribution: z.array(z.object({ party: z.string().min(1), share: z.string().min(1) })),
+      }),
+    )
+    .min(1),
+  diff: z.object({
+    files: z.number().int().nonnegative(),
+    additions: z.number().int().nonnegative(),
+    deletions: z.number().int().nonnegative(),
+    excerptRef: z.string().min(1),
+  }),
+  contractExcerpts: z.array(z.object({ ref: z.string().min(1), text: z.string() })),
+  peerBaselines: z.array(
+    z.object({
+      key: z.string().min(1),
+      p25AcuMicro: U64String,
+      p50AcuMicro: U64String,
+      p75AcuMicro: U64String,
+      samples: z.number().int().nonnegative(),
+    }),
+  ),
+  /**
+   * D32: a dispute FOCUSES the audit. Present for dispute gates (null for sampled audits and ratifications). The
+   * auditor answers each concern first, then checks the line generally. Disputer and reply text is UNTRUSTED: the
+   * context engine renders it inside delimited untrusted-content blocks, after the role obligations.
+   */
+  focus: z
+    .object({
+      disputeId: Uuid,
+      concerns: z
+        .array(
+          z.object({
+            lineRef: z.string().regex(/^L\d{1,3}$/),
+            reason: DisputeReason,
+            evidence: z.array(DisputeEvidence).max(20),
+            proposedAmountBase: U64String.nullable(),
+          }),
+        )
+        .min(1),
+      sharedEvidence: z.array(DisputeEvidence).max(20),
+      disputerNoteUntrusted: z.string().max(4000),
+      accusedReplyUntrusted: z.string().max(4000).nullable(),
+    })
+    .nullable(),
+  manifestSha256: Sha256,
+});
+export type PayoutAuditPacket = z.infer<typeof PayoutAuditPacket>;
+
+export const PayoutJudgment = z.enum(["plausible", "inflated", "misattributed", "insufficient_evidence"]);
+export type PayoutJudgment = z.infer<typeof PayoutJudgment>;
+
+/** Per-concern answer when the packet has a focus (D32): the verdict must answer every concern it was given. */
+export const FocusAnswer = z.object({
+  lineRef: z.string().regex(/^L\d{1,3}$/),
+  concernHolds: z.boolean(),
+  answer: z.string().min(40).max(4000),
+});
+
+/** Perturbations a payout canary applies; an auditor's finding "names" one by its judgment + reason. */
+export const PerturbationClass = z.enum([
+  "inflated_usage",
+  "padded_repairs",
+  "context_inflation",
+  "model_mismatch",
+  "duplicated_attribution",
+  "wrong_split",
+]);
+export type PerturbationClass = z.infer<typeof PerturbationClass>;
+
+/**
+ * A sealed payout audit verdict, produced by the claimant's own client on their own subscription (D24, D25, D27).
+ * Minimum substance: every line judged, each with cited evidence (run-log turns, diff paths) and a rationale. A bare
+ * "all plausible" with no citations is schema-invalid and earns nothing.
+ */
+export const PayoutAuditVerdict = z.object({
+  schema: z.literal("payout-audit-verdict.v1"),
+  packetId: Uuid,
+  manifestSha256: Sha256,
+  lines: z
+    .array(
+      z
+        .object({
+          ref: z.string().regex(/^L\d{1,3}$/),
+          judgment: PayoutJudgment,
+          reason: PerturbationClass.nullable(),
+          /** For "inflated": the auditor's estimate of the plausible weight. */
+          plausibleAcuMicro: U64String.nullable(),
+          evidence: z
+            .array(
+              z.object({
+                kind: z.enum(["run_log_turn", "diff_path", "baseline", "contract"]),
+                ref: z.string().min(1),
+                note: z.string().min(10).max(2000),
+              }),
+            )
+            .min(1)
+            .max(20),
+          rationale: z.string().min(40).max(4000),
+        })
+        .refine((l) => (l.judgment === "inflated") === (l.plausibleAcuMicro !== null), { message: "plausibleAcuMicro iff inflated" })
+        .refine((l) => (l.judgment === "inflated" || l.judgment === "misattributed") === (l.reason !== null), {
+          message: "inflated/misattributed lines must name a reason",
+        }),
+    )
+    .min(1),
+  /** Required iff the packet had a focus: one answer per concern. */
+  focusAnswers: z.array(FocusAnswer).nullable(),
+  summary: z.string().min(40).max(4000),
+});
+export type PayoutAuditVerdict = z.infer<typeof PayoutAuditVerdict>;
+
+/**
+ * A payout canary (D27): a deterministic, model-free perturbation of a real receipt's payout line (zero wOS model
+ * compute). Private; never allocated, never public, never mixed with the source receipt's own audits.
+ */
+export const PayoutCanary = z.object({
+  schema: z.literal("wos-payout-canary.v1"),
+  id: Uuid,
+  packetId: Uuid,
+  lineRef: z.string().regex(/^L\d{1,3}$/),
+  sourceReceiptId: Uuid,
+  perturbatorVersion: z.string().min(1),
+  seedSha256: Sha256,
+  perturbation: PerturbationClass,
+  /** e.g. usage multiplied by factorBp/1e4, repair loops added, attribution duplicated. Enough to be detectable. */
+  magnitudeBp: z.number().int().positive(),
+  retiredAfterEpoch: z.number().int().positive(),
+});
+export type PayoutCanary = z.infer<typeof PayoutCanary>;
+
+const PERTURBATION_JUDGMENT: Record<PerturbationClass, PayoutJudgment> = {
+  inflated_usage: "inflated",
+  padded_repairs: "inflated",
+  context_inflation: "inflated",
+  model_mismatch: "inflated",
+  duplicated_attribution: "misattributed",
+  wrong_split: "misattributed",
+};
+
+/** Caught iff the canary line is judged inflated/misattributed (matching its class) — "plausible" or silence is a miss. */
+export function payoutCanaryCaught(c: Pick<PayoutCanary, "lineRef" | "perturbation">, v: Pick<PayoutAuditVerdict, "lines">): boolean {
+  const line = v.lines.find((l) => l.ref === c.lineRef);
+  return line !== undefined && line.judgment === PERTURBATION_JUDGMENT[c.perturbation];
+}
+
+/**
+ * One audit quorum per receipt (D25/D27): `size` randomly assigned auditors from OUTSIDE the feature, sealed and
+ * revealed together, plus an optional own-feature auditor slot whose findings count but whose "plausible" never
+ * counts toward ratification.
+ */
+export const PayoutAuditQuorum = z.object({
   id: Uuid,
   receiptId: Uuid,
   size: z.number().int().positive(),
-  state: z.enum(["assigning", "sealed", "revealed_ratified", "revealed_rejected", "expired"]),
-  /** Account + provider per slot; distinct accounts, never the author, never a pre-merge reviewer of the subject. */
-  slots: z.array(z.object({ slot: z.number().int().positive(), accountId: Uuid.nullable(), provider: ProviderId.nullable() })),
+  state: z.enum(["assigning", "sealed", "revealed_ratified", "revealed_findings", "expired"]),
+  slots: z.array(
+    z.object({
+      slot: z.number().int().positive(),
+      accountId: Uuid.nullable(),
+      provider: ProviderId.nullable(),
+      outsideFeature: z.boolean(),
+    }),
+  ),
   reviewPolicyVersion: z.string(),
 });
-export type RatificationQuorum = z.infer<typeof RatificationQuorum>;
+export type PayoutAuditQuorum = z.infer<typeof PayoutAuditQuorum>;
 
-/** Review duty per account per epoch: owed from the account's own execution/planning receipts, done by duty reviews. */
+/** An upheld inflation finding clips a receipt's weight (append-only; at most once, never above the original). */
+export const ReceiptClip = z.object({
+  receiptId: Uuid,
+  newWeightMicro: U64String,
+  quorumId: Uuid.nullable(),
+  adminActionId: Uuid,
+  auditorAccountIds: z.array(Uuid).min(1),
+  at: Timestamp,
+});
+export type ReceiptClip = z.infer<typeof ReceiptClip>;
+
+/** Audit duty per account per epoch: owed from the account's own execution/planning receipts being claimed. */
 export const DutyStatement = z.object({
   accountId: Uuid,
   epochNumber: z.number().int().positive(),
@@ -485,12 +792,13 @@ export type DutyStatement = z.infer<typeof DutyStatement>;
 export function receiptCountsIn(mode: "live" | "test", status: ReceiptStatus): boolean {
   if (status === "REVOKED") return false;
   if (mode === "test") return true;
-  return status === "RATIFIED";
+  return status === "ACTIVE" || status === "RATIFIED";
 }
 
 // ------------------------------------------------------------------------------------------------ Epochs
 
-export const EpochState = z.enum(["OPEN", "CALCULATING", "FINALIZED", "DISTRIBUTABLE", "CLOSED"]);
+/** D28 adds PROPOSED (allocations published, challenge window open) between CALCULATING and FINALIZED. */
+export const EpochState = z.enum(["OPEN", "CALCULATING", "PROPOSED", "FINALIZED", "DISTRIBUTABLE", "CLOSED"]);
 export type EpochState = z.infer<typeof EpochState>;
 
 export const Epoch = z.object({
@@ -561,11 +869,16 @@ export const SettlementRecord = z.object({
 });
 export type SettlementRecord = z.infer<typeof SettlementRecord>;
 
-/** Deterministic engine output per (epoch, account, slice). */
+/**
+ * Deterministic engine output. One line per receipt in distributing slices (so any single allocation can be disputed,
+ * D30) and one line per (pool, account, component) for payouts. `id` is stable: deterministicUuid(epoch, key).
+ */
 export const Allocation = z.object({
+  id: Uuid,
   epochNumber: z.number().int().positive(),
   accountId: Uuid,
-  slice: z.enum(["execution", "planning", "human_review", "outcomes", "completion_payout", "security_payout", "offset"]),
+  receiptId: Uuid.nullable(),
+  slice: z.enum(["execution", "planning", "human_review", "outcomes", "completion_payout", "security_payout", "dispute_bounty", "offset"]),
   weightMicro: U64String,
   amountBase: I64String,
 });
@@ -669,7 +982,12 @@ export const AbuseSignalKind = z.enum([
   "compromised_account_suspected",
   "wallet_rebind_after_signal",
   "human_review_disagreement",
-  "canary_passed",
+  "payout_canary_passed",
+  "inflation_finding_upheld",
+  "false_inflation_findings",
+  "run_log_inconsistent",
+  "consistent_skim_pattern",
+  "rejected_disputes",
 ]);
 export type AbuseSignalKind = z.infer<typeof AbuseSignalKind>;
 
@@ -678,7 +996,7 @@ export const AbuseSignal = z.object({
   kind: AbuseSignalKind,
   severity: z.enum(["info", "low", "medium", "high"]),
   subject: z.object({
-    kind: z.enum(["agent_run", "receipt", "account", "review", "human_review", "wallet", "ratification", "canary"]),
+    kind: z.enum(["agent_run", "receipt", "account", "review", "human_review", "wallet", "payout_audit", "canary"]),
     id: z.string().min(1),
   }),
   accountId: Uuid.nullable(),
@@ -730,6 +1048,7 @@ export const AdminActionKind = z.enum([
   "ratify_receipt",
   "reject_ratification",
   "resolve_ratification_dispute",
+  "clip_receipt",
   "end_bootstrap",
   "start_test_epochs",
   "end_test_epochs",

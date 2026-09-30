@@ -30,5 +30,13 @@
     "transcriptRequestBp": 500,
     "transcriptRetentionDays": 60,
     "divergenceFactorBp": 30000
+  },
+  "logs": {
+    "required": true,
+    "maxBytes": 1048576,
+    "maxTurns": 2000,
+    "retentionDays": 365,
+    "bareAttestedWeightBp": 5000,
+    "requireExactTotals": true
   }
 }

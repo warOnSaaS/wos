@@ -4,11 +4,15 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  type AnomalyReceipt,
+  activationRefusals,
+  anomalyMetrics,
   acuMicroFromUsage,
+  disputeBounty,
+  disputeStake,
   allocationTree,
   assertConserved,
   CAPABILITY_POLICY_V1,
-  canaryCaught,
   COMPLETION_POLICY_V1,
   type ClaimLeaf,
   clipToCap,
@@ -30,7 +34,10 @@ import {
   parseCodexExecStream,
   REVIEW_POLICY_V1,
   REWARD_POLICY_V1,
-  RatificationVerdict,
+  PayoutAuditVerdict,
+  payoutCanaryCaught,
+  RunLog,
+  runLogTotals,
   ReceiptStatusMachine,
   rateCeiling,
   receiptCountsIn,
@@ -188,20 +195,86 @@ describe("computeEpoch", () => {
   });
 });
 
+describe("optimistic payouts, disputes, anomalies, activation (D28–D33)", () => {
+  it("allocates per receipt so any single allocation can be disputed", () => {
+    const r = computeEpoch({ ...fresh(), receipts: [receipt(1, 1, 5), receipt(2, 1, 7)] }, params);
+    const lines = r.allocations.filter((a) => a.slice === "execution");
+    expect(lines.map((l) => l.receiptId)).toEqual([u(1001), u(1002)]);
+    expect(lines[0]!.amountBase + lines[1]!.amountBase).toBe(r.netByAccount.get(u(1)));
+  });
+  it("settles a dispute conservatively: excess leaves issuance, bounty is paid from it, the rest returns", () => {
+    const e1 = computeEpoch({ ...fresh(), receipts: [receipt(1, 1, 50), receipt(2, 2, 50)] }, params);
+    const excess = 1_000_000_000n;
+    const bounty = disputeBounty(excess, REWARD_POLICY_V1.challenge.bountyBpOfExcess);
+    const e2 = computeEpoch(
+      {
+        ...fresh(),
+        epochNumber: 2,
+        remainingReserve: e1.remainingReserve,
+        poolBalances: e1.poolBalances,
+        securityReserve: e1.securityReserve,
+        cumulativeIssued: e1.cumulativeIssued,
+        disputeSettlements: [{ disputeId: u(77), excessBase: excess, bounties: [{ accountId: u(2), amountBase: bounty }] }],
+      },
+      params,
+    );
+    expect(e2.allocations.find((a) => a.slice === "dispute_bounty")!.amountBase).toBe(200_000_000n);
+    assertConserved(RESERVE, e2);
+  });
+  it("prices stakes low, scales them by items and caps them", () => {
+    const p = REWARD_POLICY_V1.challenge;
+    expect(disputeStake(1_000_000_000n, 1, p)).toBe(20_000_000n);
+    expect(disputeStake(1_000_000_000n, 25, p)).toBe(100_000_000n);
+    expect(disputeStake(0n, 1, p)).toBe(0n);
+  });
+  it("ranks a consistent 10% skim above an honest spread even though no receipt stands out", () => {
+    const peer = 10_000_000n;
+    const mk = (acct: number, i: number, factorBp: bigint): AnomalyReceipt => ({
+      receiptId: u(5000 + acct * 100 + i),
+      accountId: u(acct),
+      weightMicro: (peer * factorBp) / 10_000n,
+      capMicro: peer * 2n,
+      peerP50Micro: peer,
+      changedLines: null,
+      peerP50MicroPerLine: null,
+    });
+    const honest = Array.from({ length: 40 }, (_, i) => mk(1, i, i % 2 ? 11_000n : 9_000n));
+    const skim = Array.from({ length: 40 }, (_, i) => mk(2, i, 11_000n));
+    const rows = anomalyMetrics([...honest, ...skim]);
+    expect(rows[0]!.accountId).toBe(u(2));
+    expect(rows[0]!.consistencyMilli).toBe(6325);
+    expect(rows[1]!.consistencyMilli).toBe(0);
+  });
+  it("activations are forward-only, announced and previewed; emergencies only touch unpublished allocations", () => {
+    const start = Date.UTC(2026, 9, 5);
+    const ok = { effectiveEpoch: 5, emergency: false, announcedAtMs: start - 4 * 86_400_000, previewSha256: `sha256:${"a".repeat(64)}` };
+    expect(activationRefusals(ok, { openEpoch: 4, openEpochState: "OPEN", epochStartsAtMs: start })).toEqual([]);
+    expect(activationRefusals({ ...ok, effectiveEpoch: 4 }, { openEpoch: 4, openEpochState: "OPEN", epochStartsAtMs: start })).toHaveLength(
+      1,
+    );
+    expect(
+      activationRefusals({ ...ok, previewSha256: null }, { openEpoch: 4, openEpochState: "OPEN", epochStartsAtMs: start }),
+    ).toHaveLength(1);
+    const em = { ...ok, effectiveEpoch: 4, emergency: true };
+    expect(activationRefusals(em, { openEpoch: 4, openEpochState: "CALCULATING", epochStartsAtMs: start })).toEqual([]);
+    expect(activationRefusals(em, { openEpoch: 4, openEpochState: "PROPOSED", epochStartsAtMs: start })).toHaveLength(1);
+  });
+});
+
 describe("receipt status and epochs (D23)", () => {
   it("test epochs count provisional receipts; live epochs never do", () => {
     expect(receiptCountsIn("test", "PROVISIONAL")).toBe(true);
     expect(receiptCountsIn("live", "PROVISIONAL")).toBe(false);
     expect(receiptCountsIn("live", "RATIFIED")).toBe(true);
-    expect(REVIEW_POLICY_V1.ratification.dutyPerReceipt).toBeGreaterThanOrEqual(REVIEW_POLICY_V1.ratification.quorum);
+    expect(REVIEW_POLICY_V1.payoutAudit.quorum).toBe(2);
     expect(receiptCountsIn("live", "REVOKED")).toBe(false);
   });
   it("a rejected ratification of founder work returns it to provisional; only RATIFIED counts live (D25)", () => {
     const t = ReceiptStatusMachine.transitions.find((x) => x.event === "ratification_rejected")!;
-    expect([t.from, t.to]).toEqual(["DISPUTED", "PROVISIONAL"]);
-    expect(receiptCountsIn("live", "PENDING_RATIFICATION")).toBe(false);
+    expect([t.from, t.to]).toEqual(["PROVISIONAL", "PROVISIONAL"]);
+    expect(receiptCountsIn("live", "ACTIVE")).toBe(true);
     expect(ReceiptStatusMachine.transitions.some((x) => x.to === "RATIFIED" && x.from === "PROVISIONAL")).toBe(true);
-    expect(EpochMachine.transitions.map((x) => x.to)).toEqual(["CALCULATING", "FINALIZED", "DISTRIBUTABLE", "CLOSED"]);
+    expect(EpochMachine.transitions.map((x) => x.to)).toEqual(["CALCULATING", "PROPOSED", "FINALIZED", "DISTRIBUTABLE", "CLOSED"]);
   });
 });
 
@@ -236,7 +309,7 @@ describe("hashing and Merkle (P-1..P-4)", () => {
     capAcuMicro: "12000000",
     lowestVerificationLevel: "ATTESTED",
     independence: "independent",
-    initialStatus: "PENDING_RATIFICATION",
+    initialStatus: "ACTIVE",
     policyVersions: {
       reward: "reward-policy.v1",
       oracle: "oracle.v1",
@@ -277,35 +350,70 @@ describe("hashing and Merkle (P-1..P-4)", () => {
     expect(() => usageEventIdsSha256(["msg_1", "msg_1"])).toThrow();
     expect(usageEventIdsSha256(["b", "a"])).toBe(usageEventIdsSha256(["a", "b"]));
   });
-  it("a ratification verdict needs cited evidence (a bare PASS is schema-invalid)", () => {
-    const bare = RatificationVerdict.safeParse({
-      schema: "ratification-verdict.v1",
+  it("a payout audit verdict needs per-line evidence (a bare 'all plausible' is schema-invalid)", () => {
+    const bare = PayoutAuditVerdict.safeParse({
+      schema: "payout-audit-verdict.v1",
       packetId: u(1),
-      verdict: "RATIFY",
-      requirementsChecked: ["R-001"],
       manifestSha256: `sha256:${"d".repeat(64)}`,
-      evidence: [],
-      findings: [],
+      lines: [{ ref: "L1", judgment: "plausible", reason: null, plausibleAcuMicro: null, evidence: [], rationale: "x".repeat(40) }],
+      focusAnswers: null,
       summary: "x".repeat(40),
     });
     expect(bare.success).toBe(false);
-  });
-  it("a canary counts as caught only on a material REJECT at the planted place or class", () => {
-    const c = { planted: { path: "src/a.ts", lineStart: 40, lineEnd: 41 }, mutationClass: "authorization" as const };
-    const f = (lineStart: number, defectClass: "authorization" | "other") => ({
-      severity: "material" as const,
-      defectClass,
-      path: "src/a.ts",
-      lineStart,
-      lineEnd: lineStart,
-      title: "t",
-      detail: "d".repeat(20),
+    const inflatedWithoutEstimate = PayoutAuditVerdict.safeParse({
+      schema: "payout-audit-verdict.v1",
+      packetId: u(1),
+      manifestSha256: `sha256:${"d".repeat(64)}`,
+      lines: [
+        {
+          ref: "L1",
+          judgment: "inflated",
+          reason: "padded_repairs",
+          plausibleAcuMicro: null,
+          evidence: [{ kind: "run_log_turn", ref: "run1#12", note: "repair loop with no failing check" }],
+          rationale: "x".repeat(40),
+        },
+      ],
+      focusAnswers: null,
+      summary: "x".repeat(40),
     });
-    expect(canaryCaught(c, { verdict: "REJECT", findings: [f(43, "other")] })).toBe(true);
-    expect(canaryCaught(c, { verdict: "REJECT", findings: [f(90, "authorization")] })).toBe(true);
-    expect(canaryCaught(c, { verdict: "REJECT", findings: [f(90, "other")] })).toBe(false);
-    expect(canaryCaught(c, { verdict: "RATIFY", findings: [] })).toBe(false);
+    expect(inflatedWithoutEstimate.success).toBe(false);
+  });
+  it("a payout canary is caught only when its line is judged with the matching class", () => {
+    const c = { lineRef: "L2", perturbation: "padded_repairs" as const };
+    const line = (judgment: "plausible" | "inflated" | "misattributed") => ({
+      ref: "L2",
+      judgment,
+      reason: null,
+      plausibleAcuMicro: null,
+      evidence: [],
+      rationale: "",
+    });
+    expect(payoutCanaryCaught(c, { lines: [line("inflated")] })).toBe(true);
+    expect(payoutCanaryCaught(c, { lines: [line("misattributed")] })).toBe(false);
+    expect(payoutCanaryCaught(c, { lines: [line("plausible")] })).toBe(false);
+    expect(payoutCanaryCaught(c, { lines: [] })).toBe(false);
     expect(REVIEW_POLICY_V1.canaries.rateBp).toBeGreaterThan(0);
+  });
+  it("run log totals must equal the usage receipt", () => {
+    const t = (i: number, out: number) => ({
+      i,
+      startedAt: "2026-09-29T12:00:00.000Z",
+      endedAt: "2026-09-29T12:00:01.000Z",
+      responseIdSha256: null,
+      usage: { inputTokens: 1, cachedInputTokens: 2, cacheWriteInputTokens: 0, outputTokens: out },
+      toolCalls: [],
+      chunkSha256: `sha256:${"e".repeat(64)}`,
+    });
+    const log = RunLog.parse({
+      schema: "wos-run-log.v1",
+      agentRunId: u(1),
+      provider: "claude_cli",
+      scrubberVersion: "s1",
+      turns: [t(0, 5), t(1, 7)],
+      repairLoops: [],
+    });
+    expect(runLogTotals(log)).toEqual({ inputTokens: 2, cachedInputTokens: 4, cacheWriteInputTokens: 0, outputTokens: 12 });
   });
   it("human review verdict must match its findings", () => {
     const ok = HumanReview.safeParse({

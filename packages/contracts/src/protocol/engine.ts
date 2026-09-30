@@ -134,11 +134,22 @@ export interface EpochInput {
   securityPayouts: ReadonlyArray<{ receiptId: string; accountId: string; weightMicro: bigint }>;
   /** Outstanding offsets (post-finalization reversals) per account, recovered from gross allocations. */
   offsets: ReadonlyMap<string, bigint>;
+  /**
+   * Dispute settlements resolved since the last epoch (D28–D30). `excessBase` was escrowed (counted in I but never
+   * paid): it leaves I; the bounty goes to the disputer as a `dispute_bounty` line; the rest returns to R.
+   */
+  disputeSettlements?: ReadonlyArray<{
+    disputeId: string;
+    excessBase: bigint;
+    bounties: ReadonlyArray<{ accountId: string; amountBase: bigint }>;
+  }>;
 }
 
 export interface AllocationLine {
   accountId: string;
-  slice: DistributingSlice | "completion_payout" | "security_payout";
+  /** Distributing-slice lines are per receipt (disputable one by one); payout lines have none. */
+  receiptId: string | null;
+  slice: DistributingSlice | "completion_payout" | "security_payout" | "dispute_bounty";
   weightMicro: bigint;
   amountBase: bigint;
 }
@@ -225,15 +236,15 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
     R += slice$ - emit;
     returned += slice$ - emit;
     if (emit === 0n) continue;
-    const byAccount = new Map<string, bigint>();
-    for (const r of input.receipts) if (r.slice === slice) byAccount.set(r.accountId, (byAccount.get(r.accountId) ?? 0n) + r.weightMicro);
+    const inSlice = input.receipts.filter((r) => r.slice === slice);
     const split = largestRemainder(
       emit,
-      [...byAccount].map(([key, weight]) => ({ key, weight })),
+      inSlice.map((r) => ({ key: r.receiptId, weight: r.weightMicro })),
     );
-    for (const [accountId, amount] of split) {
-      allocations.push({ accountId, slice, weightMicro: byAccount.get(accountId)!, amountBase: amount });
-      gross.set(accountId, (gross.get(accountId) ?? 0n) + amount);
+    for (const r of inSlice) {
+      const amount = split.get(r.receiptId) ?? 0n;
+      allocations.push({ accountId: r.accountId, receiptId: r.receiptId, slice, weightMicro: r.weightMicro, amountBase: amount });
+      gross.set(r.accountId, (gross.get(r.accountId) ?? 0n) + amount);
     }
   }
 
@@ -299,7 +310,7 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
         [...bw].map(([key, weight]) => ({ key, weight })),
       )) {
         if (a === 0n) continue;
-        allocations.push({ accountId, slice: "completion_payout", weightMicro: bw.get(accountId)!, amountBase: a });
+        allocations.push({ accountId, receiptId: null, slice: "completion_payout", weightMicro: bw.get(accountId)!, amountBase: a });
         gross.set(accountId, (gross.get(accountId) ?? 0n) + a);
       }
     }
@@ -314,11 +325,31 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
     const pay = want < maxNow ? want : maxNow;
     if (pay === 0n) continue;
     S -= pay;
-    allocations.push({ accountId: sp.accountId, slice: "security_payout", weightMicro: sp.weightMicro, amountBase: pay });
+    allocations.push({
+      accountId: sp.accountId,
+      receiptId: sp.receiptId,
+      slice: "security_payout",
+      weightMicro: sp.weightMicro,
+      amountBase: pay,
+    });
     gross.set(sp.accountId, (gross.get(sp.accountId) ?? 0n) + pay);
   }
 
-  // 5. Offsets: recover up to maxOffsetRecoveryBp of each account's gross; recovered amounts return to R.
+  // 5. Dispute settlements: escrowed excess leaves I; bounties are paid from it; the rest returns to R.
+  for (const d of [...(input.disputeSettlements ?? [])].sort((a, b) => cmp(a.disputeId, b.disputeId))) {
+    const paid = d.bounties.reduce((t, b) => t + b.amountBase, 0n);
+    if (paid > d.excessBase) throw new EngineError(`dispute ${d.disputeId} pays more bounty than its excess`);
+    I -= d.excessBase;
+    R += d.excessBase - paid;
+    returned += d.excessBase - paid;
+    for (const b of d.bounties) {
+      if (b.amountBase === 0n) continue;
+      allocations.push({ accountId: b.accountId, receiptId: null, slice: "dispute_bounty", weightMicro: 0n, amountBase: b.amountBase });
+      gross.set(b.accountId, (gross.get(b.accountId) ?? 0n) + b.amountBase);
+    }
+  }
+
+  // 6. Offsets: recover up to maxOffsetRecoveryBp of each account's gross; recovered amounts return to R.
   const netByAccount = new Map<string, bigint>();
   const offsetsRecovered = new Map<string, bigint>();
   const offsetsOutstanding = new Map(input.offsets);
@@ -337,7 +368,7 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
   }
   for (const [k, v] of [...offsetsOutstanding]) if (v === 0n) offsetsOutstanding.delete(k);
 
-  allocations.sort((a, b) => cmp(a.accountId, b.accountId) || cmp(a.slice, b.slice));
+  allocations.sort((a, b) => cmp(a.accountId, b.accountId) || cmp(a.slice, b.slice) || cmp(a.receiptId ?? "", b.receiptId ?? ""));
   return {
     epochNumber: input.epochNumber,
     budget,
@@ -394,4 +425,87 @@ export function engineParamsFrom(
     securityMaxShareOfReserveBp: BigInt(reward.security.maxShareOfReserveBp),
     maxOffsetRecoveryBp: BigInt(reward.settlement.maxOffsetRecoveryBp),
   };
+}
+
+// ------------------------------------------------------------------------------------------------ anomaly metrics (D29)
+
+export interface AnomalyReceipt {
+  receiptId: string;
+  accountId: string;
+  weightMicro: bigint;
+  capMicro: bigint;
+  /** Peer P50 of eligible weight for the receipt's comparable key (task kind, class, model, size points). */
+  peerP50Micro: bigint;
+  changedLines: number | null;
+  peerP50MicroPerLine: bigint | null;
+}
+
+export interface AnomalyRow {
+  accountId: string;
+  receipts: number;
+  medianPeerRatioBp: number;
+  capSaturationBp: number;
+  aboveP50ShareBp: number;
+  consistencyMilli: number;
+  perLinePeerRatioBp: number | null;
+  rankScore: number;
+}
+
+function ratioBp(num: bigint, den: bigint): number {
+  if (den <= 0n) return 0;
+  return Number((num * BP) / den);
+}
+
+function median(xs: number[]): number {
+  const s = [...xs].sort((a, b) => a - b);
+  if (s.length === 0) return 0;
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m]! : Math.floor((s[m - 1]! + s[m]!) / 2);
+}
+
+/** Integer square root (floor) for the sign-test statistic, so every output is an exact integer. */
+function isqrt(n: number): number {
+  let x = Math.floor(Math.sqrt(n));
+  while (x * x > n) x--;
+  while ((x + 1) * (x + 1) <= n) x++;
+  return x;
+}
+
+/**
+ * Deterministic anomaly metrics per account (integers only, reproducible). rankScore puts the strongest evidence of
+ * consistent over-claiming first: a skim of +10% on 40 receipts gives consistency ~ +6.3 (sign test) even though no
+ * single receipt stands out; a single 3x receipt stands out on medianPeerRatioBp and capSaturationBp.
+ */
+export function anomalyMetrics(receipts: readonly AnomalyReceipt[]): AnomalyRow[] {
+  const by = new Map<string, AnomalyReceipt[]>();
+  for (const r of receipts) by.set(r.accountId, [...(by.get(r.accountId) ?? []), r]);
+  const rows: AnomalyRow[] = [];
+  for (const [accountId, rs] of [...by].sort((a, b) => cmp(a[0], b[0]))) {
+    const ratios = rs.map((r) => ratioBp(r.weightMicro, r.peerP50Micro));
+    const n = rs.length;
+    const saturated = rs.filter((r) => r.capMicro > 0n && r.weightMicro * 100n >= r.capMicro * 95n).length;
+    const above = ratios.filter((x) => x > 10_000).length;
+    const below = ratios.filter((x) => x < 10_000).length;
+    // Sign test: (above - below) / sqrt(n), x1000, integer.
+    const consistencyMilli = n === 0 ? 0 : Math.trunc(((above - below) * 1000 * 1000) / (isqrt(n * 1_000_000) || 1));
+    const perLine = rs.filter((r) => r.changedLines && r.changedLines > 0 && r.peerP50MicroPerLine && r.peerP50MicroPerLine > 0n);
+    const perLineRatio =
+      perLine.length === 0 ? null : median(perLine.map((r) => ratioBp(r.weightMicro / BigInt(r.changedLines!), r.peerP50MicroPerLine!)));
+    const med = median(ratios);
+    const capSaturationBp = n === 0 ? 0 : Math.floor((saturated * 10_000) / n);
+    const aboveP50ShareBp = n === 0 ? 0 : Math.floor((above * 10_000) / n);
+    // Rank: consistency dominates (skims), then how far above typical the median is, then cap saturation.
+    const rankScore = Math.max(0, consistencyMilli) * 10 + Math.max(0, med - 10_000) + Math.floor(capSaturationBp / 2);
+    rows.push({
+      accountId,
+      receipts: n,
+      medianPeerRatioBp: med,
+      capSaturationBp,
+      aboveP50ShareBp,
+      consistencyMilli,
+      perLinePeerRatioBp: perLineRatio,
+      rankScore,
+    });
+  }
+  return rows.sort((a, b) => b.rankScore - a.rankScore || cmp(a.accountId, b.accountId));
 }

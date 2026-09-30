@@ -1,9 +1,10 @@
 -- 0007_proof_of_contribution.sql — DRAFT pending the Astra review (docs/protocol/REVIEW-PACKET.md). Owner: Lead Architect.
 -- DO NOT APPLY TO PRODUCTION. It applies cleanly on 0006 and is exercised by db:test so the design is executable.
 --
--- Proof of Contribution (Amendment 02, D18–D27): run-policy snapshots and lease fencing, usage receipts with
+-- Proof of Contribution (Amendment 02, D18–D33): run-policy snapshots and lease fencing, usage receipts with
 -- provider-response dedup and scrubbed run logs, immutable contribution receipts with append-only status
--- (PENDING_RATIFICATION / PROVISIONAL / DISPUTED / RATIFIED / REVOKED), payout audit duty with sealed quorums,
+-- (ACTIVE / PROVISIONAL / RATIFIED / REVOKED), optimistic payouts with a challenge window, disputes over any set of
+-- allocations with focused audit gates, anomaly metrics, payout audit duty with sealed quorums,
 -- payout canaries and receipt clips, human
 -- review with reviewer qualifications, epochs (append-only transitions, frozen manifests, exactly-once allocations),
 -- claim leaves and retry-safe settlement records, offsets, wallet bindings, completion pools with frozen definitions,
@@ -110,11 +111,45 @@ create table wos.policy_activations (
   kind             text not null,
   version          text not null,
   effective_epoch  integer not null check (effective_epoch > 0),
+  announced_at     timestamptz not null default now(),
+  emergency        boolean not null default false,
+  preview_sha256   text check (preview_sha256 ~ '^sha256:[0-9a-f]{64}$'),
   admin_action_id  uuid not null references wos.admin_actions (id),
   created_at       timestamptz not null default now(),
   primary key (kind, effective_epoch),
-  foreign key (kind, version) references wos.policy_documents (kind, version)
+  foreign key (kind, version) references wos.policy_documents (kind, version),
+  check (emergency or preview_sha256 is not null)
 );
+
+-- Forward-only (D33): a normal change applies from the next epoch at the earliest, announced >= 72 h before that epoch
+-- starts (when the epoch is already defined); an emergency change may touch the open epoch only while its allocations
+-- are unpublished. Nothing ever applies to a published or finalized epoch.
+create or replace function wos.check_policy_activation() returns trigger
+language plpgsql as $$
+declare
+  open_epoch integer;
+  target_start timestamptz;
+  target_state text;
+begin
+  select max(epoch_number) into open_epoch from wos.epochs e where wos.epoch_state(e.epoch_number) = 'OPEN';
+  select starts_at into target_start from wos.epochs where epoch_number = new.effective_epoch;
+  target_state := wos.epoch_state(new.effective_epoch);
+  if not new.emergency then
+    if new.effective_epoch <= coalesce(open_epoch, 0) then
+      raise exception 'wos: a policy change takes effect from the next epoch at the earliest' using errcode = 'check_violation';
+    end if;
+    if target_start is not null and new.announced_at > target_start - interval '72 hours' then
+      raise exception 'wos: announce a policy change at least 72 h before its epoch starts' using errcode = 'check_violation';
+    end if;
+  else
+    if target_state is not null and target_state not in ('OPEN', 'CALCULATING') then
+      raise exception 'wos: an emergency change never touches published allocations (epoch % is %)', new.effective_epoch, target_state
+        using errcode = 'check_violation';
+    end if;
+  end if;
+  return new;
+end $$;
+create trigger policy_activations_check before insert on wos.policy_activations for each row execute function wos.check_policy_activation();
 
 -- ============================================================================================
 -- 3. Lease fencing (Astra-01 item 7) and run-policy snapshots (item 8)
@@ -234,7 +269,10 @@ create table wos.epochs (
   starts_at           timestamptz not null,
   ends_at             timestamptz not null,
   risk_review_hours   integer not null check (risk_review_hours > 0),
-  challenge_hours     integer not null check (challenge_hours >= 0),
+  challenge_hours     integer not null check (challenge_hours > 0),
+  reply_hours         integer not null default 24 check (reply_hours > 0),
+  max_disputes_per_account integer not null default 3 check (max_disputes_per_account > 0),
+  max_items_per_dispute    integer not null default 25 check (max_items_per_dispute > 0),
   policy_versions     jsonb not null,
   created_at          timestamptz not null default now(),
   check (ends_at > starts_at),
@@ -244,8 +282,8 @@ create table wos.epochs (
 create table wos.epoch_transitions (
   epoch_number        integer not null references wos.epochs (epoch_number),
   seq                 integer not null,
-  from_state          text check (from_state in ('OPEN', 'CALCULATING', 'FINALIZED', 'DISTRIBUTABLE', 'CLOSED')),
-  to_state            text not null check (to_state in ('OPEN', 'CALCULATING', 'FINALIZED', 'DISTRIBUTABLE', 'CLOSED')),
+  from_state          text check (from_state in ('OPEN', 'CALCULATING', 'PROPOSED', 'FINALIZED', 'DISTRIBUTABLE', 'CLOSED')),
+  to_state            text not null check (to_state in ('OPEN', 'CALCULATING', 'PROPOSED', 'FINALIZED', 'DISTRIBUTABLE', 'CLOSED')),
   actor               text not null check (actor in ('system', 'maintainer')),
   admin_action_id     uuid references wos.admin_actions (id),
   receipts_root       text check (receipts_root ~ '^sha256:[0-9a-f]{64}$'),
@@ -254,7 +292,7 @@ create table wos.epoch_transitions (
   anchor_signature    text,
   at                  timestamptz not null default now(),
   primary key (epoch_number, seq),
-  check ((to_state = 'FINALIZED') = (receipts_root is not null and allocations_root is not null and result_sha256 is not null)),
+  check ((to_state = 'PROPOSED') = (receipts_root is not null and allocations_root is not null and result_sha256 is not null)),
   check ((to_state = 'DISTRIBUTABLE') = (anchor_signature is not null))
 );
 
@@ -280,7 +318,8 @@ begin
   end if;
   if not ((cur is null and new.to_state = 'OPEN')
        or (cur = 'OPEN' and new.to_state = 'CALCULATING')
-       or (cur = 'CALCULATING' and new.to_state = 'FINALIZED')
+       or (cur = 'CALCULATING' and new.to_state = 'PROPOSED')
+       or (cur = 'PROPOSED' and new.to_state = 'FINALIZED')
        or (cur = 'FINALIZED' and new.to_state = 'DISTRIBUTABLE')
        or (cur = 'DISTRIBUTABLE' and new.to_state = 'CLOSED')) then
     raise exception 'wos: epoch transition % -> % is not allowed', coalesce(cur, 'new'), new.to_state using errcode = 'check_violation';
@@ -288,10 +327,10 @@ begin
   if new.to_state = 'CALCULATING' and new.at < ep.ends_at then
     raise exception 'wos: epoch % cannot close before %', new.epoch_number, ep.ends_at using errcode = 'check_violation';
   end if;
-  if new.to_state = 'FINALIZED' and new.at < cur_at + make_interval(hours => ep.risk_review_hours) then
+  if new.to_state = 'PROPOSED' and new.at < cur_at + make_interval(hours => ep.risk_review_hours) then
     raise exception 'wos: epoch % is inside its risk review window', new.epoch_number using errcode = 'check_violation';
   end if;
-  if new.to_state = 'DISTRIBUTABLE' and new.at < cur_at + make_interval(hours => ep.challenge_hours) then
+  if new.to_state = 'FINALIZED' and new.at < cur_at + make_interval(hours => ep.challenge_hours) then
     raise exception 'wos: epoch % is inside its challenge window', new.epoch_number using errcode = 'check_violation';
   end if;
   return new;
@@ -317,7 +356,7 @@ create table wos.contribution_receipts (
   evidence_class        text not null check (evidence_class in ('attested_usage', 'accepted_output', 'outcome')),
   acceptance_event      text not null,
   independence          text not null check (independence in ('independent', 'founder_bootstrap')),
-  initial_status        text not null check (initial_status in ('PENDING_RATIFICATION', 'PROVISIONAL')),
+  initial_status        text not null check (initial_status in ('ACTIVE', 'PROVISIONAL')),
   weight_micro          bigint not null check (weight_micro >= 0),
   attested_acu_micro    bigint not null check (attested_acu_micro >= 0),
   cap_acu_micro         bigint not null check (cap_acu_micro >= 0),
@@ -332,7 +371,7 @@ create table wos.contribution_receipts (
   receipt_sha256        text not null unique check (receipt_sha256 ~ '^sha256:[0-9a-f]{64}$'),
   qualified_at          timestamptz not null,
   created_at            timestamptz not null default now(),
-  check ((independence = 'independent') = (initial_status = 'PENDING_RATIFICATION')),
+  check ((independence = 'independent') = (initial_status = 'ACTIVE')),
   check (evidence_class <> 'attested_usage' or weight_micro <= cap_acu_micro),
   check (evidence_class <> 'attested_usage' or weight_micro <= attested_acu_micro),
   check ((lease_id is null) = (lease_generation is null))
@@ -366,10 +405,9 @@ create trigger contribution_receipts_check before insert on wos.contribution_rec
 create table wos.receipt_status_events (
   receipt_id       uuid not null references wos.contribution_receipts (id),
   seq              integer not null,
-  from_status      text check (from_status in ('PENDING_RATIFICATION', 'PROVISIONAL', 'DISPUTED', 'RATIFIED', 'REVOKED')),
-  to_status        text not null check (to_status in ('PENDING_RATIFICATION', 'PROVISIONAL', 'DISPUTED', 'RATIFIED', 'REVOKED')),
-  kind             text not null check (kind in ('issued', 'quorum_ratified', 'human_signoff', 'ratification_failed',
-    'dispute_resolved_ratify', 'dispute_resolved_revoke', 'ratification_rejected', 'revoked', 'restored')),
+  from_status      text check (from_status in ('ACTIVE', 'PROVISIONAL', 'RATIFIED', 'REVOKED')),
+  to_status        text not null check (to_status in ('ACTIVE', 'PROVISIONAL', 'RATIFIED', 'REVOKED')),
+  kind             text not null check (kind in ('issued', 'quorum_ratified', 'human_signoff', 'ratification_rejected', 'revoked', 'restored')),
   quorum_id        uuid,
   human_review_id  uuid,
   admin_action_id  uuid references wos.admin_actions (id),
@@ -402,13 +440,10 @@ begin
      where receipt_id = new.receipt_id and to_status = 'REVOKED' order by seq desc limit 1;
   end if;
   ok := (cur is null and new.kind = 'issued' and new.to_status = born)
-     or (cur in ('PENDING_RATIFICATION', 'PROVISIONAL') and new.to_status = 'RATIFIED' and new.kind = 'quorum_ratified' and new.quorum_id is not null)
-     or (cur in ('PENDING_RATIFICATION', 'PROVISIONAL') and new.to_status = 'RATIFIED' and new.kind = 'human_signoff' and new.human_review_id is not null)
-     or (cur in ('PENDING_RATIFICATION', 'PROVISIONAL') and new.to_status = 'DISPUTED' and new.kind = 'ratification_failed')
-     or (cur = 'DISPUTED' and new.to_status = 'RATIFIED' and new.kind = 'dispute_resolved_ratify' and new.admin_action_id is not null)
-     or (cur = 'DISPUTED' and new.to_status = 'REVOKED' and new.kind = 'dispute_resolved_revoke' and new.admin_action_id is not null)
-     or (cur = 'DISPUTED' and born = 'PROVISIONAL' and new.to_status = 'PROVISIONAL' and new.kind = 'ratification_rejected' and new.admin_action_id is not null)
-     or (cur in ('PENDING_RATIFICATION', 'PROVISIONAL', 'RATIFIED', 'DISPUTED') and new.to_status = 'REVOKED' and new.kind = 'revoked' and new.admin_action_id is not null)
+     or (cur = 'PROVISIONAL' and new.to_status = 'RATIFIED' and new.kind = 'quorum_ratified' and new.quorum_id is not null)
+     or (cur = 'PROVISIONAL' and new.to_status = 'RATIFIED' and new.kind = 'human_signoff' and new.human_review_id is not null)
+     or (cur = 'PROVISIONAL' and new.to_status = 'PROVISIONAL' and new.kind = 'ratification_rejected' and (new.quorum_id is not null or new.human_review_id is not null))
+     or (cur in ('ACTIVE', 'PROVISIONAL', 'RATIFIED') and new.to_status = 'REVOKED' and new.kind = 'revoked' and new.admin_action_id is not null)
      or (cur = 'REVOKED' and new.kind = 'restored' and new.admin_action_id is not null and new.to_status = before_revoke);
   if not ok then
     raise exception 'wos: receipt status % -> % by % is not allowed', coalesce(cur, 'new'), new.to_status, new.kind using errcode = 'check_violation';
@@ -734,7 +769,7 @@ begin
       using errcode = 'check_violation';
   end if;
   st := wos.receipt_status(new.receipt_id);
-  if new.disposition = 'included' and not (st = 'RATIFIED' or (ep_mode = 'test' and st <> 'REVOKED')) then
+  if new.disposition = 'included' and not (st in ('ACTIVE', 'RATIFIED') or (ep_mode = 'test' and st <> 'REVOKED')) then
     raise exception 'wos: a % receipt cannot be included in a % epoch', st, ep_mode using errcode = 'check_violation';
   end if;
   return new;
@@ -742,14 +777,29 @@ end $$;
 create trigger epoch_manifest_check before insert on wos.epoch_manifest_entries for each row execute function wos.check_manifest_entry();
 
 create table wos.allocations (
+  id             uuid primary key,               -- stable: deterministicUuid(epoch, line key); the public permalink id
   epoch_number   integer not null references wos.epochs (epoch_number),
   account_id     uuid not null references wos.accounts (id),
-  slice          text not null check (slice in ('execution', 'planning', 'human_review', 'outcomes', 'completion_payout', 'security_payout', 'offset')),
+  receipt_id     uuid references wos.contribution_receipts (id),   -- one line per receipt in distributing slices
+  slice          text not null check (slice in ('execution', 'planning', 'human_review', 'outcomes', 'completion_payout', 'security_payout', 'dispute_bounty', 'offset')),
   weight_micro   bigint not null check (weight_micro >= 0),
   amount_base    bigint not null,
+  explanation    jsonb not null,                 -- AllocationExplanation (public, pseudonymous)
+  explanation_sha256 text not null check (explanation_sha256 ~ '^sha256:[0-9a-f]{64}$'),
   created_at     timestamptz not null default now(),
-  primary key (epoch_number, account_id, slice),
-  check ((slice = 'offset') = (amount_base < 0) or amount_base = 0)
+  check ((slice = 'offset') = (amount_base < 0) or amount_base = 0),
+  check ((slice in ('execution', 'planning', 'human_review', 'outcomes')) = (receipt_id is not null) or slice = 'security_payout')
+);
+create unique index allocations_receipt_once on wos.allocations (epoch_number, receipt_id, slice) where receipt_id is not null;
+
+-- Deterministic anomaly metrics (engine output), written with the allocations; public.
+create table wos.anomaly_metrics (
+  epoch_number   integer not null references wos.epochs (epoch_number),
+  account_id     uuid not null references wos.accounts (id),
+  metrics        jsonb not null,                 -- AnomalyMetrics
+  rank_score     bigint not null,
+  created_at     timestamptz not null default now(),
+  primary key (epoch_number, account_id)
 );
 
 create or replace function wos.check_allocation() returns trigger
@@ -761,6 +811,7 @@ begin
   return new;
 end $$;
 create trigger allocations_check before insert on wos.allocations for each row execute function wos.check_allocation();
+create trigger anomaly_metrics_check before insert on wos.anomaly_metrics for each row execute function wos.check_allocation();
 
 create table wos.claim_leaves (
   epoch_number   integer not null references wos.epochs (epoch_number),
@@ -797,6 +848,163 @@ create table wos.offsets (
   amount_base      bigint not null check (amount_base > 0),
   admin_action_id  uuid not null references wos.admin_actions (id),
   created_at       timestamptz not null default now()
+);
+
+-- ============================================================================================
+-- 10b. Optimistic payouts (D28–D32): acceptances, disputes over any set of allocations, gates, replies, outcomes
+-- ============================================================================================
+create or replace function wos.epoch_state_at(e integer, s text) returns timestamptz
+language sql stable as $$
+  select at from wos.epoch_transitions where epoch_number = e and to_state = s order by seq desc limit 1
+$$;
+
+-- Accept is one click and optional: silence accepts. Finality never depends on this row or on a notification.
+create table wos.allocation_acceptances (
+  epoch_number      integer not null references wos.epochs (epoch_number),
+  account_id        uuid not null references wos.accounts (id),
+  allocations_root  text not null check (allocations_root ~ '^sha256:[0-9a-f]{64}$'),
+  created_at        timestamptz not null default now(),
+  primary key (epoch_number, account_id)
+);
+
+create table wos.allocation_disputes (
+  id                   uuid primary key default gen_random_uuid(),
+  epoch_number         integer not null references wos.epochs (epoch_number),
+  disputer_account_id  uuid not null references wos.accounts (id),
+  stake_base           bigint not null check (stake_base >= 0),
+  note_untrusted       text not null default '' check (length(note_untrusted) <= 4000),
+  shared_evidence      jsonb not null default '[]',
+  body                 jsonb not null,           -- AllocationDispute
+  opened_at            timestamptz not null default clock_timestamp()
+);
+
+create or replace function wos.check_allocation_dispute() returns trigger
+language plpgsql as $$
+declare
+  ep wos.epochs%rowtype;
+  proposed_at timestamptz;
+begin
+  select * into ep from wos.epochs where epoch_number = new.epoch_number;
+  if wos.epoch_state(new.epoch_number) <> 'PROPOSED' then
+    raise exception 'wos: disputes are accepted only while epoch % is PROPOSED', new.epoch_number using errcode = 'check_violation';
+  end if;
+  proposed_at := wos.epoch_state_at(new.epoch_number, 'PROPOSED');
+  if new.opened_at >= proposed_at + make_interval(hours => ep.challenge_hours) then
+    raise exception 'wos: the challenge window of epoch % has closed', new.epoch_number using errcode = 'check_violation';
+  end if;
+  -- Epoch-wide standing: the disputer has an allocation in this epoch (the pool is shared, so everyone is affected).
+  if not exists (select 1 from wos.allocations a where a.epoch_number = new.epoch_number and a.account_id = new.disputer_account_id and a.amount_base > 0) then
+    raise exception 'wos: only participants of epoch % may dispute its allocations', new.epoch_number using errcode = 'check_violation';
+  end if;
+  if (select count(*) from wos.allocation_disputes d where d.epoch_number = new.epoch_number and d.disputer_account_id = new.disputer_account_id)
+     >= ep.max_disputes_per_account then
+    raise exception 'wos: dispute rate limit reached for epoch %', new.epoch_number using errcode = 'check_violation';
+  end if;
+  if new.stake_base > (select coalesce(sum(amount_base), 0) from wos.allocations a where a.epoch_number = new.epoch_number and a.account_id = new.disputer_account_id) then
+    raise exception 'wos: the stake exceeds the disputer''s pending allocation' using errcode = 'check_violation';
+  end if;
+  return new;
+end $$;
+create trigger allocation_disputes_check before insert on wos.allocation_disputes for each row execute function wos.check_allocation_dispute();
+
+-- One gate per disputed allocation; later disputes on the same allocation join it (bounty priority stays with the first).
+create table wos.dispute_gates (
+  allocation_id          uuid primary key references wos.allocations (id),
+  first_dispute_id       uuid not null references wos.allocation_disputes (id),
+  reply_deadline_at      timestamptz not null,
+  created_at             timestamptz not null default now()
+);
+
+create table wos.dispute_items (
+  dispute_id           uuid not null references wos.allocation_disputes (id),
+  allocation_id        uuid not null references wos.allocations (id),
+  reason               text not null check (reason in ('inflated_usage', 'padded_repairs', 'context_inflation', 'model_misreported', 'misattribution', 'duplicate_work', 'split_gaming', 'other')),
+  evidence             jsonb not null,
+  proposed_amount_base bigint check (proposed_amount_base >= 0),
+  created_at           timestamptz not null default now(),
+  primary key (dispute_id, allocation_id)
+);
+
+create or replace function wos.check_dispute_item() returns trigger
+language plpgsql security definer set search_path = wos, pg_temp as $$
+declare
+  d wos.allocation_disputes%rowtype;
+  a wos.allocations%rowtype;
+  ep wos.epochs%rowtype;
+begin
+  select * into d from wos.allocation_disputes where id = new.dispute_id;
+  select * into a from wos.allocations where id = new.allocation_id;
+  select * into ep from wos.epochs where epoch_number = d.epoch_number;
+  if a.epoch_number <> d.epoch_number then
+    raise exception 'wos: a dispute covers allocations of its own epoch only' using errcode = 'check_violation';
+  end if;
+  if a.account_id = d.disputer_account_id then
+    raise exception 'wos: one cannot dispute one''s own allocation' using errcode = 'check_violation';
+  end if;
+  if (select count(*) from wos.dispute_items i where i.dispute_id = new.dispute_id) >= ep.max_items_per_dispute then
+    raise exception 'wos: too many allocations in one dispute' using errcode = 'check_violation';
+  end if;
+  insert into wos.dispute_gates (allocation_id, first_dispute_id, reply_deadline_at)
+  values (new.allocation_id, new.dispute_id, clock_timestamp() + make_interval(hours => ep.reply_hours))
+  on conflict (allocation_id) do nothing;
+  return new;
+end $$;
+create trigger dispute_items_check before insert on wos.dispute_items for each row execute function wos.check_dispute_item();
+
+-- Right of reply: only the accused, only before the gate's reply deadline.
+create table wos.dispute_replies (
+  allocation_id    uuid not null references wos.dispute_gates (allocation_id),
+  account_id       uuid not null references wos.accounts (id),
+  body_untrusted   text not null check (length(body_untrusted) <= 4000),
+  evidence         jsonb not null default '[]',
+  created_at       timestamptz not null default clock_timestamp(),
+  primary key (allocation_id, created_at)
+);
+create or replace function wos.check_dispute_reply() returns trigger
+language plpgsql as $$
+begin
+  if new.account_id <> (select account_id from wos.allocations where id = new.allocation_id) then
+    raise exception 'wos: only the accused may reply' using errcode = 'check_violation';
+  end if;
+  if new.created_at > (select reply_deadline_at from wos.dispute_gates where allocation_id = new.allocation_id) then
+    raise exception 'wos: the right-of-reply window has closed' using errcode = 'check_violation';
+  end if;
+  return new;
+end $$;
+create trigger dispute_replies_check before insert on wos.dispute_replies for each row execute function wos.check_dispute_reply();
+
+-- Per-allocation outcome (never above the proposed amount); per-dispute settlement (bounty on TOTAL excess).
+create table wos.dispute_item_resolutions (
+  allocation_id          uuid primary key references wos.dispute_gates (allocation_id),
+  outcome                text not null check (outcome in ('UPHELD', 'CLIPPED', 'REVOKED')),
+  quorum_id              uuid references wos.payout_audit_quorums (id),
+  admin_action_id        uuid references wos.admin_actions (id),
+  resulting_amount_base  bigint not null check (resulting_amount_base >= 0),
+  excess_base            bigint not null check (excess_base >= 0),
+  resolved_at            timestamptz not null default now(),
+  check (quorum_id is not null or admin_action_id is not null),
+  check ((outcome = 'UPHELD') = (excess_base = 0)),
+  check (outcome <> 'REVOKED' or resulting_amount_base = 0)
+);
+create or replace function wos.check_dispute_resolution() returns trigger
+language plpgsql as $$
+begin
+  if new.resulting_amount_base + new.excess_base <> (select amount_base from wos.allocations where id = new.allocation_id) then
+    raise exception 'wos: resulting amount + excess must equal the proposed amount' using errcode = 'check_violation';
+  end if;
+  return new;
+end $$;
+create trigger dispute_item_resolutions_check before insert on wos.dispute_item_resolutions
+  for each row execute function wos.check_dispute_resolution();
+
+create table wos.dispute_settlements (
+  dispute_id             uuid primary key references wos.allocation_disputes (id),
+  total_excess_base      bigint not null check (total_excess_base >= 0),
+  bounty_base            bigint not null check (bounty_base >= 0 and bounty_base <= total_excess_base),
+  stake_forfeited_base   bigint not null check (stake_forfeited_base >= 0),
+  settled_in_epoch       integer not null references wos.epochs (epoch_number),
+  created_at             timestamptz not null default now(),
+  check (total_excess_base = 0 or stake_forfeited_base = 0)
 );
 
 -- ============================================================================================
@@ -939,7 +1147,9 @@ begin
     'admin_actions', 'policy_documents', 'policy_activations', 'run_policy_snapshots', 'usage_receipts', 'usage_event_ids',
     'epochs', 'epoch_transitions', 'work_dedup_keys', 'contribution_receipts', 'receipt_status_events',
     'reviewer_qualification_events', 'human_reviews', 'review_eval_cases', 'payout_audit_verdicts', 'duty_statements',
-    'payout_canaries', 'payout_canary_outcomes', 'run_logs', 'usage_publications', 'receipt_clips', 'epoch_manifest_entries', 'allocations', 'claim_leaves', 'settlement_records',
+    'payout_canaries', 'payout_canary_outcomes', 'run_logs', 'usage_publications', 'receipt_clips', 'epoch_manifest_entries',
+    'anomaly_metrics', 'allocation_acceptances', 'allocation_disputes', 'dispute_gates', 'dispute_items', 'dispute_replies',
+    'dispute_item_resolutions', 'dispute_settlements', 'allocations', 'claim_leaves', 'settlement_records',
     'offsets', 'wallet_bindings', 'completion_pools', 'completion_definitions', 'pool_accruals', 'pool_events',
     'genesis_contributions', 'abuse_signals', 'risk_flags'
   ] loop
@@ -962,12 +1172,28 @@ begin
     'epochs', 'epoch_transitions', 'work_dedup_keys', 'contribution_receipts', 'receipt_status_events', 'receipt_clips',
     'reviewer_qualification_events', 'human_reviews', 'review_eval_cases', 'payout_audit_quorums', 'duty_statements',
     'epoch_manifest_entries', 'allocations', 'claim_leaves', 'settlement_records', 'offsets', 'completion_pools',
-    'completion_definitions', 'pool_accruals', 'pool_events', 'genesis_contributions'
+    'completion_definitions', 'pool_accruals', 'pool_events', 'genesis_contributions', 'anomaly_metrics',
+    'dispute_gates', 'dispute_item_resolutions', 'dispute_settlements'
   ] loop
     execute format('create policy public_read on wos.%I for select to wos_app using (true)', t);
     execute format('create policy privileged_write on wos.%I for insert to wos_app with check (wos.is_privileged())', t);
   end loop;
 end $$;
+
+-- Disputes, items, replies and acceptances are public; participants write their own.
+do $$
+declare
+  t text;
+begin
+  foreach t in array array['allocation_disputes', 'dispute_items', 'dispute_replies', 'allocation_acceptances'] loop
+    execute format('create policy public_read on wos.%I for select to wos_app using (true)', t);
+  end loop;
+end $$;
+create policy own_insert on wos.allocation_disputes for insert to wos_app with check (wos.is_privileged() or disputer_account_id = wos.actor_id());
+create policy own_insert on wos.dispute_items for insert to wos_app
+  with check (wos.is_privileged() or exists (select 1 from wos.allocation_disputes d where d.id = dispute_id and d.disputer_account_id = wos.actor_id()));
+create policy own_insert on wos.dispute_replies for insert to wos_app with check (wos.is_privileged() or account_id = wos.actor_id());
+create policy own_insert on wos.allocation_acceptances for insert to wos_app with check (wos.is_privileged() or account_id = wos.actor_id());
 create policy privileged_update on wos.payout_audit_quorums for update to wos_app using (wos.is_privileged()) with check (wos.is_privileged());
 
 -- Sealed until the quorum is revealed; then public (canary verdicts never). Reviewers insert their own verdicts.
@@ -1004,4 +1230,4 @@ begin
   end loop;
 end $$;
 
-grant execute on function wos.epoch_state(integer), wos.receipt_status(uuid), wos.effective_weight(uuid), wos.reviewer_qualified(uuid), wos.is_maintainer(uuid), wos.bootstrap_on() to wos_app;
+grant execute on function wos.epoch_state_at(integer, text), wos.epoch_state(integer), wos.receipt_status(uuid), wos.effective_weight(uuid), wos.reviewer_qualified(uuid), wos.is_maintainer(uuid), wos.bootstrap_on() to wos_app;

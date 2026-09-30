@@ -185,24 +185,28 @@
     "disagreementRevokesOriginal": true
   },
   "agentReviewerAssignment": "random_among_eligible",
-  "ratification": {
+  "canaries": {
+    "rateBp": 500,
+    "newAccountRateBp": 1500,
+    "flaggedAccountRateBp": 2500,
+    "perturbations": ["inflated_usage", "padded_repairs", "context_inflation", "model_mismatch", "duplicated_attribution", "wrong_split"],
+    "minMagnitudeBp": 15000,
+    "maxUsesPerSource": 2,
+    "passEffect": "revoke_unfinalized_and_flag"
+  },
+  "payoutAudit": {
     "quorum": 2,
+    "requireOutsideFeature": true,
+    "ownFeatureSlot": true,
     "smallPoolThreshold": 10,
-    "dutyPerReceipt": 2,
     "maxDutyTasksPerClaim": 3,
     "dutyReasoning": "high",
     "requireProviderDiversity": true,
     "sealedUntilAllSubmit": true,
     "unmetDutyCarryEpochs": 8,
-    "contradictedRatificationRevokesCredit": true
-  },
-  "canaries": {
-    "rateBp": 500,
-    "newAccountRateBp": 1500,
-    "flaggedAccountRateBp": 2500,
-    "mutationClasses": ["authorization", "inverted_condition", "off_by_one", "missing_validation", "secret_leak", "scope_violation"],
-    "maxUsesPerCase": 3,
-    "catchToleranceLines": 3,
-    "passEffect": "revoke_unfinalized_and_flag"
+    "contradictedJudgmentRevokesCredit": true,
+    "upheldInflationBonusBp": 1000,
+    "falseFindingsSignalAfter": 3,
+    "publishUsageAfterFinalization": true
   }
 }

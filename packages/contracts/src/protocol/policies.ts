@@ -10,7 +10,7 @@ import {
   AcceptanceEvent,
   CapabilityClass,
   ContributionType,
-  DefectClass,
+  PerturbationClass,
   EvidenceClass,
   ReviewDomain,
   RiskClassId,
@@ -113,6 +113,33 @@ export const RewardPolicy = z.object({
     /** Offsets (post-finalization reversals) are recovered from future allocations, at most this share of each. */
     maxOffsetRecoveryBp: Bp,
   }),
+  /**
+   * D28–D31 optimistic payouts: every allocation is published with an explanation and anomaly metrics; silence
+   * accepts; disputes (any set of allocations, by any epoch participant) go to an audit gate.
+   */
+  challenge: z.object({
+    windowHours: z.number().int().positive(),
+    /** The accused's right of reply inside the gate. */
+    replyHours: z.number().int().positive(),
+    /** After this long without a gate outcome, a maintainer must decide (AdminAction) — deadlock escalation. */
+    gateEscalateAfterHours: z.number().int().positive(),
+    standing: z.literal("epoch_participants"),
+    stakePerItemBp: Bp,
+    maxStakeBp: Bp,
+    minStakeBase: U64String,
+    /** Joining an existing gate on the same allocation costs only the minimum stake; bounty priority stays with the first disputer. */
+    joinerStake: z.literal("min"),
+    maxItemsPerDispute: z.number().int().positive(),
+    maxDisputesPerAccountPerEpoch: z.number().int().positive(),
+    /** Bounty = this share of the TOTAL upheld excess across the dispute's items. */
+    bountyBpOfExcess: Bp,
+    /** Mandatory sampled payout audits run every epoch whether or not anyone disputes. */
+    sampledAuditRateBp: Bp,
+    /** Rejected disputes in 30 days before rejected_disputes is raised and the account's dispute rate limit halves. */
+    rejectedDisputesSignalAfter: z.number().int().positive(),
+    /** Allocations are public (pseudonym + wallet + explanation) to everyone; the leaderboard stays opt-in. */
+    publicAllocations: z.literal(true),
+  }),
   execution: z.object({
     /** Cap = budget from AgentCapabilityPolicy; eligible = min(attested, cap). */
     capIncludesRepairs: z.literal(true),
@@ -207,41 +234,46 @@ export const ReviewPolicy = z.object({
     disagreementRevokesOriginal: z.literal(true),
   }),
   /**
-   * D25 review duty and peer ratification. Post-merge, pre-finalization: a receipt becomes RATIFIED after `quorum`
-   * sealed RATIFY verdicts from randomly assigned, distinct contributors. Duty reviews are AGENT runs the claimant's
-   * wOS client executes automatically at claim time on the claimant's own subscription.
+   * D25 + D27 + D28 payout audits. NOT a code review (the code passed Astra + Fable + human + CI before merge). Audit
+   * quorums run in three places only: dispute gates, the mandatory sampled audits, and the ratification of PROVISIONAL
+   * founder receipts. Auditors' agents judge plausibility (usage vs diff/contract/complexity, padded repairs, context
+   * inflation, model choice, attribution, outliers vs peers); the arithmetic is the engine's and anyone can recompute it.
+   * Audit tasks are offered to claimants' clients at claim time and run on the claimant's own subscription (duty).
    */
-  ratification: z.object({
+  payoutAudit: z.object({
     quorum: z.number().int().positive(),
-    /** When fewer eligible active ratifiers exist, the non-author authorized human sign-off ratifies instead. */
+    /** Every counting auditor has no receipt on the audited feature. One own-feature slot may be added (signal only). */
+    requireOutsideFeature: z.literal(true),
+    ownFeatureSlot: z.boolean(),
+    /** When fewer eligible active auditors exist, the non-author authorized human sign-off ratifies instead. */
     smallPoolThreshold: z.number().int().positive(),
-    /** Duty tasks owed per execution/planning receipt being claimed. Aggregate supply needs >= quorum (see ADR). */
-    dutyPerReceipt: z.number().int().nonnegative(),
+    /** Duty is owed only when audit tasks are offered at claim time, at most this many per claim. */
     maxDutyTasksPerClaim: z.number().int().positive(),
-    /** Duty runs use this reasoning (a floor), or "max" = the pinned AgentPolicy maximum. */
     dutyReasoning: z.union([ReasoningLevel, z.literal("max")]),
-    /** With quorum >= 2 the ratifiers must include both providers (uncorrelated model errors). */
     requireProviderDiversity: z.boolean(),
     sealedUntilAllSubmit: z.literal(true),
-    /** Allocations of an account with unmet duty are withheld (not forfeited) for this many epochs, then return to R. */
     unmetDutyCarryEpochs: z.number().int().positive(),
-    /** A ratifier whose RATIFY is later contradicted (receipt revoked for a defect) loses that duty credit. */
-    contradictedRatificationRevokesCredit: z.literal(true),
+    /** An auditor whose "plausible" is contradicted by an upheld finding or a later revocation loses that duty credit. */
+    contradictedJudgmentRevokesCredit: z.literal(true),
+    /** Bonus weight (ACU-equivalent, execution slice) per upheld inflation finding: this share of the clipped amount. */
+    upheldInflationBonusBp: Bp,
+    /** Inflation findings overruled this many times in 30 days raise false_inflation_findings. */
+    falseFindingsSignalAfter: z.number().int().positive(),
+    /** Per-run usage and run logs are published when the epoch finalizes, not before (keeps canaries unmatchable). */
+    publishUsageAfterFinalization: z.literal(true),
   }),
   /**
-   * D26 canary (honeypot) ratification packets, indistinguishable in format from real ones. A PASS on a canary revokes
-   * the reviewer's not-yet-finalized receipts (append-only), raises canary_passed, removes the duty credit, and flags
-   * or suspends per RiskPolicy. Canaries catch lazy or scripted clients; they cannot stop a client that cross-checks
-   * every packet against the public repository (ABUSE-MODEL.md section 5).
+   * D27 payout canaries: deterministic, model-free perturbations of real payout lines, indistinguishable in format.
+   * Approving one costs the duty credit, revokes the auditor's unfinalized receipts (append-only) and raises
+   * payout_canary_passed. Code-defect canaries are not used in V1 (ADR-001 section 3.9).
    */
   canaries: z.object({
     rateBp: Bp,
     newAccountRateBp: Bp,
     flaggedAccountRateBp: Bp,
-    mutationClasses: z.array(DefectClass).min(1),
-    /** A canary source is used at most this many times, then retired (pool rotation, leakage control). */
-    maxUsesPerCase: z.number().int().positive(),
-    catchToleranceLines: z.number().int().nonnegative(),
+    perturbations: z.array(PerturbationClass).min(1),
+    minMagnitudeBp: z.number().int().positive(),
+    maxUsesPerSource: z.number().int().positive(),
     passEffect: z.enum(["revoke_unfinalized_and_flag", "revoke_unfinalized_and_suspend"]),
   }),
   /** Reviewers are assigned by the control plane at random among eligible accounts; never chosen by the author. */
@@ -325,6 +357,17 @@ export const UsageProofPolicy = z.object({
     requireProviderIdsHash: z.boolean(),
     requireTranscriptHash: z.literal(true),
     requireModelMatch: z.boolean(),
+  }),
+  /** D27 run logs: required with every AgentRun whose usage carries weight; bare numbers get a haircut. */
+  logs: z.object({
+    required: z.boolean(),
+    maxBytes: z.number().int().positive(),
+    maxTurns: z.number().int().positive(),
+    retentionDays: z.number().int().positive(),
+    /** Weight multiplier for ATTESTED usage without a consistent run log (bare numbers). */
+    bareAttestedWeightBp: Bp,
+    /** Per-turn sums must equal the usage receipt exactly; any difference makes the run UNVERIFIED. */
+    requireExactTotals: z.literal(true),
   }),
   audit: z.object({
     /**
@@ -436,3 +479,54 @@ export const GenesisAllocationPolicy = z.object({
   mintOnDevnet: z.boolean(),
 });
 export type GenesisAllocationPolicy = z.infer<typeof GenesisAllocationPolicy>;
+
+// ------------------------------------------------------------------------------------------------ Activation (D33)
+
+export const PolicyKind = z.enum(["reward", "oracle", "review", "capability", "usage_proof", "risk", "merge", "completion", "genesis"]);
+export type PolicyKind = z.infer<typeof PolicyKind>;
+
+/**
+ * Every economic number is policy DATA (D33). V1 values are provisional and expected to change. A new version takes
+ * effect from a future epoch only (forward-only, never retroactive to published or finalized allocations), is announced
+ * publicly at least `minNoticeHours` before that epoch starts, and carries the sha256 of a what-if preview (the engine
+ * re-run on recent real epochs under the new version). An emergency activation may target the current epoch only while
+ * its allocations are unpublished (OPEN or CALCULATING), only for safety, and is recorded as such.
+ */
+export const PolicyActivation = z.object({
+  kind: PolicyKind,
+  version: z.string().min(3),
+  effectiveEpoch: z.number().int().positive(),
+  announcedAt: z.string(),
+  emergency: z.boolean(),
+  previewSha256: z
+    .string()
+    .regex(/^sha256:[0-9a-f]{64}$/)
+    .nullable(),
+  adminActionId: z.string().uuid(),
+});
+export type PolicyActivation = z.infer<typeof PolicyActivation>;
+
+export const ACTIVATION_RULES = { minNoticeHours: 72 } as const;
+
+/** Forward-only check; `epochStartsAtMs` is the effective epoch's start. Returns the reasons it is refused. */
+export function activationRefusals(
+  a: { effectiveEpoch: number; emergency: boolean; announcedAtMs: number; previewSha256: string | null },
+  now: {
+    openEpoch: number;
+    openEpochState: "OPEN" | "CALCULATING" | "PROPOSED" | "FINALIZED" | "DISTRIBUTABLE" | "CLOSED";
+    epochStartsAtMs: number;
+  },
+): string[] {
+  const reasons: string[] = [];
+  if (a.emergency) {
+    if (a.effectiveEpoch < now.openEpoch) reasons.push("an emergency change never applies to a past epoch");
+    if (a.effectiveEpoch === now.openEpoch && !(now.openEpochState === "OPEN" || now.openEpochState === "CALCULATING"))
+      reasons.push("an emergency change applies only to unpublished allocations");
+  } else {
+    if (a.effectiveEpoch <= now.openEpoch) reasons.push("a policy change takes effect from the next epoch at the earliest");
+    if (now.epochStartsAtMs - a.announcedAtMs < ACTIVATION_RULES.minNoticeHours * 3_600_000)
+      reasons.push(`announce at least ${ACTIVATION_RULES.minNoticeHours} h before the effective epoch starts`);
+    if (a.previewSha256 === null) reasons.push("attach the what-if preview of the change on recent epochs");
+  }
+  return reasons;
+}
