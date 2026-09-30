@@ -1120,7 +1120,16 @@ export class OrchestratorImpl {
       const claim = await this.api.call("claimTask", {
         params: { id: options.taskId },
         body: { deviceId: s.deviceId, ...(options.model ? { model: options.model } : {}), ...(launch ? { launch } : {}) },
-        idempotencyKey: idempotencyKey("claimTask", options.taskId, s.deviceId),
+        // The body (model, launch) and the minute are part of the key: claiming the same task again after a release,
+        // or on another model, is a new request (like claimBuild), not a replay of the earlier one.
+        idempotencyKey: idempotencyKey(
+          "claimTask",
+          options.taskId,
+          s.deviceId,
+          options.model ?? "",
+          launch ? JSON.stringify(launch) : "",
+          this.now().toISOString().slice(0, 16),
+        ),
       });
       task = claim.task;
       observer({ type: "lease", lease: claim.lease });
