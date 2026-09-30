@@ -63,10 +63,12 @@ describe.skipIf(!HAS_DB)("ship-gate-and-migrations: migration runner (Docker Pos
     dirs.push(d);
     return d;
   };
+  // Dropped together: each DROP DATABASE waits for an immediate checkpoint, and concurrent drops share one; one by one
+  // they outlasted the hook timeout under a loaded full run.
   afterAll(async () => {
-    for (const db of dbs) await db.drop();
+    await Promise.all(dbs.map((db) => db.drop()));
     for (const d of dirs) await rm(d, { recursive: true, force: true });
-  });
+  }, 120_000);
 
   it("ship-gate-and-migrations R-001 applies 0000 and 0001 to an empty database, each with a ledger row, and is idempotent", async () => {
     const db = await fresh();

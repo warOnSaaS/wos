@@ -1,11 +1,12 @@
 /**
- * DONE (2): every route in `Routes` exists, validates its input with its zod schema, returns its response
+ * DONE (2): every route in `{ ...Routes, ...AppRoutes }` exists, validates its input with its zod schema, returns its response
  * schema, and rejects the wrong auth mode.
  */
 import { createHmac } from "node:crypto";
-import { type RouteDef, type RouteName, Routes } from "@waronsaas/contracts";
+import { type RouteDef, WOS_CLOUD_ENVIRONMENT_ID } from "@waronsaas/contracts";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createApp, type Handler, type Handlers } from "../src/http/router.js";
+import { AllRoutes, type AnyRouteName as RouteName, createApp, type Handler, type Handlers } from "../src/http/router.js";
+import { manifest, publish } from "./support/apps.js";
 import { createHandlers } from "../src/app.js";
 import { buildAndSubmit, reviewAs } from "./support/flow.js";
 import {
@@ -20,12 +21,19 @@ import {
   webhookHeaders,
 } from "./support/harness.js";
 
+const Routes = AllRoutes;
 const NAMES = Object.keys(Routes) as RouteName[];
 const UUID = "0192f000-0000-7000-8000-0000000000aa";
 
 /** A concrete, schema-valid path for a route. */
 function samplePath(route: RouteDef): string {
-  return route.path.replace(":id", UUID).replace(":slug", "salesforce").replace(":feature", "contacts").replace(":handle", "someone");
+  return route.path
+    .replace(":id", UUID)
+    .replace(":slug", "salesforce")
+    .replace(":feature", "contacts")
+    .replace(":handle", "someone")
+    .replace(":app", "crm")
+    .replace(":version", "0.1.0");
 }
 
 function routeOf(method: string, path: string): RouteName | null {
@@ -358,6 +366,47 @@ describe.skipIf(!HAS_DB)("every route: existence, auth mode, input validation, r
       body: { action: "set_hosting", target: "slack", hostedUrl: null, selfHostable: false },
     });
     await call("GET", "/v1/cron/sweep", { headers: cron });
+
+    // one product (AppRoutes): registry, organizations, entitlements, environment tokens, application progress
+    await call("GET", "/v1/public/environment-keys");
+    const contacts = await publish(h, maint.token, manifest("contacts", { kind: "module" }));
+    const crm = await publish(
+      h,
+      maint.token,
+      manifest("crm", { requires: [{ id: "contacts", version: "^0.1.0" }], features: ["contacts"], desktop: true }),
+    );
+    for (const r of [contacts, crm]) expect(Routes.publishAppRelease.response.safeParse(r.body).success, JSON.stringify(r.body)).toBe(true);
+    seen.set("publishAppRelease", 200);
+    await call("GET", "/v1/public/apps");
+    await call("GET", "/v1/public/apps/crm");
+    await call("GET", "/v1/public/apps/crm/releases/0.1.0");
+    await call("GET", "/v1/public/apps/crm/progress");
+    const orgs = await call("GET", "/v1/orgs", { token: builder.token });
+    const team = await call("POST", "/v1/orgs", {
+      token: builder.token,
+      idem: true,
+      body: { name: "Scenario Team", slug: "scenario-team" },
+    });
+    await call("GET", `/v1/orgs/${team.body.id}/apps`, { token: builder.token });
+    const on = await call("POST", `/v1/orgs/${team.body.id}/apps/crm/enable`, {
+      token: builder.token,
+      idem: true,
+      body: { expectedRowVersion: null },
+    });
+    await call("POST", `/v1/environments/${WOS_CLOUD_ENVIRONMENT_ID}/token`, {
+      token: builder.token,
+      body: { organizationId: orgs.body.items[0].id },
+    });
+    await call("POST", `/v1/orgs/${team.body.id}/apps/crm/disable`, {
+      token: builder.token,
+      idem: true,
+      body: { expectedRowVersion: on.body.entitlement.rowVersion },
+    });
+    await call("POST", "/v1/admin/app-releases/yank", {
+      token: maint.token,
+      idem: true,
+      body: { app: "crm", version: "0.1.0", reason: "scenario yank" },
+    });
 
     const missing = NAMES.filter((n) => !seen.has(n));
     expect(missing).toEqual([]);

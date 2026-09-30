@@ -54,6 +54,7 @@ import {
   taskTransition,
 } from "../domain/work.js";
 import { abuSummaries, revealedReviews } from "./public.js";
+import { assertBuildEntitled } from "./apps.js";
 import { assertToolchain } from "../domain/toolchain.js";
 import { scopesOverlap } from "@waronsaas/verification";
 import { transition } from "../db/transition.js";
@@ -223,6 +224,7 @@ export const workHandlers: Pick<
   async claimBuild(ctx) {
     const { deps } = ctx;
     const caller = ctx.caller!;
+    await assertBuildEntitled(deps, caller); // D16, S-40: claims need Build enabled for one of the caller's organizations
     const [pre] = await inTransaction(
       deps.sql,
       asContributor(caller),
@@ -312,6 +314,7 @@ export const workHandlers: Pick<
   async claimReview(ctx) {
     const { deps } = ctx;
     const caller = ctx.caller!;
+    await assertBuildEntitled(deps, caller); // D16, S-40: claims need Build enabled for one of the caller's organizations
     const { slot, kinds, deviceId } = ctx.body;
     const active = await inTransaction(deps.sql, asContributor(caller), async (tx) => {
       await assertDevice(tx, caller.accountId, deviceId).catch(() => {
@@ -434,6 +437,7 @@ export const workHandlers: Pick<
   async claimTask(ctx) {
     const { deps } = ctx;
     const caller = ctx.caller!;
+    await assertBuildEntitled(deps, caller); // D16, S-40: claims need Build enabled for one of the caller's organizations
     const task0 = await inTransaction(deps.sql, asContributor(caller), (tx) => loadTask(tx, ctx.params.id));
     if (!task0) throw new ApiFailure("NOT_FOUND", "task not found");
     if (REVIEW_KINDS.includes(task0.kind))

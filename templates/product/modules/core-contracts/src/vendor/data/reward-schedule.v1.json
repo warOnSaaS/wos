@@ -1,0 +1,21 @@
+{
+  "scheduleVersion": "rewards.v1",
+  "status": "proposal",
+  "holdDays": 14,
+  "implementation": { "tokensPerSizePoint": 20 },
+  "review": {
+    "roadmapReview": 40,
+    "featureContractReview": 20,
+    "implementationReviewPerSizePoint": 4,
+    "upheldFindingBonus": 5,
+    "maxUpheldFindingsPaidPerReview": 5
+  },
+  "roadmap": { "mergedRoadmapPool": 1000 },
+  "featureContract": { "mergedContractPool": 200 },
+  "architectureResolution": { "perAcceptedRuling": 30 },
+  "security": { "low": 25, "medium": 100, "high": 300, "critical": 1000 },
+  "pools": {
+    "featureCompletionPercentOfImplementation": 10,
+    "applicationCompletionPool": 10000
+  }
+}

@@ -62,7 +62,7 @@ DATABASE_MIGRATION_URL=<unpooled owner url> node packages/db/dist/cli.js --dir p
 | Database | Neon (Vercel Marketplace, free plan, us-west-2). App connects as `wos_app` (no RLS bypass, owns nothing). Crons every 15 min to stay in free compute hours — set back to every minute when on a paid plan. |
 | Email | Resend, sending domain notify.waronsaas.com (from signin@notify.waronsaas.com). Apex MX is ImprovMX forwarding to the founder — never touch it. |
 | DNS | Vercel DNS for waronsaas.com |
-| Secrets | Only on the founder's Mac in `~/.waronsaas/` (0600): `github-app.json`, `neon.env`, `database.json`, `resend.json`, `api-secrets.json`; and in Vercel env vars. Never commit them, never print them. |
+| Secrets | Only on the founder's Mac in `~/.waronsaas/` (0600): `github-app.json`, `neon.env`, `database.json`, `resend.json`, `api-secrets.json`, `env-token-keys/` (Ed25519 environment-token keys wos-env-2026 and -next, set as WOS_ENV_TOKEN_KEY and WOS_ENV_TOKEN_KEY_NEXT on waronsaas-api, 2026-09-30); and in Vercel env vars. Never commit them, never print them. |
 
 ## State (update this section)
 
