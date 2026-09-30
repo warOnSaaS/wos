@@ -1,9 +1,25 @@
 {
   "ref": "main",
-  "head": "ff75b960394e9a68c14efd9b3ded0c889af51120",
+  "head": "f34867acf8c6b02bdf4cf1bf97187e14b46b561d",
   "complete": true,
-  "count": 55,
+  "count": 57,
   "commits": [
+    {
+      "sha": "f34867acf8c6b02bdf4cf1bf97187e14b46b561d",
+      "short": "f34867a",
+      "date": "2026-09-30T10:18:18-04:00",
+      "day": "2026-09-30",
+      "subject": "/whitepaper becomes an agent handoff page",
+      "url": "https://github.com/warOnSaaS/wos/commit/f34867acf8c6b02bdf4cf1bf97187e14b46b561d"
+    },
+    {
+      "sha": "1d0afc018003c65f6f8fc7bcc57b5eb61143ac2e",
+      "short": "1d0afc0",
+      "date": "2026-09-30T10:16:44-04:00",
+      "day": "2026-09-30",
+      "subject": "White paper v0.3: agent-first, the two theses, edge-case index",
+      "url": "https://github.com/warOnSaaS/wos/commit/1d0afc018003c65f6f8fc7bcc57b5eb61143ac2e"
+    },
     {
       "sha": "ff75b960394e9a68c14efd9b3ded0c889af51120",
       "short": "ff75b96",
