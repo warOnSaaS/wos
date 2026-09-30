@@ -440,6 +440,17 @@ export const ReviewPolicy = z.object({
     founderOwnWorkReceipt: z.literal("PROVISIONAL"),
     selfReviewSatisfiesRules: z.literal(false),
     publicLabel: z.string().min(10),
+    /**
+     * D67 (review-policy.v2): while bootstrap is on, the bootstrap founder (the maintainer named when v2 was activated)
+     * may hold the D53 human seat on a round whose subject the founder's own account authored. The round and the verdict
+     * are labelled `bootstrap_self` (with `single_lab_review`); the work stays PROVISIONAL (D23) and gets the independent
+     * re-review after bootstrap ends. Refused once bootstrap ends. Absent (v1): never.
+     */
+    bootstrapFounderMayHoldHumanSeatOnOwnWork: z.boolean().optional(),
+    /** D67: whether that founder may ALSO hold the agent seat of the same round. v2: false (independence rule unchanged). */
+    bootstrapFounderMayHoldBothSeats: z.boolean().optional(),
+    /** D67: the independence label of such a seat. */
+    founderOwnWorkLabel: z.literal("bootstrap_self").optional(),
   }),
   /**
    * D54: PROVISIONAL (founder bootstrap) receipts finalize OPTIMISTICALLY once bootstrap ends: each is published with a

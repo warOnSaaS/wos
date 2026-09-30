@@ -126,6 +126,33 @@ Content-Type: application/json
 
 Then `curl -s https://api.waronsaas.com/v1/public/status` shows `"reviewPolicy": {"fallback": "fable_unavailable", "switchSeq": 1, …}`. Switch BEFORE step 4.4: a round pins its seats when it opens.
 
+### D67: the founder holds the human seat (contracts 5.16.0) — the exact steps
+
+The founder decided D67, so the ruling below now has an exception. Under `review-policy.v2`, while bootstrap is on, the founder may hold the human seat of his own roadmap, labelled `bootstrap_self` (and `single_lab_review`), PROVISIONAL until its independent re-review after bootstrap ends. The Astra seat must still be held by **another account**: v2 keeps `humanMayHoldAgentSlotOfSameRound = false` (`bootstrapFounderMayHoldBothSeats: false`), so the founder cannot run the Astra review and the human review of the same round.
+
+1. **Migrations (coordinator):** apply `0014_bootstrap_founder_human_seat.sql` (0013 is already applied):
+   ```
+   DATABASE_MIGRATION_URL=<unpooled owner url> node packages/db/dist/cli.js --check --dir packages/db/migrations   # lists 0014 pending
+   DATABASE_MIGRATION_URL=<unpooled owner url> node packages/db/dist/cli.js --dir packages/db/migrations
+   ```
+2. **Switch the review policy to v2** (maintainer, no round awaiting reviews). Use the step 4.3 snippet, a new Idempotency-Key, and `POST https://api.waronsaas.com/v1/admin/actions`:
+   ```json
+   {"action": "switch_review_policy", "policyVersion": "review-policy.v2", "bootstrapFounder": "adventurini", "reason": "D67: the bootstrap founder may hold the D53 human seat on his own work, labelled bootstrap_self, PROVISIONAL"}
+   ```
+3. **Activate the fallback** (same route, another new Idempotency-Key):
+   ```json
+   {"action": "switch_review_policy", "fallback": "fable_unavailable", "reason": "D53: Fable unavailable; Astra plus the required human review (single_lab_review)"}
+   ```
+   (Steps 2 and 3 can be one call: `{"action": "switch_review_policy", "policyVersion": "review-policy.v2", "bootstrapFounder": "adventurini", "fallback": "fable_unavailable", "reason": "..."}`.) Check: `curl -s https://api.waronsaas.com/v1/public/status` shows `"reviewPolicy": {"fallback": "fable_unavailable", "policyVersion": "review-policy.v2", "bootstrapFounder": "adventurini", ...}`.
+4. **Author run** (4.4): `wos roadmap <taskId> --model opus`. The round opens with the Astra task and the human seat, and pins seq 2 (v2 + fallback).
+5. **Astra** (4.5) by an account other than the founder, on Codex.
+6. **Human seat** by the founder after the Astra verdict: `wos review --human` (it says `seat bootstrap_self (D67)`).
+7. **Merge** (4.7): the founder's approval counts as the Code Owner review (see "Merge by the founder" below).
+
+### Merge by the founder (ruleset 24267950)
+
+The `main` ruleset requires Code Owner review with 0 required approvals, no bypass actors, and has `require_extra_approval_for_unattributed_changes: true` (GitHub's newer default). The PR author is `waronsaas-wos[bot]` (checked on PR #2), not the founder, so GitHub's "you cannot approve your own pull request" does not apply. The founder is an active maintainer of `@waronsaas/maintainers`, which owns `/roadmaps/` and `/catalog/`, so his approval satisfies the Code Owner review. That one approval also covers the extra approval an unattributed commit would need, because the founder has write access. Before 5.16.0 the App authored commits as `waronsaas-wos[bot]@users.noreply.github.com`, a form GitHub may not attribute to the bot account. Since 5.16.0 it uses `335681065+waronsaas-wos[bot]@users.noreply.github.com`, the form PR #2's commit shows as attributed and verified. `dismiss_stale_reviews_on_push` is on, so approve after the App's last commit. NOT VERIFIED on a real document PR yet; confirm on the first one.
+
 ### The human seat and the founder (a ruling, not a choice made here)
 
 The rules forbid the founder from holding the human seat of a round whose author task he claimed:

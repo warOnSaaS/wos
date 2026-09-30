@@ -6,7 +6,7 @@ import { ARTIFACT_PATHS, type HumanReviewFinding, type HumanReviewQueueItem, typ
 import { inTransaction, type Tx } from "@waronsaas/db";
 import { insertEvent } from "../db/events.js";
 import { loadDocument } from "../domain/documents.js";
-import { HUMAN_SEAT_REASONS, humanSeatRefusals } from "../domain/human-review.js";
+import { HUMAN_SEAT_REASONS, humanSeatCheck } from "../domain/human-review.js";
 import { revealRound, roundComplete, subjectAuthors } from "../domain/review.js";
 import { ApiFailure } from "../errors.js";
 import type { Caller, Handlers } from "../http/router.js";
@@ -25,13 +25,14 @@ interface RoundRow {
   submission_sha256: string;
   state: string;
   second_seat: "fable" | "human";
+  review_policy_seq: number | null;
   opened_at: Date;
   target: string | null;
   feature: string | null;
 }
 
 const ROUND_SELECT = `
-  select r.id, r.subject_kind, r.document_id, r.attempt_id, r.round_number, r.head_sha, r.submission_sha256, r.state, r.second_seat,
+  select r.id, r.subject_kind, r.document_id, r.attempt_id, r.round_number, r.head_sha, r.submission_sha256, r.state, r.second_seat, r.review_policy_seq,
          r.opened_at, coalesce(t.slug, null) as target, coalesce(f.key, af.key) as feature
     from wos.rounds r
     left join wos.documents d on d.id = r.document_id
@@ -48,7 +49,7 @@ async function loadRound(tx: Tx, id: string): Promise<RoundRow | null> {
 
 async function queueItem(tx: Tx, r: RoundRow, accountId: string): Promise<HumanReviewQueueItem> {
   const [sealed] = await tx`select 1 as x from wos.reviews where round_id = ${r.id} and slot = 'astra'`;
-  const reasons = await humanSeatRefusals(tx, r, accountId);
+  const { reasons, bootstrapSelf } = await humanSeatCheck(tx, r, accountId);
   return {
     roundId: r.id,
     roundNumber: r.round_number,
@@ -62,6 +63,7 @@ async function queueItem(tx: Tx, r: RoundRow, accountId: string): Promise<HumanR
     agentVerdictSealed: !!sealed,
     label: "single_lab_review",
     eligibility: { eligible: reasons.length === 0, reasons },
+    bootstrapSelf,
   };
 }
 
@@ -182,7 +184,7 @@ export const humanReviewHandlers: Pick<Handlers, "listHumanReviews" | "getHumanR
         update wos.rounds set row_version = row_version + 1 where id = ${ctx.params.id} and state = 'awaiting_reviews' returning id`;
       const r = await humanRoundOr409(tx, ctx.params.id);
       if (!locked) throw new ApiFailure("CONFLICT", HUMAN_SEAT_REASONS.notOpen);
-      const reasons = await humanSeatRefusals(tx, r, caller.accountId);
+      const { reasons } = await humanSeatCheck(tx, r, caller.accountId);
       if (reasons.length > 0) throw new ApiFailure("NOT_ELIGIBLE", "you may not hold the human seat of this round", { reasons });
       if (b.headSha !== r.head_sha || b.submissionSha256 !== r.submission_sha256)
         throw new ApiFailure("VALIDATION_FAILED", "the verdict must be bound to the round's head sha and submission hash");

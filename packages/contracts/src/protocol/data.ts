@@ -7,6 +7,7 @@ import governanceJson from "./data/governance-policy.v1.json" with { type: "json
 import mergeJson from "./data/merge-policy.v1.json" with { type: "json" };
 import oracleJson from "./data/model-rate-oracle.v1.json" with { type: "json" };
 import reviewJson from "./data/review-policy.v1.json" with { type: "json" };
+import reviewV2Json from "./data/review-policy.v2.json" with { type: "json" };
 import rewardJson from "./data/reward-policy.v1.json" with { type: "json" };
 import rewardV2Json from "./data/reward-policy.v2.json" with { type: "json" };
 import riskJson from "./data/risk-policy.v1.json" with { type: "json" };
@@ -27,6 +28,11 @@ import { GovernancePolicy } from "./governance.js";
 export const MODEL_RATE_ORACLE_V1: ModelRateOracle = ModelRateOracle.parse(oracleJson);
 export const REWARD_POLICY_V1: RewardPolicy = RewardPolicy.parse(rewardJson);
 export const REVIEW_POLICY_V1: ReviewPolicy = ReviewPolicy.parse(reviewJson);
+/**
+ * D67 (contracts 5.16.0): v1 stays byte-identical; v2 adds the bootstrap exception for the D53 human seat (the bootstrap
+ * founder may hold it on the founder's own work, labelled bootstrap_self, PROVISIONAL, refused once bootstrap ends).
+ */
+export const REVIEW_POLICY_V2: ReviewPolicy = ReviewPolicy.parse(reviewV2Json);
 export const CAPABILITY_POLICY_V1: AgentCapabilityPolicy = AgentCapabilityPolicy.parse(capabilityJson);
 export const USAGE_PROOF_POLICY_V1: UsageProofPolicy = UsageProofPolicy.parse(usageJson);
 export const RISK_POLICY_V1: RiskPolicy = RiskPolicy.parse(riskJson);

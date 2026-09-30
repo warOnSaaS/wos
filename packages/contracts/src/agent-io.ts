@@ -426,6 +426,8 @@ export const ProvenanceRecord = z.object({
       roundNumber: z.number().int().positive(),
       label: z.literal("single_lab_review"),
       labelReason: z.string(),
+      /** contracts 5.16.0 (D67): `bootstrap_self` when the bootstrap founder held the seat on the founder's own work. */
+      independence: ReviewIndependence.optional(),
     })
     .optional(),
 });

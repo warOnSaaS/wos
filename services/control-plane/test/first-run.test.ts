@@ -112,7 +112,14 @@ describe.skipIf(!HAS_DB)("first real run: D53 human seat, repository case, PR li
 
   it("D53: the switch is public and forward-only; refused while a round is awaiting reviews", async () => {
     const before = await h.call("GET", "/v1/public/status");
-    expect(before.body.reviewPolicy).toEqual({ fallback: "none", switchSeq: null, since: null, reason: null });
+    expect(before.body.reviewPolicy).toEqual({
+      fallback: "none",
+      switchSeq: null,
+      since: null,
+      reason: null,
+      policyVersion: "review-policy.v1",
+      bootstrapFounder: null,
+    });
     const same = await action(founder, { action: "switch_review_policy", fallback: "none", reason: "nothing to switch" });
     expect(same.status).toBe(409);
     const on = await action(founder, {
@@ -148,6 +155,8 @@ describe.skipIf(!HAS_DB)("first real run: D53 human seat, repository case, PR li
     const [label] = await h.owner<{ payload: { label: string } }[]>`
       select payload from wos.events where type = 'round.single_lab_review' and aggregate_id = ${round.id}`;
     expect(label!.payload.label).toBe("single_lab_review");
+    // App commits are attributed to the bot account (id+login noreply), not "unattributed" under the product ruleset.
+    expect(h.github.commits.at(-1)!.authorEmail).toBe("335681065+waronsaas-wos[bot]@users.noreply.github.com");
     await dispatch(); // opens the draft PR
     const pr = h.github.prs.find((p) => p.title === "OpenThing Replacement Roadmap" || p.title.startsWith("salesforce"))!;
     expect(pr.draft).toBe(true);
@@ -395,6 +404,106 @@ describe.skipIf(!HAS_DB)("first real run: D53 human seat, repository case, PR li
     const t3 = await h.owner<{ reviewer_slot: string }[]>`select reviewer_slot from wos.tasks where round_id = ${r3.id}`;
     expect(t3.map((t) => t.reviewer_slot)).toEqual(["astra"]);
     await action(founder, { action: "abandon_document", documentId: opened.documentId, reason: "conflict check done" });
+  });
+
+  it("D67: under review-policy.v2 the bootstrap founder may hold the human seat on the founder's own work, labelled bootstrap_self; never after bootstrap ends", async () => {
+    // Forward-only, and the founder it names must be a maintainer.
+    expect(
+      (
+        await action(founder, {
+          action: "switch_review_policy",
+          policyVersion: "review-policy.v2",
+          bootstrapFounder: "fr-astra",
+          reason: "D67",
+        })
+      ).status,
+    ).toBe(400);
+    const v2 = await action(founder, {
+      action: "switch_review_policy",
+      policyVersion: "review-policy.v2",
+      bootstrapFounder: "fr-founder",
+      reason: "D67: the bootstrap founder may hold the human seat on own work",
+    });
+    expect(v2.status, JSON.stringify(v2.body)).toBe(200);
+    const status = await h.call("GET", "/v1/public/status");
+    expect(status.body.reviewPolicy).toMatchObject({
+      fallback: "fable_unavailable",
+      policyVersion: "review-policy.v2",
+      bootstrapFounder: "fr-founder",
+    });
+    const [ev] = await h.owner<{ payload: unknown }[]>`select payload from wos.events where type = 'review_policy.version_switched'`;
+    expect(ev!.payload).toMatchObject({ policyVersion: "review-policy.v2", bootstrapFounder: "fr-founder" });
+    expect(
+      (await action(founder, { action: "switch_review_policy", policyVersion: "review-policy.v1", reason: "back to v1" })).status,
+    ).toBe(409);
+
+    // The founder authors (Opus), Astra reviews, the founder holds the human seat: consensus, labelled bootstrap_self.
+    const opened = await open("quickbooks");
+    await authorRevision(h, founder, opened.taskId, roadmapFiles({ target: "quickbooks", feature: "ledger" }), { model: "opus" });
+    const round = await roundOf(opened.documentId);
+    await dispatch();
+    await reviewAs(h, astra, "astra", "roadmap_review", verdict("NO_MATERIAL_GAPS"));
+    const queue = await h.call("GET", "/v1/human-reviews", { token: founder.token });
+    const item = queue.body.items.find((i: { roundId: string }) => i.roundId === round.id);
+    expect(item.eligibility).toEqual({ eligible: true, reasons: [] });
+    expect(item.bootstrapSelf).toBe(true);
+    const sealed = await humanVerdict(founder, round.id, {
+      verdict: verdict("NO_MATERIAL_GAPS"),
+      headSha: round.head_sha,
+      submissionSha256: round.submission_sha256,
+    });
+    expect(sealed.status, JSON.stringify(sealed.body)).toBe(200);
+    expect(sealed.body.outcome).toBe("consensus");
+    const [hr] = await h.owner<
+      { bootstrap_self: boolean }[]
+    >`select bootstrap_self from wos.round_human_reviews where round_id = ${round.id}`;
+    expect(hr!.bootstrap_self).toBe(true);
+    const [rd] = await h.owner<{ independence: string; review_label: string }[]>`
+      select independence, review_label from wos.rounds where id = ${round.id}`;
+    expect(rd).toEqual({ independence: "bootstrap_self", review_label: "single_lab_review" });
+    const [revealed] = await h.owner<{ payload: { independence: string } }[]>`
+      select payload from wos.events where type = 'round.revealed' and payload ->> 'roundId' = ${round.id}`;
+    expect(revealed!.payload.independence).toBe("bootstrap_self");
+    await dispatch();
+    const [doc] = await h.owner<{ pr_number: number }[]>`select pr_number from wos.documents where id = ${opened.documentId}`;
+    const comment = h.github.reviewComments.find((c) => c.prNumber === doc!.pr_number)!;
+    expect(comment.body).toContain("Independence: `bootstrap_self`");
+    expect(comment.body).toContain("single_lab_review");
+    expect(comment.body).toContain("(bootstrap_self, D67)");
+
+    // Only the founder named by v2: another maintainer on their own work is still refused.
+    const other = await open("docusign");
+    await authorRevision(h, human, other.taskId, roadmapFiles({ target: "docusign", feature: "envelopes" }), { model: "opus" });
+    const r2 = await roundOf(other.documentId);
+    await reviewAs(h, astra, "astra", "roadmap_review", verdict("NO_MATERIAL_GAPS"));
+    const refused = await humanVerdict(human, r2.id, {
+      verdict: verdict("NO_MATERIAL_GAPS"),
+      headSha: r2.head_sha,
+      submissionSha256: r2.submission_sha256,
+    });
+    expect(refused.status).toBe(403);
+    await action(founder, { action: "abandon_document", documentId: other.documentId, reason: "D67 check done" });
+
+    // Refused automatically once bootstrap ends (the database re-checks it too).
+    // (The Astra seat is taken while bootstrap still waives the contribution minimum for this test reviewer.)
+    const late = await open("netsuite");
+    await authorRevision(h, founder, late.taskId, roadmapFiles({ target: "netsuite", feature: "general-ledger" }), { model: "opus" });
+    const r3 = await roundOf(late.documentId);
+    await reviewAs(h, astra, "astra", "roadmap_review", verdict("NO_MATERIAL_GAPS"));
+    expect((await action(founder, { action: "end_bootstrap", reason: "three outside contributors (F31)" })).status).toBe(200);
+    const after = await humanVerdict(founder, r3.id, {
+      verdict: verdict("NO_MATERIAL_GAPS"),
+      headSha: r3.head_sha,
+      submissionSha256: r3.submission_sha256,
+    });
+    expect(after.status).toBe(403);
+    expect(after.body.error.details.reasons.join(" ")).toMatch(/you authored this subject/);
+    await expect(
+      h.owner`insert into wos.round_human_reviews (round_id, account_id, head_sha, submission_sha256, verdict, body, review_label, review_label_reason)
+              values (${r3.id}, ${founder.id}, ${r3.head_sha}, ${r3.submission_sha256}, 'NO_MATERIAL_GAPS', '{}', 'single_lab_review', 'x')`,
+    ).rejects.toThrow(/authored the subject/);
+    await action(founder, { action: "abandon_document", documentId: late.documentId, reason: "D67 check done" });
+    expect(h.violations).toEqual([]);
   });
 
   it("versions after an abandon: the re-opened roadmap is version 1 again (last merged + 1) on its own branch", async () => {

@@ -435,3 +435,26 @@ MINOR, additive, plus production migration 0013. The fixes for `docs/runbooks/FI
 - Template: `templates/product/.github/CODEOWNERS` gains the seed's planning lines (`/roadmaps/`, `/catalog/`, `/features/*/CONTRACT.yaml`).
 
 Affected workstreams: control-plane, cli, github-build, verification (template), web (optional `reviewPolicy` on the status).
+
+## 5.16.0 — 2026-09-30 (D67: the bootstrap founder's human seat on own work)
+
+MINOR, additive, plus production migration 0014.
+- `review-policy.v2` (protocol data; v1 byte-identical): `bootstrap.bootstrapFounderMayHoldHumanSeatOnOwnWork: true`, `bootstrapFounderMayHoldBothSeats: false`, `founderOwnWorkLabel: "bootstrap_self"`. The schema gains these three optional fields; `REVIEW_POLICY_V2` is exported next to `REVIEW_POLICY_V1`.
+- V1 control plane contracts:
+  - `ReviewPolicyVersion` (`review-policy.v1` < `review-policy.v2`), `REVIEW_POLICY_VERSIONS`;
+  - `ReviewPolicyState.policyVersion` and `.bootstrapFounder` (optional);
+  - `HumanReviewQueueItem.bootstrapSelf` (optional);
+  - `ProvenanceRecord.humanReview.independence` (optional);
+  - `maintainerAction` `switch_review_policy`: `fallback` becomes optional; new optional `policyVersion` and `bootstrapFounder` (a handle; required when moving to v2);
+  - event `review_policy.version_switched` (public).
+- Migration `0014_bootstrap_founder_human_seat.sql` (**production**):
+  - `review_policy_switches.policy_version` (forward-only) and `bootstrap_founder_id` (a maintainer, fixed once named);
+  - v2 is refused after bootstrap ends;
+  - the human seat trigger allows the author only when the round's pinned switch is v2, names that account, and bootstrap is on; it marks the row `round_human_reviews.bootstrap_self`.
+- Control plane:
+  - reads the new columns through `to_jsonb`, so the API tolerates a database without 0014;
+  - a founder-held seat makes the round's independence `bootstrap_self`, which shows in `round.revealed`, the PR review comment and the provenance.
+  - App commits are now authored as `<bot id>+waronsaas-wos[bot]@users.noreply.github.com` (`Config.appBotUserId`, env `GITHUB_APP_BOT_USER_ID`, default 335681065). GitHub attributes that form to the bot account. Under the product ruleset's `require_extra_approval_for_unattributed_changes`, commits it cannot attribute need one extra approval.
+- CLI: `wos review --human` says when your seat is `bootstrap_self`.
+
+Affected workstreams: control-plane, cli, protocol (review 10 should see review-policy.v2).

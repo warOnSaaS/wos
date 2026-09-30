@@ -45,10 +45,12 @@ export async function roundCommentFor(
   const agents = await tx<SeatRow[]>`
     select v.slot as seat, coalesce(a.github_login, a.handle, 'unknown') as handle, v.model_id as model, v.reasoning, v.body
       from wos.reviews v join wos.accounts a on a.id = v.account_id where v.round_id = ${roundId} order by v.slot`;
-  const humans = await tx<SeatRow[]>`
-    select 'human' as seat, coalesce(a.github_login, a.handle, 'unknown') as handle, null as model, null as reasoning, h.body
+  const humans = await tx<(SeatRow & { bootstrap_self?: boolean })[]>`
+    select 'human' as seat, coalesce(a.github_login, a.handle, 'unknown') as handle, null as model, null as reasoning, h.body,
+           coalesce((to_jsonb(h) ->> 'bootstrap_self')::boolean, false) as bootstrap_self
       from wos.round_human_reviews h join wos.accounts a on a.id = h.account_id where h.round_id = ${roundId}`;
-  const seats = [...agents, ...humans];
+  const seats: Array<SeatRow & { bootstrap_self?: boolean }> = [...agents, ...humans];
+  const founderSeat = humans.some((x) => x.bootstrap_self);
   const label =
     r.review_label === "single_lab_review"
       ? `**single_lab_review**: ${r.review_label_reason ?? ""}. Devnet/shadow accounting only (D53).`
@@ -58,13 +60,19 @@ export async function roundCommentFor(
     "",
     `Head \`${r.head_sha}\`, submission \`${r.submission_sha256}\`. Independence: \`${r.independence ?? "unknown"}\`${r.independence === "bootstrap_self" ? " (Bootstrap review: not yet independently cross-reviewed)" : ""}.`,
     ...(label ? ["", label] : []),
+    ...(founderSeat
+      ? [
+          "",
+          "**bootstrap_self** (D67): the human seat was held by the bootstrap founder on the founder's own work. This work stays PROVISIONAL (D23) and gets an independent re-review after bootstrap ends.",
+        ]
+      : []),
     "",
     "This comment records the reviews. It is not an approval: merging needs `wos/consensus`, `wos-verify` and a Code Owner review.",
   ];
   const sections = seats.map((s) => {
     const who =
       s.seat === "human"
-        ? `### Human review (required seat under \`fable_unavailable\`) by @${s.handle}`
+        ? `### Human review (required seat under \`fable_unavailable\`) by @${s.handle}${s.bootstrap_self ? " (bootstrap_self, D67)" : ""}`
         : `### ${s.seat === "astra" ? "Astra" : "Fable"} ${String(s.reasoning ?? "").toUpperCase()} (attested, \`${s.model}\`) by @${s.handle}`;
     const findings = s.body.findings.map(
       (f) =>

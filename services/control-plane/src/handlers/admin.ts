@@ -2,7 +2,7 @@
  * Maintainer routes (every override writes a public event with its reason), proposals and blockers
  * (GitHub Issues opened by the App, G-17), and the machine endpoints (webhook, cron).
  */
-import { AttemptMachine, type DocumentState, RoundMachine } from "@waronsaas/contracts";
+import { AttemptMachine, type DocumentState, REVIEW_POLICY_VERSIONS, RoundMachine } from "@waronsaas/contracts";
 import { inTransaction, type Tx } from "@waronsaas/db";
 import { ApiFailure } from "../errors.js";
 import { insertEvent } from "../db/events.js";
@@ -359,19 +359,65 @@ export const adminHandlers: Pick<
           return;
         }
         case "switch_review_policy": {
-          // D53: forward-only (a new sequence number every time, history never rewritten), public, and refused while a
-          // round is awaiting reviews (rounds pin their seats when they open; migration 0013 re-checks all of it).
+          // D53 / D67: forward-only (a new sequence number every time, history never rewritten; policy versions only move
+          // forward), public, and refused while a round is awaiting reviews (rounds pin the switch in force when they
+          // open). Migrations 0013 and 0014 re-check all of it.
           const [open] = await tx`select 1 as x from wos.rounds where state = 'awaiting_reviews' limit 1`;
           if (open) throw new ApiFailure("CONFLICT", "a review round is awaiting reviews; switch the review policy when none is open");
           const current = await reviewPolicyState(tx);
-          if (current.fallback === a.fallback) throw new ApiFailure("CONFLICT", `the review policy fallback is already ${a.fallback}`);
+          const fallback = a.fallback ?? current.fallback;
+          const fromVersion = current.policyVersion ?? "review-policy.v1";
+          const policyVersion = a.policyVersion ?? fromVersion;
+          if (REVIEW_POLICY_VERSIONS.indexOf(policyVersion) < REVIEW_POLICY_VERSIONS.indexOf(fromVersion))
+            throw new ApiFailure("CONFLICT", `review policy versions only move forward (${fromVersion} is in force)`);
+          if (fallback === current.fallback && policyVersion === fromVersion)
+            throw new ApiFailure(
+              "CONFLICT",
+              `the review policy fallback is already ${fallback} and the version is already ${policyVersion}`,
+            );
+          let founderId: string | null = null;
+          if (a.bootstrapFounder !== undefined) {
+            if (policyVersion !== "review-policy.v2")
+              throw new ApiFailure("VALIDATION_FAILED", "bootstrapFounder goes with review-policy.v2");
+            const [f] = await tx<{ id: string; maintainer: boolean }[]>`
+              select a.id, exists (select 1 from wos.account_roles r where r.account_id = a.id and r.role = 'maintainer') as maintainer
+                from wos.accounts a where lower(a.handle) = lower(${a.bootstrapFounder})`;
+            if (!f) throw new ApiFailure("NOT_FOUND", `no account with handle ${a.bootstrapFounder}`);
+            if (!f.maintainer) throw new ApiFailure("VALIDATION_FAILED", "the bootstrap founder is a maintainer");
+            if (current.bootstrapFounder && current.bootstrapFounder.toLowerCase() !== a.bootstrapFounder.toLowerCase())
+              throw new ApiFailure("CONFLICT", `the bootstrap founder is already ${current.bootstrapFounder}`);
+            founderId = f.id;
+          }
+          if (policyVersion === "review-policy.v2" && fromVersion !== "review-policy.v2") {
+            if (founderId === null)
+              throw new ApiFailure("VALIDATION_FAILED", "review-policy.v2 names the bootstrap founder (bootstrapFounder)");
+            const [b] = await tx<{ on: boolean }[]>`
+              select coalesce((value ->> 'enabled')::boolean, false) as on from wos.platform_settings where key = 'bootstrap_mode'`;
+            if (!b?.on) throw new ApiFailure("CONFLICT", "review-policy.v2 is a bootstrap exception (D67) and bootstrap has ended");
+          }
           const seq = (current.switchSeq ?? 0) + 1;
-          await tx`insert into wos.review_policy_switches (seq, fallback, reason, switched_by) values (${seq}, ${a.fallback}, ${a.reason}, ${caller.accountId})`;
-          await insertEvent(
-            tx,
-            { type: "review_policy.switched", v: 1, visibility: "public", payload: { seq, fallback: a.fallback, reason: a.reason } },
-            { aggregateKind: "review_policy", aggregateId: String(seq), actor: "maintainer", actorAccountId: caller.accountId },
-          );
+          if (policyVersion === fromVersion && founderId === null)
+            await tx`insert into wos.review_policy_switches (seq, fallback, reason, switched_by) values (${seq}, ${fallback}, ${a.reason}, ${caller.accountId})`;
+          else
+            await tx`insert into wos.review_policy_switches (seq, fallback, reason, switched_by, policy_version, bootstrap_founder_id)
+                     values (${seq}, ${fallback}, ${a.reason}, ${caller.accountId}, ${policyVersion}, ${founderId})`;
+          if (fallback !== current.fallback)
+            await insertEvent(
+              tx,
+              { type: "review_policy.switched", v: 1, visibility: "public", payload: { seq, fallback, reason: a.reason } },
+              { aggregateKind: "review_policy", aggregateId: String(seq), actor: "maintainer", actorAccountId: caller.accountId },
+            );
+          if (policyVersion !== fromVersion)
+            await insertEvent(
+              tx,
+              {
+                type: "review_policy.version_switched",
+                v: 1,
+                visibility: "public",
+                payload: { seq, policyVersion, bootstrapFounder: a.bootstrapFounder ?? current.bootstrapFounder ?? null, reason: a.reason },
+              },
+              { aggregateKind: "review_policy", aggregateId: String(seq), actor: "maintainer", actorAccountId: caller.accountId },
+            );
           return;
         }
         case "end_bootstrap": {

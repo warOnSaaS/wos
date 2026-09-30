@@ -1493,4 +1493,18 @@ do $$ begin
   raise notice 'ok: 0013 repository case, switch, seat pinning';
 end $$;
 
+-- 0014 (D67): review policy versions ---------------------------------------------------------------------------------------
+select wos_test.expect_error($$insert into wos.review_policy_switches (seq, fallback, reason, switched_by, policy_version)
+  values (1, 'none', 'v2 without a founder', '00000000-0000-0000-0000-00000000000c', 'review-policy.v2')$$,
+  'D67: review-policy.v2 without the bootstrap founder', 'names the bootstrap founder');
+select wos_test.expect_error($$insert into wos.review_policy_switches (seq, fallback, reason, switched_by, policy_version, bootstrap_founder_id)
+  values (1, 'none', 'a non-maintainer founder', '00000000-0000-0000-0000-00000000000c', 'review-policy.v2', '00000000-0000-0000-0000-00000000000b')$$,
+  'D67: review-policy.v2 naming a non-maintainer', 'names the bootstrap founder');
+select wos_test.expect_error($$insert into wos.review_policy_switches (seq, fallback, reason, switched_by, policy_version, bootstrap_founder_id)
+  values (1, 'none', 'after bootstrap', '00000000-0000-0000-0000-00000000000c', 'review-policy.v2', '00000000-0000-0000-0000-00000000000c')$$,
+  'D67: review-policy.v2 after bootstrap has ended (these fixtures ended it)', 'bootstrap has ended');
+select wos_test.expect_error($$insert into wos.review_policy_switches (seq, fallback, reason, switched_by, policy_version)
+  values (1, 'none', 'unknown version', '00000000-0000-0000-0000-00000000000c', 'review-policy.v9')$$, 'D67: an unknown policy version');
+do $$ begin raise notice 'ok: 0014 review policy versions'; end $$;
+
 \echo 'all db assertions passed'

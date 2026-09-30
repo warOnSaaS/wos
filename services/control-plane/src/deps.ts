@@ -187,6 +187,12 @@ export interface Config {
   githubRetries: number;
   /** Login of the wOS GitHub App's bot user: the only allowed PR author (S-18). */
   appBotLogin: string;
+  /**
+   * contracts 5.16.0: the bot user's GitHub id, so App commits are authored as `<id>+<login>@users.noreply.github.com`
+   * and GitHub attributes them to the bot. Unattributed commits need one extra approval under the product ruleset's
+   * `require_extra_approval_for_unattributed_changes`.
+   */
+  appBotUserId: number | null;
 }
 
 export type Logger = (level: "info" | "warn" | "error", message: string, fields?: Record<string, unknown>) => void;
@@ -236,6 +242,12 @@ export function configFromEnv(env: Readonly<Record<string, string | undefined>>)
     platformRepo: PLATFORM_REPO,
     githubRetries: 2,
     appBotLogin: `${env.GITHUB_APP_SLUG ?? "waronsaas-wos"}[bot]`,
+    // The production bot user (GET /users/waronsaas-wos[bot] -> 335681065, 2026-09-30); GITHUB_APP_BOT_USER_ID overrides it.
+    appBotUserId: env.GITHUB_APP_BOT_USER_ID
+      ? Number(env.GITHUB_APP_BOT_USER_ID)
+      : env.GITHUB_APP_SLUG && env.GITHUB_APP_SLUG !== "waronsaas-wos"
+        ? null
+        : 335681065,
   };
 }
 

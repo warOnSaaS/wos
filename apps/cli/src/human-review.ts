@@ -26,6 +26,10 @@ export function renderHumanReview(s: HumanReviewSubject): string {
     `repo     ${s.subject.repo}${s.subject.branch ? ` branch ${s.subject.branch}` : ""}`,
   ];
   if (!r.eligibility.eligible) for (const reason of r.eligibility.reasons) out.push(`refused  ${reason}`);
+  if (r.eligibility.eligible && r.bootstrapSelf)
+    out.push(
+      "seat     bootstrap_self (D67): you authored this subject; your verdict is labelled bootstrap_self and the work stays PROVISIONAL until its independent re-review after bootstrap ends",
+    );
   out.push("files");
   for (const f of s.subject.files) out.push(`  ${f.path}\n    ${f.url}`);
   const summary = (s.subject.authorSummary as { summary?: unknown } | null)?.summary;
