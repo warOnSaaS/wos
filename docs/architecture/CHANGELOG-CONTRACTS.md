@@ -138,3 +138,13 @@ MINOR, additive. No route, no migration.
   - `AssessmentRecord` (`wos-assessment-record/v1`): one reference run stored as `docs/assessments/<id>.json` with the verbatim report in `<id>.md`; source is only `reference run by warOnSaaS` (founder, 2026-09-30: no reader submissions).
   - `extractAssessmentBlock(report)`: finds the last fenced `wos-assessment` block (or a `json` block declaring the schema) and validates it; never guesses values.
 - Golden files that embed the contracts version (context-engine manifest hashes, CLI golden output) re-recorded for 5.1.0; no other change in them.
+
+## 5.2.0 — 2026-09-30 (white paper self-assessment, architect role granted to the self-assess workstream for this one change)
+
+MINOR, additive. No route, no migration. Only `packages/contracts/src/assessment.ts` (and `CONTRACTS_VERSION`).
+- `AssessmentBlock` now accepts two schemas, told apart by `schema` (`z.discriminatedUnion`):
+  - `wos-assessment/v1` (`AssessmentBlockV1`), unchanged: every record written under 5.1.0 stays valid.
+  - `wos-assessment/v2` (`AssessmentBlockV2`, asked for by paper v0.9): v1 plus two **required**, bounded lists. `gaps` (at most `MAX_GAPS` = 10): `id` (lowercase slug, 3–48 chars, `GAP_ID_RE`), `title` (≤ 120), `concerns` (the paper section or thesis, ≤ 80), `part` (`I` the thesis, `II` the approach), `severity` (high/medium/low). `improvements` (at most `MAX_IMPROVEMENTS` = 10): `id`, `change` (≤ 240), `gap` (the id of a gap in the same block, or null), `raises` (1–4 of `IMPROVABLE_SCORES`). Ids are unique within each list; an improvement's `gap` must name a gap of the block.
+- Why v2 and not optional fields on v1: the schema string says which brief a block answers. With optional fields, a v0.9 run that skipped the lists would be recorded as "no gaps"; with v2 the lists are required (empty means "looked, found none") and the runner refuses a block whose schema is not the one the served paper specifies.
+- New exports: `ASSESSMENT_SCHEMA_V2`, `ASSESSMENT_SCHEMAS`, `CURRENT_ASSESSMENT_SCHEMA`, `AssessmentGap`, `AssessmentImprovement`, `SEVERITIES`, `PAPER_PARTS`, `IMPROVABLE_SCORES`, `hasGaps(block)`. `ASSESSMENT_SCHEMA` keeps its value (`wos-assessment/v1`). `AssessmentRecord` keeps `wos-assessment-record/v1`; its `block` widens to the union. `extractAssessmentBlock`'s json fallback recognises either schema.
+- Golden files that embed the contracts version re-recorded for 5.2.0 where needed; no other change in them.
