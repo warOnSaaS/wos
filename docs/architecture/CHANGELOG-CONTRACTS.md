@@ -208,3 +208,28 @@ MINOR, additive. No migration yet: migration 0007 comes when the control plane s
 - Regenerated, no other change: golden hashes and output, the vendored validator bundle.
 
 Affected workstreams: control-plane, planning, context-policy (later, section 13); protocol (the delta note).
+
+## 5.6.0 — 2026-09-30 (Wave 3a blocker rulings: B-0001/B-0002/B-0003-suite-shell, B-0007/B-0008-control-plane)
+
+MINOR, additive, plus migration 0008. Rulings and who implements them: WORKSTREAMS 14.
+- `wos-app.ts` (B-0001): `CoreRoutes.localSignInStart`, `localSignInRedeem`, `logout`; `LocalSignInStartBody`, `LocalSignInStartResponse`, `LocalSignInRedeemBody`, `LocalSignInRedeemResponse`.
+- `blocker.ts` (B-0001): `Workstream` gains `suite-shell` and `mobile-runtime`.
+- `api.ts` (B-0002, B-0008):
+  - `startEmailSignIn.clientKind` gains `web_app` (wOS Web's server; body tokens; the link goes to `HOSTS.app + WEB_APP_SIGNIN_CODE_PATH`);
+  - optional `csrfToken` in the `redeemEmailSignIn` and `refreshSession` responses;
+  - `WEB_APP_SIGNIN_CODE_PATH`.
+- `artifacts.ts` (B-0003): optional `RepoManifest.appMigrationsDir`. Planning's `validateBuildGraph` requires `db:migrations:<id>` exclusive for writes under an app's migrations (MIGRATION_WITHOUT_RESOURCE). The product template's `wos.json` now has `migrationsDir: null` and `appMigrationsDir: "applications/*/migrations"`.
+- Migration `0008_build_release.sql` (B-0007):
+  - Build's release may list desktop with no package;
+  - new column `desktop_bundle_sha256`, present exactly with a package and immutable;
+  - db assertions added;
+  - numbered after ws/protocol's 0007 and commutes with it. It relaxes a check and adds a nullable column, recorded as MINOR by architect decision since it breaks no reader or writer.
+  - Production: yes, by the coordinator through the runner (`--check` first).
+- SECURITY:
+  - S-5 amended: host-only cookies, HttpOnly `wos_csrf`, the CSRF value returned in web bodies;
+  - new S-43: wOS Web is a server-side client.
+- WORKSTREAMS: section 5 (contracts bump procedure: regenerate the validator bundle, the site's progress copy, the template's vendored contracts, the goldens), 12.4 (suite-shell exports), 14 (rulings, migration order 0007 protocol then 0008, next free 0009). WOS-APP-PROTOCOL section 8.
+- Dependencies: `nodemailer` (and `@types/nodemailer`) as root devDependencies for the product template's SMTP transport (B-0003 item 4).
+- Regenerated: goldens, the vendored validator bundle.
+
+Affected workstreams: suite-shell, control-plane, desktop, mobile-runtime, verification, web.

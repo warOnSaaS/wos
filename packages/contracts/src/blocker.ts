@@ -21,6 +21,9 @@ export const Workstream = z.enum([
   "rewards",
   "verification",
   "cli",
+  // contracts 5.6.0 (B-0001-suite-shell): the Wave 3 workstreams.
+  "suite-shell",
+  "mobile-runtime",
 ]);
 export type Workstream = z.infer<typeof Workstream>;
 

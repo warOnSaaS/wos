@@ -38,6 +38,8 @@ const ALL = [
   "0004_manifest_per_lease",
   "0005_surfaces",
   "0006_one_product",
+  // 0007 is ws/protocol's 0007_proof_of_contribution (not on main yet); 0008 is B-0007-control-plane.
+  "0008_build_release",
 ];
 
 describe("migration files", () => {

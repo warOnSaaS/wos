@@ -259,6 +259,26 @@ export function validateBuildGraph(
       !holds(a, "db:migrations", "exclusive")
     )
       add("MIGRATION_WITHOUT_RESOURCE", a.key, `${a.key} can write under ${repo.migrationsDir}; it must claim db:migrations exclusive`);
+    // contracts 5.6.0 (B-0003-suite-shell): per-app migrations need that app's db:migrations:<id>.
+    if (repo.appMigrationsDir) {
+      const [pre, post] = repo.appMigrationsDir.split("/*/") as [string, string];
+      for (const s of a.scope.write) {
+        const b = fold(baseOf(s));
+        const tree = s.endsWith("/**");
+        const m = new RegExp(`^${pre.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/([^/]+)(/.*)?$`).exec(b);
+        if (m) {
+          const rest = (m[2] ?? "").slice(1);
+          const touches = rest === post || rest.startsWith(`${post}/`) || (tree && (rest === "" || post.startsWith(`${rest}/`)));
+          if (touches && !holds(a, `db:migrations:${m[1]}`, "exclusive"))
+            add(
+              "MIGRATION_WITHOUT_RESOURCE",
+              a.key,
+              `${a.key} can write ${m[1]}'s migrations; it must claim db:migrations:${m[1]} exclusive`,
+            );
+        } else if (tree && (b === pre || pre.startsWith(`${b}/`)) && !holds(a, "db:migrations", "exclusive"))
+          add("MIGRATION_WITHOUT_RESOURCE", a.key, `${a.key} can write every app's migrations; it must claim db:migrations exclusive`);
+      }
+    }
     for (const t of a.acceptance.tests)
       if (!a.scope.write.some((s) => inScope(t, s)))
         add("TEST_OUTSIDE_SCOPE", a.key, `${a.key} acceptance test ${t} is outside its write scope`);

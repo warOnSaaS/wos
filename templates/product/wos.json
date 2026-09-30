@@ -117,6 +117,7 @@
   ],
   "browsers": ["chromium", "edge", "webkit", "firefox", "mobile_safari", "mobile_chrome"],
   "generatedPaths": ["dist/**", "coverage/**"],
-  "migrationsDir": "db/migrations",
+  "migrationsDir": null,
+  "appMigrationsDir": "applications/*/migrations",
   "maxChangesetBytes": 4000000
 }

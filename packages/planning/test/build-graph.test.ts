@@ -226,6 +226,24 @@ describe("validateBuildGraph", () => {
     expect(issues).toEqual([]);
   });
 
+  it("per-app migrations need db:migrations:<id> (contracts 5.6.0, B-0003-suite-shell)", () => {
+    const r = (x: RepoManifest) => (x.appMigrationsDir = "applications/*/migrations");
+    const write =
+      (w: string, res: { key: string; mode: "exclusive" | "shared" }[] = []) =>
+      (g: G) => {
+        g.abus[1]!.scope.write = [w];
+        g.abus[1]!.resources = res;
+      };
+    const mig = (issues: ReturnType<typeof run>) => issues.filter((i) => i.code === "MIGRATION_WITHOUT_RESOURCE").map((i) => i.message);
+    expect(mig(run({ r, g: write("applications/crm/migrations/0002_x.sql") }))).toEqual([
+      "contacts#02 can write crm's migrations; it must claim db:migrations:crm exclusive",
+    ]);
+    expect(mig(run({ r, g: write("applications/crm/**") }))).toHaveLength(1);
+    expect(mig(run({ r, g: write("applications/**") }))).toHaveLength(1);
+    expect(mig(run({ r, g: write("applications/crm/web/**") }))).toEqual([]);
+    expect(mig(run({ r, g: write("applications/crm/migrations/**", [{ key: "db:migrations:crm", mode: "exclusive" }]) }))).toEqual([]);
+  });
+
   it("covers every BuildGraphErrorCode with a fixture", () => {
     expect(Object.keys(CASES).sort()).toEqual([...BuildGraphErrorCode.options].sort());
   });

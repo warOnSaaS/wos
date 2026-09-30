@@ -6092,6 +6092,22 @@ const ActiveApps = object({
 		manifest: WosAppManifest
 	}))
 });
+const LocalSignInStartBody = object({ email: email().max(254) });
+const LocalSignInStartResponse = object({
+	requestId: Uuid,
+	expiresAt: Timestamp
+});
+const LocalSignInRedeemBody = object({
+	requestId: Uuid,
+	code: string().regex(/^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/)
+});
+const LocalSignInRedeemResponse = object({
+	token: string().min(20),
+	expiresAt: Timestamp,
+	userId: Uuid,
+	organizationId: Uuid,
+	role: OrgRole
+});
 const CoreRoutes = {
 	environment: {
 		method: "GET",
@@ -6114,6 +6130,27 @@ const CoreRoutes = {
 			version: SemVer,
 			screens: lazy(() => array(MobileScreen))
 		})
+	},
+	localSignInStart: {
+		method: "POST",
+		path: "/v1/core/auth/local/start",
+		auth: "public",
+		body: LocalSignInStartBody,
+		status: 202,
+		response: LocalSignInStartResponse
+	},
+	localSignInRedeem: {
+		method: "POST",
+		path: "/v1/core/auth/local/redeem",
+		auth: "public",
+		body: LocalSignInRedeemBody,
+		response: LocalSignInRedeemResponse
+	},
+	logout: {
+		method: "POST",
+		path: "/v1/core/auth/logout",
+		auth: "environment_session",
+		response: object({ ok: literal(true) })
 	}
 };
 const FieldName = string().regex(/^[a-z][a-z0-9_]*$/);
@@ -7407,6 +7444,7 @@ const RepoManifest = object({
 	toolchainPaths: array(string().min(1)).refine((xs) => DEFAULT_TOOLCHAIN_PATHS.every((d) => xs.includes(d)), "toolchainPaths must include DEFAULT_TOOLCHAIN_PATHS"),
 	generatedPaths: array(WriteScope).default([]),
 	migrationsDir: RepoPath.nullable(),
+	appMigrationsDir: string().regex(/^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*\/\*(?:\/[A-Za-z0-9._-]+)+$/).optional(),
 	maxChangesetBytes: number$1().int().positive().max(4e6),
 	toolchainRequirements: array(object({
 		id: string().regex(/^[a-z][a-z0-9-]*$/),
@@ -9121,7 +9159,8 @@ const Routes = {
 			clientKind: _enum([
 				"web",
 				"desktop",
-				"cli"
+				"cli",
+				"web_app"
 			]),
 			deviceName: string().max(100).nullable(),
 			devicePublicKey: string().max(100).nullable()
@@ -9154,7 +9193,8 @@ const Routes = {
 			refreshExpiresAt: Timestamp,
 			deviceId: Uuid.nullable(),
 			created: boolean(),
-			me: Me
+			me: Me,
+			csrfToken: string().min(16).optional()
 		}),
 		errors: ["UNAUTHENTICATED", "RATE_LIMITED"],
 		summary: "Redeems link token or code (single use, 15 min, 5 tries). Web receives an HttpOnly cookie instead of tokens in the body."
@@ -9171,7 +9211,8 @@ const Routes = {
 			accessToken: string(),
 			accessExpiresAt: Timestamp,
 			refreshToken: string(),
-			refreshExpiresAt: Timestamp
+			refreshExpiresAt: Timestamp,
+			csrfToken: string().min(16).optional()
 		}),
 		errors: ["UNAUTHENTICATED"],
 		summary: "Rotating refresh; reuse of a rotated refresh token revokes the whole session family."
@@ -10028,7 +10069,9 @@ const Workstream = _enum([
 	"planning",
 	"rewards",
 	"verification",
-	"cli"
+	"cli",
+	"suite-shell",
+	"mobile-runtime"
 ]);
 const ArchitectureBlocker = object({
 	id: string().regex(/^B-\d{4}-[a-z-]+$/),

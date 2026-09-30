@@ -321,7 +321,13 @@ export const Routes = {
     query: None,
     body: z.object({
       email: z.email().max(254),
-      clientKind: z.enum(["web", "desktop", "cli"]),
+      /**
+       * web: the public site waronsaas.com in the browser (cookies, S-5). web_app (contracts 5.6.0, B-0002-suite-shell):
+       * authenticated wOS Web's SERVER at app.waronsaas.com, a first-party server-side client like desktop and cli:
+       * `pollSecret` and tokens come in the body and never reach browser script (S-43); the emailed link opens
+       * HOSTS.app + WEB_APP_SIGNIN_CODE_PATH + "?r=<requestId>&t=<linkToken>".
+       */
+      clientKind: z.enum(["web", "desktop", "cli", "web_app"]),
       deviceName: z.string().max(100).nullable(),
       /** Desktop/CLI only: Ed25519 public key as base64 of the raw 32 bytes (canonical.ts C-5), generated on first run; private key stays in the OS keychain. */
       devicePublicKey: z.string().max(100).nullable(),
@@ -330,7 +336,8 @@ export const Routes = {
      * Always 202 with the same shape whether or not the email has an account (no enumeration).
      * `pollSecret` is returned only here and never emailed: redeeming the email token also
      * requires it, which binds the sign-in to the client that started it (SECURITY.md S-2).
-     * For web the pollSecret is set as an HttpOnly cookie `wos_signin` instead of returned.
+     * For web the pollSecret is set as an HttpOnly cookie `wos_signin` instead of returned; desktop, cli and
+     * web_app receive it in the body.
      */
     response: z.object({ requestId: Uuid, pollSecret: z.string().nullable(), expiresAt: Timestamp }),
     errors: ["VALIDATION_FAILED"],
@@ -362,6 +369,11 @@ export const Routes = {
       deviceId: Uuid.nullable(),
       created: z.boolean(),
       me: Me,
+      /**
+       * contracts 5.6.0 (B-0008-control-plane, S-5 amended): for clientKind web only, the CSRF value the site sends as
+       * X-wOS-Csrf. Cookies are host-only on api.waronsaas.com, so page script can no longer read wos_csrf.
+       */
+      csrfToken: z.string().min(16).optional(),
     }),
     errors: ["UNAUTHENTICATED", "RATE_LIMITED"],
     summary: "Redeems link token or code (single use, 15 min, 5 tries). Web receives an HttpOnly cookie instead of tokens in the body.",
@@ -374,7 +386,14 @@ export const Routes = {
     params: None,
     query: None,
     body: z.object({ refreshToken: z.string() }),
-    response: z.object({ accessToken: z.string(), accessExpiresAt: Timestamp, refreshToken: z.string(), refreshExpiresAt: Timestamp }),
+    response: z.object({
+      accessToken: z.string(),
+      accessExpiresAt: Timestamp,
+      refreshToken: z.string(),
+      refreshExpiresAt: Timestamp,
+      /** contracts 5.6.0: web only, the rotated CSRF value (see redeemEmailSignIn). */
+      csrfToken: z.string().min(16).optional(),
+    }),
     errors: ["UNAUTHENTICATED"],
     summary: "Rotating refresh; reuse of a rotated refresh token revokes the whole session family.",
   }),
@@ -1083,6 +1102,9 @@ export const AppRoutes = {
   }),
 } as const;
 export type AppRouteName = keyof typeof AppRoutes;
+
+/** contracts 5.6.0 (B-0002-suite-shell): where the sign-in email link for clientKind web_app lands on HOSTS.app. */
+export const WEB_APP_SIGNIN_CODE_PATH = "/sign-in/code" as const;
 
 /** Public web host and API host, fixed by D5. */
 export const HOSTS = {

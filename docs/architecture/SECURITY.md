@@ -63,10 +63,14 @@ Suspension revokes all families and active leases. Workstream: control-plane, de
 refresh reuse revokes family; no token material written outside the keychain (CLI test inspects the
 config directory).
 
-**S-5 Web cookies and CSRF.** Web session cookie `wos_session`: HttpOnly, Secure, SameSite=Lax,
-`Domain=waronsaas.com`. State-changing web requests must send header `X-wOS-Csrf` equal to the
-non-HttpOnly cookie `wos_csrf` (double submit). CORS on the API allows only `https://waronsaas.com`
-with credentials. Workstream: control-plane, web. Test: POST without the header is 403.
+**S-5 Web cookies and CSRF** (amended at contracts 5.6.0, B-0008-control-plane).
+- **Cookies.** Every control-plane cookie (`wos_session`, `wos_refresh`, `wos_csrf`, `wos_signin`) is **host-only** on api.waronsaas.com: no `Domain` attribute, so no other host (app., core., waronsaas.com itself) ever receives it (A10). Each is HttpOnly, Secure and SameSite=Lax.
+- **CSRF (double submit).** State-changing cookie-authenticated requests must send header `X-wOS-Csrf` equal to the `wos_csrf` cookie. The site cannot read that cookie, so it receives the value in the `csrfToken` field of the redeem and refresh bodies (clientKind `web` only) and keeps it in memory.
+- **CORS.** The API allows only `https://waronsaas.com` with credentials.
+- Workstreams: control-plane, web.
+- Tests:
+  - a POST without the header is 403;
+  - no Set-Cookie carries `Domain`.
 
 **S-6 GitHub linking.** Uses the wOS GitHub App's user authorisation (device flow for Desktop/CLI,
 web flow with a hashed `state` for the site), brokered by the server. The server reads `GET /user`
@@ -405,3 +409,11 @@ Those capabilities are spawning the claude, codex and git processes, worktrees a
 **S-41 Entitlements are not DRM.** Self-hosted wOS Core decides what is active from the operator's configuration and never calls wOS Cloud to permit execution. Environment tokens are minted only for wOS Cloud environments. A payment check never sits in the path of running open-source code. Environment tokens are EdDSA JWS with a 15-minute lifetime and a single environment audience; their keys are published at `/v1/public/environment-keys`, current and next. Hosted Core has no platform-DB credentials, and the control plane has none for product data. Workstreams: control-plane, suite-shell. Test: V1 proof step 8 (a self-hosted Core with CRM active and no network route to warOnSaaS).
 
 **S-42 Windows releases are signed (D17).** The Windows installer is signed in the `release` job with Azure Trusted Signing (or an OV certificate), exactly like macOS signing and notarisation (S-30, D7). Unsigned Windows artefacts are never uploaded. Build on Windows keeps worktrees under a short per-user root with `core.longpaths` and `core.autocrlf=false`, and changesets use `/` paths only (case collisions are already refused, S-16). Workstreams: desktop, verification, github-build.
+
+**S-43 wOS Web signs in as a server-side client** (contracts 5.6.0, B-0002-suite-shell).
+- **Server-side only.** Authenticated wOS Web (app.waronsaas.com) signs a wOS account in from its SERVER with `clientKind: "web_app"`: `pollSecret` and tokens come in response bodies, server-to-server. Browser script never sees them; the control plane's CORS is unchanged.
+- **Token storage.** wOS Web keeps the tokens server-side, or in a sealed (authenticated-encrypted), HttpOnly, Secure, SameSite=Lax, **host-only** cookie on app.waronsaas.com.
+- **Browser binding.** The pollSecret is kept the same way, bound to the browser that started sign-in. The email link opens `https://app.waronsaas.com/sign-in/code?r=&t=`, and wOS Web redeems it only with that browser's pollSecret. Opened elsewhere, the page says to use the starting browser and never displays or accepts the link token as a code.
+- **Environment tokens** for hosted Core are obtained server-side the same way.
+- Workstreams: control-plane, suite-shell.
+- Tests: `web_app` bodies carry tokens and the link host is app.waronsaas.com; a link redeemed from another browser (no sealed pollSecret) fails; wOS Web sets no cookie with `Domain`.

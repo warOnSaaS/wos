@@ -137,6 +137,15 @@ export const RepoManifest = z.object({
   generatedPaths: z.array(WriteScope).default([]),
   /** Directory whose files require the `db:migrations` resource. Null if the stack has none. */
   migrationsDir: RepoPath.nullable(),
+  /**
+   * contracts 5.6.0 (B-0003-suite-shell): per-app migrations (WOS-APP-PROTOCOL section 3), a path with exactly one `*`
+   * standing for the app id, e.g. "applications/*\/migrations". Writing under `applications/<id>/migrations` needs
+   * `db:migrations:<id>` exclusive (apps migrate their own schema through their own ledger, so apps never contend).
+   */
+  appMigrationsDir: z
+    .string()
+    .regex(/^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*\/\*(?:\/[A-Za-z0-9._-]+)+$/)
+    .optional(),
   /** Max bytes of one changeset (hard cap 4_000_000 because of the API body limit). */
   maxChangesetBytes: z.number().int().positive().max(4_000_000),
   /**
