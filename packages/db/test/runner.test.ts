@@ -53,6 +53,8 @@ const ALL = [
   "0013_review_fallback_and_first_run",
   // 0014 is D67 (production): the bootstrap founder's human seat under review-policy.v2.
   "0014_bootstrap_founder_human_seat",
+  // 0015 is ws/glm's (D69 candidate trials); 0016 is D71 (production): solo bootstrap under review-policy.v3.
+  "0016_solo_bootstrap",
 ];
 
 /** The first number after the last real migration: the runner tests add throwaway files there. */

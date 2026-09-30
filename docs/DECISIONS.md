@@ -435,3 +435,15 @@ These override `docs/V1-SPEC.md` where they differ. Date: 2026-09-29.
   - only the maintainer account named as the bootstrap founder may use it, and it is refused automatically once bootstrap ends;
   - the founder still never holds both the agent seat and the human seat of one round (`humanMayHoldAgentSlotOfSameRound` is unchanged).
 - Encoded as `review-policy.v2` (`bootstrap.bootstrapFounderMayHoldHumanSeatOnOwnWork: true`, `bootstrapFounderMayHoldBothSeats: false`); v1 is unchanged. It is activated by the existing forward-only AdminAction `switch_review_policy` naming the founder, and a round follows the policy in force when it opened. Contracts 5.16.0, migration 0014 (the database guard of the human seat mirrors it).
+
+## D71. Solo bootstrap: the founder may hold both seats of a round on the founder's own work (coordinator ruling for the founder, 2026-09-30)
+- The founder: "there is no way I am set up for other reviewers yet … that cannot be baked in this early". So while bootstrap is on (D23/D54, F31), the bootstrap founder named by the review policy may:
+  - (a) run the agent seat (Astra, on the founder's own Codex) AND hold the D53 human seat of the same round, on work the founder's account authored;
+  - (b) do so without the 24-hour self-review wait (`selfReviewAfterHours`).
+- What still holds:
+  - the agent seat's model is never the author's model (Astra for Opus- or GLM-authored work; a candidate-trial author under D69 is matched by the model id its run recorded);
+  - the human seat opens only after the agent verdict is sealed;
+  - everything is labelled `bootstrap_self` and `single_lab_review` in public (round, `round.revealed`, PR comment, provenance);
+  - the work stays PROVISIONAL (D23) and gets the independent re-review of REVIEW-PROTOCOL section 9 "After exit";
+  - it is refused for anyone except the named founder, and for everyone once bootstrap ends.
+- Encoded as `review-policy.v3` (`bootstrapFounderMayHoldBothSeats: true`, `bootstrapFounderSkipsSelfReviewWait: true`). v1 and v2 are unchanged. It is activated by the same forward-only `switch_review_policy`, and a round follows the policy in force when it opened. Contracts 5.18.0, migration 0016.

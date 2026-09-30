@@ -44,6 +44,26 @@ async function pinnedPolicy(tx: Tx, seq: number | null): Promise<{ version: stri
 }
 
 /**
+ * The bootstrap founder exception for `accountId` on a round that pinned switch `seq`, while bootstrap is on:
+ * review-policy.v2 (D67) lets the founder hold the human seat on own work; v3 (D71, solo bootstrap) also the agent seat of
+ * the same round, without the self-review wait. Only the founder the policy names.
+ */
+export async function founderException(
+  tx: Tx,
+  seq: number | null,
+  accountId: string,
+): Promise<{ humanSeat: boolean; bothSeats: boolean; skipWait: boolean }> {
+  const none = { humanSeat: false, bothSeats: false, skipWait: false };
+  const pinned = await pinnedPolicy(tx, seq);
+  if (pinned.founderId !== accountId || pinned.version === "review-policy.v1") return none;
+  const [b] = await tx<{ on: boolean }[]>`
+    select coalesce((value ->> 'enabled')::boolean, false) as on from wos.platform_settings where key = 'bootstrap_mode'`;
+  if (!b?.on) return none;
+  const v3 = pinned.version === "review-policy.v3";
+  return { humanSeat: true, bothSeats: v3, skipWait: v3 };
+}
+
+/**
  * Whether `accountId` may hold the human seat of `round` now: the refusals (empty = eligible) and whether the seat would
  * be the founder's own work under D67 (labelled bootstrap_self). Migration 0014 re-checks all of it.
  */
@@ -62,19 +82,20 @@ export async function humanSeatCheck(
     ? await tx`select 1 as x from wos.attempts where id = ${round.attempt_id} and account_id = ${accountId}`
     : await tx`select 1 as x from wos.changesets c join wos.tasks t on t.id = c.task_id
                 where t.document_id = ${round.document_id} and c.account_id = ${accountId} and c.ok`;
+  let bothSeats = false;
   if (author) {
-    // D67 (review-policy.v2): the bootstrap founder it names, on the policy the round pinned, while bootstrap is on.
-    const pinned = await pinnedPolicy(tx, round.review_policy_seq);
-    const [b] = await tx<{ on: boolean }[]>`
-      select coalesce((value ->> 'enabled')::boolean, false) as on from wos.platform_settings where key = 'bootstrap_mode'`;
-    if (pinned.version === "review-policy.v2" && pinned.founderId === accountId && b?.on) bootstrapSelf = true;
+    // D67 (v2) / D71 (v3): the bootstrap founder named by the policy the round pinned, while bootstrap is on.
+    const founder = await founderException(tx, round.review_policy_seq, accountId);
+    if (founder.humanSeat) bootstrapSelf = true;
     else r.push(HUMAN_SEAT_REASONS.author);
+    bothSeats = founder.bothSeats;
   }
   const [agent] = await tx`
     select 1 as x from wos.reviews where round_id = ${round.id} and account_id = ${accountId}
     union all select 1 from wos.tasks t join wos.leases l on l.task_id = t.id
      where t.round_id = ${round.id} and l.account_id = ${accountId} and l.state = 'active'`;
-  if (agent) r.push(HUMAN_SEAT_REASONS.agentSeat);
+  // D71 (v3, solo bootstrap): the founder may hold both seats of a round on own work; everyone else never.
+  if (agent && !bothSeats) r.push(HUMAN_SEAT_REASONS.agentSeat);
   const [sealed] = await tx`select 1 as x from wos.reviews where round_id = ${round.id} and slot = 'astra'`;
   if (!sealed) r.push(HUMAN_SEAT_REASONS.agentPending);
   const [done] = await tx`select 1 as x from wos.round_human_reviews where round_id = ${round.id}`;

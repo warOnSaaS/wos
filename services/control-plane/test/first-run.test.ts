@@ -9,7 +9,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { renderScan } from "../src/domain/plans.js";
 import { agentSeatRefusals } from "../src/domain/review.js";
 import { BUNDLED_SCANS } from "../src/generated/scans.js";
@@ -61,6 +61,10 @@ describe.skipIf(!HAS_DB)("first real run: D53 human seat, repository case, PR li
   });
   afterAll(async () => {
     await h?.close();
+  });
+  // One founder drives every scenario here: reset the per-account write limit (S-3) between them.
+  beforeEach(async () => {
+    await h.owner`delete from wos.rate_limits`;
   });
 
   const dispatch = () => h.call("GET", "/v1/cron/dispatch", { headers: { authorization: `Bearer ${CRON_SECRET}` } });
@@ -484,6 +488,84 @@ describe.skipIf(!HAS_DB)("first real run: D53 human seat, repository case, PR li
     expect(refused.status).toBe(403);
     await action(founder, { action: "abandon_document", documentId: other.documentId, reason: "D67 check done" });
 
+    expect(h.violations).toEqual([]);
+  });
+
+  it("D71: under review-policy.v3 the founder holds the Astra seat and the human seat of own work, no 24 h wait, all bootstrap_self", async () => {
+    const v3 = await action(founder, { action: "switch_review_policy", policyVersion: "review-policy.v3", reason: "D71: solo bootstrap" });
+    expect(v3.status, JSON.stringify(v3.body)).toBe(200);
+    const status = await h.call("GET", "/v1/public/status");
+    expect(status.body.reviewPolicy).toMatchObject({ policyVersion: "review-policy.v3", bootstrapFounder: "fr-founder" });
+
+    const opened = await open("shopify");
+    await authorRevision(h, founder, opened.taskId, roadmapFiles({ target: "shopify", feature: "storefront" }), { model: "opus" });
+    const round = await roundOf(opened.documentId);
+    // Never the author's model: Astra may review Opus- (or GLM-) authored work, the author's own model may not.
+    const seat = (model: string) =>
+      h.owner.begin((tx) =>
+        agentSeatRefusals(tx as never, { id: round.id, attempt_id: null, document_id: opened.documentId }, "astra", model),
+      );
+    expect(await seat("gpt-6-astra")).toEqual([]);
+    expect(await seat("claude-opus-5-5")).toContain(
+      "claude-opus-5-5 may not review work built by claude-opus-5-5 (same-model self-review)",
+    );
+    // A candidate-trial author (D69, GLM via OpenCode) is handled the same way, by the model id its run recorded.
+    await h.owner.begin(async (tx) => {
+      // Test-only: context manifests are append-only; the recorded author model is set directly (no GLM CLI here).
+      await tx`set local session_replication_role = replica`;
+      await tx`update wos.context_manifests m set model_id = 'glm-5.1' from wos.changesets c join wos.tasks t on t.id = c.task_id
+                where t.document_id = ${opened.documentId} and c.ok and m.lease_id = c.lease_id and m.manifest_sha256 = c.manifest_sha256`;
+    });
+    expect(await seat("gpt-6-astra")).toEqual([]);
+    expect(await seat("glm-5.1")).toContain("glm-5.1 may not review work built by glm-5.1 (same-model self-review)");
+    await h.owner.begin(async (tx) => {
+      // Test-only: context manifests are append-only; the recorded author model is set directly (no GLM CLI here).
+      await tx`set local session_replication_role = replica`;
+      await tx`update wos.context_manifests m set model_id = 'claude-opus-5-5' from wos.changesets c join wos.tasks t on t.id = c.task_id
+                where t.document_id = ${opened.documentId} and c.ok and m.lease_id = c.lease_id and m.manifest_sha256 = c.manifest_sha256`;
+    });
+
+    // The founder takes the Astra seat of own work at once (no 24 h wait), then the human seat.
+    const agent = await reviewAs(h, founder, "astra", "roadmap_review", verdict("NO_MATERIAL_GAPS"));
+    expect(agent.res.status, JSON.stringify(agent.res.body)).toBe(200);
+    const [rev] = await h.owner<{ independence: string; model_id: string }[]>`
+      select independence, model_id from wos.reviews where round_id = ${round.id}`;
+    expect(rev).toEqual({ independence: "bootstrap_self", model_id: "gpt-6-astra" });
+    const item = (await h.call("GET", "/v1/human-reviews", { token: founder.token })).body.items.find(
+      (i: { roundId: string }) => i.roundId === round.id,
+    );
+    expect(item).toMatchObject({ eligibility: { eligible: true, reasons: [] }, bootstrapSelf: true });
+    const sealed = await humanVerdict(founder, round.id, {
+      verdict: verdict("NO_MATERIAL_GAPS"),
+      headSha: round.head_sha,
+      submissionSha256: round.submission_sha256,
+    });
+    expect(sealed.status, JSON.stringify(sealed.body)).toBe(200);
+    expect(sealed.body.outcome).toBe("consensus");
+    const [rd] = await h.owner<{ independence: string; review_label: string }[]>`
+      select independence, review_label from wos.rounds where id = ${round.id}`;
+    expect(rd).toEqual({ independence: "bootstrap_self", review_label: "single_lab_review" });
+    await dispatch();
+    const [doc] = await h.owner<{ pr_number: number }[]>`select pr_number from wos.documents where id = ${opened.documentId}`;
+    const comment = h.github.reviewComments.find((c) => c.prNumber === doc!.pr_number)!.body;
+    expect(comment).toContain("Independence: `bootstrap_self`");
+    expect(comment).toContain("single_lab_review");
+    expect(comment).toMatch(/Astra MAX \(attested, `gpt-6-astra`\) by @fr-founder/);
+
+    // Only the named founder: another maintainer's own work stays closed to them on the agent seat and the human seat.
+    const other = await open("slack");
+    await authorRevision(h, human, other.taskId, roadmapFiles({ target: "slack", feature: "channels" }), { model: "opus" });
+    const own = await h.call("POST", "/v1/reviews/claim", {
+      token: human.token,
+      idem: true,
+      body: { deviceId: human.deviceId, slot: "astra", kinds: ["roadmap_review"] },
+    });
+    expect(own.body).toBeNull();
+    await action(founder, { action: "abandon_document", documentId: other.documentId, reason: "D71 check done" });
+    expect(h.violations).toEqual([]);
+  });
+
+  it("after bootstrap ends the founder exceptions (D67, D71) are refused by the API and the database", async () => {
     // Refused automatically once bootstrap ends (the database re-checks it too).
     // (The Astra seat is taken while bootstrap still waives the contribution minimum for this test reviewer.)
     const late = await open("netsuite");
@@ -503,6 +585,8 @@ describe.skipIf(!HAS_DB)("first real run: D53 human seat, repository case, PR li
               values (${r3.id}, ${founder.id}, ${r3.head_sha}, ${r3.submission_sha256}, 'NO_MATERIAL_GAPS', '{}', 'single_lab_review', 'x')`,
     ).rejects.toThrow(/authored the subject/);
     await action(founder, { action: "abandon_document", documentId: late.documentId, reason: "D67 check done" });
+    // No new bootstrap exception can be activated either.
+    expect((await action(founder, { action: "switch_review_policy", fallback: "none", reason: "after bootstrap" })).status).toBe(200);
     expect(h.violations).toEqual([]);
   });
 
