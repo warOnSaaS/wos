@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Two-session races for migration 0007 (Astra review 03: A3-2, A3-4, A3-9 and the review-02 M14 residual).
 # Run by scripts/test-migrations.sh after db-assertions.sql, in the same throwaway container. Each race holds the
-# first session's transaction open while the second writes; the invariant is then checked on the committed state.
+# first session's transaction open while the second writes; the invariant is then checked on the committed state. Since
+# D51 the money invariants are checked at COMMIT (deferred, serialized), so the later committer is the one refused.
 # All four races were ACCEPTED (invariant broken) on the pre-fix migration: docs/protocol/reviews/ASTRA-REVIEW-03-repros-prefix.txt.
 set -euo pipefail
 NAME="$1"
@@ -45,7 +46,9 @@ SQL
 
 fail=0
 race() { # label, first session (held open), second session, invariant query that must print ok
-  printf 'BEGIN;\n%s\nselect pg_sleep(2);\nCOMMIT;\n' "$2" | "${PSQL[@]}" >/dev/null 2>&1 &
+  local out1
+  out1=$(mktemp)
+  printf 'BEGIN;\n%s\nselect pg_sleep(2);\nCOMMIT;\n' "$2" | "${PSQL[@]}" >"$out1" 2>&1 &
   local first=$!
   sleep 0.7
   local second
@@ -53,8 +56,11 @@ race() { # label, first session (held open), second session, invariant query tha
   wait "$first" || true
   local verdict
   verdict=$(printf '%s\n' "$4" | "${PSQL[@]}" 2>&1 | tail -1)
+  local firstmsg
+  firstmsg=$(grep -E '^ERROR' "$out1" | head -1 || true)
+  rm -f "$out1"
   if [ "$verdict" = "ok" ]; then
-    echo "ok (race): $1 — second session: ${second:-committed}"
+    echo "ok (race): $1 — first session: ${firstmsg:-committed}; second session: ${second:-committed}"
   else
     echo "RACE FAILED: $1 — invariant: $verdict"
     fail=1

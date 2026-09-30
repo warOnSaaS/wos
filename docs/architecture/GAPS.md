@@ -378,3 +378,6 @@ Founder decisions raised by review 03 are listed separately in ADR-001 ยง6 (F17โ
 ### G-96 Integrations and connections: Amendment 03 (D50) after the protocol rework
 - Integrations/connections will be designed Cloud-first (wOS-registered OAuth apps; credentials read from settings so self-hosters can supply their own) as Amendment 03, after the current rework. Nothing in the protocol may assume first-class self-hosting; completion definitions now require an exit-rights check (standard Postgres, settings/env configuration, data export), not a self-host check. Stage 2/3 self-host work (Docker Compose, SSO, BYO OAuth, relays, LTS, environment switcher) is deferred per D50.
 
+### G-97 Rules moved to the engine rely on the service calling them (D51)
+- The database no longer refuses procedurally wrong rows that do not break a money invariant (a qualification without its round, a confiscation decision before the reply window, an unapproved admin action consumed). Before any service writes protocol records: one write module holding the insert grants, a contract test per write path that it calls its rule and refuses on any refusal, and a nightly audit job that re-evaluates every stored row against the rules and raises a signal on a mismatch.
+

@@ -252,3 +252,8 @@ These override `docs/V1-SPEC.md` where they differ. Date: 2026-09-29.
 - Deferred from Amendment 01: the client environment switcher, self-host sign-in flows, first-class self-host UX. Integrations and connections will be designed Cloud-first (wOS-registered OAuth apps; credentials read from settings so self-hosters can supply their own) as Amendment 03, after the protocol rework.
 - Protocol impact: "entitlements never gate self-hosted code" stays (it is simply "no licence checks"); nothing in the protocol assumes first-class self-hosting.
 
+## D51. Engine-first enforcement: the database keeps only hard invariants (founder-approved, 2026-09-30)
+- Migration 0007 had grown to about 2,900 lines of SQL triggers and each review round found new enforcement gaps there; the method, not the individual bugs, was the risk. With usage fraud gone (D49), the database's job shrinks to invariants that must hold even if the application is buggy: append-only records, uniqueness, conservation and non-negative balances at commit, reviewer independence and no self-review, serialized epoch publication, budget immutability after a lease, settlement finality.
+- Policy evaluation, qualification chains, dispute outcome derivation, pool payout rules, holdback schedules, confiscation computation, governance tallies, canary evaluation and budget-model bounds live in the deterministic engine and rules (`packages/contracts/src/protocol`) with table tests; the service layer must call them before writing; the database stores their outputs append-only.
+- No guarantee may silently disappear: every repro and assertion of reviews 02 and 03 is rejected by an SQL invariant or by a rule test (docs/protocol/GUARANTEES.md; REVIEW-PACKET §3e).
+

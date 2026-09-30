@@ -10,4 +10,5 @@ export * from "./machines.js";
 export * from "./receipts.js";
 export * from "./usage.js";
 export * from "./governance.js";
+export * from "./rules.js";
 export * from "./data.js";

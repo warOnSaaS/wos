@@ -106,6 +106,10 @@ Every finding was reproduced on the pre-fix code before any change (`reviews/AST
 
 **What is new and must be designed against.** Budget inflation (bounded multipliers, human approval above 1.25×, hard maximum 2×, peer ranking, proposer may not build), task splitting / reward stacking (per-objective budget cap), cherry-picking easy budgets and stale budgets (recalibration from telemetry of accepted tasks, expiry and re-pricing), low-effort acceptance (full qualification chain, audits, holdback), calibration poisoning by fabricated telemetry (G-91). Simulation tables N, O, P quantify them.
 
+## 10. D51 — engine-first enforcement
+
+The database keeps only the hard invariants I1–I9 (PROTOCOL §12); procedure moves to pure, tested rules the service must call (`rules.ts`); migration 0007 shrinks from about 2,900 to about 1,720 lines. Every v4 assertion is mapped to its new guard in GUARANTEES.md; money invariants (conservation at commit, uniqueness, finality) stay in SQL as the backstop. Residual: G-97.
+
 ## 5. Open questions
 
 1. Is ATTESTED usage acceptable as the basis of value-bearing WOS at all (3.4)? The contracts say no until decided.
