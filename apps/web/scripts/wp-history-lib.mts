@@ -42,7 +42,7 @@ export type ChangelogEntry = {
 
 /**
  * Changelog entries: every "### vX.Y" heading inside a level-2 section whose heading starts with "Changelog"
- * ("## Changelog" in the paper, "## Changelog history (v0.1 to v0.6)" in APPENDICES.md). An entry runs to the next
+ * ("## Changelog" in the paper, "## Changelog history (v0.1 to v0.7)" in APPENDICES.md). An entry runs to the next
  * heading of any level, or to a line starting with "Earlier versions" (the paper's pointer to APPENDICES.md, which is
  * a footer of the section, not part of the last entry).
  */

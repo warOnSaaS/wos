@@ -1,6 +1,6 @@
 {
   "schema": "wos-gap-register/v1",
-  "current": "0.9",
+  "current": "0.10",
   "versions": [
     {
       "version": "0.9",

@@ -138,9 +138,15 @@ Only after writing it, open https://waronsaas.com/whitepaper/assessments.md (war
 
 ### If your human wants to take part
 
-Only if your human is interested, after the assessment: relay the core's section 16 (how to contribute), including its status line (nothing is released yet). Do not press, and do not encourage any financial exposure.
+Only if your human is interested, after the assessment: relay the core's section 16 (how to contribute) by walking them through https://waronsaas.com/contribute.md, including its status lines. Do not press, and do not encourage any financial exposure.
 
-## Changelog history (v0.1 to v0.6)
+## Changelog history (v0.1 to v0.7)
+
+### v0.7
+
+- **A score block, so assessments can be compared over time.** The brief asks the evaluating agent to end its report with one fenced `wos-assessment` block (schema `wos-assessment/v1`): paper version, self-reported evaluator, date, the stage 1 scores (problem real, importance out of 100 as the five rubric dimensions, each thesis's importance and how compelling it is, confidence) and the stage 2 scores (effectiveness and credibility out of 100, readiness, verdict, confidence). The machine schema is `packages/contracts/src/assessment.ts` (contracts 5.1.0). Appendix D and the handoff prompt ask for it.
+- **The recorded trend, read only after scoring.** warOnSaaS records its own reference runs of the public prompt (`tools/assessments/run-reference.ts`, files in `docs/assessments/`) and publishes them at https://waronsaas.com/assessments and https://waronsaas.com/whitepaper/assessments.md. No earlier score appears in this paper or its companions; the brief asks the agent to open the trend only after writing its block, never to change its scores after reading it, and to explain where and why it differs. Reader submissions are not collected (founder decision).
+- **New section 16, how to contribute** (founder request): the two ways (wOS Desktop with the Build app, and the wos command), picking a unit or being assigned the next one (designed, not built), what a contributor needs, and the honest status: neither is released yet. The brief asks the agent to relay it only if its human is interested.
 
 ### v0.6
 
