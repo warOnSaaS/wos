@@ -5,6 +5,10 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  allocationChallengeDecisionRefusals,
+  allocationChallengeRefusals,
+  challengedAllocationPaymentRefusals,
+  rulingLabRecordsFromConfirmedRuling,
   claimEligibilityRefusals,
   computeEpoch,
   acceptanceRequirement,
@@ -201,8 +205,8 @@ function bound(leaseId: string, humanReviewRequired = false, over: Record<string
   return { snapshotBody: body, snapshotRow: { leaseId, generation: 1, snapshotSha256: sha }, qualificationSnapshotSha256: sha };
 }
 const SINGLE_LAB = [{ label: "single_lab_review", reason: "fable_unavailable: Fable seat replaced by the required human review (D53)" }];
-const ASTRA_PASS = { slot: "astra", verdict: "NO_MATERIAL_GAPS", modelId: "gpt-6-astra", reasoning: "max" };
-const FABLE_PASS = { slot: "fable", verdict: "NO_MATERIAL_GAPS", modelId: "claude-fable-5-1", reasoning: "max" };
+const ASTRA_PASS = { slot: "astra", verdict: "NO_MATERIAL_GAPS", provider: "codex_cli", modelId: "gpt-6-astra", reasoning: "max" };
+const FABLE_PASS = { slot: "fable", verdict: "NO_MATERIAL_GAPS", provider: "claude_cli", modelId: "claude-fable-5-1", reasoning: "max" };
 describe("qualification chain (H7, A3-5) — moved from 0007 check_qualification_result", () => {
   const base: QualificationEvidence = {
     subjectKind: "document",
@@ -1702,3 +1706,185 @@ function computeEpochFor(params: ReturnType<typeof engineParamsFrom>, budgetMicr
     params,
   );
 }
+
+// ------------------------------------------------------------------------------------------------ Astra review 07
+describe("Astra review 07: rule regressions (docs/protocol/reviews/ASTRA-REVIEW-07-repros-prefix.txt)", () => {
+  const q7: QualificationEvidence = {
+    subjectKind: "document",
+    subjectId: "d1",
+    revision: "b".repeat(40),
+    lease: {
+      id: LEASE_C3,
+      generation: 1,
+      accountId: "bob",
+      taskKind: "roadmap_author",
+      taskAttemptId: null,
+      taskAbuId: null,
+      taskDocumentId: "d1",
+      issuedAtMs: NOW - 3 * H,
+      expiresAtMs: NOW + 0.5 * H,
+      hardDeadlineAtMs: NOW + H,
+      endedAtMs: NOW - 0.1 * H,
+    },
+    citedGeneration: 1,
+    changeset: { leaseId: LEASE_C3, ok: true, signatureValid: true, createdAtMs: NOW - 0.5 * H, submissionSha256: "s9" },
+    round: {
+      state: "revealed",
+      outcome: "consensus",
+      headSha: "b".repeat(40),
+      submissionSha256: "s9",
+      attemptId: null,
+      documentId: "d1",
+      reviewVerdicts: [ASTRA_PASS],
+    },
+    greenCiAtHead: false,
+    ...bound(LEASE_C3),
+    pinnedReviewPolicy: REVIEW_POLICY_V1,
+    pinnedCapabilityPolicy: CAPABILITY_POLICY_V1,
+    humanPreMergePassOnRound: true,
+    receiptLabels: SINGLE_LAB,
+  };
+  it("baseline (fallback): Opus + Astra max + human qualifies", () => expect(qualificationRefusals(q7)).toEqual([]));
+  it("R07-1 repro: a correctly bound snapshot with an unknown risk class cannot qualify (no fewer reviews, fail closed)", () => {
+    refused(
+      qualificationRefusals({
+        ...q7,
+        ...bound(LEASE_C3, false, { riskClass: "unknown-risk" }),
+        round: { ...q7.round!, reviewVerdicts: [] },
+      }),
+      /0 rules for risk class unknown-risk/,
+    );
+    const dup = {
+      ...REVIEW_POLICY_V1,
+      rules: [...REVIEW_POLICY_V1.rules, REVIEW_POLICY_V1.rules.find((r) => r.riskClass === "standard")!],
+    };
+    refused(qualificationRefusals({ ...q7, pinnedReviewPolicy: dup }), /2 rules for risk class standard/);
+    const unknownCap = {
+      ...REVIEW_POLICY_V1,
+      rules: REVIEW_POLICY_V1.rules.map((r) =>
+        r.riskClass === "standard" ? { ...r, agentReviews: [{ capability: "REVIEW_Z", reasoning: "max" as const }] } : r,
+      ),
+    };
+    refused(qualificationRefusals({ ...q7, pinnedReviewPolicy: unknownCap }), /unknown review capability REVIEW_Z/);
+  });
+  it("R07-1 repro: a capability policy other than the pinned version fails even when it is valid", () => {
+    const v2 = {
+      ...CAPABILITY_POLICY_V1,
+      policyVersion: "capability-policy.v2",
+      classes: CAPABILITY_POLICY_V1.classes.map((c) =>
+        c.id === "REVIEW_A" ? { ...c, qualified: [{ ...c.qualified[0]!, modelId: "unqualified-in-v1" }] } : c,
+      ),
+    };
+    refused(
+      qualificationRefusals({
+        ...q7,
+        pinnedCapabilityPolicy: v2,
+        round: { ...q7.round!, reviewVerdicts: [{ ...ASTRA_PASS, modelId: "unqualified-in-v1" }] },
+      }),
+      /capability policy used is not the one the snapshot pinned/,
+    );
+  });
+  it("R07-1: the reviewer (provider, model) tuple must be a qualified one", () =>
+    refused(
+      qualificationRefusals({ ...q7, round: { ...q7.round!, reviewVerdicts: [{ ...ASTRA_PASS, provider: "claude_cli" }] } }),
+      /claude_cli\/gpt-6-astra is not a qualified/,
+    ));
+  it("R07-1: an unknown risk class also refuses the builder before any reservation", () =>
+    refused(
+      builderAcceptanceRefusals(acceptanceRequirement(REVIEW_POLICY_V1, CAPABILITY_POLICY_V1, "unknown-risk"), "claude-opus-5-5"),
+      /0 rules/,
+    ));
+  it("R07-2 repro: an ACTIVE allocation can be challenged freely in its window, bound to the frozen receipt and root", () => {
+    const c = {
+      epochState: "PROPOSED",
+      nowMs: NOW,
+      windowClosesAtMs: NOW + H,
+      receiptStatus: "ACTIVE",
+      frozenReceiptSha256: "sha256:r",
+      currentReceiptSha256: "sha256:r",
+      publishedAllocationsRoot: "sha256:root",
+      citedAllocationsRoot: "sha256:root",
+      allocationOfReceiptInEpoch: true,
+      challengerIsAccusedOrRelated: false,
+      alreadyChallengedUndecided: false,
+    };
+    expect(allocationChallengeRefusals(c)).toEqual([]);
+    refused(allocationChallengeRefusals({ ...c, nowMs: NOW + H }), /window is not open/);
+    refused(allocationChallengeRefusals({ ...c, citedAllocationsRoot: "sha256:other" }), /allocations root/);
+    refused(allocationChallengeRefusals({ ...c, currentReceiptSha256: "sha256:changed" }), /frozen receipt revision/);
+    refused(allocationChallengeRefusals({ ...c, challengerIsAccusedOrRelated: true }), /own/);
+    refused(allocationChallengeRefusals({ ...c, receiptStatus: "PROVISIONAL" }), /D54 publication/);
+    refused(
+      challengedAllocationPaymentRefusals({ challenged: true, decision: null, entitledSoFar: 0n, amount: 1n }),
+      /undecided challenge/,
+    );
+    expect(
+      challengedAllocationPaymentRefusals({
+        challenged: true,
+        decision: { outcome: "changed", resultingAmount: 60n },
+        entitledSoFar: 0n,
+        amount: 60n,
+      }),
+    ).toEqual([]);
+    refused(
+      challengedAllocationPaymentRefusals({
+        challenged: true,
+        decision: { outcome: "changed", resultingAmount: 60n },
+        entitledSoFar: 0n,
+        amount: 61n,
+      }),
+      /decided amount/,
+    );
+    const d = {
+      outcome: "changed" as const,
+      resultingAmount: 60n,
+      allocationAmount: 100n,
+      replied: true,
+      nowMs: NOW,
+      replyDeadlineAtMs: NOW + H,
+      alreadyDecided: false,
+      authorizationRefusals: [],
+    };
+    expect(allocationChallengeDecisionRefusals(d)).toEqual([]);
+    refused(allocationChallengeDecisionRefusals({ ...d, resultingAmount: 120n }), /lowered/);
+    refused(allocationChallengeDecisionRefusals({ ...d, replied: false }), /replied/);
+    refused(allocationChallengeDecisionRefusals({ ...d, alreadyDecided: true }), /one decision/);
+  });
+  it("R07-5: every transition endpoint of the receipt machine is a declared state", () => {
+    for (const t of ReceiptStatusMachine.transitions) {
+      expect(ReceiptStatusMachine.states).toContain(t.from);
+      expect(ReceiptStatusMachine.states).toContain(t.to);
+    }
+  });
+  it("R07-7 repro: D58 records derive from a CONFIRMED ruling's decisions and the resolver's run; unknown labs fail closed", () => {
+    const ruling = { id: "r1", state: "confirmed", rulings: [{ findingId: "f1", decision: "upheld" as const }] };
+    expect(
+      rulingLabRecordsFromConfirmedRuling(ruling, { kind: "agent", provider: "codex_cli" }, [
+        { findingId: "f1", raisedByProvider: "claude_cli" },
+      ]),
+    ).toEqual([{ rulingId: "r1", findingId: "f1", raisedByLab: "anthropic", resolvedByLab: "openai", outcome: "upheld" }]);
+    expect(() =>
+      rulingLabRecordsFromConfirmedRuling({ ...ruling, state: "awaiting_maintainer" }, { kind: "human" }, [
+        { findingId: "f1", raisedByProvider: "claude_cli" },
+      ]),
+    ).toThrow(/not confirmed/);
+    expect(() =>
+      rulingLabRecordsFromConfirmedRuling(ruling, { kind: "agent", provider: "mystery" }, [
+        { findingId: "f1", raisedByProvider: "claude_cli" },
+      ]),
+    ).toThrow(/resolver's lab is unknown/);
+    expect(() => rulingLabRecordsFromConfirmedRuling(ruling, { kind: "agent", provider: "codex_cli" }, [])).toThrow(/raised it is unknown/);
+    expect(() =>
+      rulingLabRecordsFromConfirmedRuling(ruling, { kind: "agent", provider: "claude_cli" }, [
+        { findingId: "f1", raisedByProvider: "claude_cli" },
+      ]),
+    ).toThrow(/its own lab/);
+    expect(() =>
+      routeDisputedFindings({
+        fallbackActive: false,
+        findings: [{ findingId: "x", raisedByLabs: [] }],
+        labsWithEligibleResolver: ["openai"],
+      }),
+    ).toThrow(/unknown/);
+  });
+});

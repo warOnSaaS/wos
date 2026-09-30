@@ -135,26 +135,124 @@ race "B2 (review 05): one task's reservation allocated in two epochs concurrentl
   "select wos_test.alloc(gen_random_uuid(), 23, '$D', '$X-0000000000e8', 'execution', 67);" \
   "select case when (select coalesce(sum(amount_base), 0) from wos.allocations where receipt_id in ('$X-0000000000e7', '$X-0000000000e8')) <= 100
                then 'ok' else (select sum(amount_base) from wos.allocations where receipt_id in ('$X-0000000000e7', '$X-0000000000e8')) || ' allocated against 100' end;"
-# Review 06 R06-2: a free challenge racing silence finalization of a PROVISIONAL receipt (D54). The window closes 0.4 s
-# after it opens: the first session challenges inside it and holds its transaction; the second finalizes after the close.
-# Both take the receipt's subject lock and read state after it: exactly one of them may commit.
+# ---- Exact races (review 07): the expected WINNER commits, the LOSER fails with the expected reason, the final state is
+# the expected one, and a timeout, deadlock or fixture failure can never pass as success. Both orderings are run.
+race_exact() { # label, first (held 2 s), second, expect_first ("committed" | regex), expect_second, final query printing ok
+  local out1 out2 s1 s2 verdict
+  out1=$(mktemp)
+  printf 'BEGIN;\n%s\nselect pg_sleep(2);\nCOMMIT;\n' "$2" | "${PSQL[@]}" >"$out1" 2>&1 &
+  local first=$!
+  sleep 0.7
+  # a hung session is killed after 20 s and can never count as a success
+  out2=$(printf 'BEGIN;\n%s\nCOMMIT;\n' "$3" | perl -e 'alarm 20; exec @ARGV' "${PSQL[@]}" 2>&1; echo "exit:$?")
+  local e1=0
+  wait "$first" || e1=$?
+  s1=$(grep -E '^ERROR' "$out1" | head -1 || true)
+  if [ -z "$s1" ] && [ "$e1" = 0 ]; then s1=committed; fi
+  s2=$(grep -E '^ERROR' <<<"$out2" | head -1 || true)
+  if [ -z "$s2" ] && grep -q '^exit:0$' <<<"$out2"; then s2=committed; fi
+  rm -f "$out1"
+  verdict=$(printf '%s\n' "$6" | "${PSQL[@]}" 2>&1 | tail -1 || true)
+  local ok=1
+  if [ "$4" = committed ]; then [ "$s1" = committed ] || ok=0; else grep -Eq -- "$4" <<<"$s1" || ok=0; fi
+  if [ "$5" = committed ]; then [ "$s2" = committed ] || ok=0; else grep -Eq -- "$5" <<<"$s2" || ok=0; fi
+  if [ "$verdict" != ok ]; then ok=0; fi
+  if [ "$ok" = 1 ]; then
+    echo "ok (race, exact): $1 — first: ${s1}; second: ${s2}; final state as expected"
+  else
+    echo "RACE FAILED: $1 — first: ${s1:-?}; second: ${s2:-?}; final: $verdict"
+    fail=1
+  fi
+}
+
+# Review 06 R06-2 / 07: a free challenge of a PROVISIONAL receipt against its silence finalization (D54). Forward: the
+# window closes 0.4 s after it opens; the challenger (inside it) holds its transaction; the finalizer (after the close)
+# waits on the subject lock and must lose. Reverse: the window already closed; the finalizer holds; the late challenger
+# must lose. (Without the subject lock the forward race fails: verified when this test was written.)
 "${PSQL[@]}" >/dev/null <<SQL
-insert into wos.work_dedup_keys (dedup_key, source) values ('work:race:d54', 'receipt');
+insert into wos.work_dedup_keys (dedup_key, source) values ('work:race:d54', 'receipt'), ('work:race:d54r', 'receipt');
 insert into wos.contribution_receipts (id, account_id, contribution_type, slice, evidence_class, acceptance_event, independence, initial_status,
   weight_micro, subject_kind, subject_id, dedup_key, admitted_epoch, body, receipt_sha256, qualified_at)
 values ('$X-0000000000d5', '00000000-0000-0000-0000-00000000000c', 'PROPOSAL', 'outcomes', 'outcome', 'proposal_incorporated', 'founder_bootstrap', 'PROVISIONAL',
-        1000000, 'proposal', gen_random_uuid(), 'work:race:d54', 21, '{}', 'sha256:' || repeat('5', 64), now());
-insert into wos.receipt_status_events (receipt_id, seq, from_status, to_status, kind) values ('$X-0000000000d5', 1, null, 'PROVISIONAL', 'issued');
+        1000000, 'proposal', gen_random_uuid(), 'work:race:d54', 21, '{}', 'sha256:' || repeat('5', 64), now()),
+       ('$X-0000000000d6', '00000000-0000-0000-0000-00000000000c', 'PROPOSAL', 'outcomes', 'outcome', 'proposal_incorporated', 'founder_bootstrap', 'PROVISIONAL',
+        1000000, 'proposal', gen_random_uuid(), 'work:race:d54r', 21, '{}', 'sha256:' || repeat('5', 63) || '6', now());
+insert into wos.receipt_status_events (receipt_id, seq, from_status, to_status, kind) values ('$X-0000000000d5', 1, null, 'PROVISIONAL', 'issued'),
+  ('$X-0000000000d6', 1, null, 'PROVISIONAL', 'issued');
 set session_replication_role = replica;
-insert into wos.provisional_publications (receipt_id, receipt_sha256, review_policy_version, bootstrap_ended_at, window_hours, published_at, closes_at, notification)
-values ('$X-0000000000d5', 'sha256:' || repeat('5', 64), 'review-policy.v1', now() - interval '1 day', 48, clock_timestamp(), clock_timestamp() + interval '0.4 seconds',
-        '{"publicUrl": "u", "notifiedParticipants": 1}');
+insert into wos.provisional_publications (receipt_id, receipt_sha256, review_policy_version, bootstrap_ended_at, window_hours, published_at, closes_at, notification) values
+  ('$X-0000000000d5', 'sha256:' || repeat('5', 64), 'review-policy.v1', now() - interval '1 day', 48, clock_timestamp(), clock_timestamp() + interval '0.4 seconds', '{"publicUrl": "u", "notifiedParticipants": 1}'),
+  ('$X-0000000000d6', 'sha256:' || repeat('5', 63) || '6', 'review-policy.v1', now() - interval '1 day', 48, now() - interval '3 days', now() - interval '1 second', '{"publicUrl": "u", "notifiedParticipants": 1}');
 SQL
-race "R06-2: a free challenge racing silence finalization of a provisional receipt" \
+race_exact "R06-2 forward: a timely free challenge vs silence finalization after the close" \
   "insert into wos.provisional_challenges (receipt_id, challenger_account_id, reason_untrusted) values ('$X-0000000000d5', '$D', 'challenged inside the window, committed after it closed');" \
   "insert into wos.receipt_status_events (receipt_id, seq, from_status, to_status, kind) values ('$X-0000000000d5', 2, 'PROVISIONAL', 'FINAL_BY_SILENCE', 'final_by_silence');" \
-  "select case when exists (select 1 from wos.provisional_challenges where receipt_id = '$X-0000000000d5')
-                and exists (select 1 from wos.receipt_status_events where receipt_id = '$X-0000000000d5' and kind = 'final_by_silence')
-               then 'challenged AND finalized by silence' else 'ok' end;"
+  committed "finalizes by silence only after its published window closed with no challenge" \
+  "select case when wos.receipt_status('$X-0000000000d5') = 'PROVISIONAL' and (select count(*) from wos.provisional_challenges where receipt_id = '$X-0000000000d5') = 1 then 'ok' else 'wrong final state' end;"
+race_exact "R06-2 reverse: silence finalization after the close vs a late challenge" \
+  "insert into wos.receipt_status_events (receipt_id, seq, from_status, to_status, kind) values ('$X-0000000000d6', 2, 'PROVISIONAL', 'FINAL_BY_SILENCE', 'final_by_silence');" \
+  "insert into wos.provisional_challenges (receipt_id, challenger_account_id, reason_untrusted) values ('$X-0000000000d6', '$D', 'a challenge that arrives after the window closed');" \
+  committed "has closed or it is already final" \
+  "select case when wos.receipt_status('$X-0000000000d6') = 'FINAL_BY_SILENCE' and not exists (select 1 from wos.provisional_challenges where receipt_id = '$X-0000000000d6') then 'ok' else 'wrong final state' end;"
+
+# Review 07 R07-2: the free challenge of an ACTIVE allocation against its payment (entitlement). Forward: the epoch's
+# window closes 0.4 s after the race starts; the challenger holds; the payer (after the close: FINALIZED + entitlement)
+# waits on the subject lock and must lose. Reverse: the window closed; the payer holds; the late challenger loses.
+"${PSQL[@]}" >/dev/null <<SQL
+insert into wos.work_dedup_keys (dedup_key, source) values ('work:race:r072', 'receipt'), ('work:race:r072r', 'receipt');
+insert into wos.contribution_receipts (id, account_id, contribution_type, slice, evidence_class, acceptance_event, independence, initial_status,
+  weight_micro, subject_kind, subject_id, dedup_key, admitted_epoch, body, receipt_sha256, qualified_at)
+values ('$X-0000000000c7', '$E', 'PROPOSAL', 'outcomes', 'outcome', 'proposal_incorporated', 'independent', 'ACTIVE', 1000000, 'proposal', gen_random_uuid(), 'work:race:r072', 21, '{}', 'sha256:' || repeat('c', 63) || '7', now()),
+       ('$X-0000000000c8', '$E', 'PROPOSAL', 'outcomes', 'outcome', 'proposal_incorporated', 'independent', 'ACTIVE', 1000000, 'proposal', gen_random_uuid(), 'work:race:r072r', 21, '{}', 'sha256:' || repeat('c', 63) || '8', now());
+insert into wos.receipt_status_events (receipt_id, seq, from_status, to_status, kind) values ('$X-0000000000c7', 1, null, 'ACTIVE', 'issued'), ('$X-0000000000c8', 1, null, 'ACTIVE', 'issued');
+set session_replication_role = replica;
+insert into wos.epochs (epoch_number, mode, cluster, starts_at, ends_at, risk_review_hours, challenge_hours, policy_versions) values
+  (50, 'test', 'devnet', now() - interval '9 days', now() - interval '3 days', 48, 48, '{}'), (51, 'test', 'devnet', now() - interval '9 days', now() - interval '3 days', 48, 48, '{}');
+insert into wos.epoch_transitions (epoch_number, seq, from_state, to_state, actor, receipts_root, allocations_root, result_sha256, at)
+select e, 1, null, 'OPEN', 'system', null, null, null, now() - interval '9 days' from unnest(array[50, 51]) e
+union all select e, 2, 'OPEN', 'CALCULATING', 'system', null, null, null, now() - interval '3 days' from unnest(array[50, 51]) e
+union all select 50, 3, 'CALCULATING', 'PROPOSED', 'system', 'sha256:' || repeat('1', 64), 'sha256:' || repeat('4', 64), 'sha256:' || repeat('3', 64), clock_timestamp() - interval '48 hours' + interval '1.6 seconds'
+union all select 51, 3, 'CALCULATING', 'PROPOSED', 'system', 'sha256:' || repeat('1', 64), 'sha256:' || repeat('4', 64), 'sha256:' || repeat('3', 64), now() - interval '49 hours';
+insert into wos.allocations (id, epoch_number, mode, account_id, beneficiary_kind, beneficiary_id, receipt_id, slice, weight_micro, amount_base, explanation, explanation_sha256) values
+  ('$X-0000000000b7', 50, 'test', '$E', 'person', '$E', '$X-0000000000c7', 'outcomes', 1, 100, '{}', 'sha256:' || repeat('1', 64)),
+  ('$X-0000000000b8', 51, 'test', '$E', 'person', '$E', '$X-0000000000c8', 'outcomes', 1, 100, '{}', 'sha256:' || repeat('1', 64));
+SQL
+PAY="alter table wos.epoch_transitions disable trigger epoch_transitions_check;
+insert into wos.epoch_transitions (epoch_number, seq, from_state, to_state, actor, at) values (EPOCH, 4, 'PROPOSED', 'FINALIZED', 'system', now());
+alter table wos.epoch_transitions enable trigger epoch_transitions_check;
+insert into wos.entitlements (epoch_number, beneficiary_kind, beneficiary_id, kind, source_kind, source_id, amount_base) values (EPOCH, 'person', '$E', 'release_now', 'allocation', 'ALLOC', 100);"
+CHAL="insert into wos.allocation_challenges (allocation_id, receipt_id, receipt_sha256, allocations_root, challenger_account_id, reason_untrusted)
+  values ('ALLOC', 'RECEIPT', 'SHA', 'sha256:' || repeat('4', 64), '$D', 'this proposal was never incorporated in a merge');"
+sleep 0.2
+race_exact "R07-2 forward: a timely free challenge of an ACTIVE allocation vs its payment after the close" \
+  "$(sed -e "s/ALLOC/$X-0000000000b7/; s/RECEIPT/$X-0000000000c7/; s/SHA/sha256:$(printf 'c%.0s' $(seq 63))7/" <<<"$CHAL")" \
+  "$(sed -e "s/EPOCH/50/g; s/ALLOC/$X-0000000000b7/" <<<"$PAY")" \
+  committed "undecided challenge" \
+  "select case when (select count(*) from wos.allocation_challenges where allocation_id = '$X-0000000000b7') = 1
+                and not exists (select 1 from wos.entitlements where source_id = '$X-0000000000b7') then 'ok' else 'wrong final state' end;"
+race_exact "R07-2 reverse: payment after the close vs a late free challenge" \
+  "$(sed -e "s/EPOCH/51/g; s/ALLOC/$X-0000000000b8/" <<<"$PAY")" \
+  "$(sed -e "s/ALLOC/$X-0000000000b8/; s/RECEIPT/$X-0000000000c8/; s/SHA/sha256:$(printf 'c%.0s' $(seq 63))8/" <<<"$CHAL")" \
+  committed "not open" \
+  "select case when exists (select 1 from wos.entitlements where source_id = '$X-0000000000b8')
+                and not exists (select 1 from wos.allocation_challenges where allocation_id = '$X-0000000000b8') then 'ok' else 'wrong final state' end;"
+
+# Review 07 R07-4: a submission against a failed/abandoned release of the same task (one task lock). Forward: the
+# submission holds; the release without a final rejection loses. Reverse: the release holds; the submission loses.
+"${PSQL[@]}" >/dev/null <<SQL
+set session_replication_role = replica;
+insert into wos.tasks (id, kind, state, role, abu_id) select ('$X-00000000007' || n)::uuid, 'abu_build', 'open', 'builder', gen_random_uuid() from unnest(array['1', '2']) n;
+set session_replication_role = origin;
+insert into wos.task_budgets (task_id, objective_id, kind, budget_acu_micro, model_acu_micro, basis, budget_model_version, proposer_account_id, issued_epoch)
+select ('$X-00000000007' || n)::uuid, '$X-0000000000b0', 'execution', 1, 1, '{}', 'budget-model.v1', '$E', 21 from unnest(array['1', '2']) n;
+SQL
+SUB="insert into wos.task_submissions (task_id, changeset_id) values ('TASK', wos_test.changeset(gen_random_uuid(), 'TASK', clock_timestamp()));"
+REL="insert into wos.task_budget_releases (task_id, reason) values ('TASK', 'abandoned');"
+race_exact "R07-4 forward: a submission vs an abandoned release of the same task" \
+  "${SUB//TASK/$X-000000000071}" "${REL//TASK/$X-000000000071}" committed "final rejection" \
+  "select case when exists (select 1 from wos.task_submissions where task_id = '$X-000000000071') and not exists (select 1 from wos.task_budget_releases where task_id = '$X-000000000071') then 'ok' else 'wrong final state' end;"
+race_exact "R07-4 reverse: an abandoned release vs a submission of the same task" \
+  "${REL//TASK/$X-000000000072}" "${SUB//TASK/$X-000000000072}" committed "while its budget is live" \
+  "select case when exists (select 1 from wos.task_budget_releases where task_id = '$X-000000000072') and not exists (select 1 from wos.task_submissions where task_id = '$X-000000000072') then 'ok' else 'wrong final state' end;"
 [ "$fail" = 0 ] && echo "all concurrency races hold"
 exit "$fail"

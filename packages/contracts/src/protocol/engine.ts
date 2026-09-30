@@ -677,11 +677,15 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
     return paid;
   };
 
-  // 0. Simple holds (R06-7): releases first, then new holds on a named tranche or claimable balance, unheld units only.
-  for (const r of input.holdReleases ?? []) {
-    consume(`hold-release:${r.holdId}`, "hold release");
-    if (!holds.delete(r.holdId)) throw new EngineError(`hold ${r.holdId} is not active`);
-  }
+  // 0. Simple holds (R06-7, R07-6), folded in a fixed order before claims: (a) releases of holds placed in EARLIER
+  //    epochs free their units, (b) this epoch's new holds are placed (unheld units only), (c) releases of holds placed
+  //    in THIS epoch. So a hold placed and lifted within one epoch replays; every event id is consumed once.
+  const newHoldIds = new Set((input.holds ?? []).map((h) => h.id));
+  const releaseHold = (holdId: string) => {
+    consume(`hold-release:${holdId}`, "hold release");
+    if (!holds.delete(holdId)) throw new EngineError(`hold ${holdId} is not active`);
+  };
+  for (const r of input.holdReleases ?? []) if (!newHoldIds.has(r.holdId)) releaseHold(r.holdId);
   for (const h of input.holds ?? []) {
     consume(`hold:${h.id}`, "hold");
     if (h.amount <= 0n) throw new EngineError(`hold ${h.id} must be positive`);
@@ -699,6 +703,7 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
       amount: h.amount,
     });
   }
+  for (const r of input.holdReleases ?? []) if (newHoldIds.has(r.holdId)) releaseHold(r.holdId);
 
   // 1. Identified returns, accrual corrections and claims.
   for (const r of input.returns ?? []) {
@@ -832,6 +837,8 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
       const prev = iss.reissueOf;
       if (prev === iss.taskId || !isConsumed(`task:${prev}`) || reserved.has(prev) || isConsumed(`accept:${prev}`))
         throw new EngineError(`task ${iss.taskId} re-issues ${prev}, which is not an issued, unaccepted task whose reservation has ended`);
+      // Review 07: one successor per replaced task (the database's unique reissue_of), also in the engine.
+      if (isConsumed(`reissue:${prev}`)) throw new EngineError(`task ${prev} was already re-issued (re-issue the latest generation)`);
     }
     seenTask.add(iss.taskId);
     const amount = budgetToBase(iss.budgetAcuMicro, rate);
@@ -840,6 +847,7 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
       continue;
     }
     consume(`task:${iss.taskId}`, "task issuance");
+    if (iss.reissueOf !== undefined) consume(`reissue:${iss.reissueOf}`, "re-issue");
     const res: Reservation = {
       kind: iss.kind,
       budgetAcuMicro: iss.budgetAcuMicro,

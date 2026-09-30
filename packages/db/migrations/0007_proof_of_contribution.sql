@@ -326,8 +326,11 @@ create table wos.task_budgets (
 -- Review 06 R06-5: the authoritative submission event of commissioned work (on time = before the budget's expiry).
 create table wos.task_submissions (
   task_id            uuid primary key references wos.task_budgets (task_id),
-  submitted_epoch    integer not null references wos.epochs (epoch_number),
-  submission_sha256  text not null check (submission_sha256 ~ '^sha256:[0-9a-f]{64}$'),
+  -- Review 07 R07-4: the accepted submission itself is the evidence (its server time); the epoch and hash are DERIVED.
+  changeset_id       uuid not null references wos.changesets (id),
+  submitted_at       timestamptz not null default now(),   -- server-set: the changeset's creation time
+  submitted_epoch    integer not null default 0,           -- server-set from submitted_at and the epoch calendar
+  submission_sha256  text not null default '',             -- server-set: the changeset's diff hash
   created_at         timestamptz not null default now()
 );
 
@@ -336,6 +339,9 @@ create table wos.task_submissions (
 create table wos.task_budget_releases (
   task_id     uuid primary key references wos.task_budgets (task_id),
   reason      text not null check (reason in ('expired', 'failed', 'abandoned', 'cancelled', 'repriced')),
+  -- Review 06 R06-4 / 07 R07-4: releasing SUBMITTED work names its final rejection or its authorized cancellation.
+  final_rejection_ref text,
+  admin_action_id     uuid references wos.admin_actions (id),
   created_at  timestamptz not null default now()
 );
 
@@ -626,6 +632,32 @@ create table wos.allocations (
 );
 
 create unique index allocations_receipt_once on wos.allocations (receipt_id, mode, beneficiary_id, slice) where receipt_id is not null;
+
+-- Review 07 R07-2: the V1 free challenge of an ordinary (ACTIVE) allocation — no stake, no bounty, no appeal (D55).
+-- Bound to the frozen receipt revision and the epoch's published allocations root; the accused replies; one decision.
+create table wos.allocation_challenges (
+  id                    uuid primary key default gen_random_uuid(),
+  allocation_id         uuid not null references wos.allocations (id),
+  receipt_id            uuid not null references wos.contribution_receipts (id),
+  receipt_sha256        text not null check (receipt_sha256 ~ '^sha256:[0-9a-f]{64}$'),
+  allocations_root      text not null check (allocations_root ~ '^sha256:[0-9a-f]{64}$'),
+  challenger_account_id uuid not null references wos.accounts (id),
+  reason_untrusted      text not null check (length(reason_untrusted) between 20 and 4000),
+  created_at            timestamptz not null default now()
+);
+create table wos.allocation_challenge_replies (
+  challenge_id     uuid primary key references wos.allocation_challenges (id),
+  account_id       uuid not null references wos.accounts (id),
+  body_untrusted   text not null check (length(body_untrusted) between 1 and 4000),
+  created_at       timestamptz not null default now()
+);
+create table wos.allocation_challenge_decisions (
+  challenge_id          uuid primary key references wos.allocation_challenges (id),
+  outcome               text not null check (outcome in ('confirmed', 'changed')),
+  resulting_amount_base bigint not null check (resulting_amount_base >= 0),
+  admin_action_id       uuid not null references wos.admin_actions (id),
+  decided_at            timestamptz not null default now()
+);
 
 create table wos.anomaly_metrics (
   epoch_number   integer not null references wos.epochs (epoch_number),
@@ -1069,7 +1101,7 @@ create table wos.ruling_lab_records (
   ruling_id        uuid not null references wos.rulings (id),
   finding_id       uuid not null references wos.findings (id),
   raised_by_lab    text not null default '' check (raised_by_lab in ('', 'anthropic', 'openai', 'zai')),
-  resolved_by_lab  text not null check (resolved_by_lab in ('anthropic', 'openai', 'zai', 'human')),
+  resolved_by_lab  text not null default '' check (resolved_by_lab in ('', 'anthropic', 'openai', 'zai', 'human')),  -- server-derived (R07-7)
   outcome          text not null check (outcome in ('upheld', 'overruled')),
   created_at       timestamptz not null default now(),
   primary key (ruling_id, finding_id),
@@ -1393,6 +1425,7 @@ begin
   end if;
   new.expires_epoch := new.issued_epoch + ep.budget_expiry_epochs;
   new.review_grace_epochs := ep.review_grace_epochs;
+  if new.reissue_of is not null then perform wos.lock_task(new.reissue_of); end if;
   new.policy_version := coalesce(ep.policy_versions ->> 'reward', '');
   if new.reissue_of is not null and not exists (
        select 1 from wos.task_budgets b join wos.task_budget_releases r on r.task_id = b.task_id
@@ -1660,18 +1693,47 @@ end $$;
 create trigger qualification_results_snapshot before insert on wos.qualification_results for each row execute function wos.check_qualification_snapshot();
 
 -- Review 06 R06-5: a submission is recorded while the budget is live and unreleased (server time).
+-- Review 07 R07-4: submission, release and replacement of a task serialize on ONE task lock and re-read state after it.
+create or replace function wos.lock_task(t uuid) returns void
+language sql as $$ select pg_advisory_xact_lock(hashtext('wos.task:' || t::text)) $$;
 create or replace function wos.check_task_submission() returns trigger
 language plpgsql security definer set search_path = wos, pg_temp as $$
+declare
+  b wos.task_budgets%rowtype;
+  cs wos.changesets%rowtype;
+  deadline timestamptz;
 begin
+  perform wos.lock_task(new.task_id);
   new.created_at := clock_timestamp();
-  if not exists (select 1 from wos.task_budgets b where b.task_id = new.task_id and new.submitted_epoch < b.expires_epoch
-                   and new.submitted_epoch >= b.issued_epoch)
+  select * into b from wos.task_budgets where task_id = new.task_id;
+  select * into cs from wos.changesets where id = new.changeset_id;
+  if cs.id is null or cs.task_id <> new.task_id or not cs.ok or not cs.signature_valid then
+    raise exception 'wos: a submission is the task''s own accepted, signed changeset' using errcode = 'check_violation';
+  end if;
+  new.submitted_at := cs.created_at;
+  new.submission_sha256 := cs.submission_sha256;
+  new.submitted_epoch := coalesce((select max(e.epoch_number) from wos.epochs e where e.epoch_number between b.issued_epoch and b.expires_epoch - 1
+                                    and e.starts_at <= cs.created_at), b.issued_epoch);
+  deadline := (select starts_at from wos.epochs where epoch_number = b.expires_epoch);
+  if (deadline is not null and cs.created_at >= deadline) or cs.created_at < b.created_at
      or exists (select 1 from wos.task_budget_releases r where r.task_id = new.task_id) then
     raise exception 'wos: work is submitted only while its budget is live (before its expiry, unreleased)' using errcode = 'check_violation';
   end if;
   return new;
 end $$;
 create trigger task_submissions_check before insert on wos.task_submissions for each row execute function wos.check_task_submission();
+create or replace function wos.check_task_release() returns trigger
+language plpgsql security definer set search_path = wos, pg_temp as $$
+begin
+  perform wos.lock_task(new.task_id);
+  if new.reason in ('failed', 'abandoned') and exists (select 1 from wos.task_submissions s where s.task_id = new.task_id)
+     and new.final_rejection_ref is null and new.admin_action_id is null then
+    raise exception 'wos: submitted work awaiting review is released only after its final rejection or an authorized cancellation'
+      using errcode = 'check_violation';
+  end if;
+  return new;
+end $$;
+create trigger task_budget_releases_check before insert on wos.task_budget_releases for each row execute function wos.check_task_release();
 
 -- D54 / review 06 R06-2: one SUBJECT LOCK per receipt serializes challenge publication, challenge admission, silence
 -- finalization and live admission (manifest); each reads authoritative state after taking it, with server time.
@@ -1718,8 +1780,17 @@ create trigger provisional_challenges_check before insert on wos.provisional_cha
 create or replace function wos.check_receipt_status_event() returns trigger
 language plpgsql security definer set search_path = wos, pg_temp as $$
 begin
+  -- Review 07 R07-5: EVERY status mutation takes the subject lock (it changes eligibility) and reads state after it.
+  perform wos.lock_receipt_subject(new.receipt_id);
+  if new.kind = 'restored' and new.to_status = 'FINAL_BY_SILENCE' then
+    if (wos.receipt_status(new.receipt_id) = 'REVOKED') is not true
+       or not exists (select 1 from wos.receipt_status_events e where e.receipt_id = new.receipt_id and e.kind = 'final_by_silence') then
+      raise exception 'wos: receipt % is restored to FINAL_BY_SILENCE only when its history holds its silence finalization', new.receipt_id
+        using errcode = 'check_violation';
+    end if;
+    return new;
+  end if;
   if new.kind = 'final_by_silence' then
-    perform wos.lock_receipt_subject(new.receipt_id);
     if new.from_status <> 'PROVISIONAL' or new.to_status <> 'FINAL_BY_SILENCE'
        or (wos.receipt_status(new.receipt_id) = 'PROVISIONAL') is not true
        or (clock_timestamp() >= (select closes_at from wos.provisional_publications where receipt_id = new.receipt_id)) is not true
@@ -1747,6 +1818,93 @@ begin
   return new;
 end $$;
 create trigger epoch_manifest_provisional before insert on wos.epoch_manifest_entries for each row execute function wos.check_manifest_provisional();
+-- Review 07 R07-2: admission of a free allocation challenge, its decision and every entitlement of a challenged
+-- allocation take the RECEIPT's subject lock and read state after it.
+create or replace function wos.check_allocation_challenge() returns trigger
+language plpgsql security definer set search_path = wos, pg_temp as $$
+declare
+  a wos.allocations%rowtype;
+begin
+  perform wos.lock_receipt_subject(new.receipt_id);
+  new.created_at := clock_timestamp();
+  select * into a from wos.allocations where id = new.allocation_id;
+  if a.id is null or a.receipt_id is distinct from new.receipt_id then
+    raise exception 'wos: the challenged allocation belongs to another receipt' using errcode = 'check_violation';
+  end if;
+  if (wos.epoch_state(a.epoch_number) = 'PROPOSED') is not true
+     or new.created_at >= wos.epoch_state_at(a.epoch_number, 'PROPOSED') + make_interval(hours => (select challenge_hours from wos.epochs where epoch_number = a.epoch_number)) then
+    raise exception 'wos: the challenge window of epoch % is not open', a.epoch_number using errcode = 'check_violation';
+  end if;
+  if new.receipt_sha256 <> (select receipt_sha256 from wos.contribution_receipts where id = new.receipt_id)
+     or new.allocations_root is distinct from (select t.allocations_root from wos.epoch_transitions t where t.epoch_number = a.epoch_number and t.to_state = 'PROPOSED') then
+    raise exception 'wos: a challenge cites the frozen receipt revision and the epoch''s published allocations root' using errcode = 'check_violation';
+  end if;
+  if (wos.receipt_status(new.receipt_id) = 'ACTIVE') is not true then
+    raise exception 'wos: the free allocation challenge is for ACTIVE receipts' using errcode = 'check_violation';
+  end if;
+  if exists (select 1 from wos.allocation_challenges c where c.allocation_id = new.allocation_id
+              and not exists (select 1 from wos.allocation_challenge_decisions d where d.challenge_id = c.id)) then
+    raise exception 'wos: allocation % already has an undecided challenge', new.allocation_id using errcode = 'check_violation';
+  end if;
+  return new;
+end $$;
+create trigger allocation_challenges_check before insert on wos.allocation_challenges for each row execute function wos.check_allocation_challenge();
+create or replace function wos.check_allocation_challenge_decision() returns trigger
+language plpgsql security definer set search_path = wos, pg_temp as $$
+declare
+  c wos.allocation_challenges%rowtype;
+  amt bigint;
+begin
+  select * into c from wos.allocation_challenges where id = new.challenge_id;
+  perform wos.lock_receipt_subject(c.receipt_id);
+  new.decided_at := clock_timestamp();
+  select amount_base into amt from wos.allocations where id = c.allocation_id;
+  if (new.outcome = 'confirmed' and new.resulting_amount_base <> amt) or (new.outcome = 'changed' and new.resulting_amount_base >= amt) then
+    raise exception 'wos: a confirmed allocation keeps its amount; a changed one is lowered' using errcode = 'check_violation';
+  end if;
+  return new;
+end $$;
+create trigger allocation_challenge_decisions_check before insert on wos.allocation_challenge_decisions for each row execute function wos.check_allocation_challenge_decision();
+create or replace function wos.check_allocation_challenge_reply() returns trigger
+language plpgsql security definer set search_path = wos, pg_temp as $$
+declare
+  c wos.allocation_challenges%rowtype;
+begin
+  select * into c from wos.allocation_challenges where id = new.challenge_id;
+  perform wos.lock_receipt_subject(c.receipt_id);
+  new.created_at := clock_timestamp();
+  if new.account_id is distinct from (select account_id from wos.allocations where id = c.allocation_id)
+     or exists (select 1 from wos.allocation_challenge_decisions d where d.challenge_id = new.challenge_id) then
+    raise exception 'wos: only the accused replies, before the decision' using errcode = 'check_violation';
+  end if;
+  return new;
+end $$;
+create trigger allocation_challenge_replies_check before insert on wos.allocation_challenge_replies for each row execute function wos.check_allocation_challenge_reply();
+create or replace function wos.check_challenged_entitlement() returns trigger
+language plpgsql security definer set search_path = wos, pg_temp as $$
+declare
+  rid uuid;
+  lim bigint;
+begin
+  if new.source_kind <> 'allocation' then return new; end if;
+  select receipt_id into rid from wos.allocations where id = new.source_id;
+  if rid is null then return new; end if;
+  -- Lock FIRST, then read (an uncommitted challenge holding the lock must be seen; review 07 race R07-2).
+  perform wos.lock_receipt_subject(rid);
+  if not exists (select 1 from wos.allocation_challenges c where c.allocation_id = new.source_id) then return new; end if;
+  if exists (select 1 from wos.allocation_challenges c where c.allocation_id = new.source_id
+              and not exists (select 1 from wos.allocation_challenge_decisions d where d.challenge_id = c.id)) then
+    raise exception 'wos: allocation % has an undecided challenge: nothing is entitled until its decision', new.source_id using errcode = 'check_violation';
+  end if;
+  select min(d.resulting_amount_base) into lim from wos.allocation_challenge_decisions d join wos.allocation_challenges c on c.id = d.challenge_id
+   where c.allocation_id = new.source_id;
+  if (select coalesce(sum(amount_base), 0) from wos.entitlements where source_kind = 'allocation' and source_id = new.source_id) + new.amount_base > lim then
+    raise exception 'wos: entitlements of allocation % exceed its decided amount', new.source_id using errcode = 'check_violation';
+  end if;
+  return new;
+end $$;
+create trigger entitlements_challenged before insert on wos.entitlements for each row execute function wos.check_challenged_entitlement();
+
 -- The end of bootstrap is time-stamped (the publication window's reference point).
 create or replace function wos.stamp_bootstrap_end() returns trigger
 language plpgsql as $$
@@ -1766,12 +1924,31 @@ language sql immutable as $$
 $$;
 create or replace function wos.check_ruling_lab_record() returns trigger
 language plpgsql security definer set search_path = wos, pg_temp as $$
+declare
+  ru wos.rulings%rowtype;
+  decided text;
+  prov text;
 begin
   new.created_at := clock_timestamp();
   select wos.lab_of_provider(r.provider) into new.raised_by_lab
     from wos.findings f join wos.reviews r on r.id = f.review_id where f.id = new.finding_id;
   if new.raised_by_lab is null or new.raised_by_lab = '' then
     raise exception 'wos: the lab that raised finding % is unknown', new.finding_id using errcode = 'check_violation';
+  end if;
+  -- Review 07 R07-7: the record is DERIVED from a CONFIRMED ruling that decided this finding; the resolving lab comes
+  -- from the resolver's recorded run (or 'human' for a maintainer's own ruling); unknown fails closed.
+  select * into ru from wos.rulings where id = new.ruling_id;
+  if ru.state is distinct from 'confirmed' then
+    raise exception 'wos: ruling % is not confirmed', new.ruling_id using errcode = 'check_violation';
+  end if;
+  select x ->> 'decision' into decided from jsonb_array_elements(ru.body -> 'rulings') x where x ->> 'findingId' = new.finding_id::text limit 1;
+  if decided is null or decided <> new.outcome then
+    raise exception 'wos: ruling % did not decide finding % as %', new.ruling_id, new.finding_id, new.outcome using errcode = 'check_violation';
+  end if;
+  select record ->> 'provider' into prov from wos.agent_runs where lease_id = ru.lease_id order by created_at desc limit 1;
+  new.resolved_by_lab := coalesce(wos.lab_of_provider(prov), case when prov is null and wos.is_maintainer(ru.account_id) then 'human' end, '');
+  if new.resolved_by_lab = '' then
+    raise exception 'wos: the lab that resolved ruling % is unknown', new.ruling_id using errcode = 'check_violation';
   end if;
   if new.resolved_by_lab = new.raised_by_lab then
     raise exception 'wos: finding % was raised by % and cannot be resolved by the same lab (D58)', new.finding_id, new.raised_by_lab
@@ -1895,7 +2072,8 @@ begin
     'genesis_reference_manifests', 'governance_proposals', 'governance_weight_snapshots', 'governance_votes',
     'settlement_adapter_events', 'migration_snapshots', 'abuse_signals', 'risk_flags', 'admin_action_approvals',
     'admin_action_uses', 'contribution_usage', 'payout_audit_assignments', 'acceptance_objectives', 'task_budgets', 'task_budget_releases', 'confiscation_releases', 'epoch_balances',
-    'human_review_assignments', 'ruling_lab_records', 'task_submissions', 'provisional_publications', 'provisional_challenges'
+    'human_review_assignments', 'ruling_lab_records', 'task_submissions', 'provisional_publications', 'provisional_challenges',
+    'allocation_challenges', 'allocation_challenge_replies', 'allocation_challenge_decisions'
   ] loop
     perform wos.protocol_append_only(t);
   end loop;
@@ -1916,7 +2094,8 @@ begin
     'governance_weight_snapshots', 'governance_votes', 'settlement_adapter_events', 'migration_snapshots',
     'abuse_signals', 'risk_flags', 'admin_action_approvals', 'admin_action_uses', 'contribution_usage', 'payout_audit_assignments',
     'acceptance_objectives', 'task_budgets', 'task_budget_releases', 'confiscation_releases', 'epoch_balances', 'human_review_assignments', 'ruling_lab_records',
-    'task_submissions', 'provisional_publications', 'provisional_challenges'
+    'task_submissions', 'provisional_publications', 'provisional_challenges',
+    'allocation_challenges', 'allocation_challenge_replies', 'allocation_challenge_decisions'
   ] loop
     execute format('alter table wos.%I enable row level security', t);
     execute format('grant select, insert on wos.%I to wos_app', t);
@@ -1942,7 +2121,8 @@ begin
     'pool_accruals', 'pool_accrual_corrections', 'pool_events', 'genesis_contributions', 'genesis_commit_claims',
     'genesis_reference_manifests', 'governance_proposals', 'governance_weight_snapshots', 'settlement_adapter_events',
     'migration_snapshots', 'admin_action_uses', 'contribution_usage', 'acceptance_objectives', 'task_budgets', 'task_budget_releases',
-    'confiscation_releases', 'epoch_balances', 'ruling_lab_records', 'task_submissions', 'provisional_publications'
+    'confiscation_releases', 'epoch_balances', 'ruling_lab_records', 'task_submissions', 'provisional_publications',
+    'allocation_challenge_decisions'
   ] loop
     execute format('create policy public_read on wos.%I for select to wos_app using (true)', t);
     execute format('create policy privileged_write on wos.%I for insert to wos_app with check (wos.is_privileged())', t);
@@ -1957,7 +2137,8 @@ declare
   t text;
 begin
   foreach t in array array['allocation_disputes', 'dispute_items', 'dispute_replies', 'dispute_appeals', 'governance_votes', 'allocation_acceptances',
-                         'confiscation_appeals', 'admin_action_approvals', 'provisional_challenges'] loop
+                         'confiscation_appeals', 'admin_action_approvals', 'provisional_challenges',
+                         'allocation_challenges', 'allocation_challenge_replies'] loop
     execute format('create policy public_read on wos.%I for select to wos_app using (true)', t);
   end loop;
 end $$;
@@ -1967,6 +2148,8 @@ create policy own_insert on wos.dispute_replies for insert to wos_app with check
 create policy own_insert on wos.dispute_appeals for insert to wos_app with check (wos.is_privileged() or appellant_account_id = wos.actor_id());
 create policy own_insert on wos.governance_votes for insert to wos_app with check (wos.is_privileged() or account_id = wos.actor_id());
 create policy own_insert on wos.allocation_acceptances for insert to wos_app with check (wos.is_privileged() or account_id = wos.actor_id());
+create policy own_insert on wos.allocation_challenges for insert to wos_app with check (wos.is_privileged() or challenger_account_id = wos.actor_id());
+create policy own_insert on wos.allocation_challenge_replies for insert to wos_app with check (wos.is_privileged() or account_id = wos.actor_id());
 create policy own_insert on wos.provisional_challenges for insert to wos_app with check (wos.is_privileged() or challenger_account_id = wos.actor_id());
 create policy own_insert on wos.confiscation_appeals for insert to wos_app with check (wos.is_privileged() or appellant_account_id = wos.actor_id());
 -- A3-7: the co-signer approves from THEIR OWN session; no other actor (privileged or not) can write their approval.

@@ -1424,3 +1424,102 @@ describe("Astra review 06: engine regressions (docs/protocol/reviews/ASTRA-REVIE
     ).toThrow(/reservation has ended/);
   });
 });
+
+// ------------------------------------------------------------------------------------------------ Astra review 07
+describe("Astra review 07: engine regressions (docs/protocol/reviews/ASTRA-REVIEW-07-repros-prefix.txt)", () => {
+  const pz = {
+    ...params,
+    emissionReserve: 1000n,
+    budgetPpm: 0n,
+    holdbackBp: 0n,
+    rateCeilingInitialBasePerAcu: 100n,
+    rateCeilingDecayPpm: 0n,
+  };
+  const alice100 = (): EngineState => ({
+    ...initialState(1000n),
+    remainingReserve: 900n,
+    cumulativeIssued: 100n,
+    claimable: new Map([["alice", 100n]]),
+  });
+  it("R07-6 repro: a hold placed and released within one epoch replays; its event ids are consumed once", () => {
+    const r = computeEpoch(
+      {
+        ...fresh(alice100()),
+        holds: [{ id: "h", beneficiaryId: "alice", source: "claimable", amount: 10n }],
+        holdReleases: [{ holdId: "h" }],
+      },
+      pz,
+    );
+    expect(r.state.holds.size).toBe(0);
+    expect(r.consumedIds).toEqual(expect.arrayContaining(["hold:h", "hold-release:h"]));
+    expect(() =>
+      computeEpoch(
+        {
+          ...fresh(r.state, 2),
+          consumedIds: new Set(r.consumedIds),
+          holds: [{ id: "h", beneficiaryId: "alice", source: "claimable", amount: 10n }],
+        },
+        pz,
+      ),
+    ).toThrow(/consumed twice/);
+  });
+  it("R07-6: holds fold before claims — a new hold blocks the held part of a same-epoch claim; a prior hold released now frees it", () => {
+    expect(() =>
+      computeEpoch(
+        {
+          ...fresh(alice100()),
+          holds: [{ id: "h", beneficiaryId: "alice", source: "claimable", amount: 10n }],
+          claims: [{ id: "c", beneficiaryId: "alice", amount: 91n }],
+        },
+        pz,
+      ),
+    ).toThrow(/only 90 unheld/);
+    const e1 = computeEpoch({ ...fresh(alice100()), holds: [{ id: "h", beneficiaryId: "alice", source: "claimable", amount: 10n }] }, pz);
+    const e2 = computeEpoch(
+      {
+        ...fresh(e1.state, 2),
+        consumedIds: new Set(e1.consumedIds),
+        holdReleases: [{ holdId: "h" }],
+        claims: [{ id: "c", beneficiaryId: "alice", amount: 100n }],
+      },
+      pz,
+    );
+    expect(e2.state.delivered).toBe(100n);
+  });
+  it("R07-6: a held tranche released in the epoch it matures pays in full at that boundary", () => {
+    const s0: EngineState = {
+      ...initialState(1000n),
+      remainingReserve: 900n,
+      cumulativeIssued: 100n,
+      holdback: [tranche("alice", 1, 100n, 3)],
+      lastEpoch: 1,
+    };
+    const e2 = computeEpoch(
+      { ...fresh(s0, 2), holds: [{ id: "h", beneficiaryId: "alice", source: "tranche", trancheId: "1:alice", amount: 10n }] },
+      pz,
+    );
+    const e3 = computeEpoch({ ...fresh(e2.state, 3), consumedIds: new Set(e2.consumedIds), holdReleases: [{ holdId: "h" }] }, pz);
+    expect(e3.entitlements.get("alice")!.maturedHoldback).toBe(100n);
+  });
+  it("re-issue: two successors of one expired reservation — the engine funds only the first", () => {
+    const pt = { ...pz, budgetPpm: 1_000_000n };
+    const iss = (taskId: string, reissueOf?: string): TaskIssuance => ({
+      taskId,
+      kind: "execution",
+      budgetAcuMicro: 1_000_000n,
+      featurePoolKeys: [],
+      applicationPoolKeys: [],
+      ...(reissueOf ? { reissueOf } : {}),
+    });
+    const a = computeEpoch({ ...fresh(initialState(1000n)), issuances: [iss("old")] }, pt);
+    const b = computeEpoch({ ...fresh(a.state, 5), consumedIds: new Set(a.consumedIds) }, pt);
+    const ids = new Set([...a.consumedIds, ...b.consumedIds]);
+    expect(() => computeEpoch({ ...fresh(b.state, 6), consumedIds: ids, issuances: [iss("new1", "old"), iss("new2", "old")] }, pt)).toThrow(
+      /already re-issued/,
+    );
+    const c = computeEpoch({ ...fresh(b.state, 6), consumedIds: ids, issuances: [iss("new1", "old")] }, pt);
+    expect(() =>
+      computeEpoch({ ...fresh(c.state, 7), consumedIds: new Set([...ids, ...c.consumedIds]), issuances: [iss("new2", "old")] }, pt),
+    ).toThrow(/already re-issued/);
+  });
+});

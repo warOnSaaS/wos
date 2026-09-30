@@ -68,7 +68,7 @@ export const EpochMachine: Machine<EpochState, EpochEvent> = {
  */
 export const ReceiptStatusMachine: Machine<ReceiptStatus, ReceiptStatusEventKind> = {
   name: "ReceiptStatus",
-  states: ["ACTIVE", "PROVISIONAL", "RATIFIED", "REVOKED"],
+  states: ["ACTIVE", "PROVISIONAL", "RATIFIED", "FINAL_BY_SILENCE", "REVOKED"],
   initial: ["ACTIVE", "PROVISIONAL"],
   terminal: [],
   transitions: [
@@ -120,7 +120,13 @@ export const ReceiptStatusMachine: Machine<ReceiptStatus, ReceiptStatusEventKind
     },
     { from: "REVOKED", to: "PROVISIONAL", event: "restored", actor: ["maintainer"], guard: "as above for PROVISIONAL" },
     { from: "REVOKED", to: "RATIFIED", event: "restored", actor: ["maintainer"], guard: "as above for RATIFIED" },
-    { from: "REVOKED", to: "FINAL_BY_SILENCE", event: "restored", actor: ["maintainer"], guard: "as above for FINAL_BY_SILENCE" },
+    {
+      from: "REVOKED",
+      to: "FINAL_BY_SILENCE",
+      event: "restored",
+      actor: ["maintainer"],
+      guard: "as above, and only when the receipt's immutable history holds its final_by_silence event (review 07 R07-5)",
+    },
   ],
 };
 

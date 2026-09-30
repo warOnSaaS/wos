@@ -1016,25 +1016,44 @@ select wos_test.expect_error($$insert into wos.genesis_reference_manifests (vers
   values ('reference.v1', 2, '{}', '{00000000-0000-0000-0000-0000000cc001}', 'sha256:' || repeat('c', 64), wos_test.aa('approve_genesis_reference', 'genesis_reference', 'reference.v1'))$$,
   'A3-12: a second manifest for the same version', 'duplicate key');
 
--- D58: a disputed finding is never resolved by the lab that raised it; the raising lab is derived from the review.
+-- D58 / R07-7: records are derived from a CONFIRMED ruling: its decision, the finding's review lab and the resolver's run lab.
 set session_replication_role = replica;
-insert into wos.findings (id, review_id, round_id, document_id, local_id, severity, category, title, detail, state)
-values ('00000000-0000-0000-0058-0000000000f1', '00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-0000000000e1',
-        '00000000-0000-0000-0000-0000000000d1', 'F-58', 'material', 'scope', 'd58 fixture', 'raised by the Fable seat', 'disputed');
-insert into wos.rulings (id, task_id, lease_id, account_id, body, state)
-values ('00000000-0000-0000-0058-0000000000a1', '00000000-0000-0000-0000-0000000000f1', '00000000-0000-0000-0000-0000000000c1',
-        '00000000-0000-0000-0000-00000000000d', '{}', 'awaiting_maintainer');
+insert into wos.findings (id, review_id, round_id, document_id, local_id, severity, category, title, detail, state) values
+  ('00000000-0000-0000-0058-0000000000f1', '00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-0000000000e1',
+   '00000000-0000-0000-0000-0000000000d1', 'F-58', 'material', 'scope', 'd58 fixture', 'raised by the Fable seat', 'disputed'),
+  ('00000000-0000-0000-0058-0000000000f2', '00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-0000000000e1',
+   '00000000-0000-0000-0000-0000000000d1', 'F-59', 'material', 'scope', 'd58 fixture', 'not in the ruling', 'disputed');
+insert into wos.agent_runs (id, lease_id, manifest_id, account_id, device_id, record, signature_valid)
+values ('00000000-0000-0000-0058-0000000000e3', '00000000-0000-0000-0000-0000000000c3', gen_random_uuid(), '00000000-0000-0000-0000-00000000000c',
+        '00000000-0000-0000-0000-0000000000dc', '{"provider": "claude_cli"}', true);
+insert into wos.rulings (id, task_id, lease_id, account_id, body, state, decided_at) values
+  -- resolved by an Astra (codex_cli) run: other lab than the Fable-raised finding
+  ('00000000-0000-0000-0058-0000000000a1', '00000000-0000-0000-0007-0000000000f8', '00000000-0000-0000-0007-0000000000c8', '00000000-0000-0000-0000-00000000000a',
+   '{"schema": "ruling.v1", "rulings": [{"findingId": "00000000-0000-0000-0058-0000000000f1", "decision": "upheld", "rationale": "upheld: the scope finding holds"}], "proposedChange": null}',
+   'confirmed', now()),
+  -- resolved by a Claude run: the SAME lab as the finding
+  ('00000000-0000-0000-0058-0000000000a2', '00000000-0000-0000-0000-0000000000f3', '00000000-0000-0000-0000-0000000000c3', '00000000-0000-0000-0000-00000000000c',
+   '{"schema": "ruling.v1", "rulings": [{"findingId": "00000000-0000-0000-0058-0000000000f1", "decision": "overruled", "rationale": "overruled by the same lab"}], "proposedChange": null}',
+   'confirmed', now()),
+  ('00000000-0000-0000-0058-0000000000a3', '00000000-0000-0000-0007-0000000000f8', '00000000-0000-0000-0007-0000000000c8', '00000000-0000-0000-0000-00000000000a',
+   '{"schema": "ruling.v1", "rulings": [{"findingId": "00000000-0000-0000-0058-0000000000f1", "decision": "upheld", "rationale": "still awaiting the maintainer"}], "proposedChange": null}',
+   'awaiting_maintainer', null);
 set session_replication_role = origin;
-select wos_test.expect_error($$insert into wos.ruling_lab_records (ruling_id, finding_id, resolved_by_lab, outcome)
-  values ('00000000-0000-0000-0058-0000000000a1', '00000000-0000-0000-0058-0000000000f1', 'anthropic', 'overruled')$$,
+select wos_test.expect_error($$insert into wos.ruling_lab_records (ruling_id, finding_id, outcome) values ('00000000-0000-0000-0058-0000000000a2', '00000000-0000-0000-0058-0000000000f1', 'overruled')$$,
   'D58: a Fable-raised finding resolved by a resolver of the same lab', 'same lab');
+select wos_test.expect_error($$insert into wos.ruling_lab_records (ruling_id, finding_id, outcome) values ('00000000-0000-0000-0058-0000000000a1', '00000000-0000-0000-0058-0000000000f2', 'overruled')$$,
+  'R07-7 repro: a record for a finding that is not in the ruling', 'did not decide');
+select wos_test.expect_error($$insert into wos.ruling_lab_records (ruling_id, finding_id, outcome) values ('00000000-0000-0000-0058-0000000000a1', '00000000-0000-0000-0058-0000000000f1', 'overruled')$$,
+  'R07-7: a record whose outcome differs from the ruling''s decision', 'did not decide');
+select wos_test.expect_error($$insert into wos.ruling_lab_records (ruling_id, finding_id, outcome) values ('00000000-0000-0000-0058-0000000000a3', '00000000-0000-0000-0058-0000000000f1', 'upheld')$$,
+  'R07-7: a record from a ruling that is not confirmed', 'not confirmed');
 insert into wos.ruling_lab_records (ruling_id, finding_id, raised_by_lab, resolved_by_lab, outcome)
-values ('00000000-0000-0000-0058-0000000000a1', '00000000-0000-0000-0058-0000000000f1', 'openai', 'openai', 'upheld');
+values ('00000000-0000-0000-0058-0000000000a1', '00000000-0000-0000-0058-0000000000f1', 'openai', 'human', 'upheld');
 do $$ begin
-  if (select raised_by_lab from wos.ruling_lab_records where finding_id = '00000000-0000-0000-0058-0000000000f1') <> 'anthropic' then
-    raise exception 'D58: the raising lab must be derived from the review (a caller-supplied value is ignored)';
+  if (select raised_by_lab || '/' || resolved_by_lab from wos.ruling_lab_records where ruling_id = '00000000-0000-0000-0058-0000000000a1') <> 'anthropic/openai' then
+    raise exception 'D58/R07-7: both labs are derived (the raising review and the resolver''s run), whatever the caller supplies';
   end if;
-  raise notice 'ok: D58 raising lab derived from the review; an other-lab ruling is recorded (raised, resolved, outcome)';
+  raise notice 'ok: D58/R07-7 a record derived from a confirmed ruling: raised anthropic, resolved openai, upheld';
 end $$;
 
 -- ---------------------------------------------------------------------------------- Astra review 06 (fix pass)
@@ -1118,9 +1137,51 @@ do $$ begin
   end if;
   raise notice 'ok: R06-5 the review grace is pinned on each budget (server-set from its epoch)';
 end $$;
-select wos_test.expect_error($$insert into wos.task_submissions (task_id, submitted_epoch, submission_sha256)
-  values ('00000000-0000-0000-0007-000000000fb2', 6, 'sha256:' || repeat('5', 64))$$, 'R06-5: a submission at or after the budget''s expiry', 'while its budget is live');
-insert into wos.task_submissions (task_id, submitted_epoch, submission_sha256) values ('00000000-0000-0000-0007-000000000fb2', 2, 'sha256:' || repeat('5', 64));
+-- A changeset fixture: the accepted, signed submission of a task at a given server time (review 07 R07-4 evidence).
+create or replace function wos_test.changeset(cid uuid, task uuid, at timestamptz) returns uuid
+language plpgsql as $$
+begin
+  perform set_config('session_replication_role', 'replica', true);
+  insert into wos.changesets (id, lease_id, task_id, account_id, device_id, parent_sha, manifest_sha256, submission_sha256, signature_valid,
+    file_manifest, total_bytes, validation, ok, summary, created_at)
+  values (cid, gen_random_uuid(), task, '00000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-0000000000db', repeat('a', 40),
+          'sha256:' || repeat('1', 64), 'sha256:' || repeat('5', 64), true, '[]', 0, '{}', true, '{}', at);
+  perform set_config('session_replication_role', 'origin', true);
+  return cid;
+end $$;
+insert into wos.task_submissions (task_id, changeset_id)
+values ('00000000-0000-0000-0007-000000000fb2', wos_test.changeset(gen_random_uuid(), '00000000-0000-0000-0007-000000000fb2', clock_timestamp()));
+do $$ begin
+  -- (the fixture calendar overlaps: the latest epoch between issue and expiry that had started when the changeset was made)
+  if (select submitted_epoch <> (select max(epoch_number) from wos.epochs where epoch_number between 2 and 5 and starts_at <= s.submitted_at)
+             or submission_sha256 <> 'sha256:' || repeat('5', 64) from wos.task_submissions s where task_id = '00000000-0000-0000-0007-000000000fb2') then
+    raise exception 'R07-4: the submission epoch and hash are derived from the changeset';
+  end if;
+  raise notice 'ok: R07-4 the submission epoch and hash are derived from its changeset (server evidence), not asserted';
+end $$;
+-- R07-4 repro: work that arrived after the expiry epoch began cannot present itself as on time; earlier evidence counts.
+do $$
+declare
+  t uuid := '00000000-0000-0000-0007-0000000007a4';
+  early timestamptz;
+begin
+  insert into wos.task_budgets (task_id, objective_id, kind, budget_acu_micro, model_acu_micro, basis, budget_model_version, proposer_account_id, issued_epoch)
+  values (t, '00000000-0000-0000-0007-0000000000b1', 'execution', 1000000, 1000000, '{}', 'budget-model.v1', '00000000-0000-0000-0000-00000000000c', 2);
+  early := clock_timestamp();
+  insert into wos.epochs (epoch_number, mode, cluster, starts_at, ends_at, risk_review_hours, challenge_hours, policy_versions)
+  values (6, 'test', 'devnet', clock_timestamp(), clock_timestamp() + interval '7 days', 48, 48, '{}');
+  begin
+    insert into wos.task_submissions (task_id, changeset_id) values (t, wos_test.changeset(gen_random_uuid(), t, clock_timestamp() + interval '1 second'));
+    raise exception 'EXPECTED FAILURE did not happen: R07-4 late submission';
+  exception when check_violation then
+    if sqlerrm !~ 'while its budget is live' then raise; end if;
+    raise notice 'ok (rejected): R07-4 repro: new work after the expiry epoch began presented as an on-time submission';
+  end;
+  insert into wos.task_submissions (task_id, changeset_id) values (t, wos_test.changeset(gen_random_uuid(), t, early));
+  raise notice 'ok: R07-4 a genuine earlier changeset is recorded as on time after the fact';
+end $$;
+select wos_test.expect_error($$insert into wos.task_budget_releases (task_id, reason) values ('00000000-0000-0000-0007-0000000007a4', 'abandoned')$$,
+  'R06-4 / R07-4: submitted work released as abandoned without its final rejection or an authorized cancellation', 'final rejection');
 select wos_test.expect_error($$insert into wos.task_budgets (task_id, objective_id, kind, budget_acu_micro, model_acu_micro, basis, budget_model_version, proposer_account_id, issued_epoch, reissue_of)
   values (gen_random_uuid(), '00000000-0000-0000-0007-0000000000b1', 'execution', 1000000, 1000000, '{}', 'budget-model.v1', '00000000-0000-0000-0000-00000000000c', 2,
           '00000000-0000-0000-0007-000000000fb1')$$, 'Re-issue of a task that was accepted (or not released)', 're-issue replaces');
@@ -1134,6 +1195,79 @@ select wos_test.expect_error($$insert into wos.task_budgets (task_id, objective_
   values (gen_random_uuid(), '00000000-0000-0000-0007-0000000000b1', 'execution', 1000000, 1000000, '{}', 'budget-model.v1', '00000000-0000-0000-0000-00000000000c', 2,
           '00000000-0000-0000-0006-0000000000e1')$$, 'Re-issue: one task re-issued twice', 'duplicate key');
 do $$ begin raise notice 'ok: a re-issue is a new task generation linked to the released one'; end $$;
+
+-- ---------------------------------------------------------------------------------- Astra review 07 (fix pass)
+-- R07-5: FINAL_BY_SILENCE is restored only when history proves it; every status event takes the subject lock.
+insert into wos.receipt_status_events (receipt_id, seq, from_status, to_status, kind, admin_action_id)
+values ('00000000-0000-0000-0006-00000000d502', 3, 'FINAL_BY_SILENCE', 'REVOKED', 'revoked', wos_test.aa('invalidate_receipt', 'receipt', 'd502'));
+insert into wos.receipt_status_events (receipt_id, seq, from_status, to_status, kind, admin_action_id)
+values ('00000000-0000-0000-0006-00000000d502', 4, 'REVOKED', 'FINAL_BY_SILENCE', 'restored', wos_test.aa('restore_receipt', 'receipt', 'd502'));
+do $$ begin raise notice 'ok: R07-5 final-by-silence -> revoked -> restored to FINAL_BY_SILENCE (history holds its silence finalization)'; end $$;
+insert into wos.receipt_status_events (receipt_id, seq, from_status, to_status, kind, admin_action_id)
+values ('00000000-0000-0000-0006-00000000d501', 2, 'PROVISIONAL', 'REVOKED', 'revoked', wos_test.aa('invalidate_receipt', 'receipt', 'd501'));
+select wos_test.expect_error($$insert into wos.receipt_status_events (receipt_id, seq, from_status, to_status, kind)
+  values ('00000000-0000-0000-0006-00000000d501', 3, 'REVOKED', 'FINAL_BY_SILENCE', 'restored')$$,
+  'R07-5: a never-finalized receipt "restored" to FINAL_BY_SILENCE (bypassing its window)', 'history holds');
+-- R07-2: the free challenge of an ordinary ACTIVE allocation: bound to the frozen receipt and the published root;
+-- reply, one decision; nothing is entitled before the decision, and never above it.
+insert into wos.work_dedup_keys (dedup_key, source) values ('work:r07-2', 'receipt'), ('work:r07-2b', 'receipt');
+insert into wos.contribution_receipts (id, account_id, contribution_type, slice, evidence_class, acceptance_event, independence, initial_status,
+  weight_micro, subject_kind, subject_id, dedup_key, admitted_epoch, body, receipt_sha256, qualified_at)
+values ('00000000-0000-0000-0007-0000000007c1', '00000000-0000-0000-0000-00000000000e', 'PROPOSAL', 'outcomes', 'outcome', 'proposal_incorporated', 'independent', 'ACTIVE',
+        1000000, 'proposal', gen_random_uuid(), 'work:r07-2', 2, '{}', 'sha256:' || repeat('7', 64), now()),
+       ('00000000-0000-0000-0007-0000000007c2', '00000000-0000-0000-0000-00000000000e', 'PROPOSAL', 'outcomes', 'outcome', 'proposal_incorporated', 'independent', 'ACTIVE',
+        1000000, 'proposal', gen_random_uuid(), 'work:r07-2b', 2, '{}', 'sha256:' || repeat('7', 63) || '8', now());
+insert into wos.receipt_status_events (receipt_id, seq, from_status, to_status, kind) values ('00000000-0000-0000-0007-0000000007c1', 1, null, 'ACTIVE', 'issued'),
+  ('00000000-0000-0000-0007-0000000007c2', 1, null, 'ACTIVE', 'issued');
+set session_replication_role = replica;
+insert into wos.epochs (epoch_number, mode, cluster, starts_at, ends_at, risk_review_hours, challenge_hours, policy_versions) values
+  (40, 'test', 'devnet', now() - interval '9 days', now() - interval '2 days', 48, 48, '{}'), (41, 'test', 'devnet', now() - interval '9 days', now() - interval '2 days', 48, 48, '{}');
+insert into wos.epoch_transitions (epoch_number, seq, from_state, to_state, actor, receipts_root, allocations_root, result_sha256, at)
+select e, 1, null, 'OPEN', 'system', null, null, null, now() - interval '9 days' from unnest(array[40, 41]) e
+union all select e, 2, 'OPEN', 'CALCULATING', 'system', null, null, null, now() - interval '3 days' from unnest(array[40, 41]) e
+union all select 40, 3, 'CALCULATING', 'PROPOSED', 'system', 'sha256:' || repeat('1', 64), 'sha256:' || repeat('4', 64), 'sha256:' || repeat('3', 64), now() - interval '1 hour'
+union all select 41, 3, 'CALCULATING', 'PROPOSED', 'system', 'sha256:' || repeat('1', 64), 'sha256:' || repeat('4', 64), 'sha256:' || repeat('3', 64), now() - interval '49 hours';
+insert into wos.allocations (id, epoch_number, mode, account_id, beneficiary_kind, beneficiary_id, receipt_id, slice, weight_micro, amount_base, explanation, explanation_sha256) values
+  ('00000000-0000-0000-0007-0000000007a1', 40, 'test', '00000000-0000-0000-0000-00000000000e', 'person', '00000000-0000-0000-0000-00000000000e', '00000000-0000-0000-0007-0000000007c1', 'outcomes', 1, 100, '{}', 'sha256:' || repeat('1', 64)),
+  ('00000000-0000-0000-0007-0000000007a2', 41, 'test', '00000000-0000-0000-0000-00000000000e', 'person', '00000000-0000-0000-0000-00000000000e', '00000000-0000-0000-0007-0000000007c2', 'outcomes', 1, 50, '{}', 'sha256:' || repeat('1', 64));
+set session_replication_role = origin;
+create or replace function wos_test.chal(alloc uuid, sha text, root text) returns void
+language sql as $$
+  insert into wos.allocation_challenges (allocation_id, receipt_id, receipt_sha256, allocations_root, challenger_account_id, reason_untrusted)
+  values (alloc, (select receipt_id from wos.allocations where id = alloc), sha, root, '00000000-0000-0000-0000-00000000000d', 'the proposal was never incorporated in a merge')
+$$;
+select wos_test.expect_error($$select wos_test.chal('00000000-0000-0000-0007-0000000007a1', 'sha256:' || repeat('7', 64), 'sha256:' || repeat('9', 64))$$,
+  'R07-2: a challenge citing another publication than the epoch''s allocations root', 'allocations root');
+select wos_test.expect_error($$select wos_test.chal('00000000-0000-0000-0007-0000000007a1', 'sha256:' || repeat('8', 64), 'sha256:' || repeat('4', 64))$$,
+  'R07-2: a challenge citing another receipt revision', 'frozen receipt revision');
+select wos_test.expect_error($$select wos_test.chal('00000000-0000-0000-0007-0000000007a2', 'sha256:' || repeat('7', 63) || '8', 'sha256:' || repeat('4', 64))$$,
+  'R07-2: a late challenge (the epoch''s window closed)', 'not open');
+select wos_test.chal('00000000-0000-0000-0007-0000000007a1', 'sha256:' || repeat('7', 64), 'sha256:' || repeat('4', 64));
+do $$ begin raise notice 'ok: R07-2 repro: a timely free challenge of an ACTIVE allocation is admitted (no stake, no PROVISIONAL status)'; end $$;
+select wos_test.expect_error($$select wos_test.chal('00000000-0000-0000-0007-0000000007a1', 'sha256:' || repeat('7', 64), 'sha256:' || repeat('4', 64))$$,
+  'R07-2: a second undecided challenge of the same allocation', 'undecided challenge');
+select wos_test.expect_error($$insert into wos.entitlements (epoch_number, beneficiary_kind, beneficiary_id, kind, source_kind, source_id, amount_base)
+  values (40, 'person', '00000000-0000-0000-0000-00000000000e', 'release_now', 'allocation', '00000000-0000-0000-0007-0000000007a1', 80)$$,
+  'R07-2: payment of a challenged allocation before its decision', 'undecided challenge');
+select wos_test.expect_error($$insert into wos.allocation_challenge_replies (challenge_id, account_id, body_untrusted)
+  select id, '00000000-0000-0000-0000-00000000000d', 'a reply by someone else' from wos.allocation_challenges where allocation_id = '00000000-0000-0000-0007-0000000007a1'$$,
+  'R07-2: a reply by someone other than the accused', 'only the accused');
+insert into wos.allocation_challenge_replies (challenge_id, account_id, body_untrusted)
+select id, '00000000-0000-0000-0000-00000000000e', 'it was incorporated in roadmap v3, see the merge' from wos.allocation_challenges where allocation_id = '00000000-0000-0000-0007-0000000007a1';
+select wos_test.expect_error($$insert into wos.allocation_challenge_decisions (challenge_id, outcome, resulting_amount_base, admin_action_id)
+  select id, 'changed', 120, wos_test.aa('resolve_dispute', 'allocation', 'r07-2') from wos.allocation_challenges where allocation_id = '00000000-0000-0000-0007-0000000007a1'$$,
+  'R07-2: a decision raising an allocation', 'lowered');
+insert into wos.allocation_challenge_decisions (challenge_id, outcome, resulting_amount_base, admin_action_id)
+select id, 'changed', 60, wos_test.aa('resolve_dispute', 'allocation', 'r07-2') from wos.allocation_challenges where allocation_id = '00000000-0000-0000-0007-0000000007a1';
+alter table wos.epoch_transitions disable trigger epoch_transitions_check;
+insert into wos.epoch_transitions (epoch_number, seq, from_state, to_state, actor, at) values (40, 4, 'PROPOSED', 'FINALIZED', 'system', now());
+alter table wos.epoch_transitions enable trigger epoch_transitions_check;
+select wos_test.expect_error($$insert into wos.entitlements (epoch_number, beneficiary_kind, beneficiary_id, kind, source_kind, source_id, amount_base)
+  values (40, 'person', '00000000-0000-0000-0000-00000000000e', 'release_now', 'allocation', '00000000-0000-0000-0007-0000000007a1', 61)$$,
+  'R07-2: entitlements above the decided amount', 'decided amount');
+insert into wos.entitlements (epoch_number, beneficiary_kind, beneficiary_id, kind, source_kind, source_id, amount_base)
+values (40, 'person', '00000000-0000-0000-0000-00000000000e', 'release_now', 'allocation', '00000000-0000-0000-0007-0000000007a1', 60);
+do $$ begin raise notice 'ok: R07-2 one decision lowered the allocation to 60 and payment followed it'; end $$;
 
 -- RLS: canary classification, abuse signals, assignments and the wallet registry are private; approvals are own-session.
 insert into wos.abuse_signals (kind, severity, subject_kind, subject_id, detector, detector_version, evidence)

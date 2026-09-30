@@ -141,7 +141,7 @@ export interface QualificationEvidence {
     attemptId: string | null;
     documentId: string | null;
     /** Each agent verdict with the model and reasoning its run actually recorded (review 06 R06-1). */
-    reviewVerdicts: ReadonlyArray<{ slot: string; verdict: string; modelId: string; reasoning: string }>;
+    reviewVerdicts: ReadonlyArray<{ slot: string; verdict: string; provider: string; modelId: string; reasoning: string }>;
   } | null;
   greenCiAtHead: boolean;
   /**
@@ -169,28 +169,39 @@ export interface AcceptancePolicyInput {
   fallbacks: ReadonlyArray<{ key: string; active: boolean; authoringModel: string }>;
 }
 export interface CapabilityInput {
+  /** Review 07 R07-1: compared with the version the snapshot pinned. */
+  policyVersion: string;
   classes: ReadonlyArray<{ id: string; qualified: ReadonlyArray<{ provider: string; modelId: string }> }>;
 }
 
 /** Review 06 R06-1: what accepting work of a risk class requires under the pinned ReviewPolicy (incl. the D53 fallback). */
 export interface AcceptanceRequirement {
   policyVersion: string;
+  capabilityPolicyVersion: string;
   fallback: "none" | "fable_unavailable";
   agentSeats: ReadonlyArray<"astra" | "fable">;
-  /** Models that may hold each seat (the qualified models of REVIEW_A / REVIEW_B). */
-  seatModels: Readonly<Record<"astra" | "fable", readonly string[]>>;
+  /** The (provider, model) tuples that may hold each seat: the qualified entries of REVIEW_A / REVIEW_B. */
+  seatQualified: Readonly<Record<"astra" | "fable", ReadonlyArray<{ provider: string; modelId: string }>>>;
+  /** Humans the rule requires (at least 1 under the fallback or when the snapshot requires one). */
+  humanCount: number;
   humanRequired: boolean;
   labels: ReadonlyArray<{ label: "single_lab_review"; reason: string }>;
   /** While the fallback is active, the only builder/author model (D53: Opus). */
   authoringModel: string | null;
   /** Review seats always run at the maximum permitted effort. */
   seatReasoning: "max";
+  /**
+   * Review 07 R07-1: FAIL CLOSED. An absent or duplicate rule for the risk class, an unknown capability, or a seat
+   * nobody is qualified for is a refusal — never fewer reviews.
+   */
+  refusals: readonly string[];
 }
 
 /**
- * Review 06 R06-1: ONE acceptance requirement, derived from the stored ReviewPolicy for the risk class (and the pinned
- * snapshot's human requirement), shared by qualification, self-pick and build-next. The D53 fallback drops the Fable seat,
- * requires the human, labels the outputs and pins the authoring model.
+ * Review 06 R06-1 / review 07 R07-1: ONE acceptance requirement, derived from the stored ReviewPolicy for the risk class
+ * (and the pinned snapshot's human requirement), shared by qualification, self-pick and build-next. The D53 fallback
+ * drops the Fable seat, requires the human, labels the outputs and pins the authoring model. Anything unrecognized
+ * refuses.
  */
 export function acceptanceRequirement(
   policy: AcceptancePolicyInput,
@@ -198,38 +209,52 @@ export function acceptanceRequirement(
   riskClass: string,
   snapshotHumanRequired = false,
 ): AcceptanceRequirement {
-  const rule = policy.rules.find((x) => x.riskClass === riskClass);
+  const refusals: string[] = [];
+  const rules = policy.rules.filter((x) => x.riskClass === riskClass);
+  if (rules.length !== 1) refusals.push(`the ReviewPolicy has ${rules.length} rules for risk class ${riskClass} (exactly one is required)`);
+  const rule = rules.length === 1 ? rules[0] : undefined;
   const fb = policy.fallbacks.find((f) => f.key === "fable_unavailable" && f.active);
   const fallback = fb ? "fable_unavailable" : "none";
   const seatOf = (cap: string) => (cap === "REVIEW_A" ? "astra" : cap === "REVIEW_B" ? "fable" : null);
-  const seats = [...new Set((rule?.agentReviews ?? []).map((a) => seatOf(a.capability)).filter((x) => x !== null))] as (
-    | "astra"
-    | "fable"
-  )[];
-  const models = (cls: string) => capability.classes.find((c) => c.id === cls)?.qualified.map((q) => q.modelId) ?? [];
+  const seats: ("astra" | "fable")[] = [];
+  for (const a of rule?.agentReviews ?? []) {
+    const seat = seatOf(a.capability);
+    if (seat === null) refusals.push(`unknown review capability ${a.capability}`);
+    else if (!seats.includes(seat)) seats.push(seat);
+  }
+  const agentSeats = fb ? seats.filter((x) => x !== "fable") : seats;
+  if (rule && agentSeats.length === 0) refusals.push(`risk class ${riskClass} would be accepted with no agent review`);
+  const tuples = (cls: string) =>
+    capability.classes.find((c) => c.id === cls)?.qualified.map((q) => ({ provider: q.provider, modelId: q.modelId })) ?? [];
+  const seatQualified = { astra: tuples("REVIEW_A"), fable: tuples("REVIEW_B") };
+  for (const seat of agentSeats) if (seatQualified[seat].length === 0) refusals.push(`nobody is qualified for the ${seat} seat`);
+  const humanCount = Math.max(rule?.humans.count ?? 0, fb || snapshotHumanRequired ? 1 : 0);
   return {
     policyVersion: policy.policyVersion,
+    capabilityPolicyVersion: capability.policyVersion,
     fallback,
-    agentSeats: fb ? seats.filter((x) => x !== "fable") : seats,
-    seatModels: { astra: models("REVIEW_A"), fable: models("REVIEW_B") },
-    humanRequired: Boolean(fb) || (rule?.humans.count ?? 0) > 0 || snapshotHumanRequired,
+    agentSeats,
+    seatQualified,
+    humanCount,
+    humanRequired: humanCount > 0,
     labels: requiredReviewSeats(fallback).labels,
     authoringModel: fb?.authoringModel ?? null,
     seatReasoning: "max",
+    refusals,
   };
 }
 
 /**
- * Review 06 R06-1: can work built by this model be accepted under the requirement at all? Refused when the fallback pins
- * another authoring model, or when some required agent seat has no qualified model other than the builder's (no legal
- * reviewer would exist). Used before reservation or lease, in self-pick and in build-next alike.
+ * Review 06 R06-1: can work built by this model be accepted under the requirement at all? Refused when the requirement
+ * itself refuses (R07-1), when the fallback pins another authoring model, or when some required agent seat has no
+ * qualified model other than the builder's. Used before reservation or lease, in self-pick and in build-next alike.
  */
 export function builderAcceptanceRefusals(req: AcceptanceRequirement, builderModelId: string): string[] {
-  const r: string[] = [];
+  const r: string[] = [...req.refusals];
   if (req.authoringModel !== null && builderModelId !== req.authoringModel)
     r.push(`while ${req.fallback} is active only ${req.authoringModel} builds (D53)`);
   for (const seat of req.agentSeats)
-    if (!req.seatModels[seat].some((m) => m !== builderModelId))
+    if (!req.seatQualified[seat].some((m) => m.modelId !== builderModelId))
       r.push(`work built by ${builderModelId} has no legal ${seat} reviewer (same-model self-review is refused)`);
   return r;
 }
@@ -318,6 +343,8 @@ export function qualificationRefusals(q: QualificationEvidence): string[] {
   const snap = bound.snapshot;
   // R06-1: the acceptance requirement of the ReviewPolicy that snapshot pinned, including the D53 fallback.
   if (q.pinnedReviewPolicy.policyVersion !== snap.policyVersions.review) r.push("the ReviewPolicy used is not the one the snapshot pinned");
+  if (q.pinnedCapabilityPolicy.policyVersion !== snap.policyVersions.capability)
+    r.push("the capability policy used is not the one the snapshot pinned");
   const req = acceptanceRequirement(q.pinnedReviewPolicy, q.pinnedCapabilityPolicy, snap.riskClass, snap.humanReviewRequired);
   const verdicts = rd?.reviewVerdicts ?? [];
   for (const seat of req.agentSeats) {
@@ -325,7 +352,8 @@ export function qualificationRefusals(q: QualificationEvidence): string[] {
     const v = vs[0];
     if (vs.length !== 1 || !v || v.verdict !== "NO_MATERIAL_GAPS") r.push(`the ${seat} seat needs exactly one passing verdict`);
     else {
-      if (!req.seatModels[seat].includes(v.modelId)) r.push(`${v.modelId} is not qualified for the ${seat} seat`);
+      if (!req.seatQualified[seat].some((t) => t.provider === v.provider && t.modelId === v.modelId))
+        r.push(`${v.provider}/${v.modelId} is not a qualified (provider, model) for the ${seat} seat`);
       if (v.modelId === snap.modelId) r.push(`${v.modelId} may not review work built by ${snap.modelId} (same-model self-review)`);
       if (v.reasoning !== req.seatReasoning) r.push(`the ${seat} verdict ran at ${v.reasoning}, not ${req.seatReasoning}`);
     }
@@ -1628,6 +1656,9 @@ export function routeDisputedFindings(x: {
   };
   for (const f of x.findings) {
     const labs = [...new Set(f.raisedByLabs)];
+    // Review 07: an unknown raising lab fails closed (never silently "both labs").
+    if (labs.length === 0 || labs.some((l) => !["anthropic", "openai", "zai"].includes(l)))
+      throw new Error(`finding ${f.findingId}: the lab that raised it is unknown`);
     if (labs.length !== 1) {
       add("human", "both", f.findingId);
       continue;
@@ -1683,4 +1714,93 @@ export function crossLabUpholdRates(records: readonly RulingLabRecord[]): Array<
     m.set(k, g);
   }
   return [...m.values()].sort((a, b) => `${a.raisedByLab}/${a.resolvedByLab}`.localeCompare(`${b.raisedByLab}/${b.resolvedByLab}`));
+}
+
+/**
+ * Review 07 R07-7: D58 records are DERIVED from a CONFIRMED ruling — one per finding the ruling decided, with that
+ * ruling's decision as the outcome, the raising lab from the finding's review provider and the resolving lab from the
+ * resolver's recorded run provider (or `human` for an explicit maintainer decision). Unknown labs, unconfirmed rulings
+ * and findings outside the ruling fail closed (the database trigger enforces the same).
+ */
+export function rulingLabRecordsFromConfirmedRuling(
+  ruling: { id: string; state: string; rulings: ReadonlyArray<{ findingId: string; decision: "upheld" | "overruled" }> },
+  resolver: { kind: "agent"; provider: string } | { kind: "human" },
+  findings: ReadonlyArray<{ findingId: string; raisedByProvider: string }>,
+): RulingLabRecord[] {
+  if (ruling.state !== "confirmed") throw new Error(`ruling ${ruling.id} is ${ruling.state}, not confirmed`);
+  const resolvedByLab: ResolverSeat | null = resolver.kind === "human" ? "human" : labOfProvider(resolver.provider);
+  if (!resolvedByLab) throw new Error(`ruling ${ruling.id}: the resolver's lab is unknown`);
+  return ruling.rulings.map((d) => {
+    const f = findings.find((x) => x.findingId === d.findingId);
+    const raisedByLab = f ? labOfProvider(f.raisedByProvider) : null;
+    if (!raisedByLab) throw new Error(`finding ${d.findingId}: the lab that raised it is unknown`);
+    if (raisedByLab === resolvedByLab) throw new Error(`finding ${d.findingId} was resolved by its own lab (D58)`);
+    return { rulingId: ruling.id, findingId: d.findingId, raisedByLab, resolvedByLab, outcome: d.decision };
+  });
+}
+
+// ------------------------------------------------------------------------------------------------ R07-2 free challenge of an ACTIVE allocation
+
+/**
+ * Review 07 R07-2: the V1 free challenge of an ordinary (ACTIVE) allocation. A participant flags one allocation of a
+ * PROPOSED epoch inside its challenge window, bound to the FROZEN receipt revision (hash) and the epoch's publication
+ * (allocations root). No stake, no bounty, no appeal (dormant, D55). The accused may reply; one maintainer decision
+ * confirms the allocation or changes its amount (never above it). Until decided, nothing is entitled from it. Admission,
+ * reply, decision and entitlement take the receipt's subject lock (0007 `allocation_challenges`).
+ */
+export function allocationChallengeRefusals(x: {
+  epochState: string | null;
+  nowMs: number;
+  windowClosesAtMs: number;
+  receiptStatus: string;
+  frozenReceiptSha256: string;
+  currentReceiptSha256: string;
+  publishedAllocationsRoot: string | null;
+  citedAllocationsRoot: string;
+  allocationOfReceiptInEpoch: boolean;
+  challengerIsAccusedOrRelated: boolean;
+  alreadyChallengedUndecided: boolean;
+}): string[] {
+  const r: string[] = [];
+  if (x.epochState !== "PROPOSED" || x.nowMs >= x.windowClosesAtMs) r.push("the epoch's challenge window is not open");
+  if (x.receiptStatus !== "ACTIVE")
+    r.push("the free allocation challenge is for ACTIVE receipts (provisional ones use their D54 publication)");
+  if (x.frozenReceiptSha256 !== x.currentReceiptSha256) r.push("the challenge must cite the frozen receipt revision");
+  if (x.publishedAllocationsRoot === null || x.publishedAllocationsRoot !== x.citedAllocationsRoot)
+    r.push("the challenge must cite the epoch's published allocations root");
+  if (!x.allocationOfReceiptInEpoch) r.push("the allocation belongs to another receipt or epoch");
+  if (x.challengerIsAccusedOrRelated) r.push("one cannot challenge one's own (or a related account's) allocation");
+  if (x.alreadyChallengedUndecided) r.push("the allocation already has an undecided challenge");
+  return r;
+}
+
+export function allocationChallengeDecisionRefusals(x: {
+  outcome: "confirmed" | "changed";
+  resultingAmount: bigint;
+  allocationAmount: bigint;
+  replied: boolean;
+  nowMs: number;
+  replyDeadlineAtMs: number;
+  alreadyDecided: boolean;
+  authorizationRefusals: string[];
+}): string[] {
+  const r = [...x.authorizationRefusals];
+  if (x.alreadyDecided) r.push("a challenge has one decision");
+  if (!x.replied && x.nowMs < x.replyDeadlineAtMs) r.push("decided after the accused replied or the reply window closed");
+  if (x.outcome === "confirmed" && x.resultingAmount !== x.allocationAmount) r.push("a confirmed allocation keeps its amount");
+  if (x.outcome === "changed" && (x.resultingAmount >= x.allocationAmount || x.resultingAmount < 0n))
+    r.push("a changed allocation is lowered (never raised)");
+  return r;
+}
+
+/** Review 07 R07-2: payment (entitlement) of a challenged allocation waits for its decision and follows it. */
+export function challengedAllocationPaymentRefusals(x: {
+  challenged: boolean;
+  decision: { outcome: "confirmed" | "changed"; resultingAmount: bigint } | null;
+  entitledSoFar: bigint;
+  amount: bigint;
+}): string[] {
+  if (!x.challenged) return [];
+  if (!x.decision) return ["the allocation has an undecided challenge: nothing is entitled until its decision"];
+  return x.entitledSoFar + x.amount > x.decision.resultingAmount ? ["entitlements exceed the decided amount"] : [];
 }

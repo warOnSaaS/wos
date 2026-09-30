@@ -175,6 +175,18 @@ Totals: 118 v4 assertions; 45 still refused in SQL (some also by a rule); 73 mov
 | R06-7 holds vs maturity | engine holds (unheld units only); SQL I8 + numbered releases | unit: 'R06-7 …' ×2; lifecycle trace (25 checkpoints) |
 | Re-issue identity | engine `reissueOf`; SQL `reissue_of` (unique, same objective, after release, never after acceptance); rule `reissueRefusals` | unit, unit (rules), db: 'Re-issue …' |
 
+## Review 07 (0007 v8)
+
+| Finding | Guard now | Test |
+|---|---|---|
+| R07-1 fail-open acceptance; unbound capability version | rule `acceptanceRequirement` (fail closed), `qualificationRefusals` (capability version, reviewer tuple) | unit (rules): 'R07-1 …' ×4 |
+| R07-2 free challenge of ACTIVE allocations | SQL: `allocation_challenges` / replies / decisions and `entitlements_challenged`, all under the receipt subject lock (lock before read); rules for procedure | db: 'R07-2 …' ×10; races: 'R07-2 forward / reverse' |
+| R07-3 delivery vs claims | accounting trace: confirmed settlements only; pending and voided leaves projected; source-derived comparisons | trace (54 checks) |
+| R07-4 backdated submission; task boundary | SQL: changeset evidence, derived epoch; `lock_task` for submission, release, re-issue; release of submitted work needs a rejection or an admin action | db: 'R07-4 …' ×4; races: 'R07-4 forward / reverse' |
+| R07-5 FINAL_BY_SILENCE state and restore | machine states; SQL: every status event under the subject lock, history-proven restore | unit (rules): 'R07-5 …'; db: 'R07-5 …' ×2 |
+| R07-6 in-epoch hold lifecycle | engine fold order | unit: 'R07-6 …' ×3 |
+| R07-7 D58 provenance | SQL derivation from the confirmed ruling; rule `rulingLabRecordsFromConfirmedRuling` | db: 'R07-7 …' ×4; unit (rules): 'R07-7 repro …' |
+
 ## Rules without a v4 assertion that also moved (no silent loss)
 
 Clip never raises a weight, audit outcomes only for revealed real quorums, duty events for the offered account, permanent exclusion needs governance, adapter switches need governance, Genesis dedup keys are Genesis keys, manifest admission, sponsorship approval, usage-receipt lease/run/snapshot binding: each is a function in `rules.ts` with a test in 'further write rules moved from 0007 v4 (no guarantee silently dropped)'.
