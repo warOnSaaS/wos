@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ASSESSMENT_SCHEMA, AssessmentBlock, AssessmentRecord, extractAssessmentBlock, REFERENCE_SOURCE } from "../src/index.js";
+import { ASSESSMENT_SCHEMA, AssessmentBlock, AssessmentRecord, extractAssessmentBlock, REFERENCE_SOURCE } from "../src/assessment.js";
 
 // A structurally valid block for tests. Test data only: never written to docs/assessments.
 const thesis = { importance: 5, compelling: 5, confidence: "low" };

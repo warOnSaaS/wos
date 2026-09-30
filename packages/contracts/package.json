@@ -13,6 +13,10 @@
     "./canonical": {
       "types": "./dist/canonical.d.ts",
       "default": "./dist/canonical.js"
+    },
+    "./assessment": {
+      "types": "./dist/assessment.d.ts",
+      "default": "./dist/assessment.js"
     }
   },
   "files": [
