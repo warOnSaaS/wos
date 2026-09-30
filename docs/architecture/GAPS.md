@@ -329,3 +329,32 @@ Sources: `docs/V1-SPEC.md` (the spec), `docs/DECISIONS.md` (D1–D12 and the nam
 
 ### G-82 Responsible entity not yet named (F14)
 - Publication and retention need a named responsible entity (D47); until then the founder. Privacy review is part of the single legal checkpoint.
+
+## M. Found in Astra review 03 (protocol DRAFT v3) — residuals after the fix pass
+
+Founder decisions raised by review 03 are listed separately in ADR-001 §6 (F17–F21, F1/F6/F7 restated); the architect did not choose them. The items below are engineering residuals.
+
+### G-83 Offset recovery is implicit in the database
+- The engine recovers offsets from a beneficiary's gross before the holdback; the database sees that as an allocation's unentitled remainder, not as an explicit consumption row. Add an `offset_recovered` consumption kind when the entitlement builder is implemented.
+
+### G-84 ACU is not recomputed from counters inside the database
+- The DB checks that usage receipts are this lease's, at the epoch's pinned oracle, attributed once, with the missing-log discount; recomputing each receipt's ACU from its token counters at the pinned rates happens in the TypeScript evaluator (`acuMicroFromUsage`). Store oracle rates as rows and recompute in SQL before any value-bearing use.
+
+### G-85 Human reviewer risk class is a checked label
+- `human_reviews.risk_class` is checked against the reviewer's granted scope but is still supplied by the caller, not derived from the subject's frozen policy (Astra-03 H6). Needs a risk class on the subject (ABU / document) snapshot.
+
+### G-86 Admin approvals are session-authenticated; prior state is not verified
+- The co-signer's approval is a separate row written from their own session (RLS), bound to the operation hash, and each action is used once. It is not a cryptographic signature, and `previous_state` is recorded and hashed but not compared with the database's actual state. Signed approvals (device keys) and prior-state checks per consumer are the next step.
+
+### G-87 Late completion corrections: paid-part attribution not stored
+- The engine turns the already-paid part of a correction into beneficiary offsets (`recoverFromPaid`); `pool_accrual_corrections` stores only the amount. Add attribution rows when pool payouts are wired.
+
+### G-88 Typed qualification subjects for every leased contribution type
+- `qualification_results` covers attempt and document subjects. AGENT_REVIEW, AUDIT_RERUN, INTEGRATION and ARCHITECTURE_RESOLUTION receipts need their own subject relationships (review round seat, audit assignment, …) before they can be qualified without assertions.
+
+### G-89 Settlement semantics are unexercised on a cluster
+- Signed-attempt persistence, proven expiry, finalized confirmation and the settlement fence are enforced in the database but have not run against devnet (no Solana toolchain here, G-74). "Exactly once" is claimed only after the devnet end-to-end test (WORKSTREAMS-PROTOCOL).
+
+### G-90 Finalization completeness is not enforced
+- The database refuses over-issuance, duplication and early release per source, but does not yet check that every final allocation of an epoch was entitled (Σ entitlements = Σ final − holds − reserved stakes − recovered offsets) before DISTRIBUTABLE. Add that check to the DISTRIBUTABLE transition.
+

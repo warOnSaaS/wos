@@ -1336,7 +1336,7 @@ end $$;
 create trigger anomaly_metrics_check before insert on wos.anomaly_metrics for each row execute function wos.check_anomaly_metrics();
 
 -- ============================================================================================
--- 10c. Optimistic payouts: acceptances, atomic dispute bundles, gates, replies, resolutions, appeals (H10, D43, A3-3)
+-- 10a. Optimistic payouts: acceptances, atomic dispute bundles, gates, replies, resolutions, appeals (H10, D43, A3-3)
 -- ============================================================================================
 create table wos.allocation_acceptances (
   epoch_number      integer not null references wos.epochs (epoch_number),
@@ -1957,7 +1957,7 @@ end $$;
 create trigger offsets_check before insert on wos.offsets for each row execute function wos.check_offset();
 
 -- ============================================================================================
--- 10d. Confiscation after proven cheating (D39, A3-4): notice -> HOLD on named sources (bounded, reversible) -> reply
+-- 10c. Confiscation after proven cheating (D39, A3-4): notice -> HOLD on named sources (bounded, reversible) -> reply
 -- window -> appeal window (an actual appeal and a targeted, operation-bound decision) -> execution. Compensatory only:
 -- never more than the proven excess. Punitive forfeiture is NOT implemented (founder decision F17).
 -- ============================================================================================
@@ -2136,7 +2136,7 @@ end $$;
 create trigger exclusions_check before insert on wos.exclusions for each row execute function wos.check_exclusion();
 
 -- ============================================================================================
--- 10e. ONE source-balance ledger (functions; used by 10b-10d at run time) (A3-1, A3-2, A3-4). Every asset is a SOURCE with a balance: a proposed allocation
+-- 10d. ONE source-balance ledger (functions; used by 10a-10c at run time) (A3-1, A3-2, A3-4). Every asset is a SOURCE with a balance: a proposed allocation
 -- (its effective final amount), a holdback tranche, a claimable entitlement, a dispute settlement's bounty. Every
 -- consumer — entitlement creation, maturity, claim, confiscation hold, stake reservation — takes the same advisory lock
 -- `wos.source:<id>` and checks the remaining balance with the same functions, so no asset has two availability rules.

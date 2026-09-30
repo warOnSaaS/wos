@@ -1,6 +1,6 @@
 # ADR-001: Proof of Contribution — implement as written, or modified?
 
-Status: **PROPOSED (DRAFT v2)** — Astra review 02 returned DO NOT IMPLEMENT; this revision resolves it (section 7) and awaits Astra review 03 (`REVIEW-PACKET.md`). Date: 2026-09-29. Author: Protocol Architect (Claude Opus 5.5), on `ws/protocol`.
+Status: **PROPOSED (DRAFT v3)** — Astra reviews 02 and 03 returned DO NOT IMPLEMENT (yet); v2 resolved review 02 (section 7), v3 addresses review 03 (section 8) and awaits Astra review 04 (`REVIEW-PACKET.md` §3c). Not wired into authoritative reward accounting; devnet-first; mainnet prohibited. Dates: 2026-09-29, v3 2026-09-30. Author: Protocol Architect (Claude Opus 5.5), on `ws/protocol`.
 Inputs: Amendment 02 (Part A binding, Part B proposal, Part C draft), Astra review 01 (`reviews/ASTRA-REVIEW-01-amendment-02.md`), and the founder decisions received during this design pass, recorded as D18–D38 in `docs/DECISIONS.md`.
 
 ## 1. Decision in one paragraph
@@ -72,7 +72,7 @@ Two options to keep migration possible without an unlimited mint: (a) keep mint 
 - **D3 superseded** (D18). Every statement that must change is listed in SUPERSESSION.md §3.
 
 ### 3.13 Confiscation after proven cheating, from protocol-held amounts only (D39, D40)
-The founder replaced "no confiscation" with "no SILENT or ARBITRARY confiscation". This design implements it without any on-chain power: 50% of every allocation is held back for 13 epochs, and after proven cheating (evidence, notice, reply, one appeal, a two-person action bound to the confiscation) the protocol consumes pending allocations, unreleased holdback, unclaimed entitlements and unreleased Genesis vesting — each source exactly once, never more than the proven excess — then offsets, revocation, zero governance weight and exclusion. Released tokens are never seized; there is no freeze or permanent-delegate authority. Genesis vesting is released by the protocol (not an on-chain vesting program) so it stays in reach.
+The founder replaced "no confiscation" with "no SILENT or ARBITRARY confiscation". This design implements it without any on-chain power: 50% of every allocation is held back for 13 epochs, and after proven cheating (evidence, notice, reply, one appeal, a two-person action bound to the confiscation) the protocol recovers from pending allocations, unreleased holdback and unclaimed entitlements — v3 (Astra-03 H4): the notice HOLDS those balances at once (partially if needed), the holds execute only after the windows or an upheld appeal and are released if overturned or lapsed, never more than the proven excess in total — then offsets, revocation, zero governance weight and exclusion. v3 implements this as COMPENSATORY recovery; the D39/D40 wording also reads as PUNITIVE forfeiture of all unreleased holdback on exclusion, which the draft does not execute until the founder decides (F17). Genesis vesting is not yet confiscable because no Genesis entitlements exist before mainnet. Released tokens are never seized; there is no freeze or permanent-delegate authority. Genesis vesting is released by the protocol (not an on-chain vesting program) so it stays in reach.
 
 ## 4. Critique of the founder proposals received during this pass
 
@@ -91,6 +91,10 @@ Every finding was accepted; three were accepted in a modified form, none rejecte
 - **Q3 (rate-ceiling timing):** answered with damping (ceiling ≤ 1.5× the trailing realised rate), not by switching value-bearing rewards to accepted output — that remains the flagged recommendation for mainnet (3.4, F1).
 - **Q9 (lock before snapshot):** answered with lock seasoning (≥ one full epoch).
 - The executed counterexamples (H1 returns and replay, H5 organization cap, H13 application pool, L18 rounding) and SQL repros A–G were confirmed against the old code, then turned into tests that now reject them.
+
+## 8. Astra review 03 — what changed (full table with tests: REVIEW-PACKET.md §3c)
+
+Every finding was reproduced on the pre-fix code before any change (`reviews/ASTRA-REVIEW-03-repros-prefix.txt`: 21 SQL sequences, 4 two-session races, 12 TypeScript probes), then fixed and turned into a regression test. Statuses: resolved H2, H3, H8, M10, M11, M12, L16 and the two review-02 residuals; resolved in the database with chain behaviour unexercised H9; resolved for the cited sequences with residuals H1; partially resolved H4, H5, H6, H7, M13, M15; M14 resolved as documentation with the rule left to the founder. The common fix is structural, as Astra recommended: **one source-balance ledger** (0007 §10d) that every consumer of an asset uses under the same per-source lock, **one effective final adjudication** per allocation (`allocation_adjudication`) from which all money is derived, **evidence as relationships** (qualification results, audit assignments) rather than asserted flags, and **one approved operation per admin action**, consumed once. The engine now tracks who owns the claimable part of issuance, pins each tranche's maturity and policy, requires replay state, caps confiscation at the proven excess, converts late completion corrections into offsets and aggregates sponsored splits exactly. Governance applies eligibility before caps and refuses unvalidated weights. Where the architect chose differently from Astra's suggested fix is listed in REVIEW-PACKET §3c with reasons.
 
 ## 5. Open questions
 
@@ -122,5 +126,17 @@ Every finding was accepted; three were accepted in a modified form, none rejecte
 | F14 | Name the responsible legal entity for publication and retention (D47) | the founder until named |
 | F15 | Holdback share and lookback (D40: 50%, 13 epochs) once devnet measures detection | as drafted |
 | F16 | Minimum measured detection rate that makes F1 acceptable (A2 suggests > 0.5% per receipt) | none set |
+
+### Founder decisions raised by Astra review 03 (not chosen by the architect; the draft's default is the safe one)
+
+| # | Decision | Default in the draft (v3) |
+|---|---|---|
+| F17 | The boundary between COMPENSATORY recovery of proven excess and PUNITIVE forfeiture on exclusion (D39/D40 wording vs the 0007 cap): reservation at notice, maximum hold duration, appeal effects, beneficiary liability including sponsorship changes. Simulation A2 compares both | compensatory only (holds ≤ proven excess); punitive not executable; holds lapse 14 days after the appeal window unless executed |
+| F18 | Who bears a dispute stake when the disputer's allocations go (partly) to a sponsoring organization | reserved against all of the accountable contributor's lines in the epoch, whatever the beneficiary |
+| F19 | Accept the residual quiet-epoch timing gain of the trailing-average ceiling (TOKENOMICS-SIMULATION M), or adopt stronger smoothing / acceptance-time pricing despite its starvation risk | keep the Q3 rule, documented as smoothing, not as a bound |
+| F20 | The bounded fallback when owner/organization caps are infeasible or ownership cannot be established | the tally refuses to pass anything; founder mode stays until the activation criteria are actually met |
+| F21 | The finalized Genesis reference population and its independent approvers (GENESIS-POLICY says ≥ 2 non-founder humans; the DB checks two maintainers over the manifest hash) | no manifest approved; Genesis stays mainnet-only |
+| F1 (restated) | Keep ATTESTED usage mainnet-ineligible until decided on measured evidence; choose usage or accepted output for value-bearing rewards — a simulation cannot settle this | fail closed |
+| F6/F7 (restated) | Mainnet escrow/program selection, cryptographic wallet verification and off-ramp drills stay separate gates; nothing here authorizes a mainnet launch or an ICO | closed |
 
 Decided in this pass (no longer open): Astra-02's eight missing decisions → D39–D48 (confiscation, holdback, unrecoverable losses, audit capacity, dispute burden, cap promise, organization obligations, multisig custody and resumption, publication and retention, Genesis calibration).

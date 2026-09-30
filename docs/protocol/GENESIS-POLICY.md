@@ -25,7 +25,7 @@ fallback                 = min(cap, retro size points × 400 WOS)   if the popul
 cap                      = 5,000,000 WOS (0.5% of max supply)
 ```
 
-- **Frozen reference population** (M16): an explicit list of receipts, approved by a two-person action and reviewed independently (`genesis_reference_receipts`). It excludes every Genesis beneficiary and their related parties (DB-enforced), so they cannot influence their own calibration. It is frozen before the valuation and published.
+- **Frozen reference population** (M16, v3 Astra-03 M12): ONE content-addressed manifest per version (`genesis_reference_manifests`: cutoff epoch, selection rules, the complete receipt list, and a two-person approval bound to the manifest hash). Nothing can be added after it is written. Every listed receipt must exist, be ACTIVE or RATIFIED and admitted by the cutoff. It excludes every Genesis beneficiary and their related parties, checked in BOTH insertion orders (a later Genesis contribution by a related party is refused). Commit-derived evidence must be fully covered by canonical commit-to-unit mappings (checked at commit), and a commit that is a merged live attempt is never Genesis. Who the independent approvers are (this document says ≥ 2 non-founder humans; the DB checks two maintainers) is founder decision F21.
 - **The stated statistic, exactly:** epochs 1–12, not checkpoints; the simulation now computes it that way (table H: ~98 WOS/ACU in a 1,000-contributor network).
 - **Canonical work mapping:** each merged pre-protocol commit maps to exactly one retro unit (`genesis_commit_claims` primary key on the commit sha), so overlapping work cannot be credited under two keys; retro units also share the dedup namespace with receipts.
 

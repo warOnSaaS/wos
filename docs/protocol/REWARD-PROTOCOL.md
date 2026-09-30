@@ -67,7 +67,7 @@ R + ΣP + S + I = emissionReserve (995,000,000 WOS),   R, P_k, S, I >= 0,   Σ h
 maxSupply = emissionReserve + GenesisCap = 1,000,000,000 WOS
 ```
 
-`computeEpoch` asserts this — equality AND non-negative balances — on its input and on its output. Every movement names its source and every event id is consumed once (inside an input and against `consumedIds`; the DB enforces the same with unique keys):
+`computeEpoch` asserts this — equality AND non-negative balances AND Σ claimable + Σ holdback ≤ I — on its input and on its output. v3 (Astra-03 M10): the state also records who owns the claimable part of I (`claimable`, per beneficiary) and each holdback tranche with the maturity epoch and policy version fixed when it was created, so a return, a confiscation or a claim must name an owner with a balance; `consumedIds` (replay state) is required. Every movement names its source and every event id is consumed once (inside an input and against `consumedIds`; the DB enforces the same with source balances and unique keys, migration 0007 §10b and §10d):
 
 1. **Returns** (identified): `unbound_expiry` (an entitlement unclaimed for 52 epochs: I → R), `pool_cancel` (a removed or aliased feature's pool: P → R), `holdback_forfeit` (exclusion: tranches and I → R). **Accrual corrections**: completion accrual attributed to work later clipped or revoked (P → R).
 2. **Confiscations** (D39): identified holdback tranches and unclaimed entitlements (I → R); bounty ≤ 20% of what was recovered; any proven excess not recovered becomes an offset.
@@ -86,7 +86,7 @@ maxSupply = emissionReserve + GenesisCap = 1,000,000,000 WOS
 
 ## 6. The rate ceiling
 
-`ceiling_e = floor(100 WOS/ACU × (1 − 3,327/1,000,000)^(e−1))`, floored every epoch. It binds when participation is low (S1, S6, S9) and makes the effective rule "at most 100 WOS per ACU early, less later". **Q3 timing damping:** an epoch's ceiling is also at most 1.5× the published trailing 4-epoch realised execution rate, so moving acceptance from a congested epoch to a quiet one gains at most 50% (it returns about 5.5% of budgets in steady state). Merge timing is also not fully in a contributor's control (review and merge queue). Without it contributor zero alone would take 1,986,219 WOS/week (S10). It applies to every distributing slice (human review and outcomes weights are ACU-equivalents).
+`ceiling_e = floor(100 WOS/ACU × (1 − 3,327/1,000,000)^(e−1))`, floored every epoch. It binds when participation is low (S1, S6, S9) and makes the effective rule "at most 100 WOS per ACU early, less later". **Q3 timing damping:** an epoch's ceiling is also at most 1.5× the published trailing 4-epoch realised execution rate (it returns about 5.5% of budgets in steady state). This SMOOTHS the rate; it does not bound a quiet epoch against the one before it (Astra-03 M14): after rates of 100, 100, 100 and 1 WOS/ACU, one ACU in a quiet fifth epoch still earns about 98.7 WOS (TOKENOMICS-SIMULATION M). Whether that residual timing gain is acceptable is founder decision F19. Merge timing is also not fully in a contributor's control (review and merge queue). Without it contributor zero alone would take 1,986,219 WOS/week (S10). It applies to every distributing slice (human review and outcomes weights are ACU-equivalents).
 
 ## 7. Planning, outcomes, human review, completion
 
@@ -114,3 +114,12 @@ Given the epoch's frozen manifest (receipt ids and hashes), the receipts, the po
 ## 11. Versioning
 
 Policy documents are immutable versions (`policy_documents`); activation is an AdminAction (founder mode) or a governance proposal, effective from a future epoch, announced ≥ 72 h ahead, with a what-if preview attached (`tools/tokenomics-sim/preview.ts`; DB trigger `check_policy_activation`). Emergency changes apply only to unpublished allocations and are labelled.
+
+## 12. v3 additions (Astra review 03)
+
+- **Source-backed entitlements (H1, H2).** In the database every entitlement names its source — an allocation at its effective final amount, a tranche, or a dispute settlement — and consumes that source's remaining balance once per (source, kind) under the source's lock; releases never exceed the available amount minus its holdback share; a matured release is exactly the tranche's remainder, from the tranche's pinned epoch on; a claim takes an entitlement's whole remaining balance into one leaf. Offsets recovered by the engine appear in the database as the unentitled remainder of an allocation (G-83); completeness of finalization is not enforced yet (G-90).
+- **Effective final adjudication (H3).** A gated allocation is final only when its appeal is decided, or its appeal window has closed with no appeal; settlements, bounties, forfeited stakes, entitlements and dispute-driven revocations all read that one amount. Stakes of all of a contributor's disputes in an epoch are reserved against that contributor's allocations.
+- **Compensatory confiscation (H4).** Holds apply at notice, total at most the proven excess, and execute only after the windows or an upheld appeal; the engine refuses recovery above the proven excess. Punitive forfeiture is founder decision F17.
+- **Late completion corrections (M15).** A correction's pool part returns to the reserve; the part the pool already paid is attributed to the beneficiaries who received it (`recoverFromPaid`) and becomes their offsets, so a historical correction never blocks later epochs.
+- **Sponsored rounding (L16).** Lines carry exact share numerators (weight × share bp); beneficiary totals are formed before any rounding.
+
