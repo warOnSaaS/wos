@@ -151,3 +151,29 @@ These override `docs/V1-SPEC.md` where they differ. Date: 2026-09-29.
 - **Credentials.** An importer signs in to the CUSTOMER's own account with the customer's OAuth tokens, held encrypted and scoped per organization, never with wOS's own credentials. The detailed design belongs to Amendment 03 (connections) and is not decided here.
 - **Input facts.** They come from `docs/scans/<target>.md`, section "Getting data out", on main since the `ws/scans` merge.
 - Protocol text: ROADMAP-PROTOCOL.md "Migration: getting customers off the target (D59)".
+
+## D60. Architecture changes: affected work is held and reprioritised, everything else keeps building
+- Founder (2026-09-30): the product must stay flexible. When an architecture change happens, the affected work is held and reprioritised, and everything else keeps building.
+- **Architecture records.** A cross-cutting change (shared core, auth, data layer, API conventions, UI shell) is an architecture record, `architecture/ADR-nnn.yaml` in the product repo (`ArchitectureRecord`, contracts 5.5.0).
+  - It declares the elements it introduces, changes or retires as stable keys (`arch:auth-session`, `arch:data-layer`, ...), and the paths each element governs.
+  - Its migration plan is its own build graph (`architecture/ADR-nnn/BUILD-GRAPH.yaml`, ABUs `adr-nnn#NN`).
+  - It goes through the same Astra/Fable round loop as a contract, with at most 4 rounds, and needs a maintainer's explicit sign-off before merge.
+  - Elements are defined ONLY by architecture records. ADR-000 records the core as it exists when the product repo is seeded; contracts rely on elements and never define them.
+- **Dependencies are declared.**
+  - ABUs declare the elements they rely on as `arch:` resources: `shared` = relies on it, `exclusive` = changes it. Only a record's migration ABUs may claim exclusive.
+  - Feature contracts list the elements they rely on (`FeatureContract.architecture`).
+  - Writing under an element's paths without declaring it, and an unknown element, are validation errors.
+- **Impact is computed, not judged.** When a record opens, and again when it merges, `computeArchitectureImpact` lists what relies on the changed elements: contracts, unstarted ABUs (held), in-progress ABUs and their live attempts (finishing), their queued tasks, merged ABUs (the migration must cover them) and the dependents blocked behind held ABUs. It is published on the PR and as `architecture.impact_computed`.
+- **HELD.**
+  - Holds start when the record merges. The impact published at open is advisory, so an unmerged proposal cannot freeze work.
+  - An unstarted affected ABU is held (`ArchitectureHoldMachine`, an overlay; the ABU, attempt and task machines are unchanged). Self-pick and build next do not offer it.
+  - Dependents of held ABUs are not held themselves: they cannot start until the held ABU merges, and the impact lists them.
+  - In-flight attempts finish. Their review is never paused.
+    - Before the record merges, review is against the architecture the attempt was leased under, with the record in context as information; non-conformance with an unmerged record is not a material finding.
+    - After it merges, remaining rounds review against the new architecture, and the fixes are ordinary revision rounds.
+  - Submitted work keeps its protocol protection.
+  - Budgets of held unstarted tasks are released as cancelled and reissued when the hold ends. The builder carries no penalty or reputation mark, and the reissue keeps the unit's original place in the ranking (protocol delta, below).
+  - Holds end when the migration graph has fully merged, or when the record is abandoned. Each held ABU is then re-validated: released unchanged, or superseded when a newer contract version does not carry it over (FEATURE-CONTRACT section 5).
+- **Priority.** While a record is migrating, its migration ABUs get a published build-next boost (`architecture-policy.v1` `migrationBoost`). Held work returns in its prior order.
+- **Rare by design.** Core and conventions get their own record first. Features are modules that talk only through declared APIs and resources. ARCHITECTURE.md section 15 says what is an architecture change and what is local.
+- **Protocol impact:** small and additive (build-next boost and hold filter, ranking continuity on reissue, a release label). It is written as a note for the protocol architect in `docs/architecture/D60-PROTOCOL-DELTA.md`; `ws/protocol` is not edited.

@@ -149,6 +149,15 @@ Changing a shared contract affects every app that references it.
 
 "Carried over unchanged" means same key, same `objective`, `requirements`, `scope`, `resources`, `acceptance`, `sizePoints` and `dependsOn` (deep equality of the `AbuSpec`).
 
+### Architecture elements and holds (D60, contracts 5.5.0)
+
+- A contract lists the architectural elements it relies on (`architecture: [arch:...]`). Its ABUs declare each one they rely on as a `shared` resource `arch:<name>`, and must declare any element whose governed paths their write scope can touch. Only an architecture record's migration ABUs claim an element `exclusive`. Validator codes: `ARCH_ELEMENT_UNKNOWN`, `ARCH_PATH_WITHOUT_RESOURCE`, `ARCH_CHANGE_OUTSIDE_RECORD`, `ARCH_NOT_IN_CONTRACT`.
+- When an architecture record that changes an element merges, the unstarted ABUs relying on it are held until the record's migration graph has merged. The hold then ends through the rules of this section:
+  - no newer contract version: the ABU is released unchanged;
+  - a newer version carries the ABU over unchanged: released;
+  - otherwise: superseded.
+- A contract revision opened to follow a record is an ordinary new version with `impactedTargets`.
+
 ## 6. Duplicates and the alias procedure
 
 Prevention: the catalog is in every roadmap author's and reviewer's context. "This duplicates catalog feature F" is a material finding at roadmap review and at contract review.

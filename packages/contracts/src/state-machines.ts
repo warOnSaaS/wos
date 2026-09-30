@@ -74,7 +74,8 @@ export const TaskMachine = machine<TaskState, TaskEvent>({
       to: "leased",
       event: "claim",
       actor: ["contributor"],
-      guard: "claimant passes Agent Policy eligibility and independence rules; resource locks acquired; no other active lease on the task",
+      guard:
+        "claimant passes Agent Policy eligibility and independence rules; resource locks acquired; no other active lease on the task; for abu_build, no active architecture hold on the ABU (D60, ArchitectureHoldMachine)",
     },
     {
       from: "leased",
@@ -929,6 +930,40 @@ export const ModuleInstallStates = ["staged", "active", "previous", "failed", "r
 export type ModuleInstallState = (typeof ModuleInstallStates)[number];
 export type ModuleInstallEvent = "activate" | "supersede" | "rollback" | "fail" | "remove";
 
+// ---------------------------------------------------------------------------------------------
+// Architecture hold (D60, contracts 5.5.0): an overlay on an ABU while an architecture record migrates.
+// The ABU, attempt and task machines are unchanged; a claim's guard also requires "no active hold".
+// ---------------------------------------------------------------------------------------------
+
+export const ArchitectureHoldMachineStates = ["held", "released", "superseded"] as const;
+export type ArchitectureHoldMachineState = (typeof ArchitectureHoldMachineStates)[number];
+export type ArchitectureHoldEvent = "release" | "supersede";
+
+export const ArchitectureHoldMachine = machine<ArchitectureHoldMachineState, ArchitectureHoldEvent>({
+  name: "architecture_hold",
+  states: ArchitectureHoldMachineStates,
+  initial: ["held"],
+  terminal: ["released", "superseded"],
+  transitions: [
+    {
+      from: "held",
+      to: "released",
+      event: "release",
+      actor: ["system"],
+      guard:
+        "the record's migration graph fully merged and no newer contract version of the ABU's feature merged, or one did and carries the ABU over unchanged (FEATURE-CONTRACT section 5); or the record was abandoned. The ABU is offered again with its prior rank",
+    },
+    {
+      from: "held",
+      to: "superseded",
+      event: "supersede",
+      actor: ["system"],
+      guard:
+        "the record's migration graph fully merged and a newer contract version of the ABU's feature merged that does not carry the ABU over; the ABU is superseded in the same transaction (AbuMachine supersede)",
+    },
+  ],
+});
+
 export const ModuleInstallMachine = machine<ModuleInstallState, ModuleInstallEvent>({
   name: "module_install",
   states: ModuleInstallStates,
@@ -1005,4 +1040,5 @@ export const ALL_MACHINES = [
   EntitlementMachine,
   AppReleaseMachine,
   ModuleInstallMachine,
+  ArchitectureHoldMachine,
 ] as const;

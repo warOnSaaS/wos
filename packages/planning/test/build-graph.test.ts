@@ -1,13 +1,22 @@
 import { BuildGraph, BuildGraphErrorCode, FeatureContract, type RepoManifest } from "@waronsaas/contracts";
 import { describe, expect, it } from "vitest";
-import { type BuildGraphContext, scopeCanTouchGlob, validateBuildGraph } from "../src/index.js";
+import { architectureRegistry } from "@waronsaas/contracts";
+import { type BuildGraphContext, REPOSITORY_FAMILIES, scopeCanTouchGlob, validateBuildGraph } from "../src/index.js";
 import { clone, contract, estimate, graph, policy, repoManifest } from "./fixtures.js";
 
 type G = ReturnType<typeof graph>;
 type C = ReturnType<typeof contract>;
 
 function run(
-  mut: { g?: (g: G) => void; c?: (c: C) => void; r?: (r: RepoManifest) => void; est?: (k: string) => number; ctx?: BuildGraphContext } = {},
+  mut: {
+    g?: (g: G) => void;
+    c?: (c: C) => void;
+    r?: (r: RepoManifest) => void;
+    est?: (k: string) => number;
+    ctx?: BuildGraphContext;
+    /** D60: run with the live architecture registry; the mutation sets up the declarations. */
+    arch?: boolean;
+  } = {},
 ) {
   const g = clone(graph());
   const c = clone(contract());
@@ -15,8 +24,40 @@ function run(
   mut.g?.(g);
   mut.c?.(c);
   mut.r?.(r);
-  return validateBuildGraph(g, c, r, mut.est ?? estimate, policy, mut.ctx);
+  return validateBuildGraph(g, c, r, mut.est ?? estimate, policy, mut.ctx ?? (mut.arch ? archContext() : undefined));
 }
+
+/** D60 fixture: two live elements from ADR-000; contacts#01 writes under the data layer's governed path. */
+function archContext(): BuildGraphContext {
+  return {
+    repositories: REPOSITORY_FAMILIES,
+    contractRepo: "waronsaas/product",
+    architecture: architectureRegistry([
+      {
+        id: "ADR-000",
+        elements: [
+          {
+            key: "arch:data-layer",
+            change: "introduce",
+            summary: "Postgres access through the shared data layer.",
+            paths: ["modules/contacts/api/db/**"],
+          },
+          {
+            key: "arch:ui-shell",
+            change: "introduce",
+            summary: "The one web shell and its navigation registry.",
+            paths: ["apps/web/shell/**"],
+          },
+        ],
+      },
+    ]),
+  };
+}
+/** The valid D60 baseline: the contract relies on the data layer and contacts#01 declares it shared. */
+const archOk = (g: G, c: C) => {
+  c.architecture = ["arch:data-layer"];
+  g.abus[0]!.resources.push({ key: "arch:data-layer", mode: "shared" });
+};
 const codes = (issues: ReturnType<typeof run>) => [...new Set(issues.map((i) => i.code))].sort();
 
 /** One failing fixture per BuildGraphErrorCode; each breaks exactly one rule of the valid baseline. */
@@ -133,6 +174,36 @@ const CASES: Record<BuildGraphErrorCode, { why: string; mut: Parameters<typeof r
     mut: { g: (g) => (g.abus[3]!.scope.write = ["modules/contacts/mobile-push/**", "modules/contacts/native/package.json"]) },
     abu: null,
   },
+  ARCH_ELEMENT_UNKNOWN: {
+    why: "D60: an ABU and its contract rely on an element no architecture record defines",
+    mut: {
+      arch: true,
+      c: (c) => (c.architecture = ["arch:data-layer", "arch:made-up"]),
+      g: (g) => {
+        g.abus[0]!.resources.push({ key: "arch:data-layer", mode: "shared" });
+        g.abus[1]!.resources.push({ key: "arch:made-up", mode: "shared" });
+      },
+    },
+  },
+  ARCH_PATH_WITHOUT_RESOURCE: {
+    why: "D60: an ABU writes under the data layer's governed paths without declaring it",
+    mut: { arch: true, c: (c) => (c.architecture = ["arch:data-layer"]) },
+    abu: "contacts#01",
+  },
+  ARCH_CHANGE_OUTSIDE_RECORD: {
+    why: "D60: a feature ABU claims an element exclusive (only an architecture record's migration may change it)",
+    mut: {
+      arch: true,
+      c: (c) => (c.architecture = ["arch:data-layer"]),
+      g: (g) => g.abus[0]!.resources.push({ key: "arch:data-layer", mode: "exclusive" }),
+    },
+    abu: "contacts#01",
+  },
+  ARCH_NOT_IN_CONTRACT: {
+    why: "D60: an ABU relies on an element its contract does not list",
+    mut: { arch: true, g: (g) => g.abus[0]!.resources.push({ key: "arch:data-layer", mode: "shared" }) },
+    abu: "contacts#01",
+  },
 };
 
 describe("validateBuildGraph", () => {
@@ -140,6 +211,19 @@ describe("validateBuildGraph", () => {
     expect(BuildGraph.safeParse(graph()).success).toBe(true);
     expect(FeatureContract.safeParse(contract()).success).toBe(true);
     expect(run()).toEqual([]);
+  });
+
+  it("D60: the baseline with its architecture declared passes with the registry, and without it the rules do not run", () => {
+    expect(run({ arch: true, g: (g) => archOk(g, contract()), c: (c) => (c.architecture = ["arch:data-layer"]) })).toEqual([]);
+    expect(run({ g: (g) => g.abus[0]!.resources.push({ key: "arch:anything", mode: "exclusive" }) })).toEqual([]);
+  });
+
+  it("D60: an architecture record's migration ABU may change the element it migrates", () => {
+    const issues = run({
+      ctx: { ...archContext(), architectureChanges: new Set(["arch:data-layer"]) },
+      g: (g) => g.abus[0]!.resources.push({ key: "arch:data-layer", mode: "exclusive" }),
+    });
+    expect(issues).toEqual([]);
   });
 
   it("covers every BuildGraphErrorCode with a fixture", () => {

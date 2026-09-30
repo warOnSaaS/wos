@@ -77,7 +77,8 @@ export const ZERO_PROGRESS: Progress = {
   computedAt: null,
 };
 
-export const DocumentKind = z.enum(["roadmap", "feature_contract"]);
+/** contracts 5.5.0 (D60): `architecture` = an architecture record (architecture/ADR-nnn.yaml in the product repo). */
+export const DocumentKind = z.enum(["roadmap", "feature_contract", "architecture"]);
 export type DocumentKind = z.infer<typeof DocumentKind>;
 
 export const DocumentWorkflowSummary = z.object({

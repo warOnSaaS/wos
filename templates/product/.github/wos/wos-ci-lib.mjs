@@ -6270,7 +6270,7 @@ const TaskMachine = machine({
 			to: "leased",
 			event: "claim",
 			actor: ["contributor"],
-			guard: "claimant passes Agent Policy eligibility and independence rules; resource locks acquired; no other active lease on the task"
+			guard: "claimant passes Agent Policy eligibility and independence rules; resource locks acquired; no other active lease on the task; for abu_build, no active architecture hold on the ABU (D60, ArchitectureHoldMachine)"
 		},
 		{
 			from: "leased",
@@ -7127,6 +7127,30 @@ const ModuleInstallStates = [
 	"failed",
 	"removed"
 ];
+const ArchitectureHoldMachineStates = [
+	"held",
+	"released",
+	"superseded"
+];
+const ArchitectureHoldMachine = machine({
+	name: "architecture_hold",
+	states: ArchitectureHoldMachineStates,
+	initial: ["held"],
+	terminal: ["released", "superseded"],
+	transitions: [{
+		from: "held",
+		to: "released",
+		event: "release",
+		actor: ["system"],
+		guard: "the record's migration graph fully merged and no newer contract version of the ABU's feature merged, or one did and carries the ABU over unchanged (FEATURE-CONTRACT section 5); or the record was abandoned. The ABU is offered again with its prior rank"
+	}, {
+		from: "held",
+		to: "superseded",
+		event: "supersede",
+		actor: ["system"],
+		guard: "the record's migration graph fully merged and a newer contract version of the ABU's feature merged that does not carry the ABU over; the ABU is superseded in the same transaction (AbuMachine supersede)"
+	}]
+});
 const ModuleInstallMachine = machine({
 	name: "module_install",
 	states: ModuleInstallStates,
@@ -7651,6 +7675,7 @@ const FeatureContract = object({
 	requirements: array(Requirement).min(1),
 	journeys: array(Journey.extend({ requirements: array(RequirementKey).min(1) })).min(1),
 	sharedApi: string().min(20).nullable(),
+	architecture: array(string().regex(/^arch:[a-z][a-z0-9-]{1,48}[a-z0-9]$/)).optional(),
 	profiles: array(RequirementProfile).min(1),
 	impactedTargets: array(TargetSlug).default([]),
 	interfaces: object({
@@ -7702,7 +7727,7 @@ const FeatureContract = object({
 		"surface"
 	], `${j.surface} is not a required surface`);
 });
-const ResourceKey = string().regex(/^(db|api|schema|lockfile|toolchain|config|event|ui|dep):[A-Za-z0-9 ._/:{}*-]+$/);
+const ResourceKey = string().regex(/^(db|api|schema|lockfile|toolchain|config|event|ui|dep|arch):[A-Za-z0-9 ._/:{}*-]+$/);
 const ResourceClaim = object({
 	key: ResourceKey,
 	mode: _enum(["exclusive", "shared"])
@@ -7762,7 +7787,11 @@ const BuildGraphErrorCode = _enum([
 	"JOURNEY_UNCOVERED",
 	"REQUIREMENT_SURFACE_NOT_IN_SCOPE",
 	"NATIVE_CAPABILITY_UNPLANNED",
-	"CONTRACT_VERSION_MISMATCH"
+	"CONTRACT_VERSION_MISMATCH",
+	"ARCH_ELEMENT_UNKNOWN",
+	"ARCH_PATH_WITHOUT_RESOURCE",
+	"ARCH_CHANGE_OUTSIDE_RECORD",
+	"ARCH_NOT_IN_CONTRACT"
 ]);
 const RoadmapBundle = object({
 	schema: literal("wos-roadmap-bundle.v1"),
@@ -8254,7 +8283,11 @@ const Progress = object({
 	excludedItems: number$1().int().nonnegative(),
 	computedAt: Timestamp.nullable()
 });
-const DocumentKind = _enum(["roadmap", "feature_contract"]);
+const DocumentKind = _enum([
+	"roadmap",
+	"feature_contract",
+	"architecture"
+]);
 const DocumentWorkflowSummary = object({
 	id: Uuid,
 	kind: DocumentKind,
@@ -8789,6 +8822,32 @@ const DomainEventBody = discriminatedUnion("type", [
 		organizationId: Uuid,
 		accountId: Uuid,
 		role: OrgRole.nullable()
+	}),
+	e("architecture.impact_computed", "public", {
+		documentId: Uuid,
+		recordId: string().regex(/^ADR-\d{3}$/),
+		version: number$1().int().positive(),
+		phase: _enum(["opened", "merged"]),
+		elements: array(string()),
+		contracts: array(object({
+			feature: FeatureKey,
+			version: number$1().int().positive()
+		})),
+		held: array(AbuKey),
+		blockedByHold: array(AbuKey),
+		finishing: array(AbuKey),
+		liveAttempts: array(Uuid),
+		heldTasks: array(Uuid),
+		merged: array(AbuKey)
+	}),
+	e("architecture.hold_changed", "public", {
+		recordId: string().regex(/^ADR-\d{3}$/),
+		abu: AbuKey,
+		state: _enum([
+			"held",
+			"released",
+			"superseded"
+		])
 	}),
 	e("entitlement.changed", "private", {
 		organizationId: Uuid,
@@ -9996,6 +10055,90 @@ const ArchitectureBlocker = object({
 });
 
 //#endregion
+//#region packages/contracts/dist/architecture.js
+const ArchElementKey = string().regex(/^arch:[a-z][a-z0-9-]{1,48}[a-z0-9]$/, "arch:<lowercase-name>");
+const ArchitectureRecordId = string().regex(/^ADR-\d{3}$/, "ADR-nnn");
+const ARCHITECTURE_PATHS = {
+	record: (id) => `architecture/${id}.yaml`,
+	buildGraph: (id) => `architecture/${id}/BUILD-GRAPH.yaml`
+};
+const ArchitectureElementChange = object({
+	key: ArchElementKey,
+	change: _enum([
+		"introduce",
+		"change",
+		"retire"
+	]),
+	summary: string().min(20),
+	paths: array(WriteScope).default([])
+});
+const ArchitectureRecord = object({
+	schema: literal("wos-architecture-record.v1"),
+	id: ArchitectureRecordId,
+	version: number$1().int().positive(),
+	title: string().min(5).max(100),
+	context: string().min(40),
+	decision: string().min(40),
+	consequences: string().min(40),
+	alternatives: array(object({
+		option: string().min(3),
+		rejectedBecause: string().min(20)
+	})).min(1),
+	elements: array(ArchitectureElementChange).min(1),
+	migration: object({
+		buildGraph: string().regex(/^architecture\/ADR-\d{3}\/BUILD-GRAPH\.yaml$/),
+		summary: string().min(20)
+	}).nullable(),
+	supersedes: array(ArchitectureRecordId).default([])
+}).superRefine((r, ctx) => {
+	const issue = (path, message) => ctx.addIssue({
+		code: "custom",
+		path,
+		message
+	});
+	for (const [i, e] of r.elements.entries()) {
+		if (e.change !== "retire" && e.paths.length === 0) issue([
+			"elements",
+			i,
+			"paths"
+		], `${e.change} needs the paths the element governs`);
+		if (e.change === "retire" && e.paths.length > 0) issue([
+			"elements",
+			i,
+			"paths"
+		], "a retired element governs no paths");
+	}
+	if (r.elements.some((e) => e.change !== "introduce") && r.migration === null) issue(["migration"], "changing or retiring an element needs a migration build graph");
+	if (r.migration && r.migration.buildGraph !== ARCHITECTURE_PATHS.buildGraph(r.id)) issue(["migration", "buildGraph"], `must be ${ARCHITECTURE_PATHS.buildGraph(r.id)}`);
+});
+const ArchitectureRecordErrorCode = _enum([
+	"ARCH_ELEMENT_DUPLICATE",
+	"ARCH_INTRODUCE_EXISTING",
+	"ARCH_CHANGE_UNKNOWN",
+	"ARCH_PATH_OVERLAP",
+	"ARCH_MIGRATION_KEY",
+	"ARCH_MIGRATION_RESOURCE",
+	"ARCH_MIGRATION_UNCOVERED",
+	"ARCH_VERSION_NOT_NEXT"
+]);
+const ArchitecturePolicy = object({
+	schema: literal("wos-architecture-policy.v1"),
+	maxRounds: number$1().int().positive(),
+	maintainerSignOff: literal(true),
+	migrationBoost: number$1().int().positive(),
+	holds: object({
+		startAt: literal("record_merged"),
+		endAt: literal("migration_merged_or_record_abandoned"),
+		holdTransitiveDependents: literal(false)
+	}),
+	review: object({
+		pauseInFlight: literal(false),
+		recordInContext: literal(true)
+	})
+});
+const ContractArchitecture = array(ArchElementKey).optional();
+
+//#endregion
 //#region packages/contracts/dist/data/agent-policy.v1.json
 var agent_policy_v1_default = {
 	policyVersion: "agent-policy.v1",
@@ -10827,9 +10970,28 @@ var reward_schedule_v1_default = {
 };
 
 //#endregion
+//#region packages/contracts/dist/data/architecture-policy.v1.json
+var architecture_policy_v1_default = {
+	schema: "wos-architecture-policy.v1",
+	maxRounds: 4,
+	maintainerSignOff: true,
+	migrationBoost: 1e5,
+	holds: {
+		"startAt": "record_merged",
+		"endAt": "migration_merged_or_record_abandoned",
+		"holdTransitiveDependents": false
+	},
+	review: {
+		"pauseInFlight": false,
+		"recordInContext": true
+	}
+};
+
+//#endregion
 //#region packages/contracts/dist/data.js
 const AGENT_POLICY_V1 = AgentPolicyDocument.parse(agent_policy_v1_default);
 const REWARD_SCHEDULE_V1 = RewardSchedule.parse(reward_schedule_v1_default);
+const ARCHITECTURE_POLICY_V1 = ArchitecturePolicy.parse(architecture_policy_v1_default);
 
 //#endregion
 //#region packages/contracts/dist/canonical.js

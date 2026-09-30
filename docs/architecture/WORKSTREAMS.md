@@ -405,3 +405,16 @@ The web workstream (public site) also uses `TargetSummary.apps` and `getApplicat
 - **The first CRM catalog build** is the first proof. It creates `catalog/import-engine.yaml` in the product repo and a `salesforce-import` connector that imports Salesforce contacts and accounts, with a dry run and a verification report.
 - Credentials for connectors wait for Amendment 03 (connections). Until then an importer's contract states that it uses the customer's own organization-scoped OAuth grant and designs nothing further.
 - Input facts: `docs/scans/<target>.md` "Getting data out" (on main).
+
+## 13. D60 architecture changes: interfaces (contracts 5.5.0)
+
+Everything is additive at 5.5.0. No Wave 3a interface in section 12.4 changed. Nothing is served yet, and serving needs migration 0007. The architect writes it when the control plane picks this up. It adds `architecture` to the documents' kind check, `architecture_holds`, and the element registry.
+
+| Workstream | Implements (later) | Uses |
+|---|---|---|
+| control-plane | `architecture` documents with `DocumentMachine` (allowed paths `architectureDocumentAllowedPaths`, PR title `architecturePrTitle`, `architecture-policy.v1` `maxRounds` 4, a maintainer sign-off between consensus and merge); on open and on merge run `computeArchitectureImpact` over the database rows, post it on the PR, write `architecture.impact_computed`; on merge create `architecture_holds` (`ArchitectureHoldMachine`, `architecture.hold_changed`), cancel and later reissue held tasks, ingest the migration graph as ABUs of feature `adr-nnn`; the claim guard (no active hold); hold end via `holdOutcome`; pass `architectureRegistry(merged records)` as `BuildGraphContext.architecture` to `validateBuildGraph` | `ArchitectureRecord`, `architectureRecordIssues`, `architectureRegistry`, `computeArchitectureImpact`, `abuOffered`, `holdOutcome`, `rankWithArchitecture`, `ARCHITECTURE_POLICY_V1`, `ARCHITECTURE_PATHS` |
+| planning | owns the four `ARCH_*` build-graph rules (added by the architect) and a `validateMigrationGraph(record, graph, registry)`. That validator runs the graph-structure rules (keys, dependencies, cycles, protected paths, parallel overlap, resources, context budget) without a FeatureContract, plus `architectureRecordIssues`. A migration graph's requirement `R-00n` names the record's `elements[n-1]`. | `BuildGraphContext.architecture`, `architectureChanges` |
+| context-policy | author and reviewer contexts for `architecture` documents: the record, the live registry, the published impact. Review contexts of in-flight attempts include the record (`review.recordInContext`); before merge its non-conformance is not a material finding. Authoring and review reuse the feature roles until dedicated roles are needed (a later change) | `ArchitecturePolicy.review` |
+| orchestrator, cli, desktop | show a held unit as HELD with its record; build next never returns one | `architecture.hold_changed` |
+| web | the record, its impact and the holds on the public activity feed | the two events |
+| protocol (ws/protocol) | the delta in `D60-PROTOCOL-DELTA.md` | |

@@ -180,3 +180,31 @@ MINOR, additive. No route, no migration.
 - Regenerated, no other change: context-engine golden hashes, CLI golden output, the vendored validator bundle.
 
 Affected workstreams: planning (owns the new rule), context-policy (prompts carry the new policy text), control-plane (surfaces the new codes through document validation unchanged).
+
+## 5.5.0 — 2026-09-30 (D60: architecture changes)
+
+MINOR, additive. No migration yet: migration 0007 comes when the control plane serves it (WORKSTREAMS 13). No Wave 3a interface changed.
+- New module `architecture.ts`:
+  - `ArchitectureRecord` (`wos-architecture-record.v1`), `ArchElementKey`, `ArchitectureRecordId`;
+  - `ARCHITECTURE_PATHS`, `architectureDocumentAllowedPaths`, `architecturePrTitle`, `architectureGraphKey`;
+  - `architectureRegistry`, `architectureRecordIssues` (`ArchitectureRecordErrorCode`, 8 codes);
+  - `computeArchitectureImpact`, `abuOffered`, `holdOutcome`, `rankWithArchitecture`, `ArchitecturePolicy`.
+- Policy data `architecture-policy.v1.json` (`ARCHITECTURE_POLICY_V1`):
+  - `maxRounds` 4 and a required maintainer sign-off;
+  - `migrationBoost` 100000;
+  - holds start at the record's merge and end when its migration merges or it is abandoned;
+  - transitive dependents are not held;
+  - in-flight review is not paused and runs with the record in context.
+- `DocumentKind` gains `architecture`. `ResourceKey` accepts `arch:`. `FeatureContract.architecture` is optional.
+- `BuildGraphErrorCode` gains `ARCH_ELEMENT_UNKNOWN`, `ARCH_PATH_WITHOUT_RESOURCE`, `ARCH_CHANGE_OUTSIDE_RECORD` and `ARCH_NOT_IN_CONTRACT`. Planning's `validateBuildGraph` runs them only when `BuildGraphContext.architecture` is passed, so existing callers are unaffected.
+- `ArchitectureHoldMachine` (held -> released | superseded) is an overlay, and the ABU, attempt and task machines keep their states. The `TaskMachine` claim guard now also requires no active hold for `abu_build`; that is guard text only.
+- Events `architecture.impact_computed` and `architecture.hold_changed`, both public.
+- Docs:
+  - DECISIONS D60;
+  - ARCHITECTURE section 15 (design principle: what is architecture, what is local);
+  - FEATURE-CONTRACT "Architecture elements and holds";
+  - WORKSTREAMS 13;
+  - `D60-PROTOCOL-DELTA.md`, the note for the protocol architect. It covers the build-next hold filter and boost term, ranking continuity on reissue and a release label; no accounting change.
+- Regenerated, no other change: golden hashes and output, the vendored validator bundle.
+
+Affected workstreams: control-plane, planning, context-policy (later, section 13); protocol (the delta note).

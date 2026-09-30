@@ -379,3 +379,39 @@ The protocol is `WOS-APP-PROTOCOL.md`. These are the architecture decisions appl
   - Worktrees live under a short root (`%LOCALAPPDATA%\wOS\w`).
   - The claude and codex CLIs must be on PATH.
   - `packages/github` local, the orchestrator and Desktop packaging tests run on `windows-latest` in CI (verification, Wave 3).
+
+## 15. Architecture changes (D60, contracts 5.5.0)
+
+The product must stay flexible without stopping. An architecture change holds only the work that relies on what changes; everything else keeps building. The mechanism is in `packages/contracts/src/architecture.ts` and DECISIONS D60. This section is the design principle that keeps such changes rare.
+
+**What is an architecture element.** A cross-cutting thing many features rely on, owned by no single feature, with a stable key and the paths it governs. Examples:
+- `arch:auth-session`: sessions and tokens of wOS Core;
+- `arch:data-layer`: database access, migrations ledger, tenancy scoping;
+- `arch:api-conventions`: errors, pagination, idempotency, versioning;
+- `arch:ui-shell`: navigation registry, layout, design tokens;
+- `arch:events`: the outbox and its delivery.
+
+Elements are defined only by architecture records. ADR-000 records the core as it is when the product repo is seeded. A contract relies on elements; it never defines one.
+
+**The rules that keep changes rare.**
+1. **Core and conventions first.** They get their own record before features build on them, so features rely on something written down, reviewed and versioned.
+2. **Modules talk through declared interfaces.** A feature is a module under `modules/<feature>/**`. It reaches other features only through their declared APIs, events and resources, and reaches core only through its elements. It never imports another module's internals.
+3. **Every reliance is declared.** An ABU that writes under an element's paths must declare it. A contract lists every element its ABUs rely on. The build-graph validator enforces both. Undeclared coupling is how a local change becomes an architecture change.
+4. **Only a record changes an element.** A feature ABU may rely on an element (`shared`) and may never change it (`exclusive`). An ABU that must change an element waits for a record, which its author proposes.
+
+**What counts as an architecture change** (needs a record): changing the observable behaviour, interface or data shape of an element that another feature relies on. Examples:
+- a new session model;
+- a new error envelope;
+- a different tenancy scoping;
+- moving the navigation registry;
+- introducing an element other features will rely on;
+- retiring one.
+
+**What is a local change** (a contract version or an ABU, no record):
+- anything inside one feature's module and acceptance paths;
+- a new API of a feature that follows the conventions;
+- a new table in the feature's own schema;
+- a UI change inside the feature's routes;
+- a bug fix that does not alter an element's interface.
+
+When in doubt: if another feature's ABU would have to change because of it, it is architecture.
