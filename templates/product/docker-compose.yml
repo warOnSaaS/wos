@@ -1,9 +1,10 @@
-# Self-hosted wOS: Postgres, wOS Core (WOS_APPS decides what runs) and wOS Web.
-#   cp .env.example .env   (fill in the secrets and the owner's email)
-#   (cd ../web && npm run build) && npm run build
+# Self-hosted wOS: Postgres, wOS Core (WOS_APPS decides what runs) and wOS Web. From the repository root:
+#   cp .env.example .env   (fill in the secrets and the owner's email; WOS_SMTP_URL/WOS_SMTP_FROM to email codes)
+#   npm ci --ignore-scripts && npm run build
 #   docker compose up -d --build
-# Then open http://localhost:3000 and sign in; with no SMTP set up, the code is in `docker compose logs core`.
-# Postgres sits on an internal network (no route out). Core never calls warOnSaaS, whatever the network allows (S-41).
+# Then open http://localhost:3000 and sign in. Without WOS_SMTP_URL the code is in `docker compose logs core`.
+# Postgres sits on an internal network (no route out). Core never calls warOnSaaS, whatever the network allows (S-41);
+# its only outbound connection is to the operator's SMTP server, when one is set.
 name: wos
 services:
   postgres:
@@ -23,7 +24,7 @@ services:
     restart: unless-stopped
 
   core:
-    build: .
+    build: ./apps/api
     environment:
       WOS_MODE: self_hosted
       WOS_APPS: ${WOS_APPS:-crm}
@@ -33,6 +34,8 @@ services:
       WOS_CORE_SECRET: ${WOS_CORE_SECRET:?set WOS_CORE_SECRET in .env (32+ characters)}
       WOS_OWNER_EMAIL: ${WOS_OWNER_EMAIL:?set WOS_OWNER_EMAIL in .env}
       WOS_ALLOWED_EMAILS: ${WOS_ALLOWED_EMAILS:-}
+      WOS_SMTP_URL: ${WOS_SMTP_URL:-}
+      WOS_SMTP_FROM: ${WOS_SMTP_FROM:-}
       WOS_MIGRATE_ON_START: "true"
       CORE_DATABASE_URL: postgres://wos:${POSTGRES_PASSWORD}@postgres:5432/wos
     depends_on:
@@ -48,7 +51,7 @@ services:
     restart: unless-stopped
 
   web:
-    build: ../web
+    build: ./apps/web
     environment:
       WOS_CORE_URL: http://core:8080
       WOS_WEB_SESSION_SECRET: ${WOS_WEB_SESSION_SECRET:?set WOS_WEB_SESSION_SECRET in .env (32+ characters)}

@@ -364,6 +364,32 @@ do $$ begin
   raise notice 'ok: 0008 Build release without a package; bundle hash with a package only, immutable';
 end $$;
 
+-- 0009 (B-0009-control-plane): a desktop package always carries its bundle hash; web_app sign-ins and sessions.
+select wos_test.expect_error($$insert into wos.app_releases (app_id, version, manifest, manifest_sha256, surfaces, source_repo, source_tag, source_commit, desktop_package, desktop_package_url)
+  values ('crm', '0.4.0', '{}', 'sha256:' || repeat('a', 64), array['desktop'], 'waronsaas/product', 'crm@0.4.0', repeat('b', 40), '{}', 'https://example.test/crm.json')$$,
+  'a desktop package without its bundle hash (0009)', 'app_releases_desktop_bundle_sha256');
+select wos_test.expect_error($$insert into wos.app_releases (app_id, version, manifest, manifest_sha256, surfaces, source_repo, source_tag, source_commit, desktop_package, desktop_package_url, desktop_bundle_sha256)
+  values ('crm', '0.4.0', '{}', 'sha256:' || repeat('a', 64), array['desktop'], 'waronsaas/product', 'crm@0.4.0', repeat('b', 40), '{}', 'https://example.test/crm.json', 'md5:x')$$,
+  'a malformed bundle hash (0008)');
+insert into wos.app_releases (app_id, version, manifest, manifest_sha256, surfaces, source_repo, source_tag, source_commit, desktop_package, desktop_package_url, desktop_bundle_sha256)
+values ('crm', '0.4.0', '{}', 'sha256:' || repeat('a', 64), array['desktop'], 'waronsaas/product', 'crm@0.4.0', repeat('b', 40), '{}', 'https://example.test/crm.json', 'sha256:' || repeat('d', 64));
+select wos_test.expect_error($$update wos.app_releases set desktop_bundle_sha256 = 'sha256:' || repeat('e', 64) where app_id = 'crm' and version = '0.4.0'$$,
+  'editing a written bundle hash (0008 trigger)', 'immutable');
+insert into wos.email_signin_requests (email_normalized, client_kind, link_token_hash, code_hash, poll_secret_hash, expires_at)
+values ('webapp@example.com', 'web_app', '\x0901', '\x0902', '\x0903', now() + interval '15 minutes');
+select wos_test.expect_error($$insert into wos.email_signin_requests (email_normalized, client_kind, link_token_hash, code_hash, poll_secret_hash, expires_at)
+  values ('x@example.com', 'webapp', '\x0904', '\x0905', '\x0906', now() + interval '15 minutes')$$, 'an unknown sign-in client kind (0009)');
+insert into wos.sessions (family_id, account_id, client_kind, access_token_hash, access_expires_at, refresh_token_hash, refresh_expires_at)
+values (gen_random_uuid(), '00000000-0000-0000-0000-00000000000a', 'web_app', '\x0911', now() + interval '1 hour', '\x0912', now() + interval '30 days');
+select wos_test.expect_error($$insert into wos.sessions (family_id, account_id, client_kind, access_token_hash, access_expires_at, refresh_token_hash, refresh_expires_at)
+  values (gen_random_uuid(), '00000000-0000-0000-0000-00000000000a', 'browser', '\x0913', now() + interval '1 hour', '\x0914', now() + interval '30 days')$$,
+  'an unknown session client kind (0009)');
+select wos_test.expect_error($$insert into wos.devices (account_id, name, client_kind, public_key)
+  values ('00000000-0000-0000-0000-00000000000a', 'web', 'web_app', repeat('B', 42) || 'A=')$$, 'a web_app device (web_app has no device key)');
+do $$ begin
+  raise notice 'ok: 0009 bundle hash exactly with a package; web_app sign-ins and sessions, no web_app devices';
+end $$;
+
 -- RLS: organizations and entitlements are visible to members only; the registry is public
 set role wos_app;
 select set_config('wos.actor_kind', 'contributor', false);

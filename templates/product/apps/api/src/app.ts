@@ -41,15 +41,6 @@ export type CoreDeps = {
 
 type Auth = { principal: Principal; active: ActiveApp[] };
 
-/** Local sign-in routes of a self-hosted Core (EnvironmentAuth kind `local`). */
-export const LocalAuthRoutes = {
-  start: { method: "POST", path: "/v1/core/auth/local/start" },
-  redeem: { method: "POST", path: "/v1/core/auth/local/redeem" },
-  logout: { method: "POST", path: "/v1/core/auth/logout" },
-} as const;
-const StartBody = z.object({ email: z.email().max(254) });
-const RedeemBody = z.object({ requestId: z.uuid(), code: z.string().regex(/^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/) });
-
 const errorBody = (code: ApiErrorCode, message: string) => ({ error: { code, message, requestId: randomUUID() } });
 const STATUS: Partial<Record<ApiErrorCode, number>> = {
   UNAUTHENTICATED: 401,
@@ -143,11 +134,23 @@ export function createCoreApp(deps: CoreDeps): Hono {
     );
   });
 
-  // ---- local sign-in (self-hosted only)
+  // ---- logout (CoreRoutes.logout, contracts 5.6.0): ends a local session; with an environment token a no-op.
+  app.post(CoreRoutes.logout.path, async (c) => {
+    const auth = await authenticate(c);
+    if (!auth) return fail(c, "UNAUTHENTICATED", "sign in to this environment");
+    if (auth.principal.kind === "local_session") {
+      const token = (c.req.header("authorization") ?? "").slice(7).trim();
+      await deps.store!.deleteSession(hash("session", token));
+    }
+    c.header("cache-control", "no-store");
+    return c.json(CoreRoutes.logout.response.parse({ ok: true }));
+  });
+
+  // ---- local sign-in (CoreRoutes.localSignInStart / localSignInRedeem): self-hosted only; wOS Cloud answers 404.
   if (config.mode === "self_hosted") {
     const store = deps.store!;
-    app.post(LocalAuthRoutes.start.path, async (c) => {
-      const body = StartBody.safeParse(await c.req.json().catch(() => null));
+    app.post(CoreRoutes.localSignInStart.path, async (c) => {
+      const body = CoreRoutes.localSignInStart.body.safeParse(await c.req.json().catch(() => null));
       if (!body.success) return fail(c, "VALIDATION_FAILED", "send { email }");
       const email = body.data.email.trim().toLowerCase();
       const now = deps.now();
@@ -159,13 +162,18 @@ export function createCoreApp(deps: CoreDeps): Hono {
           return fail(c, "RATE_LIMITED", "too many sign-in requests; try again later");
         const code = signinCode();
         await store.createSigninRequest({ id: requestId, email, codeHash: hash("signin", requestId, code), expiresAt });
-        await deps.mailer!.sendSigninCode({ to: email, code, requestId, expiresAt, environmentName: config.environmentName });
+        try {
+          await deps.mailer!.sendSigninCode({ to: email, code, requestId, expiresAt, environmentName: config.environmentName });
+        } catch (err) {
+          // Same 202 either way (no enumeration); the operator sees the failure, never the code.
+          deps.log("sign-in email failed", { requestId, error: err instanceof Error ? err.message : String(err) });
+        }
       }
-      return c.json({ requestId, expiresAt: expiresAt.toISOString() }, 202);
+      return c.json(CoreRoutes.localSignInStart.response.parse({ requestId, expiresAt: expiresAt.toISOString() }), 202);
     });
 
-    app.post(LocalAuthRoutes.redeem.path, async (c) => {
-      const body = RedeemBody.safeParse(await c.req.json().catch(() => null));
+    app.post(CoreRoutes.localSignInRedeem.path, async (c) => {
+      const body = CoreRoutes.localSignInRedeem.body.safeParse(await c.req.json().catch(() => null));
       if (!body.success) return fail(c, "VALIDATION_FAILED", "send { requestId, code } with the code as XXXX-XXXX");
       const now = deps.now();
       const r = await store.redeemSignin(body.data.requestId, hash("signin", body.data.requestId, body.data.code), now);
@@ -177,13 +185,16 @@ export function createCoreApp(deps: CoreDeps): Hono {
       const token = randomBytes(32).toString("base64url");
       const expiresAt = new Date(now.getTime() + SESSION_TTL_SECONDS * 1000);
       await store.createSession({ tokenHash: hash("session", token), userId: m.userId, organizationId: org.id, expiresAt });
-      return c.json({ token, expiresAt: expiresAt.toISOString(), userId: m.userId, organizationId: org.id, role: m.role });
-    });
-
-    app.post(LocalAuthRoutes.logout.path, async (c) => {
-      const header = c.req.header("authorization") ?? "";
-      if (header.startsWith("Bearer ")) await store.deleteSession(hash("session", header.slice(7).trim()));
-      return c.json({ ok: true });
+      c.header("cache-control", "no-store");
+      return c.json(
+        CoreRoutes.localSignInRedeem.response.parse({
+          token,
+          expiresAt: expiresAt.toISOString(),
+          userId: m.userId,
+          organizationId: org.id,
+          role: m.role,
+        }),
+      );
     });
   }
 

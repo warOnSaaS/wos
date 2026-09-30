@@ -417,3 +417,5 @@ Those capabilities are spawning the claude, codex and git processes, worktrees a
 - **Environment tokens** for hosted Core are obtained server-side the same way.
 - Workstreams: control-plane, suite-shell.
 - Tests: `web_app` bodies carry tokens and the link host is app.waronsaas.com; a link redeemed from another browser (no sealed pollSecret) fails; wOS Web sets no cookie with `Domain`.
+- Storage (contracts 5.7.0, migration 0009): sign-in requests and sessions record `client_kind = 'web_app'`; no device row. The control plane builds the link from `APP_ORIGIN` (default `HOSTS.app`).
+- Implemented tests: services/control-plane/test/web-app-signin.test.ts (bodies, link, binding, single use, expiry, rotation) and web-app-shell.test.ts (the template's wOS Web against the real control plane); templates/product/apps/web/test/shell.test.ts (the link page, another browser, cookie attributes).

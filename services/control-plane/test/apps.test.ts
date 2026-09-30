@@ -92,6 +92,18 @@ describe.skipIf(!HAS_DB)("AppRoutes", () => {
     expect(list.body.items.map((a: { id: string }) => a.id)).toEqual(["contacts", "crm"]);
     const release = await h.call("GET", "/v1/public/apps/crm/releases/0.1.0");
     expect(release.body).toMatchObject({ app: "crm", version: "0.1.0", state: "published", yankedAt: null, desktopPackage: { url } });
+
+    // B-0007-control-plane: the bundle hash is stored at publish (migration 0008) and reads never download again.
+    const sha = sha256Of(h.bundles.get(url)!);
+    const [stored] = await h.owner<{ desktop_bundle_sha256: string | null }[]>`
+      select desktop_bundle_sha256 from wos.app_releases where app_id = 'crm' and version = '0.1.0'`;
+    expect(stored).toEqual({ desktop_bundle_sha256: sha });
+    const [none] = await h.owner<{ desktop_bundle_sha256: string | null }[]>`
+      select desktop_bundle_sha256 from wos.app_releases where app_id = 'contacts' and version = '0.1.0'`;
+    expect(none).toEqual({ desktop_bundle_sha256: null });
+    h.bundles.delete(url);
+    expect((await h.call("GET", "/v1/public/apps/crm")).body.surfaces.desktop.package.sha256).toBe(sha);
+    expect((await h.call("GET", "/v1/public/apps/crm/releases/0.1.0")).body.desktopPackage.sha256).toBe(sha);
     expect((await h.call("GET", "/v1/public/apps/crm/releases/9.9.9")).status).toBe(404);
   });
 
@@ -419,6 +431,18 @@ describe.skipIf(!HAS_DB)("AppRoutes", () => {
     // Migration 0008 (B-0007-control-plane): Build lists desktop with no package (bundled in Desktop, D16).
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(res.body.surfaces.desktop).toMatchObject({ available: true, package: null });
+    const [row] = await h.owner<
+      { surfaces: string[]; desktop_package: unknown; desktop_bundle_sha256: string | null; source_repo: string }[]
+    >`
+      select surfaces, desktop_package, desktop_bundle_sha256, source_repo from wos.app_releases where app_id = 'build'`;
+    expect(row).toEqual({ surfaces: ["desktop"], desktop_package: null, desktop_bundle_sha256: null, source_repo: "waronsaas/wos" });
+    const got = await h.call("GET", "/v1/public/apps/build");
+    expect(got.status).toBe(200);
+    expect(got.body).toMatchObject({
+      id: "build",
+      currentVersion: build.app.version,
+      surfaces: { desktop: { available: true, package: null } },
+    });
     expect(h.violations).toEqual([]);
   });
 

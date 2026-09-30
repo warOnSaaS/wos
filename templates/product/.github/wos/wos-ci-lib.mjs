@@ -19476,6 +19476,19 @@ function decodeStrictBase64(b64) {
 	const buf = Buffer.from(b64, "base64");
 	return buf.toString("base64") === b64 ? buf : null;
 }
+function appMigrationsMatcher(pattern) {
+	const [pre, post] = pattern.split("/*/");
+	const preParts = fold(pre).split("/");
+	const postParts = fold(post).split("/");
+	return (path) => {
+		const parts = fold(path).split("/");
+		if (parts.length < preParts.length + postParts.length + 2) return null;
+		if (!preParts.every((p, i) => parts[i] === p)) return null;
+		const id = parts[preParts.length];
+		if (!postParts.every((p, i) => parts[preParts.length + 1 + i] === p)) return null;
+		return id;
+	};
+}
 function hasResource(abu, key) {
 	return !!abu?.resources?.some((r) => r.key === key && r.mode === "exclusive");
 }
@@ -19501,6 +19514,7 @@ function validateChangeset(changeset, ctx) {
 	const allowed = isDocument ? ctx.documentPaths : ctx.abu?.scope.write ?? [];
 	const lockfiles = manifest.lockfiles ?? [];
 	const migrationsDir = manifest.migrationsDir;
+	const appMigrations = manifest.appMigrationsDir ? appMigrationsMatcher(manifest.appMigrationsDir) : null;
 	const toolchain = (0, import_picomatch.default)(manifest.toolchainPaths ?? [], {
 		dot: true,
 		nocase: true
@@ -19538,6 +19552,8 @@ function validateChangeset(changeset, ctx) {
 		const lockfile = lockfiles.find((l) => fold(l) === fold(path)) ?? (LOCKFILE_BASENAMES.has(fold(basename)) ? path : null);
 		if (lockfile !== null && (isDocument || !hasResource(ctx.abu, `lockfile:${lockfile}`))) add("LOCKFILE_WITHOUT_RESOURCE", path, `needs an exclusive lockfile:${lockfile} resource`);
 		if (migrationsDir && matchesDeny(path, `${migrationsDir}/**`) && (isDocument || !hasResource(ctx.abu, "db:migrations"))) add("MIGRATION_WITHOUT_RESOURCE", path, "needs an exclusive db:migrations resource");
+		const appId = appMigrations?.(path) ?? null;
+		if (appId !== null && (isDocument || !hasResource(ctx.abu, `db:migrations:${appId}`))) add("MIGRATION_WITHOUT_RESOURCE", path, `needs an exclusive db:migrations:${appId} resource`);
 		if (toolchain(path) && (isDocument || !hasResource(ctx.abu, `toolchain:${path}`))) add("TOOLCHAIN_WITHOUT_RESOURCE", path, `defines how verification runs; needs an exclusive toolchain:${path} resource`);
 		if (!isDocument && !ctx.abu) add("OUT_OF_SCOPE", path, "no ABU in scope context");
 		else if (!allowed.some((s) => inScope(path, s))) add("OUT_OF_SCOPE", path, "outside every write scope");

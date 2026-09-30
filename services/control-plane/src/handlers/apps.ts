@@ -32,7 +32,6 @@ import {
   registryEntry,
   registryMap,
   releaseView,
-  rememberBundleSha,
   requirementClosure,
   supportedSurfaces,
   verifyBundleBytes,
@@ -377,11 +376,12 @@ export const appHandlers: Pick<
       try {
         await tx`
           insert into wos.app_releases (app_id, version, manifest, manifest_sha256, surfaces, desktop_package, desktop_package_url,
-                                        source_repo, source_tag, source_commit)
+                                        desktop_bundle_sha256, source_repo, source_tag, source_commit)
           values (${app}, ${manifest.app.version}, ${tx.json(manifest as never)}, ${canonicalSha256(manifest)}, ${surfaces},
-                  ${desktopPackage ? tx.json(desktopPackage as never) : null}, ${desktopPackageUrl}, ${source.repo}, ${source.tag}, ${source.commit})`;
+                  ${desktopPackage ? tx.json(desktopPackage as never) : null}, ${desktopPackageUrl}, ${bundleSha},
+                  ${source.repo}, ${source.tag}, ${source.commit})`;
       } catch (err) {
-        // A check constraint of migration 0006 refused the row (e.g. B-0007-control-plane: Build has desktop without a package).
+        // A check constraint of wos.app_releases (0006, 0008, 0009) refused the row.
         if ((err as { code?: string }).code === "23514")
           throw new ApiFailure("VALIDATION_FAILED", "the registry refused this release", {
             constraint: (err as { constraint_name?: string }).constraint_name ?? null,
@@ -393,7 +393,6 @@ export const appHandlers: Pick<
         { type: "app.release_published", v: 1, visibility: "public", payload: { app, version: manifest.app.version, surfaces } },
         { aggregateKind: "app", aggregateId: app, actor: "maintainer", actorAccountId: caller.accountId },
       );
-      if (bundleSha && desktopPackageUrl) rememberBundleSha(app, manifest.app.version, desktopPackageUrl, bundleSha);
       const r = await currentRelease(tx, app);
       if (!r) throw new ApiFailure("INTERNAL", "the release did not become current");
       return registryEntry(deps, r);

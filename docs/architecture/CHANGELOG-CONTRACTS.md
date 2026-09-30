@@ -236,7 +236,7 @@ Affected workstreams: suite-shell, control-plane, desktop, mobile-runtime, verif
 
 ## 5.7.0 — 2026-09-30 (D61: bugs and maintenance, the planning and build side)
 
-MINOR, additive. No migration yet: 0009 comes with serving (WORKSTREAMS 15).
+MINOR, additive. No migration yet: 0010 comes with serving (WORKSTREAMS 15; 0009 went to B-0009).
 - New module `bugs.ts`:
   - `BugId`, `BugSeverity`, `BugTaskKind`, `BUG_ISSUE_LABEL`;
   - `BugReport` (`wos-bug-report.v1`) with `renderBugIssueBody` / `parseBugIssueBody` / `bugIssueTitle` / `bugReportRefusals`;
@@ -257,3 +257,21 @@ MINOR, additive. No migration yet: 0009 comes with serving (WORKSTREAMS 15).
 - Regenerated: goldens, the vendored validator bundle, the product template's vendored contracts.
 
 Affected workstreams: control-plane, cli, desktop, planning, verification, context-policy, web (later, section 15); protocol (the note).
+
+## 5.8.0 — 2026-09-30 (B-0009-control-plane: the database follows the 5.6.0 rulings; implementation of WORKSTREAMS 14)
+
+MINOR, plus migration 0009. Architect role held by ws/blockers for this change (coordinator's grant).
+- Migration `0009_web_app_client.sql` (B-0009-control-plane):
+  - `wos.email_signin_requests.client_kind` and `wos.sessions.client_kind` accept `web_app` (5.6.0 added it to `startEmailSignIn.clientKind`, but 0001's checks refused it, so S-43 could not be stored). `wos.devices` is unchanged: web_app registers no device.
+  - `desktop_bundle_sha256` is now present exactly with a desktop package (B-0007-control-plane's original request); the control plane writes it at every publish from this version on. The check validates existing rows, so the migration fails in its transaction, changing nothing, if a release with a package has no hash.
+  - Recorded as MINOR by the same reasoning as 0008: the widened checks are additive and the tightened one binds only the control plane, updated in the same change.
+  - Production: yes, after 0008, by the coordinator through the runner (`--check` first). It touches `wos.email_signin_requests`, `wos.sessions` and `wos.app_releases`, disjoint from ws/protocol's 0007.
+- No schema in `packages/contracts/src` changed; only `CONTRACTS_VERSION`.
+- Implemented with it (WORKSTREAMS 14):
+  - control-plane: host-only HttpOnly cookies with `csrfToken` in the web bodies (S-5); clientKind `web_app` with the link to `APP_ORIGIN` (default `HOSTS.app`) + `WEB_APP_SIGNIN_CODE_PATH` (S-43); the bundle hash stored at publish, the in-memory cache removed.
+  - suite-shell (templates/product): Core serves `CoreRoutes.localSignInStart` / `localSignInRedeem` / `logout`; wOS Web signs in as `web_app` and no longer reads Set-Cookie; the template root (`package.json`, `package-lock.json`, `docker-compose.yml`); nodemailer 10.0.13 behind `WOS_SMTP_URL` / `WOS_SMTP_FROM`.
+  - verification: `validateChangeset` honours `appMigrationsDir` (`db:migrations:<id>` exclusive), with vectors.
+  - `scripts/regen-contracts.mjs` runs the bump procedure (section 5); `tools/registry/publish-build-release.mjs` publishes Build's release.
+- Regenerated: goldens, the vendored validator bundle, the template's vendored contracts, the site's progress copy.
+
+Affected workstreams: control-plane, suite-shell, verification, desktop and mobile-runtime (local sign-in routes), web (csrfToken when a browser sign-in is built).

@@ -2,6 +2,7 @@
 import { generateKeyPairSync, type KeyObject } from "node:crypto";
 import { BUNDLED_APPS } from "../../../applications/registry.js";
 import {
+  CoreRoutes,
   ENVIRONMENT_TOKEN_TTL_SECONDS,
   type EnvironmentTokenClaims,
   encodeDevicePublicKey,
@@ -12,7 +13,7 @@ import { type Bundle, loadBundle } from "../../../modules/core/src/bundle.js";
 import type { Fetch } from "../../../modules/core/src/env-token.js";
 import { createCoreApp } from "../src/app.js";
 import { loadConfig } from "../src/config.js";
-import { MemoryMailer } from "../src/mail.js";
+import { type Mailer, MemoryMailer } from "../src/mail.js";
 import { MemoryStore } from "../src/store.js";
 
 export const SECRET = "test-secret-0123456789abcdef0123456789";
@@ -67,7 +68,16 @@ export function keysFetch(keys: () => TestKey[], calls: string[] = []): Fetch {
   };
 }
 
-export function selfHostedCore(opts: { apps?: string; bundle?: Bundle; env?: Record<string, string>; fetchCalls?: string[] } = {}) {
+export function selfHostedCore(
+  opts: {
+    apps?: string;
+    bundle?: Bundle;
+    env?: Record<string, string>;
+    fetchCalls?: string[];
+    mailer?: Mailer;
+    log?: (msg: string, fields?: Record<string, unknown>) => void;
+  } = {},
+) {
   const bundle = opts.bundle ?? loadBundle(BUNDLED_APPS);
   const config = loadConfig(
     {
@@ -85,7 +95,15 @@ export function selfHostedCore(opts: { apps?: string; bundle?: Bundle; env?: Rec
   const store = new MemoryStore();
   const clock = new Clock();
   const fetchCalls = opts.fetchCalls ?? [];
-  const app = createCoreApp({ config, bundle, store, mailer, fetch: forbiddenFetch(fetchCalls), now: () => clock.now, log: () => {} });
+  const app = createCoreApp({
+    config,
+    bundle,
+    store,
+    mailer: opts.mailer ?? mailer,
+    fetch: forbiddenFetch(fetchCalls),
+    now: () => clock.now,
+    log: opts.log ?? (() => {}),
+  });
   return { app, mailer, store, clock, config, fetchCalls };
 }
 
@@ -117,14 +135,14 @@ export const post = (body: unknown, headers: Record<string, string> = {}) => ({
   body: JSON.stringify(body),
 });
 
-/** Local sign-in through the HTTP API, reading the code the mailer captured. */
+/** Local sign-in through the contracted routes (CoreRoutes, contracts 5.6.0), reading the code the mailer captured. */
 export async function signInLocal(app: AppLike, mailer: MemoryMailer, email: string): Promise<{ token: string; role: string }> {
-  const start = await app.request("/v1/core/auth/local/start", post({ email }));
-  if (start.status !== 202) throw new Error(`start: ${start.status}`);
-  const { requestId } = (await start.json()) as { requestId: string };
+  const start = await app.request(CoreRoutes.localSignInStart.path, post({ email }));
+  if (start.status !== CoreRoutes.localSignInStart.status) throw new Error(`start: ${start.status}`);
+  const { requestId } = CoreRoutes.localSignInStart.response.parse(await start.json());
   const mail = mailer.sent.find((m) => m.requestId === requestId);
   if (!mail) throw new Error("no code was sent");
-  const res = await app.request("/v1/core/auth/local/redeem", post({ requestId, code: mail.code }));
+  const res = await app.request(CoreRoutes.localSignInRedeem.path, post({ requestId, code: mail.code }));
   if (res.status !== 200) throw new Error(`redeem: ${res.status}`);
-  return (await res.json()) as { token: string; role: string };
+  return CoreRoutes.localSignInRedeem.response.parse(await res.json());
 }
