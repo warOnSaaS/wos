@@ -807,3 +807,425 @@ footer {
 .foot-fine p {
   margin-bottom: 0.4rem;
 }
+
+/* White paper (/whitepaper): long-form prose rendered from docs/whitepaper/WHITEPAPER.md. */
+.wp .sec-b > h3 {
+  margin-top: 2.5rem;
+  scroll-margin-top: 1.5rem;
+}
+.wp .sec-b > h4 {
+  margin-top: 2rem;
+  font-size: 0.9375rem;
+  color: var(--fg);
+}
+.wp .sec-b > h3 + *,
+.wp .sec-b > h4 + * {
+  margin-top: 0.75rem;
+}
+.wp-ol li + li {
+  margin-top: 0.5rem;
+}
+.wp .dash,
+.wp-ol {
+  max-width: var(--measure);
+}
+.wp-ol {
+  counter-reset: wp-ol;
+}
+.wp-ol li {
+  counter-increment: wp-ol;
+  display: grid;
+  grid-template-columns: 2.5rem minmax(0, 1fr);
+}
+.wp-ol li::before {
+  content: counter(wp-ol) ".";
+  color: var(--dim);
+}
+.wp-table {
+  max-width: 100%;
+}
+.wp .tbl th,
+.wp .tbl td {
+  white-space: normal;
+}
+.wp-pre {
+  margin: 0;
+  padding: 1rem;
+  background: var(--cell);
+  border: 1px solid var(--rule);
+  font-size: 0.875rem;
+  overflow-x: auto;
+  max-width: 100%;
+}
+.wp code {
+  overflow-wrap: anywhere;
+}
+.wp a {
+  overflow-wrap: anywhere;
+}
+
+/* White paper handoff block (/whitepaper): the page is for handing the paper to an agent. */
+.handoff > * + * {
+  margin-top: 1.5rem;
+}
+.handoff-actions {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.75rem;
+  padding-top: 1rem;
+  border-top: 2px solid var(--rule-strong);
+}
+.cmd--big {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 3.75rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--fg);
+  color: var(--fg);
+  font-size: clamp(0.875rem, 1.1vw, 1rem);
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+}
+/* Flex trims the space inside the bracket pseudo-elements; keep it with non-breaking spaces. */
+.cmd--big::before {
+  content: "[\00a0";
+}
+.cmd--big::after {
+  content: "\00a0]";
+}
+.handoff-actions button.cmd--big {
+  font-size: clamp(0.875rem, 1.1vw, 1rem);
+  line-height: 1;
+}
+@media (max-width: 1100px) {
+  .handoff-actions {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (max-width: 560px) {
+  .handoff-actions {
+    grid-template-columns: 1fr;
+  }
+}
+.cmd--big:hover {
+  background: var(--fg);
+  color: var(--bg);
+  text-decoration: none;
+}
+button.cmd {
+  font: inherit;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  background: transparent;
+  cursor: pointer;
+}
+.cmd[hidden] {
+  display: none;
+}
+.prompt {
+  display: block;
+  width: 100%;
+  max-width: var(--measure);
+  font: inherit;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--fg);
+  background: var(--cell);
+  border: 1px solid var(--rule);
+  padding: 1rem;
+  resize: vertical;
+}
+.handoff > .label {
+  display: block;
+}
+.steps {
+  max-width: var(--measure);
+}
+.steps li {
+  display: grid;
+  grid-template-columns: 2.5rem minmax(0, 1fr);
+  padding: 0.6rem 0;
+  border-top: 1px solid var(--rule);
+}
+.steps__n {
+  font-family: var(--font-head), var(--font-mono), monospace;
+  font-weight: 700;
+  color: var(--fg);
+}
+.fulltext > summary {
+  cursor: pointer;
+  font-family: var(--font-head), var(--font-mono), monospace;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--fg);
+  padding: 1rem 0;
+  border-top: 2px solid var(--rule-strong);
+  border-bottom: 1px solid var(--rule);
+}
+.fulltext[open] > summary {
+  margin-bottom: 2.5rem;
+}
+.fulltext .brief {
+  padding: 0;
+}
+
+/* Assessments charts (components/ScoreChart.tsx). Monochrome: identity is marker shape plus the legend; the two
+ * ink steps only separate neighbouring lines. Hairline solid grid, 2px lines, 2px surface ring on markers. */
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1.5rem;
+  padding: 0 0 1.5rem;
+}
+.chart-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.chart-legend .fine {
+  flex-basis: 100%;
+}
+.chart-group + .chart-group {
+  margin-top: 2.5rem;
+}
+.chart-group > .fine {
+  margin: 0.25rem 0 1rem;
+}
+.charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 1fr));
+  gap: 1.5rem 2rem;
+}
+.chart {
+  margin: 0;
+  min-width: 0;
+}
+.chart .label {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+.chart__svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.chart__grid {
+  stroke: var(--rule);
+  stroke-width: 1;
+}
+.chart__version {
+  stroke: var(--dim);
+  stroke-width: 1;
+}
+.chart__axis,
+.chart__val {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10px;
+  fill: var(--dim);
+}
+.chart__val {
+  fill: var(--fg);
+}
+.chart__line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.chart__ink .chart__line {
+  stroke: var(--fg);
+}
+.chart__ink2 .chart__line {
+  stroke: var(--dim);
+}
+.chart__pt > :not(.chart__hit),
+.chart__key > * {
+  stroke: var(--bg);
+  stroke-width: 2;
+}
+.chart__ink .chart__pt > :not(.chart__hit),
+.chart__key.chart__ink > * {
+  fill: var(--fg);
+}
+.chart__ink2 .chart__pt > :not(.chart__hit),
+.chart__key.chart__ink2 > * {
+  fill: var(--dim);
+}
+.chart__pt > .chart__hollow,
+.chart__key > .chart__hollow {
+  fill: var(--bg);
+  stroke: var(--fg);
+  stroke-width: 1.5;
+}
+.chart__pt:hover > :not(.chart__hit) {
+  stroke: var(--fg);
+}
+.chart__hit {
+  fill: transparent;
+  stroke: none;
+}
+.chart__key {
+  flex: none;
+  vertical-align: -3px;
+}
+.is-off {
+  display: none;
+}
+.contribute {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--rule);
+}
+.contribute > * + * {
+  margin-top: 0.75rem;
+}
+
+/* White paper changes (/whitepaper/changes): the Part I flag must be impossible to miss. Shape only, no colour. */
+.wp-flag {
+  border: 2px solid var(--rule-strong);
+  padding: 0.75rem 1rem;
+}
+.wp-flag strong {
+  display: block;
+  letter-spacing: 0.04em;
+}
+.wp-flag p {
+  margin-top: 0.4rem;
+}
+.wp-changelog > * + * {
+  margin-top: 0.75rem;
+}
+.wp-banner {
+  border: 2px solid var(--rule-strong);
+  padding: 0.75rem 1rem;
+}
+/* A white paper text without a contents column (/whitepaper/read, /whitepaper/v/<version>): one column at every width. */
+@media (min-width: 1000px) {
+  .brief.brief--single {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.wp-pre--wrap {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ---- Score gauges (components/Gauge.tsx): an --fg arc on a --rule track, the number in Geist Mono. Monochrome only. */
+.selfassess {
+  display: grid;
+  gap: 1.25rem;
+}
+.gauges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem 1.5rem;
+  margin: 0;
+}
+.gauges--theses {
+  gap: 1rem 2rem;
+}
+.gauges__pair {
+  display: flex;
+  gap: 0.75rem;
+}
+.gauge {
+  margin: 0;
+  display: grid;
+  justify-items: center;
+  gap: 0.4rem;
+  width: 8.5rem;
+  text-align: center;
+}
+.gauge--small {
+  width: 5.75rem;
+}
+.gauge svg {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+  max-width: 7.5rem;
+  display: block;
+}
+.gauge--small svg {
+  max-width: 4.75rem;
+}
+.gauge__track {
+  stroke: var(--rule);
+}
+.gauge__arc {
+  stroke: var(--fg);
+  stroke-linecap: butt;
+}
+.gauge__tick {
+  stroke: var(--dim);
+  stroke-width: 0.8;
+  opacity: 0.6;
+}
+.gauge__num {
+  fill: var(--fg);
+  font-family: var(--font-head), var(--font-mono), monospace;
+  font-weight: 700;
+  font-size: 26px;
+}
+.gauge--small .gauge__num {
+  font-size: 30px;
+}
+.gauge--pending .gauge__track {
+  stroke-dasharray: 3 4;
+  stroke-width: 2;
+}
+.gauge--pending .gauge__num,
+.gauge--na .gauge__num {
+  fill: var(--dim);
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+}
+.gauge--small.gauge--pending .gauge__num,
+.gauge--small.gauge--na .gauge__num {
+  font-size: 15px;
+}
+.gauge figcaption {
+  display: grid;
+  gap: 0.1rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  line-height: 1.3;
+}
+.gauge__label {
+  color: var(--fg);
+}
+.gauge__scale {
+  color: var(--dim);
+}
+.selfassess__facts {
+  margin: 0;
+}
+.selfassess--compact .gauges {
+  gap: 0.75rem 1rem;
+}
+.selfassess-note {
+  border-left: 2px solid var(--rule-strong);
+  padding-left: 0.75rem;
+}
+/* Phone width: two rings per row. */
+@media (max-width: 34rem) {
+  .gauges {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    justify-items: center;
+  }
+  .gauges__pair {
+    grid-column: span 2;
+    justify-content: center;
+  }
+  .gauge,
+  .gauge--small {
+    width: 100%;
+    max-width: 8.5rem;
+  }
+}

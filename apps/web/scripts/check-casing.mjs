@@ -6,6 +6,10 @@
  * Allowed exceptions:
  *   - lowercase in URLs, the domain, the npm scope and route slugs (waronsaas.com, @waronsaas/cli, /targets/waronsaas)
  *   - "WOS" only in "WOS token(s)" (required legal wording)
+ *   - on the white paper only (whitepaper.html, /whitepaper/read, /whitepaper.md, /whitepaper/download, the companion .md bodies,
+ *     /whitepaper/changes(.md) and every past version at /whitepaper/v/<version>), "WOS" alone, because the
+ *     paper defines it once as the token's working symbol and uses it as a symbol ("100 WOS per ACU").
+ *     Exactly "WOS": mis-cased forms (Wos, wos, WoS) still fail there.
  *   - "wos" only as the CLI command (wos build|login|…, "the wos command"), the Postgres schema ("wos Postgres")
  *     or a branch/check (wos/...); repository names waronsaas/wos and waronsaas/product
  * Also fails if any built CSS uses text-transform, because CSS re-casing would
@@ -29,7 +33,8 @@ const files = [];
   }
 })(root);
 
-const pages = files.filter((f) => f.includes(`${join(".next", "server", "app")}`) && /\.(html|body)$/.test(f));
+// The full pack (.zip) is binary; its text members are checked as their own routes (whitepaper.md and the companions).
+const pages = files.filter((f) => f.includes(`${join(".next", "server", "app")}`) && /\.(html|body)$/.test(f) && !f.endsWith(".zip.body"));
 
 const decode = (s) =>
   s.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#x27;|&#39;/g, "'");
@@ -71,8 +76,27 @@ function context(text, i) {
   return text.slice(Math.max(0, i - 40), i + 50).replace(/\s+/g, " ");
 }
 
+// Pages where "WOS" is the defined token symbol (see the header comment).
+const TOKEN_SYMBOL_PAGES = new Set([
+  "whitepaper.html",
+  "whitepaper/read.html",
+  "whitepaper.md.body",
+  "whitepaper/download.body",
+  "whitepaper/materiality.md.body",
+  "whitepaper/edge-cases.md.body",
+  "whitepaper/design.md.body",
+  "whitepaper/appendices.md.body",
+  "whitepaper/sources.md.body",
+  // The version history: changelog entries quoted verbatim from the paper, and every past version in full.
+  "whitepaper/changes.html",
+  "whitepaper/changes.md.body",
+]);
+const TOKEN_SYMBOL_PREFIXES = ["whitepaper/v/"];
+
 for (const f of pages) {
   const raw = readFileSync(f, "utf8");
+  const rel = relative(join(root, "server", "app"), f).split("\\").join("/");
+  const symbolOk = TOKEN_SYMBOL_PAGES.has(rel) || TOKEN_SYMBOL_PREFIXES.some((p) => rel.startsWith(p));
   const text = scrub(f.endsWith(".html") ? renderedText(raw) : raw);
   for (const m of text.matchAll(/waronsaas/gi)) {
     if (m[0] !== "warOnSaaS") errors.push(`${relative(process.cwd(), f)}: "${m[0]}" in …${context(text, m.index)}…`);
@@ -81,7 +105,7 @@ for (const f of pages) {
     const after = text.slice(m.index + 3, m.index + 20);
     const ok =
       m[0] === "wOS" ||
-      (m[0] === "WOS" && /^\s+tokens?\b/.test(after)) ||
+      (m[0] === "WOS" && (symbolOk || /^\s+tokens?\b/.test(after))) ||
       (m[0] === "wos" && CLI_SUB.test(after));
     if (!ok) errors.push(`${relative(process.cwd(), f)}: "${m[0]}" in …${context(text, m.index)}…`);
   }

@@ -1,9 +1,201 @@
 {
   "ref": "main",
-  "head": "a08523ff67d12cf36b56ecdedec4a97aa6c48db3",
+  "head": "9c67058a4e93d25e3f1f9775ed550e5af98f961d",
   "complete": true,
-  "count": 44,
+  "count": 68,
   "commits": [
+    {
+      "sha": "9c67058a4e93d25e3f1f9775ed550e5af98f961d",
+      "short": "9c67058",
+      "date": "2026-09-30T11:05:55-04:00",
+      "day": "2026-09-30",
+      "subject": "OPEN IN CLAUDE opens the Claude desktop app, falling back to claude.ai",
+      "url": "https://github.com/warOnSaaS/wos/commit/9c67058a4e93d25e3f1f9775ed550e5af98f961d"
+    },
+    {
+      "sha": "9d843f2adc212c125b5d179821705126fa4b3aff",
+      "short": "9d843f2",
+      "date": "2026-09-30T11:02:18-04:00",
+      "day": "2026-09-30",
+      "subject": "Website: MATERIALITY.md companion, two-stage handoff prompt, site-sync rules for dated figures",
+      "url": "https://github.com/warOnSaaS/wos/commit/9d843f2adc212c125b5d179821705126fa4b3aff"
+    },
+    {
+      "sha": "4b587c4adf11d761227b32005c095f3a918a6452",
+      "short": "4b587c4",
+      "date": "2026-09-30T11:02:18-04:00",
+      "day": "2026-09-30",
+      "subject": "White paper v0.6: two parts, the thesis and its materiality first, the approach judged against it",
+      "url": "https://github.com/warOnSaaS/wos/commit/4b587c4adf11d761227b32005c095f3a918a6452"
+    },
+    {
+      "sha": "6c3822311e0ff1c5fdd291586460684d3736ca23",
+      "short": "6c38223",
+      "date": "2026-09-30T10:57:44-04:00",
+      "day": "2026-09-30",
+      "subject": "White paper: MATERIALITY.md companion with sourced figures and the model's output",
+      "url": "https://github.com/warOnSaaS/wos/commit/6c3822311e0ff1c5fdd291586460684d3736ca23"
+    },
+    {
+      "sha": "8fbcdc300899d39efda8317bbb5e8645ed192316",
+      "short": "8fbcdc3",
+      "date": "2026-09-30T10:55:24-04:00",
+      "day": "2026-09-30",
+      "subject": "Materiality model: deterministic estimate of the problem's size in money, compute and power",
+      "url": "https://github.com/warOnSaaS/wos/commit/8fbcdc300899d39efda8317bbb5e8645ed192316"
+    },
+    {
+      "sha": "1c11d6fdbe5e037774ce26cacd552dba55c3f9ea",
+      "short": "1c11d6f",
+      "date": "2026-09-30T10:42:23-04:00",
+      "day": "2026-09-30",
+      "subject": "White paper handoff buttons: one line, vertically centred, 4/2/1 grid",
+      "url": "https://github.com/warOnSaaS/wos/commit/1c11d6fdbe5e037774ce26cacd552dba55c3f9ea"
+    },
+    {
+      "sha": "7b1e8f0a0fb5df07466256841467461fe1921fd8",
+      "short": "7b1e8f0",
+      "date": "2026-09-30T10:39:08-04:00",
+      "day": "2026-09-30",
+      "subject": "White paper: HTML read page for browsing agents, text/plain for .md, OPEN IN CLAUDE",
+      "url": "https://github.com/warOnSaaS/wos/commit/7b1e8f0a0fb5df07466256841467461fe1921fd8"
+    },
+    {
+      "sha": "5857c3ec7a3cd5de71a95f1fbf60c44e9ecd59bf",
+      "short": "5857c3e",
+      "date": "2026-09-30T10:32:53-04:00",
+      "day": "2026-09-30",
+      "subject": "Website: v0.5 core download, full pack zip, companion files for agents",
+      "url": "https://github.com/warOnSaaS/wos/commit/5857c3ec7a3cd5de71a95f1fbf60c44e9ecd59bf"
+    },
+    {
+      "sha": "2316262d767eace5d1b6085a552cb9a43de8b4ea",
+      "short": "2316262",
+      "date": "2026-09-30T10:32:10-04:00",
+      "day": "2026-09-30",
+      "subject": "White paper v0.5: an eight-thousand-word core plus companion files; closed to open models",
+      "url": "https://github.com/warOnSaaS/wos/commit/2316262d767eace5d1b6085a552cb9a43de8b4ea"
+    },
+    {
+      "sha": "c51b3eb3815650084358946188ae2b4aa34988c4",
+      "short": "c51b3eb",
+      "date": "2026-09-30T10:21:59-04:00",
+      "day": "2026-09-30",
+      "subject": "Website: white paper v0.4 copy, handoff prompt asks about the four theses",
+      "url": "https://github.com/warOnSaaS/wos/commit/c51b3eb3815650084358946188ae2b4aa34988c4"
+    },
+    {
+      "sha": "bd69f28936939d2e7b4dd3733a5b924820907ebe",
+      "short": "bd69f28",
+      "date": "2026-09-30T10:21:25-04:00",
+      "day": "2026-09-30",
+      "subject": "White paper v0.4: four theses (control, efficiency, future of SE, APoC)",
+      "url": "https://github.com/warOnSaaS/wos/commit/bd69f28936939d2e7b4dd3733a5b924820907ebe"
+    },
+    {
+      "sha": "f34867acf8c6b02bdf4cf1bf97187e14b46b561d",
+      "short": "f34867a",
+      "date": "2026-09-30T10:18:18-04:00",
+      "day": "2026-09-30",
+      "subject": "/whitepaper becomes an agent handoff page",
+      "url": "https://github.com/warOnSaaS/wos/commit/f34867acf8c6b02bdf4cf1bf97187e14b46b561d"
+    },
+    {
+      "sha": "1d0afc018003c65f6f8fc7bcc57b5eb61143ac2e",
+      "short": "1d0afc0",
+      "date": "2026-09-30T10:16:44-04:00",
+      "day": "2026-09-30",
+      "subject": "White paper v0.3: agent-first, the two theses, edge-case index",
+      "url": "https://github.com/warOnSaaS/wos/commit/1d0afc018003c65f6f8fc7bcc57b5eb61143ac2e"
+    },
+    {
+      "sha": "ff75b960394e9a68c14efd9b3ded0c889af51120",
+      "short": "ff75b96",
+      "date": "2026-09-30T02:22:32-04:00",
+      "day": "2026-09-30",
+      "subject": "Site sync keeps the white paper living",
+      "url": "https://github.com/warOnSaaS/wos/commit/ff75b960394e9a68c14efd9b3ded0c889af51120"
+    },
+    {
+      "sha": "749f9b83025d6aca9e8548b4a50da759a7226721",
+      "short": "749f9b8",
+      "date": "2026-09-30T02:22:32-04:00",
+      "day": "2026-09-30",
+      "subject": "Website: /whitepaper renders the living white paper",
+      "url": "https://github.com/warOnSaaS/wos/commit/749f9b83025d6aca9e8548b4a50da759a7226721"
+    },
+    {
+      "sha": "d36c4f1d2deafae6d420824cad4b3a53978abf50",
+      "short": "d36c4f1",
+      "date": "2026-09-30T02:18:12-04:00",
+      "day": "2026-09-30",
+      "subject": "White paper v0.2: living document, budget-based Proof of Contribution, evidence inventory",
+      "url": "https://github.com/warOnSaaS/wos/commit/d36c4f1d2deafae6d420824cad4b3a53978abf50"
+    },
+    {
+      "sha": "725b7e53c221067fcd82a7ab7d43ea50e95506e3",
+      "short": "725b7e5",
+      "date": "2026-09-30T02:05:41-04:00",
+      "day": "2026-09-30",
+      "subject": "License wOS under Apache-2.0",
+      "url": "https://github.com/warOnSaaS/wos/commit/725b7e53c221067fcd82a7ab7d43ea50e95506e3"
+    },
+    {
+      "sha": "7adec0a3ccb2598753a2eee569b096a13a326d8d",
+      "short": "7adec0a",
+      "date": "2026-09-30T01:48:56-04:00",
+      "day": "2026-09-30",
+      "subject": "AGENTS.md: hosted-first product direction",
+      "url": "https://github.com/warOnSaaS/wos/commit/7adec0a3ccb2598753a2eee569b096a13a326d8d"
+    },
+    {
+      "sha": "cb72f230a87dfcd0e40f29403c639f08a89c5e0a",
+      "short": "cb72f23",
+      "date": "2026-09-29T20:28:06-04:00",
+      "day": "2026-09-29",
+      "subject": "AGENTS.md: protocol design in progress, economy first",
+      "url": "https://github.com/warOnSaaS/wos/commit/cb72f230a87dfcd0e40f29403c639f08a89c5e0a"
+    },
+    {
+      "sha": "b9b51b2c266af7ad4e9acb65cdb718190f97890a",
+      "short": "b9b51b2",
+      "date": "2026-09-29T20:00:23-04:00",
+      "day": "2026-09-29",
+      "subject": "Add Amendment 02: Proof of Contribution (founder decisions + proposal)",
+      "url": "https://github.com/warOnSaaS/wos/commit/b9b51b2c266af7ad4e9acb65cdb718190f97890a"
+    },
+    {
+      "sha": "435545ddc286416c473514a58da172e763ad3662",
+      "short": "435545d",
+      "date": "2026-09-29T18:56:40-04:00",
+      "day": "2026-09-29",
+      "subject": "Integrate Amendment 01 (contracts 5.0.0): site surfaces, AGENTS.md state",
+      "url": "https://github.com/warOnSaaS/wos/commit/435545ddc286416c473514a58da172e763ad3662"
+    },
+    {
+      "sha": "5e8825d566e4ef8dee5e76ea9141512bcf0c55f2",
+      "short": "5e8825d",
+      "date": "2026-09-29T18:55:27-04:00",
+      "day": "2026-09-29",
+      "subject": "Merge branch 'architect'",
+      "url": "https://github.com/warOnSaaS/wos/commit/5e8825d566e4ef8dee5e76ea9141512bcf0c55f2"
+    },
+    {
+      "sha": "7143e3007e98b86f70641bf85eef77b8ba4f6eb7",
+      "short": "7143e30",
+      "date": "2026-09-29T18:52:34-04:00",
+      "day": "2026-09-29",
+      "subject": "AGENTS.md: site sync is on main",
+      "url": "https://github.com/warOnSaaS/wos/commit/7143e3007e98b86f70641bf85eef77b8ba4f6eb7"
+    },
+    {
+      "sha": "38e4ad8202145fe10a3159f0e850b459c93ad2c0",
+      "short": "38e4ad8",
+      "date": "2026-09-29T18:52:34-04:00",
+      "day": "2026-09-29",
+      "subject": "Merge branch 'ws/sitesync'",
+      "url": "https://github.com/warOnSaaS/wos/commit/38e4ad8202145fe10a3159f0e850b459c93ad2c0"
+    },
     {
       "sha": "a08523ff67d12cf36b56ecdedec4a97aa6c48db3",
       "short": "a08523f",

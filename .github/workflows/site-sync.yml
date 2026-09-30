@@ -3,7 +3,8 @@
 # website copy and proposes edits as a pull request. It never pushes to main.
 #
 # Layers 1 and 2 need no agent: the site reads the live API with ISR and generates /log from git at
-# every Vercel build. This workflow is layer 3: copy (briefing, how-it-works, FAQ, download, TGT-00, llms).
+# every Vercel build. This workflow is layer 3: copy (briefing, how-it-works, FAQ, download, TGT-00, llms)
+# and the living white paper (docs/whitepaper/WHITEPAPER.md and its companion .md files, plus tools/materiality/ for a sourced refresh of the materiality figures: the only files outside apps/web it may edit).
 #
 # Secrets:
 #   CLAUDE_CODE_OAUTH_TOKEN  required. Founder's Claude subscription token (`claude setup-token`).
@@ -20,6 +21,8 @@ on:
       - "apps/**"
       - "AGENTS.md"
       - "!apps/web/**"
+      # Recorded self-assessments (.github/workflows/self-assessment.yml commits them to main): data, not copy.
+      - "!docs/assessments/**"
   workflow_dispatch:
 
 # A burst of merges runs once, on the newest main.
@@ -86,12 +89,13 @@ jobs:
           prompt: |
             Follow apps/web/SITE-SYNC.md exactly. The changes to review are in .site-sync/changes.md
             (main moved from ${{ steps.changes.outputs.last }} to ${{ steps.changes.outputs.head }}).
-            Edit only files under apps/web/. Run `npm run build -w apps/web` before you finish, then write
+            Edit only files under apps/web/, the white paper files in docs/whitepaper/ (not the v0.1 original) and, for a sourced materiality refresh, tools/materiality/. Run `npm run build -w apps/web` before you finish, then write
             your summary to .site-sync/summary.md.
+            Never edit the paper without a version bump and a changelog entry.
           claude_args: |
             --model sonnet
             --max-turns 40
-            --allowedTools "Read,Glob,Grep,Edit,Write,Bash(npm run build -w apps/web),Bash(git log:*),Bash(git diff:*),Bash(git show:*)"
+            --allowedTools "Read,Glob,Grep,Edit,Write,Bash(npm run build -w apps/web),Bash(node tools/materiality/model.ts),Bash(git log:*),Bash(git diff:*),Bash(git show:*)"
             --disallowedTools "WebFetch,WebSearch"
 
       - name: Guard, record the sync point, run the site checks
@@ -101,10 +105,11 @@ jobs:
           { echo "summary<<SITE_SYNC_EOF"; cat .site-sync/summary.md 2>/dev/null || echo "The agent wrote no summary."; echo "SITE_SYNC_EOF"; } >> "$GITHUB_OUTPUT"
           rm -rf .site-sync
           echo "${{ steps.changes.outputs.head }}" > apps/web/SITE-SYNC.last
-          outside=$(git status --porcelain | awk '{print $2}' | grep -v '^apps/web/' || true)
-          if [ -n "$outside" ]; then echo "::error::The agent changed files outside apps/web:"; echo "$outside"; exit 1; fi
+          outside=$(git status --porcelain | awk '{print $2}' | grep -v -E -e '^apps/web/' -e '^docs/whitepaper/(WHITEPAPER|MATERIALITY|EDGE-CASES|DESIGN|APPENDICES|SOURCES)\.md$' -e '^tools/materiality/(model\.ts|OUTPUT\.md)$' || true)
+          if [ -n "$outside" ]; then echo "::error::The agent changed files outside apps/web and the white paper:"; echo "$outside"; exit 1; fi
           npm run build -w apps/web
-          git add apps/web
+          npx vitest run tests/materiality.test.ts
+          git add apps/web docs/whitepaper/WHITEPAPER.md docs/whitepaper/MATERIALITY.md tools/materiality docs/whitepaper/EDGE-CASES.md docs/whitepaper/DESIGN.md docs/whitepaper/APPENDICES.md docs/whitepaper/SOURCES.md
           if git diff --cached --quiet -- ':(exclude)apps/web/SITE-SYNC.last' ':(exclude)apps/web/generated'; then echo "changed=false" >> "$GITHUB_OUTPUT"; else echo "changed=true" >> "$GITHUB_OUTPUT"; fi
 
       # PR creation. GITHUB_TOKEN can only open PRs if the repository allows GitHub Actions to create
@@ -123,7 +128,7 @@ jobs:
           git config user.name "adventurini"
           git config user.email "anthonydventurini@gmail.com"
           git checkout -b "$branch"
-          git commit -q -m "site-sync: update apps/web for main ${HEAD_SHA:0:7}" -m "Proposed by the site-sync agent (apps/web/SITE-SYNC.md)."
+          git commit -q -m "site-sync: update apps/web and the white paper for main ${HEAD_SHA:0:7}" -m "Proposed by the site-sync agent (apps/web/SITE-SYNC.md)."
           git push -q "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/$branch"
           body=$(printf 'Site copy updated for the changes on main up to %s.\n\n%s\n\nChecks run in the workflow: site build, casing gate, number gate. Merge only after reading the diff.' "${HEAD_SHA:0:7}" "${SUMMARY:-See the workflow log for the agent summary.}")
           if gh pr create --base main --head "$branch" --title "site-sync: main ${HEAD_SHA:0:7}" --body "$body"; then

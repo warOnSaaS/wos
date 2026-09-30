@@ -1,0 +1,780 @@
+{
+  "schema": "wos-scan.v0",
+  "label": "SCAN — unreviewed, 2026-09-30",
+  "reviewed": false,
+  "countsTowardProgress": false,
+  "target": {
+    "id": "TGT-03",
+    "slug": "slack",
+    "name": "Slack"
+  },
+  "scannedAt": "2026-09-30",
+  "scope": {
+    "included": "Slack on all plans the pricing page shows: Free, Pro, Business+ and Enterprise+ (the page no longer shows an 'Enterprise Grid' plan; help articles call multi-workspace deployments an 'Enterprise organization'). Covers the web/desktop/mobile clients, AI features, Slack Connect, Workflow Builder and the public developer platform.",
+    "excluded": [
+      "GovSlack (a separate public-sector offering built on Enterprise+)",
+      "Salesforce products beyond their Slack surface (Agentforce, Sales Elevate, Tableau)",
+      "Third-party Marketplace apps (translation bots, etc.)",
+      "Slack Atlas pricing detail (contact sales)"
+    ]
+  },
+  "clientApps": [
+    {
+      "surface": "desktop",
+      "name": "Slack desktop app",
+      "platforms": "macOS, Windows, Linux",
+      "sources": ["https://slack.com/downloads"]
+    },
+    {
+      "surface": "ios",
+      "name": "Slack",
+      "platforms": "iPhone, iPad, Apple Vision",
+      "sources": ["https://apps.apple.com/us/app/slack/id618783545"]
+    },
+    {
+      "surface": "android",
+      "name": "Slack",
+      "platforms": "Android",
+      "sources": ["https://play.google.com/store/apps/details?id=com.Slack", "https://slack.com/downloads"]
+    },
+    {
+      "surface": "web",
+      "name": "Slack in a browser (admin dashboard opens in the browser)",
+      "platforms": null,
+      "sources": ["https://slack.com/help/articles/115005594006-Guide-to-the-Slack-admin-dashboard"]
+    }
+  ],
+  "api": {
+    "style": "REST-style Web API (JSON, 100+ methods); Events API over HTTP or Socket Mode (WebSocket); incoming webhooks; MCP server",
+    "notes": "OAuth apps with bot and user tokens; rate limits are tiered per method and enforced per app per workspace (HTTP 429 with Retry-After), and apps may post about one message per second per channel. Admin, SCIM, Audit Logs, Discovery, Real-time Search and Status APIs sit alongside; the legacy RTM API is deprecated.",
+    "sources": [
+      "https://docs.slack.dev/apis/",
+      "https://docs.slack.dev/apis/web-api/rate-limits/",
+      "https://docs.slack.dev/changelog/2026/02/17/slack-mcp/"
+    ]
+  },
+  "capabilities": [
+    {
+      "id": "channels",
+      "vendorName": "Channels",
+      "description": "Persistent public and private conversation spaces organised by team, project or topic; the core unit of work in Slack.",
+      "surfaces": ["desktop", "ios", "android", "api"],
+      "lowestTier": "Free",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://slack.com/pricing", "https://slack.com/features", "https://apps.apple.com/us/app/slack/id618783545"]
+    },
+    {
+      "id": "direct-messages",
+      "vendorName": "Direct messages (DMs)",
+      "description": "One-to-one and small-group private conversations, with per-conversation notification settings.",
+      "surfaces": ["ios"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://slack.com/help/articles/360056534254-Manage-notifications-for-specific-channels-and-direct-messages",
+        "https://apps.apple.com/us/app/slack/id618783545"
+      ]
+    },
+    {
+      "id": "threads-reactions",
+      "vendorName": "Threads and emoji reactions",
+      "description": "Reply to a message in a thread to keep discussion out of the main channel; react with emoji and see who reacted. Reactions are exposed through the Web API (reactions.add).",
+      "surfaces": ["api"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://slack.com/help/articles/115000769927-Use-threads-to-organize-discussions",
+        "https://slack.com/help/articles/202931348-Use-emoji-and-reactions",
+        "https://api.slack.com/methods/reactions.add"
+      ]
+    },
+    {
+      "id": "presence-status",
+      "vendorName": "Status and availability",
+      "description": "Custom status messages, an availability (active/away) indicator, pausing notifications, and status that can sync from a connected calendar.",
+      "surfaces": [],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://slack.com/help/articles/201864558-Set-your-Slack-status-and-availability",
+        "https://slack.com/help/articles/4412365549075-Automations--Sync-your-status-with-your-calendar"
+      ]
+    },
+    {
+      "id": "notifications",
+      "vendorName": "Notifications",
+      "description": "Desktop and mobile notification preferences: everything vs mentions and DMs, per-channel exceptions, and work-hours scheduling.",
+      "surfaces": [],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://slack.com/help/articles/201355156-Configure-your-Slack-notifications",
+        "https://slack.com/help/articles/360025446073-Guide-to-Slack-notifications"
+      ]
+    },
+    {
+      "id": "comments-mentions",
+      "vendorName": "Mentions and canvas comments",
+      "description": "@mentions drive notifications; canvases support co-editing with comments and threads.",
+      "surfaces": [],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://slack.com/features/canvas", "https://slack.com/help/articles/201355156-Configure-your-Slack-notifications"]
+    },
+    {
+      "id": "search",
+      "vendorName": "Search / AI search / Enterprise search",
+      "description": "Search across people, channels, messages and files on every plan; AI search answers on Business+; enterprise search across connected third-party apps and custom sources on Enterprise+. The Real-time Search API exposes permission-aware search to apps.",
+      "surfaces": ["ios", "android", "api"],
+      "lowestTier": "Free",
+      "tierNote": "AI search Business+; enterprise search Enterprise+",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://slack.com/pricing",
+        "https://slack.com/features/enterprise-search",
+        "https://docs.slack.dev/changelog/2026/02/17/slack-mcp/"
+      ]
+    },
+    {
+      "id": "external-collaboration",
+      "vendorName": "Slack Connect and guests",
+      "description": "Slack Connect channels and DMs with other organisations (up to 250 organisations per channel), plus multi-channel and single-channel guest accounts.",
+      "surfaces": ["api"],
+      "lowestTier": "Free",
+      "tierNote": "Slack Connect is 1:1 only on Free; guest accounts are paid plans only",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://slack.com/pricing",
+        "https://slack.com/help/articles/360035092414-Use-Slack-Connect-to-work-with-other-companies-in-channels",
+        "https://slack.com/help/articles/202518103-Understand-guest-roles-in-Slack"
+      ]
+    },
+    {
+      "id": "audio-huddles",
+      "vendorName": "Huddles",
+      "description": "Drop-in audio calls that start in a channel or DM, with optional video, huddle thread messages, reactions and effects; shared links and files are saved after the huddle.",
+      "surfaces": ["desktop", "ios", "android"],
+      "lowestTier": "Free",
+      "tierNote": "Free: two people, 30-minute limit; group huddles on paid plans",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://slack.com/pricing", "https://slack.com/features/huddles"]
+    },
+    {
+      "id": "screen-sharing",
+      "vendorName": "Screen sharing in huddles and clips",
+      "description": "Share a screen during a huddle or record the screen in a clip.",
+      "surfaces": ["desktop", "ios", "android"],
+      "lowestTier": "Free",
+      "tierNote": "huddles 1:1 only on Free",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://slack.com/pricing", "https://slack.com/features/huddles", "https://slack.com/features/clips"]
+    },
+    {
+      "id": "async-video-clips",
+      "vendorName": "Clips",
+      "description": "Record audio, video or screen clips up to five minutes, with captions, transcripts and playback speed control; unlimited on all plans.",
+      "surfaces": ["ios", "android"],
+      "lowestTier": "Free",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://slack.com/features/clips",
+        "https://slack.com/pricing",
+        "https://play.google.com/store/apps/details?id=com.Slack"
+      ]
+    },
+    {
+      "id": "transcription-captions",
+      "vendorName": "Huddle notes and clip transcripts",
+      "description": "AI huddle notes capture transcripts, key takeaways and action items into a canvas; clips have captions and transcripts.",
+      "surfaces": ["ios", "android"],
+      "lowestTier": "Free",
+      "tierNote": "clip captions on all plans; AI huddle notes from Pro",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://slack.com/pricing", "https://slack.com/features/huddles", "https://slack.com/features/clips"]
+    },
+    {
+      "id": "docs-wiki",
+      "vendorName": "Canvases",
+      "description": "Rich documents inside Slack, attached to channels and DMs or standalone, embedding files, lists, workflows and app unfurls, with AI writing assistance.",
+      "surfaces": ["desktop", "ios"],
+      "lowestTier": "Free",
+      "tierNote": "Free teams: canvases in channels only; pricing table marks canvases from Pro; AI writing in canvas Business+",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://slack.com/pricing", "https://slack.com/features/canvas", "https://apps.apple.com/us/app/slack/id618783545"]
+    },
+    {
+      "id": "lists-databases",
+      "vendorName": "Lists",
+      "description": "Structured lists for tracking projects, requests and tasks, with assignees, due dates, workflow triggers, canvas embedding and sharing over Slack Connect.",
+      "surfaces": ["ios"],
+      "lowestTier": "Pro",
+      "tierNote": "included in all paid plans",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://slack.com/pricing", "https://slack.com/features/task-list", "https://apps.apple.com/us/app/slack/id618783545"]
+    },
+    {
+      "id": "tasks",
+      "vendorName": "Reminders, Later and list tasks",
+      "description": "Personal reminders and saved items in the Later tab, plus assignable tasks with due dates in lists.",
+      "surfaces": ["android"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://slack.com/help/articles/208423427-Set-a-reminder",
+        "https://slack.com/features/task-list",
+        "https://play.google.com/store/apps/details?id=com.Slack"
+      ]
+    },
+    {
+      "id": "file-storage",
+      "vendorName": "File sharing",
+      "description": "Share files up to 1GB from devices or cloud storage apps (Google Drive, OneDrive/SharePoint, Box, Dropbox); pin files; files are searchable and follow channel permissions. AI file summaries on Business+.",
+      "surfaces": ["android"],
+      "lowestTier": "Free",
+      "tierNote": "Free keeps 90 days of message and file history",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://slack.com/features/document-sharing",
+        "https://slack.com/pricing",
+        "https://play.google.com/store/apps/details?id=com.Slack"
+      ]
+    },
+    {
+      "id": "templates",
+      "vendorName": "Templates",
+      "description": "Pre-made and customizable templates for channels, canvases, lists and workflows.",
+      "surfaces": ["android"],
+      "lowestTier": "Pro",
+      "tierNote": "user-created on Pro and Business+; admin-created on Enterprise+",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://slack.com/pricing", "https://play.google.com/store/apps/details?id=com.Slack"]
+    },
+    {
+      "id": "workflow-automation",
+      "vendorName": "Workflow Builder",
+      "description": "No-code workflows with AI generation, a Generate AI response step, conditional branching (up to 15 conditions) and 70+ app connectors; workflows run from messages, canvases, bookmarks and lists.",
+      "surfaces": ["api"],
+      "lowestTier": "Pro",
+      "tierNote": "conditional branching, AI workflow generation and AI steps from Business+",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://slack.com/pricing", "https://slack.com/features/workflow-automation"]
+    },
+    {
+      "id": "approvals",
+      "vendorName": "Approvals in workflows",
+      "description": "Workflows route requests and approvals; apps let users approve requests without leaving Slack.",
+      "surfaces": ["android"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://slack.com/features/workflow-automation", "https://play.google.com/store/apps/details?id=com.Slack"]
+    },
+    {
+      "id": "bots-slash-commands",
+      "vendorName": "Shortcuts and slash commands",
+      "description": "Built-in and app slash commands and a shortcuts menu that runs apps and workflows from the message field; developers can implement custom slash commands.",
+      "surfaces": ["api"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://slack.com/help/articles/360057554553-Use-shortcuts-to-take-actions-in-Slack",
+        "https://api.slack.com/interactivity/slash-commands"
+      ]
+    },
+    {
+      "id": "app-marketplace",
+      "vendorName": "Slack Marketplace",
+      "description": "A directory of 2,600+ reviewed third-party and Slack apps and agents that install into a workspace.",
+      "surfaces": ["ios", "android"],
+      "lowestTier": "Free",
+      "tierNote": "Free limited to 10 apps; unlimited on paid plans",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://slack.com/pricing",
+        "https://slack.com/marketplace",
+        "https://slack.com/help/articles/202035138-Add-apps-to-your-Slack-workspace"
+      ]
+    },
+    {
+      "id": "native-integrations",
+      "vendorName": "Salesforce in Slack and first-party connectors",
+      "description": "Salesforce records and data in channels, Salesforce/Sales Elevate integrations, Google Drive, OneDrive/SharePoint and Workflow Builder connectors.",
+      "surfaces": [],
+      "lowestTier": "Free",
+      "tierNote": "Salesforce data in channels on all plans",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://slack.com/pricing", "https://slack.com/features", "https://slack.com/features/document-sharing"]
+    },
+    {
+      "id": "calendar-scheduling",
+      "vendorName": "Google Calendar and Outlook Calendar apps",
+      "description": "Calendar apps show events and notifications, join video calls, find common availability and schedule meetings from a channel or DM, and update status during meetings.",
+      "surfaces": [],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://slack.com/help/articles/13368080520211-Calendar-apps-for-Slack",
+        "https://slack.com/help/articles/360020134853-Microsoft-Outlook-Calendar-for-Slack",
+        "https://slack.com/help/articles/4412450133139-Automations--Schedule-a-meeting-in-Slack"
+      ]
+    },
+    {
+      "id": "api-webhooks",
+      "vendorName": "Web API, Events API, incoming webhooks",
+      "description": "Web API (100+ methods), Events API and Socket Mode for event delivery, incoming webhooks, plus Admin, SCIM, Audit Logs, Discovery, Real-time Search and Status APIs.",
+      "surfaces": ["api"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://docs.slack.dev/apis/",
+        "https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks/",
+        "https://docs.slack.dev/apis/web-api/rate-limits/"
+      ]
+    },
+    {
+      "id": "developer-platform",
+      "vendorName": "Slack platform: CLI, Bolt, SDKs",
+      "description": "Slack CLI, Bolt and SDKs for Java, JavaScript and Python, Block Kit and work objects, custom workflow steps, and custom functions deployed on Slack infrastructure.",
+      "surfaces": ["api"],
+      "lowestTier": "Pro",
+      "tierNote": "deploying apps to Slack infrastructure and custom workflow steps from Pro",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://docs.slack.dev/", "https://slack.com/features/agentic-platform", "https://slack.com/pricing"]
+    },
+    {
+      "id": "ai-assistant",
+      "vendorName": "AI in Slack",
+      "description": "Channel and thread summaries, huddle notes, daily recaps, file summaries, message explanations, translations and writing help in canvases.",
+      "surfaces": ["ios", "android"],
+      "lowestTier": "Pro",
+      "tierNote": "summaries and huddle notes from Pro; recaps, file summaries, translations and writing from Business+",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://slack.com/pricing", "https://slack.com/features/ai", "https://apps.apple.com/us/app/slack/id618783545"]
+    },
+    {
+      "id": "ai-agents",
+      "vendorName": "Slackbot, Agentforce, AI apps and the MCP server",
+      "description": "Slackbot as a personal AI agent that researches, builds dashboards and acts across connected apps; Agentforce agents; third-party AI assistant apps; Slack Code channels where teams guide coding agents; a Slack MCP server and MCP client for outside agents.",
+      "surfaces": ["ios", "api"],
+      "lowestTier": "Pro",
+      "tierNote": "AI assistant apps from Pro; Slackbot agent from Business+ with plan limits",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://slack.com/pricing", "https://slack.com/features/slackbot", "https://slack.com/features/code-channels"]
+    },
+    {
+      "id": "sso-identity",
+      "vendorName": "SSO, 2FA and SCIM",
+      "description": "Two-factor authentication on all plans; Google OAuth sign-in on Pro; SAML SSO on Business+ and multiple SAML configurations on Enterprise+; SCIM provisioning (including guests on Enterprise+).",
+      "surfaces": ["api"],
+      "lowestTier": "Free",
+      "tierNote": "2FA on Free; SAML and SCIM from Business+",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://slack.com/pricing", "https://slack.com/help/articles/212572638-Manage-members-with-SCIM-provisioning"]
+    },
+    {
+      "id": "roles-permissions",
+      "vendorName": "Roles and posting permissions",
+      "description": "Owner, admin, member and guest roles; channel posting permissions; granular admin roles on Enterprise+.",
+      "surfaces": [],
+      "lowestTier": "Free",
+      "tierNote": "posting permissions limited to #general below Business+; granular roles Enterprise+",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://slack.com/pricing", "https://slack.com/help/articles/360018112273-Types-of-roles-in-Slack"]
+    },
+    {
+      "id": "users-teams",
+      "vendorName": "Members, user groups and workspaces",
+      "description": "Invite members and guests, create custom user groups, and on Enterprise+ run unlimited workspaces in one organisation.",
+      "surfaces": [],
+      "lowestTier": "Free",
+      "tierNote": "custom user groups from Pro; multiple workspaces Enterprise+",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://slack.com/pricing", "https://slack.com/help/articles/115004952926-Manage-user-groups-from-the-admin-dashboard"]
+    },
+    {
+      "id": "audit-log",
+      "vendorName": "Audit logs and access logs",
+      "description": "Access logs on paid plans; audit logs of changes and usage viewable in Slack, exportable to CSV or via the Audit Logs API on Enterprise+.",
+      "surfaces": ["api"],
+      "lowestTier": "Pro",
+      "tierNote": "access logs from Pro; audit logs Enterprise+",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://slack.com/pricing", "https://docs.slack.dev/apis/"]
+    },
+    {
+      "id": "compliance-security",
+      "vendorName": "Security and compliance controls",
+      "description": "Encryption at rest and in transit, retention policies, session and device management, data residency, native DLP, information barriers, legal holds, HIPAA support, anomaly event response and Enterprise Key Management; SOC 2, ISO 27001 and FedRAMP Moderate are stated.",
+      "surfaces": [],
+      "lowestTier": "Free",
+      "tierNote": "retention up to 1 year on Free; data residency Business+; DLP, legal holds, HIPAA, information barriers Enterprise+; EKM Enterprise+ add-on",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://slack.com/pricing", "https://slack.com/features"]
+    },
+    {
+      "id": "data-import-export",
+      "vendorName": "Import and export tools",
+      "description": "Owners and admins export public channel data; full exports on Business+; single-user exports and the Discovery API on Enterprise+; an import tool moves data between workspaces.",
+      "surfaces": ["api"],
+      "lowestTier": "Free",
+      "tierNote": "all-message exports Business+; single-user exports and Discovery API Enterprise+",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://slack.com/help/articles/204897248-Guide-to-Slack-import-and-export-tools",
+        "https://slack.com/help/articles/201658943-Export-your-workspace-data#request-to-export-data",
+        "https://slack.com/pricing"
+      ]
+    },
+    {
+      "id": "admin-console",
+      "vendorName": "Admin dashboard and workspace settings",
+      "description": "Workspace settings and an organisation admin dashboard in the browser that applies settings, members, channels and apps across all workspaces in an Enterprise organisation; flagged-content management, domain claiming and custom terms of service on Enterprise+.",
+      "surfaces": ["web", "api"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://slack.com/help/articles/115005594006-Guide-to-the-Slack-admin-dashboard",
+        "https://slack.com/help/articles/360000281563-Manage-apps-in-an-Enterprise-organization",
+        "https://slack.com/pricing"
+      ]
+    },
+    {
+      "id": "reporting-dashboards",
+      "vendorName": "Admin analytics",
+      "description": "Analytics dashboards on members, channels and messages; message activity analytics and an Admin analytics API; Slackbot can also build charts and dashboards in a conversation.",
+      "surfaces": ["api"],
+      "lowestTier": "Pro",
+      "tierNote": "admin analytics API and message activity analytics from Business+",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://slack.com/pricing", "https://slack.com/features/slackbot"]
+    },
+    {
+      "id": "pipelines-deals",
+      "vendorName": "Slack CRM / Track leads & deals",
+      "description": "A native CRM driven by Slackbot to create accounts, update records, log calls and notes and track leads and deals; related rows cover support emails and meeting prep.",
+      "surfaces": [],
+      "lowestTier": "Business+",
+      "tierNote": "upon request on Enterprise+",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://slack.com/pricing", "https://slack.com/features/slackbot"]
+    },
+    {
+      "id": "hr-people",
+      "vendorName": "Slack Atlas",
+      "description": "Rich employee profiles and a dynamic org chart populated from HR systems via SCIM, including view-only profiles for people not on Slack.",
+      "surfaces": [],
+      "lowestTier": "Business+",
+      "tierNote": "paid add-on on Business+; included in Enterprise+",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://slack.com/features/atlas"]
+    },
+    {
+      "id": "multi-currency-localization",
+      "vendorName": "Language and region, AI translations",
+      "description": "Per-user and admin default language settings, and AI translation of messages into a chosen language.",
+      "surfaces": [],
+      "lowestTier": null,
+      "tierNote": "AI language translations from Business+",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://slack.com/blog/collaboration/bienvenue-willkommen-bienvenidos-to-a-more-globally-accessible-slack",
+        "https://slack.com/help/articles/25076892548883-Guide-to-AI-features-in-Slack",
+        "https://slack.com/pricing"
+      ]
+    },
+    {
+      "id": "mobile-app",
+      "vendorName": "Slack for iOS and Android",
+      "description": "Native apps for iPhone, iPad, Apple Vision and Android with channels, huddles with screen sharing, clips, AI search and AI huddle notes; voice input to Slackbot.",
+      "surfaces": ["ios", "android"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://apps.apple.com/us/app/slack/id618783545",
+        "https://play.google.com/store/apps/details?id=com.Slack",
+        "https://slack.com/features/huddles"
+      ]
+    },
+    {
+      "id": "desktop-app",
+      "vendorName": "Slack desktop app",
+      "description": "Desktop apps for Mac, Windows and Linux.",
+      "surfaces": ["desktop"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://slack.com/downloads"]
+    }
+  ],
+  "limits": [
+    "Slack plan tiers came from the server-rendered comparison table on slack.com/pricing, parsed cell by cell with curl. Two WebFetch summaries of the same page put features in the wrong plan columns (for example SCIM, audit logs and data exports shown on Pro), so those summaries were thrown away.",
+    "The pricing table marks Canvases as not on Free, but the canvas feature page says Free teams can use canvases in channels. Both are recorded in tierNote.",
+    "The 'web' surface is listed only where a source shows a browser. slack.com/downloads names only desktop and mobile apps, so the web client is under-reported.",
+    "The Google Play description was pulled from the listing's raw HTML because WebFetch returned a truncated page. The device list (tablet, Chromebook) was not confirmed.",
+    "Many help-centre sources are search-result snippets rather than fetched pages.",
+    "No injected instructions were seen in fetched content."
+  ],
+  "failures": [
+    {
+      "kind": "fetch",
+      "what": "https://play.google.com/store/apps/details?id=com.Slack",
+      "result": "WebFetch returned truncated/empty content; used curl on the listing HTML instead"
+    },
+    {
+      "kind": "fetch",
+      "what": "https://slack.com/pricing",
+      "result": "WebFetch summaries gave plan-column mappings that contradicted each other; replaced with a direct HTML parse"
+    }
+  ],
+  "dataExport": {
+    "extraction": {
+      "full": "partial",
+      "incremental": "partial",
+      "apiBased": "partial",
+      "note": "Every plan can export public channels (JSON ZIP), but private channels and DMs need an application approved by Slack (Free/Pro: only with legal process, member consent or a legal right; Business+/Enterprise: a self-serve tool that must be requested), and exports carry file links, not files. The Web API can read history with oldest/latest timestamp filters and the Events API pushes changes, but new commercially distributed non-Marketplace apps get 1 request per minute and 15 objects per call on conversations.history/replies; the full-fidelity Discovery API is Enterprise-only and limited to eDiscovery, archiving and DLP."
+    },
+    "exportOptions": [
+      {
+        "name": "Export (public channels)",
+        "description": "Messages and file links from public channels (plus public Salesforce channels); ZIP containing channels.json, users.json, integration_logs.json, canvases.json (a URL per canvas) and one folder per channel with one JSON file per day.",
+        "formats": ["JSON", "ZIP"],
+        "limits": "Workspace Owners and Admins. File links only, not the files. Free: data more than a year old is not included and file links cover only the last 90 days. On Pro, with Slack Connect channels, only links to files shared by your own members are included.",
+        "lowestTier": "Free",
+        "sources": [
+          "https://slack.com/help/articles/201658943-Export-your-workspace-data",
+          "https://slack.com/help/articles/204897248-Guide-to-Slack-import-and-export-tools",
+          "https://slack.com/help/articles/220556107-How-to-read-Slack-data-exports"
+        ]
+      },
+      {
+        "name": "Export all channels and conversations (application or self-serve tool)",
+        "description": "Messages and file links from public channels, private channels and DMs, including Slackbot conversations; adds dms.json, groups.json, mpims.json and a folder per private channel and DM.",
+        "formats": ["JSON", "ZIP"],
+        "limits": "Free and Pro: Workspace Owners must apply, and Slack rejects applications without valid legal process, member consent, or a legal requirement or right. Business+: Workspace Owners apply for a self-serve tool; approval from the Workspace Primary Owner is required. Enterprise: Org Owners contact Support to request access. Edited and deleted messages appear only if retention settings keep them.",
+        "lowestTier": "Business+ (self-serve after approval); Free/Pro only by approved application",
+        "sources": [
+          "https://slack.com/help/articles/201658943-Export-your-workspace-data",
+          "https://slack.com/help/articles/204897248-Guide-to-Slack-import-and-export-tools",
+          "https://slack.com/help/articles/220556107-How-to-read-Slack-data-exports"
+        ]
+      },
+      {
+        "name": "Schedule recurring exports",
+        "description": "Weekly or monthly scheduled export of all channels and conversations. Each export contains only that period's data.",
+        "formats": ["JSON", "ZIP"],
+        "limits": "Business+ only, after approval for the all-conversations export. Shown as not available on Enterprise.",
+        "lowestTier": "Business+",
+        "sources": ["https://slack.com/help/articles/201658943-Export-your-workspace-data"]
+      },
+      {
+        "name": "Channel audit report",
+        "description": "A CSV list of channels and their details for migration planning.",
+        "formats": ["CSV"],
+        "limits": "Business+ Workspace Owners must request it; Enterprise Org Owners get it after Support enables export tools.",
+        "lowestTier": "Business+",
+        "sources": ["https://slack.com/help/articles/201658943-Export-your-workspace-data"]
+      },
+      {
+        "name": "Custom data export / single-user export (Enterprise)",
+        "description": "Export by conversation type, member or workspace, or all conversations for a single user. Single-user exports in TXT format include the files themselves (folders: channels, dms, files).",
+        "formats": ["JSON", "TXT", "ZIP"],
+        "limits": "Enterprise Org Owners, after requesting access from Support. Enterprise exports cannot be imported into other workspaces. Workspace-specific exports exclude multi-workspace channels.",
+        "lowestTier": "Enterprise",
+        "sources": [
+          "https://slack.com/help/articles/201658943-Export-your-workspace-data",
+          "https://slack.com/help/articles/204897248-Guide-to-Slack-import-and-export-tools",
+          "https://slack.com/help/articles/220556107-How-to-read-Slack-data-exports"
+        ]
+      }
+    ],
+    "apis": [
+      {
+        "name": "Discovery API",
+        "kind": "bulk-export",
+        "description": "Enterprise only. Org Owners use approved third-party eDiscovery or DLP apps to pull the org's full history from the start, including edits and deletions if retention or legal hold keeps them: messages, files (as direct download links), canvases, lists, emoji reactions and Slackbot conversations, as JSON. It may only be used for security and compliance cases (eDiscovery, archiving, DLP). The Primary Org Owner or an Org Owner must request that it be enabled. No public reference docs were found on docs.slack.dev.",
+        "sources": [
+          "https://slack.com/help/articles/360002079527-A-guide-to-Slacks-Discovery-APIs",
+          "https://slack.com/help/articles/204897248-Guide-to-Slack-import-and-export-tools"
+        ]
+      },
+      {
+        "name": "conversations.history / conversations.replies (Web API)",
+        "kind": "read-api",
+        "description": "Reads a conversation's messages with cursor pagination and oldest/latest Unix-timestamp filters; call it with no oldest or latest to read the whole history. Default limit 100, maximum 999, except 15 for restricted apps. It reaches conversations the token's user or bot is a member of: a user token sees all public conversations plus that user's private ones. Tier 3 for Marketplace and internal apps.",
+        "sources": [
+          "https://docs.slack.dev/reference/methods/conversations.history/",
+          "https://docs.slack.dev/changelog/2025/05/29/rate-limit-changes-for-non-marketplace-apps.md"
+        ]
+      },
+      {
+        "name": "Events API",
+        "kind": "webhooks-events",
+        "description": "Pushes subscribed events (for example message.channels, message_changed, message_deleted, file_created, file_deleted) over an HTTP request URL or Socket Mode, limited to what the authorising users or bot can see. Needs a 2xx response within three seconds; failed deliveries are retried 3 times (almost immediately, then after 1 minute, then after 5 minutes).",
+        "sources": ["https://docs.slack.dev/apis/events-api.md", "https://docs.slack.dev/reference/events/message/message_changed"]
+      },
+      {
+        "name": "files.info / files.list",
+        "kind": "read-api",
+        "description": "File metadata, including url_private and url_private_download links and share locations (channels, groups, ims). files.info is Tier 4.",
+        "sources": ["https://docs.slack.dev/reference/methods/files.info", "https://docs.slack.dev/messaging/working-with-files.md"]
+      },
+      {
+        "name": "Audit Logs API",
+        "kind": "other",
+        "description": "Listed in the docs sitemap as an admin API. Not read in detail for this scan.",
+        "sources": ["https://docs.slack.dev/admins/audit-logs-api"]
+      }
+    ],
+    "auth": {
+      "models": ["oauth-app", "admin-consent"],
+      "notes": "Apps install through OAuth and receive bot and/or user tokens; which conversations they can read depends on *:history scopes and channel membership. On Enterprise, when 'Approve apps' is on, a member must request the app and an admin must approve it before install. admin.* scopes need an OAuth install on the Enterprise org, started by an org admin or owner. Under the API Terms updated in May 2025, the Slack Marketplace is the only allowed channel for commercially distributing apps (listed or unlisted), and non-Marketplace distributed apps get reduced history limits. A customer's own internal app keeps the higher limits. The Discovery API is available only through approved partner apps on Enterprise.",
+      "sources": [
+        "https://docs.slack.dev/reference/methods/conversations.history/",
+        "https://docs.slack.dev/admins/managing-app-approvals.md",
+        "https://docs.slack.dev/changelog/2025/05/29/rate-limit-changes-for-non-marketplace-apps.md",
+        "https://slack.com/help/articles/360002079527-A-guide-to-Slacks-Discovery-APIs"
+      ]
+    },
+    "rateLimits": {
+      "summary": "Web API limits apply per method, per workspace, per app, in one-minute windows. Tier 1: 1+ per minute. Tier 2: 20+. Tier 3: 50+. Tier 4: 100+. There is also a Special tier. Every plan gets the same tier. Over the limit returns HTTP 429 with Retry-After. Methods that support cursor pagination get stricter limits when called without it. Since May 29, 2025, new commercially distributed non-Marketplace apps, and new installs of existing ones, get conversations.history and conversations.replies at 1 request per minute, with the limit parameter's maximum and default cut to 15. Existing installs of those apps are unaffected. Internal customer-built apps keep 50+ per minute and up to 1,000 objects. Events API: at most 30,000 deliveries per workspace per app per 60 minutes, after which app_rate_limited events are sent. Posting: about 1 message per second per channel.",
+      "sources": [
+        "https://docs.slack.dev/apis/web-api/rate-limits/",
+        "https://docs.slack.dev/reference/methods/conversations.history/",
+        "https://docs.slack.dev/changelog/2025/05/29/rate-limit-changes-for-non-marketplace-apps.md",
+        "https://docs.slack.dev/apis/events-api.md"
+      ]
+    },
+    "hardToExtract": [
+      {
+        "dataClass": "permissions",
+        "detail": "Private channels and DMs are not in the standard export on any plan. Getting them needs an application that Slack approves (on Free/Pro only with legal process, member consent, or a legal right), or Enterprise Discovery API partner apps. Through the Web API, a token reads only conversations its user or bot belongs to.",
+        "sources": [
+          "https://slack.com/help/articles/204897248-Guide-to-Slack-import-and-export-tools",
+          "https://docs.slack.dev/reference/methods/conversations.history/"
+        ]
+      },
+      {
+        "dataClass": "attachments-files",
+        "detail": "Workspace exports hold file links, not the files. Free workspaces get links only for the last 90 days. With Slack Connect, only links to files your own members shared are included. Files come as files only in Enterprise single-user TXT exports and through the Discovery API (as download links).",
+        "sources": [
+          "https://slack.com/help/articles/201658943-Export-your-workspace-data",
+          "https://slack.com/help/articles/204897248-Guide-to-Slack-import-and-export-tools"
+        ]
+      },
+      {
+        "dataClass": "history-audit",
+        "detail": "Edited and deleted messages appear in exports only if retention keeps them. Free exports leave out data more than a year old. Retention policies can empty whole date ranges. Full edit and delete history is promised only by the Enterprise Discovery API.",
+        "sources": [
+          "https://slack.com/help/articles/220556107-How-to-read-Slack-data-exports",
+          "https://slack.com/help/articles/204897248-Guide-to-Slack-import-and-export-tools",
+          "https://slack.com/help/articles/360002079527-A-guide-to-Slacks-Discovery-APIs"
+        ]
+      },
+      {
+        "dataClass": "other",
+        "detail": "Canvases appear in exports only as a URL per canvas in canvases.json, and public-channel exports list only canvases shared in public channels. Canvas and list content is named only for the Discovery API.",
+        "sources": [
+          "https://slack.com/help/articles/220556107-How-to-read-Slack-data-exports",
+          "https://slack.com/help/articles/360002079527-A-guide-to-Slacks-Discovery-APIs"
+        ]
+      },
+      {
+        "dataClass": "automations-workflows",
+        "detail": "The export contents table lists no Workflow Builder workflows, app configurations or user groups; only app activity logs (integration_logs.json). No workflow export was found in the export docs checked.",
+        "sources": ["https://slack.com/help/articles/220556107-How-to-read-Slack-data-exports"]
+      },
+      {
+        "dataClass": "other",
+        "detail": "Rate limits make bulk history reading impractical for a third-party importer that is neither in the Marketplace nor built internally by the customer (1 request per minute, 15 messages per call on conversations.history and replies). Slack states the limits are there to stop bulk data exfiltration by unvetted apps.",
+        "sources": ["https://docs.slack.dev/changelog/2025/05/29/rate-limit-changes-for-non-marketplace-apps.md"]
+      }
+    ],
+    "migrationTools": [
+      {
+        "name": "Slack import tool",
+        "direction": "into-vendor",
+        "description": "Imports member, message and channel data from one Slack workspace to another on Free, Pro and Business+. It does not support Enterprise orgs, which import into a separate workspace and then migrate it.",
+        "sources": ["https://slack.com/help/articles/204897248-Guide-to-Slack-import-and-export-tools"]
+      },
+      {
+        "name": "Discovery API eDiscovery/DLP partners (e.g. Global Relay, Smarsh, Hanzo, Relativity, Onna)",
+        "direction": "out-of-vendor",
+        "description": "Approved third-party apps that archive Enterprise Slack data into their own data stores. They serve compliance use only, and coverage varies by partner.",
+        "sources": ["https://slack.com/help/articles/360002079527-A-guide-to-Slacks-Discovery-APIs"]
+      }
+    ],
+    "limits": [
+      "No public Discovery API reference was found: docs.slack.dev/enterprise/discovery-api/ redirected to the docs home page and the docs sitemap has no Discovery pages. Its methods, rate limits and incremental options are therefore unconfirmed.",
+      "Not confirmed whether conversations.history's oldest filter catches edits or deletions of older messages. Only new-message filtering is documented; edits arrive as message_changed events.",
+      "Not checked: whether url_private file downloads need a bearer token, or which scopes the file download needs.",
+      "Did not check a workflow-definition export (for example Workflow Builder download) outside the export articles.",
+      "Did not read the Audit Logs API or Real-time Search API docs in detail.",
+      "Pages were read as raw HTML stripped to text, or as the .md versions on docs.slack.dev, not through WebFetch summaries. No injected instructions were seen."
+    ],
+    "failures": [
+      {
+        "kind": "fetch",
+        "what": "https://docs.slack.dev/enterprise/discovery-api/",
+        "result": "redirected to docs home page; no Discovery API content"
+      },
+      {
+        "kind": "fetch",
+        "what": "https://docs.slack.dev/apis/events-api/.md",
+        "result": "Not found (the .md form without trailing slash worked)"
+      }
+    ]
+  }
+}

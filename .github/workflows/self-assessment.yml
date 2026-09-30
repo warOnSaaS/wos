@@ -1,0 +1,109 @@
+# Self-assessment (owner: assessments, added by the self-assess workstream; founder directive 2026-09-30:
+# "The white paper should always ship with a self-assessment, as well as rooms for improvement, gaps, etc.").
+#
+# After a change to the white paper reaches main, this waits until https://waronsaas.com/whitepaper.md serves the new
+# version (the run must read the DEPLOYED paper), runs the reference assessment once with Claude Code on the founder's
+# subscription, and commits the recorded run to main:
+#   docs/assessments/<id>.json + <id>.md, and the site's copies derived only from them
+#   (apps/web/generated/assessments.json, apps/web/generated/gap-register.json).
+# The website build refuses a new paper version until the previous one has a recorded run
+# (apps/web/scripts/check-whitepaper-version.mjs), so this is what lets the next version ship.
+#
+# The run is tools/assessments/run-reference.ts, unchanged: Claude Code in --safe-mode with web tools only, in an
+# empty temporary directory, the pinned default model (opus), and the "live prompt must equal the code" check.
+#
+# Codex (Astra) runs stay manual: Codex CLI signs in with a ChatGPT login, which cannot be automated here. The founder
+# runs `node tools/assessments/run-reference.ts --cli codex --commit` on his machine when he wants a second evaluator.
+#
+# Secret: CLAUDE_CODE_OAUTH_TOKEN (required; the founder's `claude setup-token`). Without it the job fails at once.
+#
+# It cannot retrigger itself or site-sync: it only commits docs/assessments/** and apps/web/generated/**, which are
+# outside this workflow's path filter and excluded from site-sync's; and pushes made with GITHUB_TOKEN start no
+# workflow runs anyway. Vercel still deploys the commit (that is how the scores reach the site).
+name: self-assessment
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/whitepaper/WHITEPAPER.md"
+  workflow_dispatch:
+
+# One run at a time, never cancelled half way (a cancelled run has spent subscription usage for nothing).
+concurrency:
+  group: self-assessment
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  assess:
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    steps:
+      - name: Require the founder's Claude token
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
+            echo "::error::Repository secret CLAUDE_CODE_OAUTH_TOKEN is not set. The founder creates it with 'claude setup-token' and adds it under Settings > Secrets and variables > Actions. No assessment was run."
+            exit 1
+          fi
+
+      # main, not the pushed commit: the run is committed on top of main.
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci --ignore-scripts
+
+      - name: Wait until the site serves this version of the paper
+        run: node tools/assessments/wait-for-version.ts --timeout-min 20 --interval-s 20
+
+      - name: Install Claude Code
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          claude --version
+
+      # The reference run. It refuses (and records nothing) when the live prompt differs from the code, when the block
+      # is missing or invalid, names another paper version, or is not the schema the served paper specifies.
+      # --commit commits exactly the run's files as adventurini; it never pushes.
+      - name: Run the reference assessment (Claude Code, founder's subscription)
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: node tools/assessments/run-reference.ts --cli claude --commit --timeout-min 60
+
+      - name: Push the recorded run to main
+        run: |
+          set -euo pipefail
+          allowed='^(docs/assessments/[^/]+\.(json|md)|apps/web/generated/(assessments|gap-register)\.json)$'
+          outside=$(git diff --name-only HEAD~1 HEAD | grep -v -E "$allowed" || true)
+          if [ -n "$outside" ]; then echo "::error::The run's commit touches files outside docs/assessments:"; echo "$outside"; exit 1; fi
+          run_files=$(git diff --name-only HEAD~1 HEAD -- docs/assessments)
+          msg=$(git log -1 --format=%B)
+          keep=$(mktemp -d)
+          for f in $run_files; do cp "$f" "$keep/"; done
+          for attempt in 1 2 3 4 5; do
+            if git push origin HEAD:main; then
+              echo "Recorded and pushed: $run_files" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            # main moved during the run. Re-apply the run on the new main and regenerate the derived files there
+            # (the gap register also depends on the paper's changelog), never merge generated JSON by hand.
+            git fetch origin main
+            git reset -q --hard origin/main
+            cp "$keep"/* docs/assessments/
+            (cd apps/web && node scripts/sync-shared.mjs)
+            git add -- docs/assessments apps/web/generated/assessments.json apps/web/generated/gap-register.json
+            git -c user.name=adventurini -c user.email=anthonydventurini@gmail.com commit -q -m "$msg"
+            sleep $((attempt * 5))
+          done
+          echo "::error::Could not push the recorded run after 5 attempts."
+          exit 1

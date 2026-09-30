@@ -89,6 +89,36 @@ const reports = readdirSync(reportsDir)
     return { file, title, date, results, url: `${REPO_URL}/blob/${sha ?? "main"}/docs/architecture/${file}` };
   });
 
+// The white paper's last-updated date comes from git, never from a hand-typed date: the commit date
+// of the last commit that changed docs/whitepaper/WHITEPAPER.md in the commit being built (HEAD locally,
+// VERCEL_GIT_COMMIT_SHA in a clone). If git cannot say (no history, file not committed yet), the
+// committed generated/whitepaper-meta.json is kept; if there is none, the date is null and the page
+// says the file has no commit yet.
+const WP = "docs/whitepaper/WHITEPAPER.md";
+const wpOut = join(web, "generated", "whitepaper-meta.json");
+const wpRef = cloned ? process.env.VERCEL_GIT_COMMIT_SHA || "main" : "HEAD";
+const wpLast = tryGit("log", "-1", `--format=%H${SEP}%cI`, wpRef, "--", WP);
+const wpFirst = tryGit("log", "--reverse", "--format=%cI", wpRef, "--", WP);
+if (wpLast) {
+  const [sha, date] = wpLast.split(SEP);
+  const meta = {
+    path: WP,
+    lastUpdated: date,
+    lastCommit: sha,
+    firstCommitted: wpFirst ? wpFirst.split("\n")[0] : date,
+    commitUrl: `${REPO_URL}/commit/${sha}`,
+    historyUrl: `${REPO_URL}/commits/main/${WP}`,
+  };
+  writeFileSync(wpOut, `${JSON.stringify(meta, null, 2)}\n`);
+  console.log(`gen-log: white paper last updated ${date.slice(0, 10)} (${sha.slice(0, 7)})`);
+} else if (!existsSync(wpOut)) {
+  const meta = { path: WP, lastUpdated: null, lastCommit: null, firstCommitted: null, commitUrl: null, historyUrl: `${REPO_URL}/commits/main/${WP}` };
+  writeFileSync(wpOut, `${JSON.stringify(meta, null, 2)}\n`);
+  console.log("gen-log: white paper has no commit yet; wrote an empty date");
+} else {
+  console.log("gen-log: no git date for the white paper; keeping the committed generated/whitepaper-meta.json");
+}
+
 const log = { ref: cloned && process.env.VERCEL_GIT_COMMIT_SHA ? "main" : ref, head: commits[0]?.sha ?? null, complete, count: commits.length, commits, reports };
 writeFileSync(out, `${JSON.stringify(log, null, 2)}\n`);
 console.log(`gen-log: ${commits.length} commits on ${ref}${complete ? "" : " (shallow history)"}, ${reports.length} wave reports`);

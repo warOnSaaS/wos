@@ -1,7 +1,7 @@
 lease    active   0192ab3c-0000-7000-8000-000000000004 expires 2026-09-29T12:30:00.000Z
 BUILD    started  roadmap_author for salesforce
 worktree ready    <root>/worktrees/d-0192ab3c0000 @ ed42b814c4ed
-context  built    3 artifacts, 2556/350000 tokens, manifest 6f24f8af714a
+context  built    3 artifacts, 3044/350000 tokens, manifest 17da7f73b470
 agent    started  roadmap_author on claude-fable-5-1 (claude_cli, reasoning max) pid 4444
 agent    exited   code 0 after 7ms
 BUILD    passed   drafted roadmaps/salesforce/ROADMAP.yaml

@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { SITE_DESCRIPTION, SITE_NAME, SITE_URL, LINKS } from "./site";
 import type { Target } from "@/data/targets";
 import type { Faq } from "./content";
+import type { Whitepaper } from "./whitepaper";
+import { WHITEPAPER_MD_PATH, WHITEPAPER_META, WHITEPAPER_PATH } from "./whitepaper";
 
 /**
  * Full metadata for one page. Next merges metadata shallowly, so each page
@@ -14,6 +16,7 @@ export function pageMetadata({
   path,
   absoluteTitle = false,
   defaultImage = true,
+  alternateMarkdown,
 }: {
   title: string;
   description: string;
@@ -21,6 +24,8 @@ export function pageMetadata({
   absoluteTitle?: boolean;
   /** Use the site-wide share image. Target pages have their own opengraph-image file instead. */
   defaultImage?: boolean;
+  /** A plain Markdown version of the page, for agents (the white paper). */
+  alternateMarkdown?: string;
 }): Metadata {
   const fullTitle = absoluteTitle ? title : `${title} — ${SITE_NAME}`;
   // A page that sets openGraph replaces the parent's, so the root image must be named explicitly.
@@ -30,7 +35,10 @@ export function pageMetadata({
     description,
     alternates: {
       canonical: path,
-      types: { "text/plain": [{ url: "/llms.txt", title: "llms.txt" }] },
+      types: {
+        "text/plain": [{ url: "/llms.txt", title: "llms.txt" }],
+        ...(alternateMarkdown ? { "text/markdown": [{ url: alternateMarkdown, title: "Markdown" }] } : {}),
+      },
     },
     openGraph: {
       type: "website",
@@ -130,5 +138,30 @@ export function breadcrumbLd(items: { name: string; path: string }[]) {
       name: it.name,
       item: abs(it.path),
     })),
+  };
+}
+
+/** The white paper as a TechArticle. Dates come from git (generated/whitepaper-meta.json), never typed. */
+export function whitepaperLd(wp: Whitepaper) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "@id": `${abs(WHITEPAPER_PATH)}#article`,
+    headline: `${SITE_NAME} white paper: ${wp.subtitle}`,
+    alternativeHeadline: wp.subtitle,
+    description:
+      "A living document for agents to evaluate: budget-based Proof of Contribution, one open wOS product, the Sniper List, and an inventory of what exists today.",
+    url: abs(WHITEPAPER_PATH),
+    mainEntityOfPage: abs(WHITEPAPER_PATH),
+    version: wp.version,
+    inLanguage: "en",
+    wordCount: wp.words,
+    ...(WHITEPAPER_META.firstCommitted ? { datePublished: WHITEPAPER_META.firstCommitted } : {}),
+    ...(WHITEPAPER_META.lastUpdated ? { dateModified: WHITEPAPER_META.lastUpdated } : {}),
+    author: { "@id": `${SITE_URL}/#organization` },
+    publisher: { "@id": `${SITE_URL}/#organization` },
+    isPartOf: { "@id": `${SITE_URL}/#website` },
+    encoding: { "@type": "MediaObject", encodingFormat: "text/markdown", contentUrl: abs(WHITEPAPER_MD_PATH) },
+    image: abs(`${WHITEPAPER_PATH}/opengraph-image`),
   };
 }

@@ -301,6 +301,63 @@ export const RoadmapCapability = ReasonedWeight.extend({
 });
 export type RoadmapCapability = z.infer<typeof RoadmapCapability>;
 
+/**
+ * D59 (contracts 5.4.0): getting customers OFF the target. The data classes every target roadmap's migration
+ * section must account for, each either imported by a connector or declared not extractable with a source.
+ */
+export const MIGRATION_DATA_CLASSES = [
+  "records",
+  "custom_objects_fields",
+  "files_attachments",
+  "history_activity",
+  "users_permissions",
+] as const;
+export const MigrationDataClass = z.enum(MIGRATION_DATA_CLASSES);
+export type MigrationDataClass = z.infer<typeof MigrationDataClass>;
+
+/**
+ * The shared catalog feature every importer is built on (D59): mapping, dry run, verification report (per-object
+ * counts and checksums, nothing silently dropped), idempotent re-runs and delta sync. Built once, stewarded by
+ * TGT-00 warOnSaaS, catalogued in the product repo (`catalog/import-engine.yaml`) because it runs on customer data
+ * in wOS Core; per-target connectors are small catalog features that depend on it.
+ */
+export const IMPORT_ENGINE_FEATURE = "import-engine" as const;
+
+/** TGT-00 warOnSaaS's target slug: the one roadmap exempt from the migration section (no customers to move off). */
+export const PLATFORM_TARGET = "waronsaas" as const;
+
+/** Something the target does not let a customer take out, with the public source that says so. */
+export const NotExtractable = z.object({
+  item: z.string().min(1),
+  reason: z.string().min(10),
+  source: z.url(),
+});
+
+/**
+ * One data class of the target. Either `connector` names the catalog feature that imports it (with how the data is
+ * read and whether an incremental API allows delta sync during cutover), or `connector` is null and
+ * `notExtractable` says, with sources, why nothing of that class can leave the target. Partial classes use both.
+ */
+export const MigrationClassPlan = z.object({
+  dataClass: MigrationDataClass,
+  connector: FeatureKey.nullable(),
+  /** The target's objects this class covers (e.g. Account, Contact); empty only when nothing is extractable. */
+  objects: z.array(z.string().min(1)).default([]),
+  /** How the data is read (export, bulk or REST API), with a public source; null when nothing is extractable. */
+  extraction: z.object({ method: z.string().min(10), source: z.url() }).nullable(),
+  /** Delta sync during cutover: supported when the target exposes an incremental API; the source says which. */
+  deltaSync: z.object({ status: z.enum(["supported", "not_available"]), source: z.url() }).nullable(),
+  notExtractable: z.array(NotExtractable).default([]),
+});
+export type MigrationClassPlan = z.infer<typeof MigrationClassPlan>;
+
+/** The roadmap's migration section (D59). Input facts: `docs/scans/<target>.md` "Getting data out". */
+export const RoadmapMigration = z.object({
+  engine: z.literal(IMPORT_ENGINE_FEATURE),
+  classes: z.array(MigrationClassPlan).min(1),
+});
+export type RoadmapMigration = z.infer<typeof RoadmapMigration>;
+
 const sum = (xs: ReadonlyArray<{ weightBp: number }>) => xs.reduce((n, x) => n + x.weightBp, 0);
 
 export const Roadmap = z
@@ -352,6 +409,12 @@ export const Roadmap = z
     newCatalogFeatures: z.array(FeatureKey).default([]),
     /** Proposal ids (wos propose) this version incorporates. */
     proposals: z.array(Uuid).default([]),
+    /**
+     * D59 (contracts 5.4.0): how customers move OFF the target. Optional in the schema so earlier documents still
+     * parse; `@waronsaas/planning` validateRoadmap refuses a target roadmap without it (MIGRATION_MISSING). TGT-00
+     * warOnSaaS, which has no customers to move, is exempt.
+     */
+    migration: RoadmapMigration.optional(),
   })
   .superRefine((r, ctx) => {
     // D12 sum constraints. Item coverage and catalog checks live in @waronsaas/planning validateRoadmap.

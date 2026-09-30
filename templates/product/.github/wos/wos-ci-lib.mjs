@@ -1024,6 +1024,7 @@ const anyString = /^[\s\S]{0,}$/;
 const integer = /^-?\d+$/;
 const number$2 = /^-?\d+(?:\.\d+)?$/;
 const boolean$1 = /^(?:true|false)$/i;
+const _null$2 = /^null$/i;
 const lowercase = /^[^A-Z]*$/;
 const uppercase = /^[^a-z]*$/;
 
@@ -1834,6 +1835,22 @@ const $ZodBoolean = /*@__PURE__*/ $constructor("$ZodBoolean", (inst, def) => {
 		if (typeof input === "boolean") return payload;
 		payload.issues.push({
 			expected: "boolean",
+			code: "invalid_type",
+			input,
+			inst
+		});
+		return payload;
+	};
+});
+const $ZodNull = /*@__PURE__*/ $constructor("$ZodNull", (inst, def) => {
+	$ZodType.init(inst, def);
+	inst._zod.pattern = _null$2;
+	inst._zod.values = /* @__PURE__ */ new Set([null]);
+	inst._zod.parse = (payload, _ctx) => {
+		const input = payload.value;
+		if (input === null) return payload;
+		payload.issues.push({
+			expected: "null",
 			code: "invalid_type",
 			input,
 			inst
@@ -3523,6 +3540,13 @@ function _boolean(Class, params) {
 	});
 }
 // @__NO_SIDE_EFFECTS__
+function _null$1(Class, params) {
+	return new Class({
+		type: "null",
+		...normalizeParams(params)
+	});
+}
+// @__NO_SIDE_EFFECTS__
 function _unknown(Class) {
 	return new Class({ type: "unknown" });
 }
@@ -4282,6 +4306,13 @@ const numberProcessor = (schema, ctx, _json, params) => {
 };
 const booleanProcessor = (_schema, _ctx, json, _params) => {
 	json.type = "boolean";
+};
+const nullProcessor = (_schema, ctx, json, _params) => {
+	if (ctx.target === "openapi-3.0") {
+		json.type = "string";
+		json.nullable = true;
+		json.enum = [null];
+	} else json.type = "null";
 };
 const neverProcessor = (_schema, _ctx, json, _params) => {
 	json.not = {};
@@ -5164,6 +5195,14 @@ const ZodBoolean = /*@__PURE__*/ $constructor("ZodBoolean", (inst, def) => {
 function boolean(params) {
 	return _boolean(ZodBoolean, params);
 }
+const ZodNull = /*@__PURE__*/ $constructor("ZodNull", (inst, def) => {
+	$ZodNull.init(inst, def);
+	ZodType.init(inst, def);
+	inst._zod.processJSONSchema = (ctx, json, params) => nullProcessor(inst, ctx, json, params);
+});
+function _null(params) {
+	return _null$1(ZodNull, params);
+}
 const ZodUnknown = /*@__PURE__*/ $constructor("ZodUnknown", (inst, def) => {
 	$ZodUnknown.init(inst, def);
 	ZodType.init(inst, def);
@@ -5861,6 +5900,22 @@ const ModulePackage = object({
 		message: "entry is not in files"
 	});
 });
+const ModuleBundle = object({
+	schema: literal("wos-module-bundle.v1"),
+	package: ModulePackage,
+	contents: array(object({
+		path: string().regex(/^[A-Za-z0-9._/-]+$/),
+		base64: string()
+	})).min(1)
+}).superRefine((b, ctx) => {
+	const listed = b.package.files.map((f) => f.path).sort();
+	const got = b.contents.map((c) => c.path).sort();
+	if (listed.length !== got.length || listed.some((p, i) => p !== got[i])) ctx.addIssue({
+		code: "custom",
+		path: ["contents"],
+		message: "contents must list exactly the package's files"
+	});
+});
 const Availability = object({
 	available: boolean(),
 	version: SemVer.nullable()
@@ -5894,6 +5949,57 @@ const AppRegistryEntry = object({
 	selfHost: object({ compatible: boolean() }),
 	hosted: object({ compatible: boolean() }),
 	publishedAt: Timestamp
+});
+const AppReleaseView = object({
+	app: AppId,
+	version: SemVer,
+	state: _enum(["published", "yanked"]),
+	manifest: WosAppManifest,
+	manifestSha256: Sha256,
+	desktopPackage: object({
+		url: url(),
+		sha256: Sha256,
+		keyId: string()
+	}).nullable(),
+	source: object({
+		repo: RepoFullName,
+		tag: string(),
+		commit: string().regex(/^[0-9a-f]{40}$/)
+	}),
+	publishedAt: Timestamp,
+	yankedAt: Timestamp.nullable(),
+	yankReason: string().nullable()
+});
+const Bp = number$1().int().min(0).max(1e4);
+const Points = number$1().int().nonnegative();
+const ApplicationProgressView = object({
+	app: AppId,
+	basis: _enum([
+		"release",
+		"default_branch",
+		"none"
+	]),
+	manifestVersion: SemVer.nullable(),
+	builtBp: Bp,
+	relevantPoints: Points,
+	mergedPoints: Points,
+	complete: boolean(),
+	surfaces: array(object({
+		surface: ProductSurface,
+		relevantPoints: Points,
+		mergedPoints: Points,
+		builtBp: Bp,
+		acceptancePassed: boolean(),
+		complete: boolean()
+	})),
+	features: array(object({
+		feature: FeatureKey,
+		contractVersion: number$1().int().positive().nullable(),
+		relevantPoints: Points,
+		mergedPoints: Points
+	})),
+	targets: array(TargetSlug),
+	computedAt: Timestamp
 });
 const OrganizationKind = _enum(["personal", "team"]);
 const OrganizationSlug = string().regex(/^[a-z0-9](?:[a-z0-9-]{1,38}[a-z0-9])$/);
@@ -5958,6 +6064,17 @@ const EnvironmentTokenClaims = object({
 	apps: array(AppId),
 	iat: number$1().int(),
 	exp: number$1().int()
+});
+const ENVIRONMENT_TOKEN_TYP = "wos-env+jwt";
+const EnvironmentTokenHeader = object({
+	alg: literal("EdDSA"),
+	typ: literal(ENVIRONMENT_TOKEN_TYP),
+	kid: string().regex(/^wos-env-\d{4}(?:-[a-z0-9]+)?$/)
+});
+const EnvironmentKey = object({
+	kid: EnvironmentTokenHeader.shape.kid,
+	alg: literal("EdDSA"),
+	publicKey: string().regex(/^[A-Za-z0-9+/]{43}=$/, "base64 of a raw 32-byte Ed25519 key")
 });
 const ActivationSource = _enum([
 	"core",
@@ -6053,7 +6170,17 @@ const FieldSpec = object({
 		"select",
 		"readonly"
 	]).default("readonly"),
-	required: boolean().default(false)
+	required: boolean().default(false),
+	options: array(object({
+		value: string().min(1).max(80),
+		label: string().min(1).max(60)
+	})).min(1).max(50).optional()
+}).superRefine((f, ctx) => {
+	if (f.input === "select" !== (f.options !== void 0)) ctx.addIssue({
+		code: "custom",
+		path: ["options"],
+		message: "a select input (and only a select) has options"
+	});
 });
 const ScreenSection = discriminatedUnion("type", [object({
 	type: literal("fields"),
@@ -6097,6 +6224,20 @@ const MobileScreen = object({
 		for (const sec of s.sections) if (sec.type === "fields" && sec.fields.every((f) => f.input === "readonly")) issue(["sections"], "a form needs at least one input field");
 	}
 });
+const ScreenValue = union([
+	string(),
+	number$1(),
+	boolean(),
+	_null()
+]);
+const ScreenRecord = record(FieldName, ScreenValue).and(object({ id: string().min(1) }));
+const ScreenListData = object({
+	items: array(ScreenRecord),
+	nextCursor: string().min(1).nullable()
+});
+const ScreenRecordData = object({ item: ScreenRecord });
+const ScreenFormBody = object({ values: record(FieldName, ScreenValue) });
+const ScreenInvokeResult = object({ message: string().max(280).nullable() });
 
 //#endregion
 //#region packages/contracts/dist/state-machines.js
@@ -7320,6 +7461,38 @@ const RoadmapCapability = ReasonedWeight.extend({
 	inventoryItems: array(InventoryItemKey).min(1),
 	features: array(RoadmapFeatureRef).default([])
 });
+const MIGRATION_DATA_CLASSES = [
+	"records",
+	"custom_objects_fields",
+	"files_attachments",
+	"history_activity",
+	"users_permissions"
+];
+const MigrationDataClass = _enum(MIGRATION_DATA_CLASSES);
+const IMPORT_ENGINE_FEATURE = "import-engine";
+const NotExtractable = object({
+	item: string().min(1),
+	reason: string().min(10),
+	source: url()
+});
+const MigrationClassPlan = object({
+	dataClass: MigrationDataClass,
+	connector: FeatureKey.nullable(),
+	objects: array(string().min(1)).default([]),
+	extraction: object({
+		method: string().min(10),
+		source: url()
+	}).nullable(),
+	deltaSync: object({
+		status: _enum(["supported", "not_available"]),
+		source: url()
+	}).nullable(),
+	notExtractable: array(NotExtractable).default([])
+});
+const RoadmapMigration = object({
+	engine: literal(IMPORT_ENGINE_FEATURE),
+	classes: array(MigrationClassPlan).min(1)
+});
 const sum = (xs) => xs.reduce((n, x) => n + x.weightBp, 0);
 const Roadmap = object({
 	schema: literal("wos-roadmap.v1"),
@@ -7348,7 +7521,8 @@ const Roadmap = object({
 		reason: string().min(10)
 	})).default([]),
 	newCatalogFeatures: array(FeatureKey).default([]),
-	proposals: array(Uuid).default([])
+	proposals: array(Uuid).default([]),
+	migration: RoadmapMigration.optional()
 }).superRefine((r, ctx) => {
 	for (const [k, s] of r.surfaces.entries()) {
 		if (s.status === "excluded" && !s.reason) ctx.addIssue({
@@ -8104,7 +8278,8 @@ const TargetSummary = object({
 		available: boolean(),
 		url: url().nullable()
 	}),
-	selfHostable: boolean()
+	selfHostable: boolean(),
+	apps: array(string().regex(/^[a-z][a-z0-9-]{1,30}[a-z0-9]$/)).optional()
 });
 const AppFeatureSummary = object({
 	key: FeatureKey,
@@ -9614,6 +9789,33 @@ const AppRoutes = {
 		errors: ["NOT_FOUND"],
 		summary: "One registry entry."
 	}),
+	getAppRelease: route({
+		method: "GET",
+		path: "/v1/public/apps/:app/releases/:version",
+		auth: "public",
+		idempotent: false,
+		params: object({
+			app: AppId,
+			version: SemVer
+		}),
+		query: None,
+		body: None,
+		response: AppReleaseView,
+		errors: ["NOT_FOUND"],
+		summary: "One released version, published or yanked (contracts 5.2.0): Desktop's package lookup and yank check."
+	}),
+	getApplicationProgress: route({
+		method: "GET",
+		path: "/v1/public/apps/:app/progress",
+		auth: "public",
+		idempotent: false,
+		params: AppParams,
+		query: None,
+		body: None,
+		response: ApplicationProgressView,
+		errors: ["NOT_FOUND"],
+		summary: "Application progress from computeApplicationProgress (contracts 5.2.0); independent of any entitlement."
+	}),
 	getEnvironmentKeys: route({
 		method: "GET",
 		path: "/v1/public/environment-keys",
@@ -9622,11 +9824,7 @@ const AppRoutes = {
 		params: None,
 		query: None,
 		body: None,
-		response: object({ keys: array(object({
-			kid: string(),
-			alg: literal("EdDSA"),
-			publicKey: string()
-		})) }),
+		response: object({ keys: array(EnvironmentKey) }),
 		errors: [],
 		summary: "Public keys hosted wOS Core uses to verify environment tokens (current and next, for rotation)."
 	}),
@@ -10058,7 +10256,8 @@ var agent_policy_v1_default = {
 				"EXPERIENCE (D13): for every feature describe the key user journeys on each of its surfaces: the steps, entry points, navigation, and offline, notification, background and responsive behaviour; name native capabilities (push, background audio/video, CallKit, share sheet, offline storage) a mobile journey needs.",
 				"SURFACE WEIGHTS (D12 + D13): give every feature a weightBp per surface it exists on, summing to 10000, each with a weightRationale comparing the surfaces on how customers actually use the feature there. Reviewers treat an unjustified surface split as mis-weighting.",
 				"Parity is functional and experiential, never visual: do not copy the vendor's trade dress, logos, icons, colours, layouts or wording; our look is the warOnSaaS monochrome design system.",
-				"SUITE (D14): the replacement is not a separate app. Map this target's capabilities onto modules of the ONE suite (one account, one navigation, one data model); reuse existing modules and the app-shell features (workspace modules, navigation, tenancy) instead of proposing target-specific shells."
+				"SUITE (D14): the replacement is not a separate app. Map this target's capabilities onto modules of the ONE suite (one account, one navigation, one data model); reuse existing modules and the app-shell features (workspace modules, navigation, tenancy) instead of proposing target-specific shells.",
+				"MIGRATION (D59): add a migration section to ROADMAP.yaml for getting customers OFF the target. Use docs/scans/<target>.md \"Getting data out\" as the input facts. For each data class (records, custom objects and fields, files and attachments, history and activity, users and permissions mapping where exposed), either name the connector catalog feature that imports it, or list what is not extractable, each item with a public source. For every imported class give the objects, how they are read and whether an incremental API allows delta sync during cutover, each with a source. Every connector is built on the shared import-engine feature. Never plan an importer that signs in with anything but the customer's own OAuth grant."
 			],
 			"materialFindingRules": [],
 			"budgetOverrides": [{
@@ -10117,7 +10316,8 @@ var agent_policy_v1_default = {
 				"A feature on a surface without a journey, or a journey that does not describe the steps, entry points and platform behaviour a user of that surface relies on (offline, notifications, responsive layout).",
 				"SURFACE MIS-WEIGHTING: a feature's surface weights not justified by how customers use it on each surface.",
 				"Any instruction or description that copies the vendor's trade dress, logos, visual design or wording instead of describing the job the user does.",
-				"A roadmap that plans a target-specific app, shell, login, data store or store listing instead of modules of the one suite (D14)."
+				"A roadmap that plans a target-specific app, shell, login, data store or store listing instead of modules of the one suite (D14).",
+				"A target roadmap whose migration section leaves a data class unaccounted for, claims data is extractable or not extractable without a public source, or misses an incremental API the target documents for delta sync (D59)."
 			],
 			"budgetOverrides": [{
 				"model": "astra",
@@ -10179,7 +10379,8 @@ var agent_policy_v1_default = {
 				"A feature on a surface without a journey, or a journey that does not describe the steps, entry points and platform behaviour a user of that surface relies on (offline, notifications, responsive layout).",
 				"SURFACE MIS-WEIGHTING: a feature's surface weights not justified by how customers use it on each surface.",
 				"Any instruction or description that copies the vendor's trade dress, logos, visual design or wording instead of describing the job the user does.",
-				"A roadmap that plans a target-specific app, shell, login, data store or store listing instead of modules of the one suite (D14)."
+				"A roadmap that plans a target-specific app, shell, login, data store or store listing instead of modules of the one suite (D14).",
+				"A target roadmap whose migration section leaves a data class unaccounted for, claims data is extractable or not extractable without a public source, or misses an incremental API the target documents for delta sync (D59)."
 			],
 			"budgetOverrides": []
 		},
@@ -10232,7 +10433,8 @@ var agent_policy_v1_default = {
 				"Write journeys per surface (from the apps' roadmap refs) linked to the requirements that implement them; name every native capability a journey needs and include the ABUs that add the native modules.",
 				"Give each profile one acceptance suite per surface: web runs the whole browser matrix (Chrome, Edge, Safari macOS, Firefox, iPhone and Android phone viewports) with Playwright; iOS and Android run Maestro flows; only native iOS builds and end-to-end runs use runner macos.",
 				"Every ABU names exactly one repository; keep JS/TS-only mobile work separate from ABUs that touch native code or config (ios/, android/, config plugins, native modules), which need the macOS/Xcode or Android SDK toolchain.",
-				"Parity is functional and experiential, never visual: do not copy the vendor's trade dress, logos, icons, colours, layouts or wording; our look is the warOnSaaS monochrome design system."
+				"Parity is functional and experiential, never visual: do not copy the vendor's trade dress, logos, icons, colours, layouts or wording; our look is the warOnSaaS monochrome design system.",
+				"IMPORTERS (D59): a connector feature's contract depends on import-engine and requires, for every object it imports, a dry run, idempotent re-runs, a verification report with per-object counts and checksums in which nothing is silently dropped, and delta sync when the target exposes an incremental API. It signs in only with the customer's own OAuth tokens, encrypted and scoped to one organization (connections are Amendment 03)."
 			],
 			"materialFindingRules": [],
 			"budgetOverrides": [{
@@ -10289,7 +10491,8 @@ var agent_policy_v1_default = {
 				"A requirement without surface tags, a surface of an app's roadmap ref that no requirement covers, or a multi-surface contract without a sharedApi.",
 				"A journey no acceptance suite exercises, a web suite missing a browser of the matrix, or iOS and Android sharing one acceptance result.",
 				"A native capability a journey needs with no ABU that adds it, or an ABU that mixes JS-only and native changes and so needs a macOS machine for work that does not.",
-				"Anything that copies the vendor's trade dress, logos or visual design."
+				"Anything that copies the vendor's trade dress, logos or visual design.",
+				"An importer without a dry run, idempotent re-runs, or a verification report of per-object counts and checksums, or one that drops or skips data without reporting it, or signs in with credentials other than the customer's own organization-scoped grant (D59)."
 			],
 			"budgetOverrides": [{
 				"model": "astra",
@@ -10349,7 +10552,8 @@ var agent_policy_v1_default = {
 				"A requirement without surface tags, a surface of an app's roadmap ref that no requirement covers, or a multi-surface contract without a sharedApi.",
 				"A journey no acceptance suite exercises, a web suite missing a browser of the matrix, or iOS and Android sharing one acceptance result.",
 				"A native capability a journey needs with no ABU that adds it, or an ABU that mixes JS-only and native changes and so needs a macOS machine for work that does not.",
-				"Anything that copies the vendor's trade dress, logos or visual design."
+				"Anything that copies the vendor's trade dress, logos or visual design.",
+				"An importer without a dry run, idempotent re-runs, or a verification report of per-object counts and checksums, or one that drops or skips data without reporting it, or signs in with credentials other than the customer's own organization-scoped grant (D59)."
 			],
 			"budgetOverrides": []
 		},

@@ -6,7 +6,14 @@
  * errors. When the schema already passed those checks are silent, so the control plane never sees a rule
  * reported twice.
  */
-import type { CatalogEntry, Inventory, Roadmap } from "@waronsaas/contracts";
+import {
+  type CatalogEntry,
+  IMPORT_ENGINE_FEATURE,
+  type Inventory,
+  MIGRATION_DATA_CLASSES,
+  PLATFORM_TARGET,
+  type Roadmap,
+} from "@waronsaas/contracts";
 
 export const ROADMAP_ERROR_CODES = [
   // identity and versions
@@ -46,6 +53,13 @@ export const ROADMAP_ERROR_CODES = [
   "CAPABILITY_WEIGHTS_SUM",
   "FEATURE_WEIGHTS_SUM",
   "SURFACE_WEIGHTS_SUM",
+  // migration: getting customers off the target (D59, contracts 5.4.0)
+  "MIGRATION_MISSING",
+  "MIGRATION_CLASS_MISSING",
+  "MIGRATION_CLASS_DUPLICATE",
+  "MIGRATION_CLASS_UNACCOUNTED",
+  "MIGRATION_EXTRACTION_MISSING",
+  "MIGRATION_FEATURE_NOT_IN_CATALOG",
 ] as const;
 export type RoadmapErrorCode = (typeof ROADMAP_ERROR_CODES)[number];
 export interface RoadmapIssue {
@@ -69,6 +83,9 @@ export function validateRoadmap(
 ): RoadmapIssue[] {
   const out: RoadmapIssue[] = [];
   const add = (code: RoadmapErrorCode, message: string) => out.push({ code, message });
+
+  // --- migration (D59): every target roadmap plans how customers leave the target ---
+  validateMigration(roadmap, catalog, add);
 
   // --- identity and versions ---
   if (roadmap.target !== inventory.target)
@@ -228,4 +245,50 @@ export function validateRoadmap(
     if (entry.key !== key) add("CATALOG_KEY_MISMATCH", `catalog/${key}.yaml declares key ${entry.key}; the file name and key must match`);
 
   return out;
+}
+
+/**
+ * D59: a target roadmap (every roadmap except TGT-00's) has a migration section accounting for each data class:
+ * imported by a connector (with how it is read and whether delta sync is possible), or declared not extractable
+ * with a source. The engine and every connector must be catalog features (existing or proposed in this PR).
+ */
+function validateMigration(
+  roadmap: Roadmap,
+  catalog: ReadonlyMap<string, CatalogEntry>,
+  add: (code: RoadmapErrorCode, message: string) => void,
+): void {
+  if (roadmap.target === PLATFORM_TARGET) return;
+  const m = roadmap.migration;
+  if (!m) {
+    add("MIGRATION_MISSING", `a target roadmap needs a migration section: how customers get their data OFF ${roadmap.target} (D59)`);
+    return;
+  }
+  const known = (key: string) => catalog.has(key) || roadmap.newCatalogFeatures.includes(key);
+  if (!known(m.engine))
+    add(
+      "MIGRATION_FEATURE_NOT_IN_CATALOG",
+      `migration.engine ${m.engine} is not in the catalog; every importer is built on ${IMPORT_ENGINE_FEATURE}`,
+    );
+  const seen = new Set<string>();
+  m.classes.forEach((c, i) => {
+    const where = `migration.classes[${i}] (${c.dataClass})`;
+    if (seen.has(c.dataClass)) add("MIGRATION_CLASS_DUPLICATE", `${where} is listed twice`);
+    seen.add(c.dataClass);
+    if (c.connector === null && c.notExtractable.length === 0)
+      add(
+        "MIGRATION_CLASS_UNACCOUNTED",
+        `${where}: name the connector that imports it, or list what is not extractable with a source; nothing is silently dropped`,
+      );
+    if (c.connector !== null) {
+      if (!known(c.connector)) add("MIGRATION_FEATURE_NOT_IN_CATALOG", `${where}: connector ${c.connector} is not in the catalog`);
+      if (c.extraction === null || c.deltaSync === null || c.objects.length === 0)
+        add(
+          "MIGRATION_EXTRACTION_MISSING",
+          `${where}: an imported class needs its objects, how they are read (with a source) and whether delta sync is available (with a source)`,
+        );
+    }
+  });
+  for (const dc of MIGRATION_DATA_CLASSES)
+    if (!seen.has(dc))
+      add("MIGRATION_CLASS_MISSING", `migration has no entry for data class ${dc} (import it or list it as not extractable)`);
 }

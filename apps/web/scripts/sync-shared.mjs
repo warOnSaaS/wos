@@ -1,18 +1,31 @@
 #!/usr/bin/env node
 /**
- * Copies the two shared files the site needs from the monorepo into apps/web/generated/,
+ * Copies the shared files the site needs from the monorepo into apps/web/generated/,
  * because the Vercel deploy uploads apps/web only (apps/web is not yet a workspace; see
  * blockers/B-0001-web.md). The copies are committed so the Vercel build has them.
  *
  *   docs/roadmap/waronsaas.roadmap.json  -> generated/waronsaas.roadmap.json   (byte-identical)
  *   packages/contracts/src/progress.ts   -> generated/contracts-progress.ts   (identical except its one
  *                                           type-only import, re-pointed at the contracts source)
+ *   docs/whitepaper/WHITEPAPER.md        -> generated/WHITEPAPER.md          (byte-identical; the /whitepaper
+ *                                           page and /whitepaper.md render it; its date comes from gen-log.mjs)
+ *   docs/whitepaper/{MATERIALITY,EDGE-CASES,DESIGN,APPENDICES,SOURCES}.md -> generated/whitepaper/  (byte-identical companions)
+ *   docs/assessments/*.json              -> generated/assessments.json        (every recorded reference run, oldest
+ *                                           first, without the raw block text; /assessments and
+ *                                           /whitepaper/assessments.md render it. Validated against the contract
+ *                                           by tests/assessments.test.ts.)
+ *   docs/assessments/*.json + the paper's and APPENDICES.md's changelogs
+ *                                        -> generated/gap-register.json      (the gap register: each gap of the latest
+ *                                           run of each version with its status, open / addressed in vN / declined;
+ *                                           buildGapRegister in scripts/wp-history-lib.mts. /assessments/gaps and
+ *                                           /assessments/gaps.md render it.)
  *
  * With the repo present (local builds): writes the copies, or with --check fails if they differ.
  * Without the repo (Vercel): checks the committed copies exist and exits 0.
  */
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { buildGapRegister, extractChangelog, extractVersion } from "./wp-history-lib.mts";
 
 const web = process.cwd();
 const repo = join(web, "..", "..");
@@ -23,6 +36,27 @@ const IMPORT_TO = 'from "@contracts/primitives";';
 
 const files = [
   { from: join(repo, "docs/roadmap/waronsaas.roadmap.json"), to: join(web, "generated/waronsaas.roadmap.json"), map: (s) => s },
+  { from: join(repo, "docs/whitepaper/WHITEPAPER.md"), to: join(web, "generated/WHITEPAPER.md"), map: (s) => s },
+  // The white paper's companion files (optional depth), served at /whitepaper/<name>.md and in the full pack.
+  ...["MATERIALITY", "EDGE-CASES", "DESIGN", "APPENDICES", "SOURCES"].map((n) => ({
+    from: join(repo, `docs/whitepaper/${n}.md`),
+    to: join(web, `generated/whitepaper/${n}.md`),
+    map: (s) => s,
+  })),
+  {
+    // A directory, not a file: every run recorded by tools/assessments/run-reference.ts.
+    from: join(repo, "docs/assessments"),
+    to: join(web, "generated/assessments.json"),
+    read: (dir) => assessmentsJson(dir),
+    map: (s) => s,
+  },
+  {
+    // Derived from the same runs plus the changelogs (the convention "Gaps addressed: `id`" / "Gap declined: `id`: why").
+    from: join(repo, "docs/assessments"),
+    to: join(web, "generated/gap-register.json"),
+    read: (dir) => gapRegisterJson(dir),
+    map: (s) => s,
+  },
   {
     from: join(repo, "packages/contracts/src/progress.ts"),
     to: join(web, "generated/contracts-progress.ts"),
@@ -33,7 +67,32 @@ const files = [
   },
 ];
 
-mkdirSync(join(web, "generated"), { recursive: true });
+/** The gap register (deterministic: a pure function of the runs and the two changelogs). */
+function gapRegisterJson(dir) {
+  const { runs } = JSON.parse(assessmentsJson(dir));
+  const paper = readFileSync(join(repo, "docs/whitepaper/WHITEPAPER.md"), "utf8");
+  const appendices = readFileSync(join(repo, "docs/whitepaper/APPENDICES.md"), "utf8");
+  const current = extractVersion(paper);
+  if (!current) throw new Error("sync-shared: WHITEPAPER.md has no Version row");
+  const register = buildGapRegister(runs, [...extractChangelog(paper), ...extractChangelog(appendices)], current);
+  return `${JSON.stringify(register, null, 2)}\n`;
+}
+
+/** The site's copy of the recorded runs: deterministic (sorted, fixed formatting), so --check can compare it. */
+function assessmentsJson(dir) {
+  const runs = readdirSync(dir)
+    .filter((f) => f.endsWith(".json"))
+    .map((f) => {
+      const r = JSON.parse(readFileSync(join(dir, f), "utf8"));
+      if (`${r.id}.json` !== f) throw new Error(`sync-shared: docs/assessments/${f} has id ${r.id}`);
+      const { rawBlock: _raw, ...rest } = r;
+      return rest;
+    })
+    .sort((a, b) => (a.recordedAt < b.recordedAt ? -1 : a.recordedAt > b.recordedAt ? 1 : a.id < b.id ? -1 : 1));
+  return `${JSON.stringify({ source: "docs/assessments", runs }, null, 2)}\n`;
+}
+
+mkdirSync(join(web, "generated", "whitepaper"), { recursive: true });
 let failed = false;
 for (const f of files) {
   if (!existsSync(f.from)) {
@@ -43,7 +102,7 @@ for (const f of files) {
     }
     continue;
   }
-  const want = f.map(readFileSync(f.from, "utf8"));
+  const want = f.map(f.read ? f.read(f.from) : readFileSync(f.from, "utf8"));
   const have = existsSync(f.to) ? readFileSync(f.to, "utf8") : null;
   if (have === want) continue;
   if (check) {

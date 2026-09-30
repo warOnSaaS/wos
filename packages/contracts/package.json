@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "license": "UNLICENSED",
+  "license": "Apache-2.0",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -17,6 +17,10 @@
     "./protocol": {
       "types": "./dist/protocol/index.d.ts",
       "default": "./dist/protocol/index.js"
+    },
+    "./assessment": {
+      "types": "./dist/assessment.d.ts",
+      "default": "./dist/assessment.js"
     }
   },
   "files": [

@@ -129,6 +129,57 @@ export function roadmap(): Roadmap {
     excluded: [{ item: "INV-0004", reason: "Fax is retired by nearly every customer." }],
     newCatalogFeatures: ["csv-import"],
     proposals: [],
+    migration: {
+      engine: "import-engine",
+      classes: [
+        {
+          dataClass: "records",
+          connector: "acme-import",
+          objects: ["Contact", "Company", "Deal"],
+          extraction: { method: "Acme REST API, paginated list endpoints", source: "https://help.example.com/api" },
+          deltaSync: { status: "supported", source: "https://help.example.com/api/changes" },
+          notExtractable: [],
+        },
+        {
+          dataClass: "custom_objects_fields",
+          connector: "acme-import",
+          objects: ["custom fields"],
+          extraction: { method: "Acme metadata API lists custom fields", source: "https://help.example.com/api/fields" },
+          deltaSync: { status: "not_available", source: "https://help.example.com/api/fields" },
+          notExtractable: [],
+        },
+        {
+          dataClass: "files_attachments",
+          connector: "acme-import",
+          objects: ["Attachment"],
+          extraction: { method: "Acme files API downloads each attachment", source: "https://help.example.com/api/files" },
+          deltaSync: { status: "supported", source: "https://help.example.com/api/changes" },
+          notExtractable: [],
+        },
+        {
+          dataClass: "history_activity",
+          connector: null,
+          objects: [],
+          extraction: null,
+          deltaSync: null,
+          notExtractable: [
+            {
+              item: "Field change history",
+              reason: "Acme shows history in the UI only; no API or export",
+              source: "https://help.example.com/history",
+            },
+          ],
+        },
+        {
+          dataClass: "users_permissions",
+          connector: "acme-import",
+          objects: ["User", "Role"],
+          extraction: { method: "Acme admin API lists users and roles", source: "https://help.example.com/api/users" },
+          deltaSync: { status: "not_available", source: "https://help.example.com/api/users" },
+          notExtractable: [],
+        },
+      ],
+    },
   };
 }
 
@@ -144,6 +195,8 @@ export function catalog(): Map<string, CatalogEntry> {
     ["contacts", e("contacts")],
     ["csv-import", e("csv-import")],
     ["people", e("people", "contacts")],
+    ["import-engine", e("import-engine")],
+    ["acme-import", e("acme-import")],
   ]);
 }
 

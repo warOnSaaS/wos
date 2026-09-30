@@ -105,6 +105,11 @@ export const TargetSummary = z.object({
   roadmap: DocumentWorkflowSummary.nullable(),
   hosted: z.object({ available: z.boolean(), url: z.url().nullable() }),
   selfHostable: z.boolean(),
+  /**
+   * contracts 5.2.0: the applications this target maps to (`wos.target_apps`, e.g. salesforce -> ["crm"]), sorted.
+   * Informative links only: a target's `progress` never depends on them (V1 proof step 9). Absent before Wave 3.
+   */
+  apps: z.array(z.string().regex(/^[a-z][a-z0-9-]{1,30}[a-z0-9]$/)).optional(),
 });
 export type TargetSummary = z.infer<typeof TargetSummary>;
 

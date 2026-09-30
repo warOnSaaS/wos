@@ -1,0 +1,812 @@
+{
+  "schema": "wos-scan.v0",
+  "label": "SCAN — unreviewed, 2026-09-30",
+  "reviewed": false,
+  "countsTowardProgress": false,
+  "target": {
+    "id": "TGT-08",
+    "slug": "zendesk",
+    "name": "Zendesk"
+  },
+  "scannedAt": "2026-09-30",
+  "scope": {
+    "included": "Zendesk for customer service: Zendesk Support and Zendesk Suite (ticketing, messaging and live chat, voice, help center/knowledge and community, AI agents, Copilot, Explore analytics, platform/APIs), and the add-ons Zendesk WFM, Zendesk QA and Zendesk Contact Center.",
+    "excluded": [
+      "Zendesk Sell (sales CRM): a separate product with its own APIs",
+      "Zendesk Employee Service (the internal help desk, priced separately from $29), including its service catalog and IT Asset Management",
+      "Forethought AI agents: named as a partnership on the pricing page, not scanned"
+    ]
+  },
+  "clientApps": [
+    {
+      "surface": "web",
+      "name": "Zendesk Agent Workspace / Admin Center",
+      "platforms": "Browser",
+      "sources": ["https://www.zendesk.com/pricing/", "https://www.zendesk.com/service/messaging/"]
+    },
+    {
+      "surface": "ios",
+      "name": "Zendesk Support",
+      "platforms": "iOS",
+      "sources": ["https://support.zendesk.com/hc/en-us/articles/4408846407066-About-the-Zendesk-Support-mobile-app"]
+    },
+    {
+      "surface": "android",
+      "name": "Zendesk Support",
+      "platforms": "Android",
+      "sources": [
+        "https://support.zendesk.com/hc/en-us/articles/4408846407066-About-the-Zendesk-Support-mobile-app",
+        "https://play.google.com/store/apps/details?id=com.zendesk.android&hl=en"
+      ]
+    },
+    {
+      "surface": "other",
+      "name": "Web Widget and Zendesk SDKs for iOS, Android and Unity (end-user messaging inside a customer's site or app)",
+      "platforms": "Web, iOS, Android, Unity",
+      "sources": ["https://developer.zendesk.com/api-reference/", "https://www.zendesk.com/service/messaging/"]
+    }
+  ],
+  "api": {
+    "style": "REST (JSON) plus webhooks; the Apps framework and Zendesk Integration Services (ZIS); Sunshine Conversations messaging API; embeddable SDKs",
+    "notes": "OAuth access tokens are recommended; API tokens and basic auth are deprecated. Support and Help Center APIs are limited per minute by plan: Suite Team 200, Growth and Professional 400, Enterprise 700, Enterprise Plus 2500. The High Volume add-on raises that to 2500.",
+    "sources": [
+      "https://developer.zendesk.com/api-reference/",
+      "https://developer.zendesk.com/api-reference/introduction/rate-limits/",
+      "https://developer.zendesk.com/api-reference/introduction/security-and-auth/"
+    ]
+  },
+  "capabilities": [
+    {
+      "id": "ticketing",
+      "vendorName": "Ticketing (Zendesk Support)",
+      "description": "Email and ticketing system where customer requests from every channel become tickets that agents work in the Agent Workspace; also available on the Support mobile app.",
+      "surfaces": ["web", "ios", "android", "api"],
+      "lowestTier": "Support Team",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.zendesk.com/pricing/",
+        "https://developer.zendesk.com/api-reference/",
+        "https://support.zendesk.com/hc/en-us/articles/4408846407066-About-the-Zendesk-Support-mobile-app"
+      ]
+    },
+    {
+      "id": "omnichannel-routing",
+      "vendorName": "Omnichannel routing / skills-based routing",
+      "description": "Routes tickets, messaging conversations and calls to agents by availability and capacity; skills-based routing is added on higher plans.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Suite Team",
+      "tierNote": "Basic ticket routing on Support Team; skills-based routing from Suite Professional",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.zendesk.com/pricing/", "https://developer.zendesk.com/api-reference/"]
+    },
+    {
+      "id": "live-chat-messaging",
+      "vendorName": "Messaging and live chat",
+      "description": "Real-time and asynchronous conversational messaging through the Web Widget and iOS/Android/Unity mobile SDKs, handled in the Agent Workspace.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Suite Team",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.zendesk.com/pricing/",
+        "https://www.zendesk.com/service/messaging/",
+        "https://developer.zendesk.com/api-reference/"
+      ]
+    },
+    {
+      "id": "sms-messaging",
+      "vendorName": "Social messaging (WhatsApp and others)",
+      "description": "Messaging extends to WhatsApp, Facebook Messenger, Instagram and Apple Messages for Business; SMS specifically was not confirmed on the pages fetched.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.zendesk.com/service/messaging/"]
+    },
+    {
+      "id": "phone-calling",
+      "vendorName": "Zendesk Voice (Telephony)",
+      "description": "Built-in telephony: toll-free and international numbers, IVR phone tree, queues and overflow routing, callbacks, voicemail, extensions, call recording, warm transfer and barging.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Suite Team",
+      "tierNote": "IVR phone tree from Suite Professional",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.zendesk.com/pricing/",
+        "https://www.zendesk.com/service/voice/",
+        "https://developer.zendesk.com/api-reference/"
+      ]
+    },
+    {
+      "id": "contact-center",
+      "vendorName": "Zendesk Contact Center",
+      "description": "A contact-centre add-on with business units, holiday and emergency closures, voicemail-as-tickets and back-office direct routing.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": "Add-on, $83/agent/month on the pricing page",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.zendesk.com/pricing/",
+        "https://support.zendesk.com/hc/en-us/articles/10356997021850-What-s-new-in-Zendesk-March-2026"
+      ]
+    },
+    {
+      "id": "transcription-captions",
+      "vendorName": "Call transcription and summarisation",
+      "description": "Automatic transcription and summaries of voice calls; generative AI for voice is listed on Suite Enterprise.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": "Generative AI for Voice listed under Suite Enterprise; plan for basic transcription not stated",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.zendesk.com/service/voice/", "https://www.zendesk.com/pricing/"]
+    },
+    {
+      "id": "knowledge-base",
+      "vendorName": "Help center / Knowledge",
+      "description": "Customer-facing help centre and knowledge base with generative search (quick answers), knowledge surfaced in the agent workspace, web crawler and knowledge connectors.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Suite Team",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.zendesk.com/pricing/",
+        "https://www.zendesk.com/service/help-center/",
+        "https://support.zendesk.com/hc/en-us/articles/10356997021850-What-s-new-in-Zendesk-March-2026"
+      ]
+    },
+    {
+      "id": "community-forums",
+      "vendorName": "Help center community",
+      "description": "Community posts and topics inside the help centre where customers ask questions, answer and share ideas; moderators can pin and feature posts.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Suite Professional",
+      "tierNote": "Help-centre article lists community forums at Professional",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://support.zendesk.com/hc/en-us/articles/4408846875034-About-the-Zendesk-Suite-plan-types",
+        "https://support.zendesk.com/hc/en-us/articles/4408882689306-Planning-and-activating-community-in-your-help-center"
+      ]
+    },
+    {
+      "id": "customer-portal",
+      "vendorName": "Help center request list",
+      "description": "Signed-in end users see and filter their own requests in the help centre (new request list experience, generally available March 2026).",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://support.zendesk.com/hc/en-us/articles/10356997021850-What-s-new-in-Zendesk-March-2026"]
+    },
+    {
+      "id": "sla-management",
+      "vendorName": "SLA policies",
+      "description": "Policies with conditions and response/resolution targets measured on tickets.",
+      "surfaces": ["web"],
+      "lowestTier": "Suite Growth",
+      "tierNote": "Help-centre plan name; Support: Professional or Enterprise",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://support.zendesk.com/hc/en-us/articles/4408829459866-Defining-SLA-policies"]
+    },
+    {
+      "id": "csat-surveys",
+      "vendorName": "CSAT surveys",
+      "description": "Customer satisfaction surveys on solved tickets across email and messaging with customisable questions and rating scales.",
+      "surfaces": ["web"],
+      "lowestTier": "Suite Growth",
+      "tierNote": "Help-centre plan name; Support: Professional or Enterprise",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://support.zendesk.com/hc/en-us/articles/7689997846554-Sending-a-CSAT-survey-to-your-customers"]
+    },
+    {
+      "id": "macros-canned-responses",
+      "vendorName": "Macros (pre-written responses)",
+      "description": "Saved replies and ticket actions agents apply in one step.",
+      "surfaces": ["web"],
+      "lowestTier": "Support Team",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.zendesk.com/pricing/"]
+    },
+    {
+      "id": "workflow-automation",
+      "vendorName": "Triggers, automations and Action Builder",
+      "description": "Business rules (triggers and automations) on tickets, plus Action Builder, a no-code flow builder for multi-system workflows.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Support Team",
+      "tierNote": "Action Builder from Suite Team",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.zendesk.com/pricing/", "https://www.zendesk.com/platform/"]
+    },
+    {
+      "id": "approvals",
+      "vendorName": "Approval workflows",
+      "description": "Approval steps in service workflows.",
+      "surfaces": ["web"],
+      "lowestTier": "Suite Enterprise",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.zendesk.com/pricing/"]
+    },
+    {
+      "id": "forms",
+      "vendorName": "Multiple ticket forms and conditional fields",
+      "description": "Several ticket forms with conditional ticket fields for customers and agents.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Suite Professional",
+      "tierNote": "Help-centre plan name 'Professional'",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://support.zendesk.com/hc/en-us/articles/6579939982746-Getting-started-with-Zendesk-Suite-Part-14-Additional-features"
+      ]
+    },
+    {
+      "id": "custom-fields-objects",
+      "vendorName": "Custom objects and custom fields",
+      "description": "Admin-defined custom objects with schemas, lookup relationships and templates (Contracts, Orders, Products, Projects, Subscriptions) usable in tickets, triggers and Explore; legacy custom objects sunset July 2026.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Suite Team",
+      "tierNote": "Support plans: Enterprise only",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://support.zendesk.com/hc/en-us/articles/5392409465370-Creating-custom-objects-to-integrate-with-custom-data",
+        "https://developer.zendesk.com/api-reference/"
+      ]
+    },
+    {
+      "id": "ai-agents",
+      "vendorName": "Zendesk AI agents",
+      "description": "Autonomous agents that resolve inquiries over messaging, email and voice and take actions in connected systems; value-based pricing with an included resolution allowance.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Suite Team",
+      "tierNote": "Resolution allowance included; more is pre-purchased; AI agents - Advanced / AI Expert tiers exist",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.zendesk.com/pricing/",
+        "https://www.zendesk.com/service/ai/ai-agents/",
+        "https://support.zendesk.com/hc/en-us/articles/10356997021850-What-s-new-in-Zendesk-March-2026"
+      ]
+    },
+    {
+      "id": "ai-assistant",
+      "vendorName": "Copilot (auto assist, intelligent triage, admin copilot, writing tools)",
+      "description": "Agent-side AI: suggested next steps and drafted replies, classification by intent/sentiment/language, admin recommendations, and generative writing tools.",
+      "surfaces": ["web"],
+      "lowestTier": "Suite Professional",
+      "tierNote": "Writing tools and Admin Copilot on Suite Professional; full Copilot is a $50/agent/month add-on, bundled in 'Suite Enterprise + Copilot'",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.zendesk.com/pricing/",
+        "https://www.zendesk.com/service/ai/copilot/",
+        "https://support.zendesk.com/hc/en-us/articles/10356997021850-What-s-new-in-Zendesk-March-2026"
+      ]
+    },
+    {
+      "id": "reporting-dashboards",
+      "vendorName": "Explore analytics",
+      "description": "Prebuilt dashboards on all plans, live dashboards, and custom reports on Professional and above; a newer analyst copilot answers plain-language questions.",
+      "surfaces": ["web"],
+      "lowestTier": "Support Team",
+      "tierNote": "Prebuilt dashboards on Support Team; Quick Reports on Suite Professional; custom reports need Explore Professional or Enterprise",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.zendesk.com/pricing/",
+        "https://support.zendesk.com/hc/en-us/articles/4408846844826-Understanding-Explore-dashboards",
+        "https://www.zendesk.com/service/analytics/"
+      ]
+    },
+    {
+      "id": "workforce-management",
+      "vendorName": "Zendesk WFM",
+      "description": "AI forecasting, automated scheduling, time off and real-time and historical agent-activity monitoring.",
+      "surfaces": ["web", "api"],
+      "lowestTier": null,
+      "tierNote": "Add-on $25/agent/month, or $50 in the Workforce Engagement bundle with QA",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://support.zendesk.com/hc/en-us/articles/6851584037146-Buying-Zendesk-workforce-engagement-management-add-ons-Zendesk-WFM-Zendesk-QA-and-WEM-bundle",
+        "https://www.zendesk.com/service/workforce-engagement-management/",
+        "https://developer.zendesk.com/api-reference/"
+      ]
+    },
+    {
+      "id": "quality-assurance",
+      "vendorName": "Zendesk QA",
+      "description": "AI-scored review of all conversations, from human and AI agents alike, with risk detection and coaching.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": "Add-on $35/agent/month, or in the WEM bundle",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://support.zendesk.com/hc/en-us/articles/6851584037146-Buying-Zendesk-workforce-engagement-management-add-ons-Zendesk-WFM-Zendesk-QA-and-WEM-bundle",
+        "https://www.zendesk.com/service/workforce-engagement-management/"
+      ]
+    },
+    {
+      "id": "roles-permissions",
+      "vendorName": "Custom agent roles and light agents",
+      "description": "Custom agent roles with granular permissions such as audit-log access, plus light agents who can view and add private comments.",
+      "surfaces": ["web"],
+      "lowestTier": "Suite Enterprise",
+      "tierNote": "Light agents from Professional per the help centre; custom roles Enterprise",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.zendesk.com/pricing/",
+        "https://support.zendesk.com/hc/en-us/articles/6579939982746-Getting-started-with-Zendesk-Suite-Part-14-Additional-features",
+        "https://support.zendesk.com/hc/en-us/articles/10356997021850-What-s-new-in-Zendesk-March-2026"
+      ]
+    },
+    {
+      "id": "sso-identity",
+      "vendorName": "Single sign-on (SAML, JWT, OpenID Connect)",
+      "description": "Enterprise SSO for agents and end users through SAML, JWT or OIDC, with several configurations and IP-based routing.",
+      "surfaces": ["web"],
+      "lowestTier": "Support Team",
+      "tierNote": "Help centre: all Suite and Support plans",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://support.zendesk.com/hc/en-us/articles/4408887505690-Enabling-SAML-single-sign-on"]
+    },
+    {
+      "id": "audit-log",
+      "vendorName": "Audit log and access log",
+      "description": "Admin Center audit log of account changes, which can be filtered and exported to CSV; an access log comes with the Advanced Data Privacy and Protection add-on.",
+      "surfaces": ["web"],
+      "lowestTier": "Suite Enterprise",
+      "tierNote": "Help centre says 'Enterprise plans and above'; access log needs the ADPP add-on",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://support.zendesk.com/hc/en-us/articles/4408828001434-Viewing-the-audit-log-for-changes-to-your-account",
+        "https://support.zendesk.com/hc/en-us/articles/6066010357530-Using-the-access-log-to-monitor-agent-activity-ADPP-add-on"
+      ]
+    },
+    {
+      "id": "compliance-security",
+      "vendorName": "Data center locality, advanced compliance, redaction",
+      "description": "Encryption, flexible data hosting locations, automated data deletion, sensitive-data redaction; Enterprise Plus adds enhanced disaster recovery.",
+      "surfaces": ["web"],
+      "lowestTier": "Suite Professional",
+      "tierNote": "Help-centre plan name; data locality and advanced compliance from Professional",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://support.zendesk.com/hc/en-us/articles/6579939982746-Getting-started-with-Zendesk-Suite-Part-14-Additional-features",
+        "https://www.zendesk.com/platform/"
+      ]
+    },
+    {
+      "id": "sandbox-environments",
+      "vendorName": "Sandbox",
+      "description": "A separate test copy of the account for trying workflows; also offered for AI agents - Advanced.",
+      "surfaces": ["web"],
+      "lowestTier": "Suite Enterprise",
+      "tierNote": "Add-on for plans that do not include it",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.zendesk.com/pricing/",
+        "https://support.zendesk.com/hc/en-us/articles/6579939982746-Getting-started-with-Zendesk-Suite-Part-14-Additional-features",
+        "https://support.zendesk.com/hc/en-us/articles/10356997021850-What-s-new-in-Zendesk-March-2026"
+      ]
+    },
+    {
+      "id": "low-code-builder",
+      "vendorName": "App Builder",
+      "description": "Builds custom apps for the agent workspace with little code.",
+      "surfaces": ["web"],
+      "lowestTier": "Suite Professional",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.zendesk.com/pricing/", "https://www.zendesk.com/platform/"]
+    },
+    {
+      "id": "developer-platform",
+      "vendorName": "Apps framework, Zendesk Integration Services, SDKs",
+      "description": "Apps framework (ZAF) for sidebar apps, Zendesk Integration Services (ZIS), Web Widget and Android/iOS/Unity SDKs.",
+      "surfaces": ["api"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://developer.zendesk.com/api-reference/", "https://www.zendesk.com/platform/"]
+    },
+    {
+      "id": "api-webhooks",
+      "vendorName": "Zendesk APIs and webhooks",
+      "description": "REST APIs for ticketing, help center, conversations, voice, custom data, omnichannel, AI agents and WFM, plus webhooks; rate limits by plan.",
+      "surfaces": ["api"],
+      "lowestTier": "Support Team",
+      "tierNote": "Rate limit rises with plan; High Volume API add-on",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://developer.zendesk.com/api-reference/", "https://developer.zendesk.com/api-reference/introduction/rate-limits/"]
+    },
+    {
+      "id": "app-marketplace",
+      "vendorName": "Zendesk Marketplace",
+      "description": "Directory of installable apps and integrations for Support and Chat.",
+      "surfaces": ["web"],
+      "lowestTier": "Support Team",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://support.zendesk.com/hc/en-us/articles/4408824421146-Using-the-Zendesk-Marketplace"]
+    },
+    {
+      "id": "native-integrations",
+      "vendorName": "Knowledge connectors and Copilot actions",
+      "description": "Connectors to Google Drive, Confluence and SharePoint for knowledge; Copilot actions in Shopify, Jira and Slack; Google Workspace connectors.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.zendesk.com/service/help-center/",
+        "https://www.zendesk.com/service/ai/copilot/",
+        "https://support.zendesk.com/hc/en-us/articles/10356997021850-What-s-new-in-Zendesk-March-2026"
+      ]
+    },
+    {
+      "id": "mobile-app",
+      "vendorName": "Zendesk Support mobile app",
+      "description": "iOS and Android app for agents and team leads to view, filter, create and update tickets.",
+      "surfaces": ["ios", "android"],
+      "lowestTier": "Support Team",
+      "tierNote": "Article lists Support Team, Professional, Enterprise",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://support.zendesk.com/hc/en-us/articles/4408846407066-About-the-Zendesk-Support-mobile-app",
+        "https://play.google.com/store/apps/details?id=com.zendesk.android&hl=en"
+      ]
+    },
+    {
+      "id": "search",
+      "vendorName": "Ticket and help-centre search",
+      "description": "Keyword search for tickets on web and mobile, and generative search over the help centre.",
+      "surfaces": ["web", "ios", "android"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://support.zendesk.com/hc/en-us/articles/4408846407066-About-the-Zendesk-Support-mobile-app",
+        "https://www.zendesk.com/service/help-center/"
+      ]
+    },
+    {
+      "id": "notifications",
+      "vendorName": "Ticket notifications",
+      "description": "Ticket alerts in the Support mobile app, kept for 30 days.",
+      "surfaces": ["ios", "android"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://support.zendesk.com/hc/en-us/articles/4408846407066-About-the-Zendesk-Support-mobile-app"]
+    },
+    {
+      "id": "admin-console",
+      "vendorName": "Admin Center",
+      "description": "Central admin for security, SSO, logs, objects and rules, billing, and in-product purchase of the Copilot add-on.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://support.zendesk.com/hc/en-us/articles/4408887505690-Enabling-SAML-single-sign-on",
+        "https://support.zendesk.com/hc/en-us/articles/10356997021850-What-s-new-in-Zendesk-March-2026"
+      ]
+    },
+    {
+      "id": "contacts",
+      "vendorName": "Users (end users)",
+      "description": "Customer records with context shown beside tickets, managed through the Support API's users resource.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Support Team",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.zendesk.com/pricing/", "https://developer.zendesk.com/api-reference/"]
+    },
+    {
+      "id": "organizations",
+      "vendorName": "Organizations",
+      "description": "Organization records that group users and their tickets.",
+      "surfaces": ["web", "api"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://developer.zendesk.com/api-reference/"]
+    },
+    {
+      "id": "multi-brand",
+      "vendorName": "Multibrand",
+      "description": "Several brands, each with its own help centre and channels, in one account; custom objects can relate to brands.",
+      "surfaces": ["web"],
+      "lowestTier": "Suite Professional",
+      "tierNote": "Help-centre plan name 'Professional'",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://support.zendesk.com/hc/en-us/articles/6579939982746-Getting-started-with-Zendesk-Suite-Part-14-Additional-features",
+        "https://support.zendesk.com/hc/en-us/articles/10356997021850-What-s-new-in-Zendesk-March-2026"
+      ]
+    },
+    {
+      "id": "side-conversations",
+      "vendorName": "Side conversations",
+      "description": "Separate threads started from a ticket to work with other teams or third parties; email ones can be viewed and answered in the mobile app.",
+      "surfaces": ["web", "ios", "android"],
+      "lowestTier": "Suite Professional",
+      "tierNote": "Help-centre plan name 'Professional'",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://support.zendesk.com/hc/en-us/articles/6579939982746-Getting-started-with-Zendesk-Suite-Part-14-Additional-features",
+        "https://support.zendesk.com/hc/en-us/articles/4408825697434-Working-with-tickets-in-the-Support-mobile-app"
+      ]
+    }
+  ],
+  "limits": [
+    "The full plan comparison table on zendesk.com/pricing is JS-rendered; only the headline features for each plan came through, and /pricing/compare/ returned 404. The tiers here come from the pricing page headlines and the plan-availability lines in help articles.",
+    "Plan names differ between sources. The pricing page shows Support Team, Suite Team, Suite Professional and 'Suite Enterprise + Copilot'. Help articles also list Suite Growth and Enterprise Plus. Where only a help article gave the tier, it is reported as 'Suite Growth', 'Suite Professional' and so on, with a note.",
+    "The Apple App Store listing returned 404 (the ID was a guess) and the Google Play fetch came back empty. Both mobile platforms are confirmed from the Zendesk help article and a Google Play search-result entry.",
+    "zendesk.com/marketplace returned 403, so the app count is unknown.",
+    "Sunshine platform branding was not seen on the pages fetched. The platform page describes APIs, the app framework, App Builder and Action Builder without that name.",
+    "No injected instructions were found in the fetched pages."
+  ],
+  "failures": [
+    {
+      "kind": "fetch",
+      "what": "https://www.zendesk.com/pricing/compare/",
+      "result": "404"
+    },
+    {
+      "kind": "fetch",
+      "what": "https://apps.apple.com/us/app/zendesk-support/id368796011",
+      "result": "404"
+    },
+    {
+      "kind": "fetch",
+      "what": "https://play.google.com/store/apps/details?id=com.zendesk.android",
+      "result": "empty/unusable content"
+    },
+    {
+      "kind": "fetch",
+      "what": "https://www.zendesk.com/marketplace/",
+      "result": "403"
+    },
+    {
+      "kind": "fetch",
+      "what": "https://www.zendesk.com/pricing/?plans=suite",
+      "result": "feature matrix not rendered (JS)"
+    }
+  ],
+  "dataExport": {
+    "extraction": {
+      "full": "partial",
+      "incremental": "yes",
+      "apiBased": "yes",
+      "note": "Tickets (with comments), users and organizations come out via the Admin Center JSON/CSV/XML export (off by default, account owner must ask Support to enable it, Professional/Growth+) and via the Incremental Exports API with cursor or start_time and deleted-ticket markers, plus a ticket event stream. 'partial' because config objects need separate list endpoints, reporting data cannot be migrated per Zendesk, and UI exports drop comments on tickets over 1 MB."
+    },
+    "exportOptions": [
+      {
+        "name": "Full JSON export",
+        "description": "Tickets, users, or organizations as NDJSON for a chosen date range (by system-generated timestamp); ticket comments included unless a single ticket exceeds 1 MB, in which case comments are omitted and the ticket is listed in an error file. Organization exports include deleted organizations. Items updated within 6 minutes of the request are excluded.",
+        "formats": ["JSON (NDJSON)"],
+        "limits": "Recommended for accounts over 200,000 tickets; accounts over one million tickets are downloaded in 31-day increments; not available in sandbox; export must first be enabled by Zendesk Support at the account owner's request; download link valid for at least three days; may take minutes to a day or more. No frequency limit stated on the page.",
+        "lowestTier": "Suite Growth, or Support Professional",
+        "sources": ["https://support.zendesk.com/hc/en-us/articles/4408886165402-Exporting-data-to-a-JSON-CSV-or-XML-file"]
+      },
+      {
+        "name": "CSV export",
+        "description": "Ticket data (IDs, requester, assignee, group, subject, tags, status, dates, metrics columns) for a date range. Excludes deleted tickets, ticket comments and descriptions, multi-line text, multi-select and custom date fields; tickets over 1 MB are excluded. Dates converted to the account time zone.",
+        "formats": ["CSV"],
+        "limits": "Not available in sandbox; same enablement requirement as JSON export.",
+        "lowestTier": "Suite Growth, or Support Professional",
+        "sources": ["https://support.zendesk.com/hc/en-us/articles/4408886165402-Exporting-data-to-a-JSON-CSV-or-XML-file"]
+      },
+      {
+        "name": "Full XML export / User XML export",
+        "description": "Full XML: account settings, groups, organizations, tickets (including comments) and users. User XML: groups, organizations, users. No date range or data-type selection. Per the page, XML omits custom ticket fields, metric sets and comment metadata for tickets, and custom fields for users and organizations.",
+        "formats": ["XML"],
+        "limits": "Capped at 500 MB (roughly 200,000 tickets) per the page.",
+        "lowestTier": "Suite Growth, or Support Professional",
+        "sources": ["https://support.zendesk.com/hc/en-us/articles/4408886165402-Exporting-data-to-a-JSON-CSV-or-XML-file"]
+      },
+      {
+        "name": "Export View (CSV)",
+        "description": "GET /api/v2/views/{view_id}/export returns the CSV of a view, enqueuing a job to produce it if necessary. Allowed for agents.",
+        "formats": ["CSV"],
+        "limits": "Rate-limits page lists Exporting Views at 100000 requests per hour.",
+        "lowestTier": null,
+        "sources": [
+          "https://developer.zendesk.com/api-reference/ticketing/business-rules/views/",
+          "https://developer.zendesk.com/api-reference/introduction/rate-limits/"
+        ]
+      }
+    ],
+    "apis": [
+      {
+        "name": "Incremental Ticket Export (cursor-based and time-based)",
+        "kind": "incremental",
+        "description": "GET /api/v2/incremental/tickets/cursor (start_time once, then cursor) or /incremental/tickets (start_time/end_time). Returns tickets changed since the start time, up to 1,000 per page, end_of_stream flag, include sideloads (not last_audits), exclude_deleted option; deletions appear in the stream by default. Data for the most recent minute is not returned. Admins only. Cursor-based is 'highly encouraged'.",
+        "sources": ["https://developer.zendesk.com/api-reference/ticketing/ticket-management/incremental_exports/"]
+      },
+      {
+        "name": "Incremental Ticket Event Export",
+        "kind": "incremental",
+        "description": "GET /api/v2/incremental/ticket_events?start_time= returns a stream of ticket changes, each with the fields updated in that change; comment bodies only with the comment_events sideload (otherwise only comment_present/comment_public booleans). Recommended by Zendesk for change data instead of List All Ticket Audits.",
+        "sources": [
+          "https://developer.zendesk.com/api-reference/ticketing/ticket-management/incremental_exports/",
+          "https://developer.zendesk.com/api-reference/ticketing/tickets/ticket_audits/"
+        ]
+      },
+      {
+        "name": "Incremental User / Organization / Ticket Metric Event / Custom Object Record / Article exports",
+        "kind": "incremental",
+        "description": "Users (cursor and time-based), organizations (time-based), ticket metric events, custom object records (cursor-based, documented under Custom Objects) and Help Center articles (/api/v2/help_center/incremental/articles.json?start_time=) are listed on the Incremental Exports page. A sample export endpoint returns up to 50 results for testing.",
+        "sources": [
+          "https://developer.zendesk.com/api-reference/ticketing/ticket-management/incremental_exports/",
+          "https://developer.zendesk.com/api-reference/help_center/help-center-api/articles/"
+        ]
+      },
+      {
+        "name": "Ticket Audits",
+        "kind": "read-api",
+        "description": "Read-only history of every ticket update (field changes, comments, tags, notifications). List All Ticket Audits excludes archived tickets (use List Audits for a Ticket for those) and Zendesk says it should not be used for change data because records are skipped when chasing the cursor tail. Requires the global 'read' OAuth scope.",
+        "sources": ["https://developer.zendesk.com/api-reference/ticketing/tickets/ticket_audits/"]
+      },
+      {
+        "name": "Attachments",
+        "kind": "read-api",
+        "description": "Attachment objects carry content_url (may be hosted externally), size, malware_scan_result and deleted flags; files flagged as malware cannot be downloaded unless malware_access_override is true. Get Ticket Attachment Content is listed at 2500 requests per minute.",
+        "sources": [
+          "https://developer.zendesk.com/api-reference/ticketing/tickets/ticket-attachments/",
+          "https://developer.zendesk.com/api-reference/introduction/rate-limits/"
+        ]
+      },
+      {
+        "name": "Business rules list endpoints (macros, triggers, automations, views, SLA policies, etc.)",
+        "kind": "read-api",
+        "description": "List Macros (admins get all macros including agents' personal ones) and List Ticket Triggers are available, cursor-paginated, max 100 per page; Zendesk's migration article says views, macros, groups, triggers, automations, SLAs, schedules, ticket forms and ticket/user/organization fields each need their own list endpoints.",
+        "sources": [
+          "https://developer.zendesk.com/api-reference/ticketing/business-rules/macros/",
+          "https://developer.zendesk.com/api-reference/ticketing/business-rules/triggers/",
+          "https://support.zendesk.com/hc/en-us/articles/4408887037082-How-do-I-merge-or-migrate-two-Zendesk-accounts"
+        ]
+      },
+      {
+        "name": "Webhooks (Zendesk event subscriptions)",
+        "kind": "webhooks-events",
+        "description": "Webhooks send HTTP requests on Zendesk activity, either subscribed to event types (article, community post, organization, user, agent availability, ticket, messaging, access log events, payload type zen:event-type:...) or connected to triggers/automations via conditional_ticket_events. Signing secret for verification. Trial accounts limited to 10 webhooks.",
+        "sources": [
+          "https://developer.zendesk.com/api-reference/webhooks/webhooks-api/webhooks/",
+          "https://developer.zendesk.com/api-reference/webhooks/event-types/webhook-event-types/"
+        ]
+      }
+    ],
+    "auth": {
+      "models": ["oauth-app", "api-key", "basic"],
+      "notes": "OAuth access tokens are the supported method; API tokens are marked deprecated and customers on basic auth or API tokens 'will have to migrate' to OAuth. An app used by multiple Zendesk customers must use a global OAuth client, which developers cannot create themselves: build with a local OAuth client (identifier prefixed 'zdg-', all fields completed), then request it from Zendesk, which may approve it and may restrict its allowed scopes. The Developer Terms prohibit customers sharing API credentials with third parties. Incremental exports and audits are admin-only; audits need the global 'read' scope.",
+      "sources": [
+        "https://developer.zendesk.com/api-reference/introduction/security-and-auth/",
+        "https://developer.zendesk.com/documentation/marketplace/building-a-marketplace-app/set-up-a-global-oauth-client/",
+        "https://developer.zendesk.com/api-reference/ticketing/tickets/ticket_audits/"
+      ]
+    },
+    "rateLimits": {
+      "summary": "Support and Help Center API requests per minute by Suite plan: Team 200, Growth 400, Professional 400, Enterprise 700, Enterprise Plus 2500 (Help Center counted separately from Support). High Volume API add-on raises a qualifying plan to 2500/min (Suite Growth+ or Support Professional+, minimum 10 agent seats). Incremental Exports: 10 requests per minute global, 30 with High Volume add-on (users cursor export listed at 20, 60 with add-on). List Tickets with page over 500: 50/min. Export Search Results 100/min. Up to 30 queued or running background jobs.",
+      "sources": [
+        "https://developer.zendesk.com/api-reference/introduction/rate-limits/",
+        "https://developer.zendesk.com/api-reference/ticketing/ticket-management/incremental_exports/"
+      ]
+    },
+    "hardToExtract": [
+      {
+        "dataClass": "other",
+        "detail": "Reporting/analytics data: Zendesk says migrating reporting data between accounts is not supported; only the underlying ticket data moves.",
+        "sources": ["https://support.zendesk.com/hc/en-us/articles/4408887037082-How-do-I-merge-or-migrate-two-Zendesk-accounts"]
+      },
+      {
+        "dataClass": "history-audit",
+        "detail": "Full ticket history is split: incremental ticket export does not support the last_audits sideload; the event stream omits comment bodies unless comment_events is sideloaded; List All Ticket Audits skips archived tickets and records when used for change data. Ticket metrics (first reply, first resolution) are not carried over when importing tickets into a new account.",
+        "sources": [
+          "https://developer.zendesk.com/api-reference/ticketing/ticket-management/incremental_exports/",
+          "https://developer.zendesk.com/api-reference/ticketing/tickets/ticket_audits/",
+          "https://support.zendesk.com/hc/en-us/articles/6696005837082-How-can-I-migrate-information-from-another-platform-into-Zendesk"
+        ]
+      },
+      {
+        "dataClass": "attachments-files",
+        "detail": "The UI data-export article does not mention attachments; files are fetched per attachment via content_url (possibly externally hosted), malware-flagged files are blocked by default, and redacted attachments become an empty redacted.txt.",
+        "sources": [
+          "https://support.zendesk.com/hc/en-us/articles/4408886165402-Exporting-data-to-a-JSON-CSV-or-XML-file",
+          "https://developer.zendesk.com/api-reference/ticketing/tickets/ticket-attachments/"
+        ]
+      },
+      {
+        "dataClass": "custom-objects-fields",
+        "detail": "UI exports lose custom data: CSV drops multi-line, multi-select and custom date fields; XML drops custom ticket fields, metric sets and comment metadata, and user/org custom fields. JSON export omits comments for tickets over 1 MB.",
+        "sources": ["https://support.zendesk.com/hc/en-us/articles/4408886165402-Exporting-data-to-a-JSON-CSV-or-XML-file"]
+      },
+      {
+        "dataClass": "automations-workflows",
+        "detail": "Macros, triggers, automations, views, SLAs, schedules and forms are API-readable but not in the UI exports; each needs its own list endpoint per Zendesk's migration article. No triggers run on imported tickets.",
+        "sources": [
+          "https://support.zendesk.com/hc/en-us/articles/4408887037082-How-do-I-merge-or-migrate-two-Zendesk-accounts",
+          "https://support.zendesk.com/hc/en-us/articles/6696005837082-How-can-I-migrate-information-from-another-platform-into-Zendesk"
+        ]
+      },
+      {
+        "dataClass": "permissions",
+        "detail": "Data exports are disabled by default and only enabled by Zendesk Support at the account owner's request; exports can additionally be restricted to certain admins. Incremental export endpoints are admin-only.",
+        "sources": [
+          "https://support.zendesk.com/hc/en-us/articles/4408886165402-Exporting-data-to-a-JSON-CSV-or-XML-file",
+          "https://developer.zendesk.com/api-reference/ticketing/ticket-management/incremental_exports/"
+        ]
+      }
+    ],
+    "migrationTools": [
+      {
+        "name": "Self-service API migration (Incremental Export API + Ticket Import API)",
+        "direction": "both",
+        "description": "Zendesk's documented route for moving data between accounts: export with incremental exports, import with the Ticket Import API; bulk user and organization import also documented.",
+        "sources": [
+          "https://support.zendesk.com/hc/en-us/articles/4408887037082-How-do-I-merge-or-migrate-two-Zendesk-accounts",
+          "https://support.zendesk.com/hc/en-us/articles/6696005837082-How-can-I-migrate-information-from-another-platform-into-Zendesk"
+        ]
+      },
+      {
+        "name": "Zendesk partners / Zendesk Professional Services",
+        "direction": "unknown",
+        "description": "Paid partner or Zendesk Services data migration, arranged through the account executive; Marketplace third-party apps also suggested.",
+        "sources": ["https://support.zendesk.com/hc/en-us/articles/4408887037082-How-do-I-merge-or-migrate-two-Zendesk-accounts"]
+      },
+      {
+        "name": "Help Desk Migration (third party)",
+        "direction": "both",
+        "description": "Third-party migration service with Zendesk migration guides; seen in search results only, not fetched.",
+        "sources": ["https://help-desk-migration.com/help/zendesk-migration-guides/"]
+      }
+    ],
+    "limits": [
+      "No frequency limit for the Admin Center exports is stated on the export article; none recorded.",
+      "Admin Center export plan tiers were read from the article's 'What's my plan?' box; the team-member export and 'Restricting data exports to certain admins' articles were not fetched.",
+      "Help Center article export via UI not found; only the incremental article API was confirmed.",
+      "Whether automations, SLA policies, schedules and other config endpoints match the macros/triggers pattern was taken from the migration article, not from each endpoint page.",
+      "Developer pages were read by curl and HTML text extraction; no injected instructions were noticed.",
+      "Third-party migration tools (Help Desk Migration, Import2) seen only in search results."
+    ],
+    "failures": []
+  }
+}

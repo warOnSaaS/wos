@@ -295,6 +295,26 @@ These override `docs/V1-SPEC.md` where they differ. Date: 2026-09-29.
 - "An objective we can see how it works": per ruled finding, `wos.ruling_lab_records` (a tiny append-only, public table in migration 0007) records the raising lab (derived by the database from the finding's review provider), the resolving lab (`human` for the maintainer) and the outcome; the database refuses a same-lab record. `crossLabUpholdRates` gives the uphold rate per (raising lab, resolving lab), to measure whether resolvers favour their own lab.
 - Rules `labOfProvider`, `routeDisputedFindings`, `resolverEligibilityRefusals`, `crossLabUpholdRates`; tests "D58: …" (rules) and db "D58: a Fable-raised finding resolved by a resolver of the same lab". For bundle 07 (REVIEW-PACKET §3h).
 
+## D59. Every target roadmap plans getting customers OFF the target (seamless importers)
+- Founder (2026-09-30): parity is not enough if a customer cannot leave. Every target roadmap must include getting its customers OFF that target.
+- **Migration section.** Every target roadmap has a `migration` section (`Roadmap.migration`, contracts 5.4.0) covering the target's data classes:
+  - records;
+  - custom objects and fields;
+  - files and attachments;
+  - history and activity;
+  - users and permissions mapping, where exposed.
+
+  Each class is imported by a named connector feature, or listed as "not extractable" with a public source. Partial classes do both. A roadmap without the section fails validation (`MIGRATION_MISSING`), and so does a class left unaccounted for. TGT-00 warOnSaaS is exempt: it has no customers to move off.
+- **Importer guarantees.** Every importer supports:
+  - a dry run;
+  - idempotent re-runs;
+  - delta sync during cutover wherever the target exposes an incremental API;
+  - a verification report with per-object counts and checksums, in which nothing is silently dropped.
+- **Built once.** `import-engine` is a shared catalog feature: mapping, dry run, verification report, idempotency and delta sync. It is built once and stewarded by TGT-00 warOnSaaS as shared infrastructure. Per-target connectors are small catalog features that depend on it. The first proof is importing Salesforce contacts and accounts in the first CRM catalog build.
+- **Credentials.** An importer signs in to the CUSTOMER's own account with the customer's OAuth tokens, held encrypted and scoped per organization, never with wOS's own credentials. The detailed design belongs to Amendment 03 (connections) and is not decided here.
+- **Input facts.** They come from `docs/scans/<target>.md`, section "Getting data out", on main since the `ws/scans` merge.
+- Protocol text: ROADMAP-PROTOCOL.md "Migration: getting customers off the target (D59)".
+
 ## D62. Protocol v1 frozen for devnet/shadow implementation (founder decision, 2026-09-30)
 - Astra review 08 (docs/protocol/reviews/ASTRA-REVIEW-08-protocol-design.md) returned FREEZE AFTER THE LISTED CHANGES; R08-1 (allocation challenges for every live-countable receipt) and R08-2 (submission admission fails closed; expiry instant pinned at issuance) are fixed with the regressions it listed (REVIEW-PACKET §3k). **Proof of Contribution protocol v1 — the V1-ACTIVE modules of PROTOCOL §13 with their contracts, rules, engine and migration 0007 — is FROZEN for devnet and shadow implementation.**
 - Frozen means: implementation builds against it (WORKSTREAMS-PROTOCOL waves); every later change is a VERSIONED ADDITION (a new D-decision, a contracts version, a migration after 0007) with its own narrow Astra review. It does not authorize mainnet, an ICO, value-bearing tokens, activating a dormant module (each needs its G-98 preconditions and a public AdminAction), or applying migration 0007 to production.

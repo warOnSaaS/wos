@@ -30,6 +30,7 @@ export function Footer() {
           <h2>INDEX</h2>
           <ul>
             <li><Link href="/briefing">Briefing</Link></li>
+            <li><Link href="/whitepaper">White paper</Link></li>
             <li><Link href="/how-it-works">Procedure and rules</Link></li>
             <li><Link href="/download">Download</Link></li>
             <li><Link href="/tokens">Tokens</Link></li>

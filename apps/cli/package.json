@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "description": "wOS CLI: build warOnSaaS with your own Claude Code and Codex CLIs.",
   "type": "module",
-  "license": "UNLICENSED",
+  "license": "Apache-2.0",
   "engines": {
     "node": ">=22.12"
   },
