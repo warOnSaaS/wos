@@ -1,0 +1,903 @@
+{
+  "schema": "wos-scan.v0",
+  "label": "SCAN — unreviewed, 2026-09-30",
+  "reviewed": false,
+  "countsTowardProgress": false,
+  "target": {
+    "id": "TGT-09",
+    "slug": "docusign",
+    "name": "DocuSign"
+  },
+  "scannedAt": "2026-09-30",
+  "scope": {
+    "included": "Docusign eSignature plans (Personal, Standard, Business Pro, Enhanced plans) and the IAM plans (IAM Starter, IAM Standard, IAM Professional, IAM for Enterprise) with the platform features sold with them: Agreement Manager (formerly Navigator), Workflow Builder (formerly Maestro), Web Forms, Identify/ID Verification, Notary, Monitor, Document Generation/Agreement Preparation, Agreement Desk, Iris AI and agents, App Center, Admin.",
+    "excluded": [
+      "Docusign CLM (Contract Lifecycle Management) - separate enterprise product with its own plans",
+      "Docusign Rooms / Rooms for Real Estate - separate transaction-management product (has its own Rooms API)",
+      "Docusign Gen for Salesforce - Salesforce-native document generation app sold separately",
+      "Docusign Click - clickwrap product with its own API",
+      "eOriginal - negotiable-instrument vaulting service mentioned on the features page"
+    ]
+  },
+  "clientApps": [
+    {
+      "surface": "web",
+      "name": "Docusign eSignature (web app)",
+      "platforms": null,
+      "sources": [
+        "https://www.docusign.com/products/electronic-signature/features",
+        "https://ecom.docusign.com/plans-and-pricing/esignature"
+      ]
+    },
+    {
+      "surface": "ios",
+      "name": "Docusign - Upload & Sign Docs",
+      "platforms": "iPhone, iPad, Apple Vision",
+      "sources": ["https://apps.apple.com/us/app/docusign-upload-sign-docs/id474990205"]
+    },
+    {
+      "surface": "android",
+      "name": "Docusign - Upload & Sign Docs",
+      "platforms": "Android",
+      "sources": ["https://play.google.com/store/apps/details?id=com.docusign.ink&hl=en_US"]
+    },
+    {
+      "surface": "browser_extension",
+      "name": "Docusign eSignature for Chrome",
+      "platforms": "Chrome",
+      "sources": ["https://chromewebstore.google.com/detail/docusign-esignature-for-c/blkboeaihdlecgdjjgkcabbacndbjibc"]
+    },
+    {
+      "surface": "email_addin",
+      "name": "Docusign eSignature for Google Workspace",
+      "platforms": "Gmail, Google Drive, Google Docs",
+      "sources": ["https://workspace.google.com/marketplace/app/docusign_esignature_for_google_workspace/469176070494"]
+    },
+    {
+      "surface": "email_addin",
+      "name": "Docusign for Outlook",
+      "platforms": "Microsoft Outlook",
+      "sources": ["https://www.docusign.com/integrations/microsoft"]
+    },
+    {
+      "surface": "other",
+      "name": "Docusign eSignature for Microsoft Word",
+      "platforms": "Microsoft Word",
+      "sources": ["https://www.docusign.com/integrations/esignature-for-microsoft-word", "https://www.docusign.com/integrations/microsoft"]
+    },
+    {
+      "surface": "other",
+      "name": "Docusign for Microsoft Teams",
+      "platforms": "Microsoft Teams",
+      "sources": ["https://appsource.microsoft.com/en-us/product/office/wa200002755?tab=overview"]
+    }
+  ],
+  "api": {
+    "style": "REST (JSON) with OAuth 2; Connect webhooks; per-product REST APIs; MCP server (beta)",
+    "notes": "eSignature REST API (plus legacy SOAP) with OAuth 2 token auth and embedded signing; Connect for real-time envelope events. OpenAPI files are published for eSignature, Web Forms, Maestro, Navigator, Connected Fields, Click, Admin, Rooms and Monitor. Rate limits not captured: the developer site's limits page is JS-rendered.",
+    "sources": [
+      "https://www.docusign.com/products/electronic-signature/features",
+      "https://developers.docusign.com/tools/openapi-files/",
+      "https://developers.docusign.com/platform/mcp-server/",
+      "https://developers.docusign.com/docs/maestro-api/maestro101/"
+    ]
+  },
+  "capabilities": [
+    {
+      "id": "e-signature",
+      "vendorName": "Docusign eSignature",
+      "description": "Send documents for legally binding electronic signature and sign them remotely or in person, with a tamper-sealed result (ESIGN Act, PKI). Signing is free for recipients.",
+      "surfaces": ["web", "ios", "android", "api"],
+      "lowestTier": "Personal",
+      "tierNote": "Personal is 5 envelope sends/month; Standard and Business Pro 100/user/year; Enhanced custom",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://ecom.docusign.com/plans-and-pricing/esignature",
+        "https://www.docusign.com/products/electronic-signature/features",
+        "https://apps.apple.com/us/app/docusign-upload-sign-docs/id474990205"
+      ]
+    },
+    {
+      "id": "signing-order-routing",
+      "vendorName": "Signing workflow / Conditional routing",
+      "description": "Serial, parallel and mixed recipient routing, signing groups, delegated signing, delayed routing and conditional routing based on agreement data.",
+      "surfaces": ["web"],
+      "lowestTier": "Personal",
+      "tierNote": "Basic signing workflow on all plans; delegated signing Standard; conditional and delayed routing, signing groups contact sales (Enhanced)",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://ecom.docusign.com/plans-and-pricing/esignature",
+        "https://www.docusign.com/products/electronic-signature/features"
+      ]
+    },
+    {
+      "id": "document-fields-logic",
+      "vendorName": "Fields and form fields (conditional, calculated, validation)",
+      "description": "20+ standard and custom fields, drop-downs, radio buttons, drawing fields, data validation, auto-placement by anchor text, pre-filled fields, value calculator and conditional/calculated fields inside the document being signed.",
+      "surfaces": ["web"],
+      "lowestTier": "Personal",
+      "tierNote": "Basic fields on all plans; pre-filled fields and value calculator Standard; form fields and drawing fields Business Pro",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://ecom.docusign.com/plans-and-pricing/esignature",
+        "https://www.docusign.com/products/electronic-signature/features"
+      ]
+    },
+    {
+      "id": "templates",
+      "vendorName": "Templates (reusable, shared, locked)",
+      "description": "Reusable document templates; shared templates for teams and locked templates for controlled sending. Agreement Preparation adds template management across IAM.",
+      "surfaces": ["web", "ios"],
+      "lowestTier": "Personal",
+      "tierNote": "Shared templates Standard; locked templates Business Pro",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://ecom.docusign.com/plans-and-pricing/esignature",
+        "https://www.docusign.com/products/agreement-preparation",
+        "https://apps.apple.com/us/app/docusign-upload-sign-docs/id474990205"
+      ]
+    },
+    {
+      "id": "bulk-send",
+      "vendorName": "Bulk Send",
+      "description": "Send one document or template to a large recipient list, each receiving their own envelope.",
+      "surfaces": ["web"],
+      "lowestTier": "Business Pro",
+      "tierNote": "Also IAM Professional and IAM for Enterprise; not IAM Starter/Standard",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://ecom.docusign.com/plans-and-pricing/esignature",
+        "https://ecom.docusign.com/plans-and-pricing/iam",
+        "https://www.docusign.com/products/electronic-signature/features"
+      ]
+    },
+    {
+      "id": "forms",
+      "vendorName": "Web Forms / PowerForms",
+      "description": "Web Forms: interactive forms with conditional logic that capture data and populate it into agreements for signature, also usable for data collection and reporting, with API pre-fill. PowerForms: self-service signing links.",
+      "surfaces": ["web"],
+      "lowestTier": "Business Pro",
+      "tierNote": "IAM: IAM Professional and IAM for Enterprise only",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.docusign.com/products/web-forms",
+        "https://ecom.docusign.com/plans-and-pricing/esignature",
+        "https://ecom.docusign.com/plans-and-pricing/iam"
+      ]
+    },
+    {
+      "id": "payment-collection-in-documents",
+      "vendorName": "Payment collection (Docusign Payments, Stripe)",
+      "description": "Collect a payment from the signer as part of signing, processed through Stripe or Docusign Payments.",
+      "surfaces": ["web"],
+      "lowestTier": "Business Pro",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://ecom.docusign.com/plans-and-pricing/esignature",
+        "https://www.docusign.com/products/electronic-signature/features"
+      ]
+    },
+    {
+      "id": "signer-identity-verification",
+      "vendorName": "ID Verification / Docusign Identify",
+      "description": "Signer authentication and verification: email access codes, SMS and phone OTP, knowledge-based authentication (US), government ID document check with liveness/biometrics, electronic IDs, CLEAR, digital identity wallets, and EU Qualified Electronic Signature / standards-based signatures (eIDAS).",
+      "surfaces": ["web"],
+      "lowestTier": "Standard",
+      "tierNote": "Access codes all plans; 5 bonus ID verifications on Standard and Business Pro and 5 complimentary on IAM plans; SMS/phone auth, KBA and full ID verification contact sales (Enhanced)",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.docusign.com/products/identify",
+        "https://ecom.docusign.com/plans-and-pricing/esignature",
+        "https://www.docusign.com/products/electronic-signature/features"
+      ]
+    },
+    {
+      "id": "notary",
+      "vendorName": "Docusign Notary (remote online notary)",
+      "description": "Remote online notarization over audio-video with ID proofing (photo ID and KBA), electronic journal, session recording and tamper-evident certificate; use in-house notaries or the on-demand OneNotary network (consumer notarization from $25).",
+      "surfaces": ["web"],
+      "lowestTier": "Enhanced plans",
+      "tierNote": "Contact sales; aimed at organisations notarizing 200+ documents a year",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.docusign.com/products/notary", "https://ecom.docusign.com/plans-and-pricing/esignature"]
+    },
+    {
+      "id": "document-generation",
+      "vendorName": "Document Generation / Agreement Preparation",
+      "description": "Generate custom agreements from templates and data, dynamically inserting data so it reads native to the agreement; also a step inside Workflow Builder.",
+      "surfaces": ["web"],
+      "lowestTier": "IAM Starter",
+      "tierNote": "\"Advanced Document Generation\" in all IAM plans; not listed in eSignature plan table",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://ecom.docusign.com/plans-and-pricing/iam",
+        "https://www.docusign.com/products/agreement-preparation",
+        "https://www.docusign.com/products/electronic-signature/features"
+      ]
+    },
+    {
+      "id": "agreement-repository",
+      "vendorName": "Agreement Manager (formerly Navigator)",
+      "description": "AI-powered repository of executed agreements: Iris extracts key terms, dates and obligations; search, renewal and obligation tracking, access controls, dashboards and AI worksheets; import via APIs and connectors.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "IAM Starter",
+      "tierNote": "All IAM plans: unlimited processing for new documents; not in eSignature-only plans",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.docusign.com/products/platform/navigator",
+        "https://ecom.docusign.com/plans-and-pricing/iam",
+        "https://community.docusign.com/tips-from-docusign-155/docusign-trainer-tips-use-docusign-workflow-builder-formerly-maestro-to-automate-agreement-workflows-26763"
+      ]
+    },
+    {
+      "id": "workflow-automation",
+      "vendorName": "Workflow Builder (formerly Maestro)",
+      "description": "No-code builder for end-to-end agreement workflows chaining ID verification, Web Forms, document generation, eSignature, agents, Agreement Desk and App Center extension steps, with templates; has its own API. eSignature also has agreement actions for post-signature automation.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "IAM Starter",
+      "tierNote": "Workflow limits: IAM Starter 1, IAM Standard 3, IAM Professional 10, IAM for Enterprise 10",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.docusign.com/products/platform/maestro",
+        "https://ecom.docusign.com/plans-and-pricing/iam",
+        "https://community.docusign.com/tips-from-docusign-155/docusign-trainer-tips-use-docusign-workflow-builder-formerly-maestro-to-automate-agreement-workflows-26763"
+      ]
+    },
+    {
+      "id": "contract-lifecycle-management",
+      "vendorName": "Agreement Desk",
+      "description": "Collaborative hub for agreement intake (requests by email become tracked tasks), review and finalization, with an audit trail of edits and approvals; sold within IAM (the separate CLM product is excluded).",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.docusign.com/products/agreement-desk",
+        "https://support.docusign.com/s/document-item?language=en_US&bundleId=msb1736279079453&topicId=fub1743087942169.html&_LANG=enus"
+      ]
+    },
+    {
+      "id": "approvals",
+      "vendorName": "Agreement Desk approvals",
+      "description": "Add approvals with approvers to an agreement request and route sign-offs to stakeholders automatically.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://support.docusign.com/s/document-item?language=en_US&bundleId=msb1736279079453&topicId=fub1743087942169.html&_LANG=enus",
+        "https://www.docusign.com/products/agreement-desk"
+      ]
+    },
+    {
+      "id": "ai-assistant",
+      "vendorName": "Docusign Iris (AI-Assisted Summary, Q&A, field suggestions)",
+      "description": "Iris AI: AI-assisted agreement summary and Q&A for signers, agreement type detection and field suggestions for senders, risk-clause flagging and AI-assisted review, extraction in Agreement Manager.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": "AI extraction listed in all IAM plans; eSignature tier for summary/Q&A not stated",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.docusign.com/products/electronic-signature/features",
+        "https://www.docusign.com/products/platform/ai",
+        "https://ecom.docusign.com/plans-and-pricing/iam"
+      ]
+    },
+    {
+      "id": "ai-agents",
+      "vendorName": "Iris agents",
+      "description": "Ready-made agents (Intake & Triage, Smart Redlining, Relationship Intelligence) plus custom agents described in natural language; agents can run as Workflow Builder steps.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": "No plan stated on the public page",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.docusign.com/products/agents",
+        "https://www.docusign.com/products/platform/ai",
+        "https://www.docusign.com/products/platform/maestro"
+      ]
+    },
+    {
+      "id": "audit-log",
+      "vendorName": "Real-time audit trail / Certificate of completion",
+      "description": "Per-envelope audit trail and certificate of completion recording every action with timestamps and IP; audit trails also in Agreement Manager and Agreement Desk.",
+      "surfaces": ["web"],
+      "lowestTier": "Personal",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://ecom.docusign.com/plans-and-pricing/esignature",
+        "https://www.docusign.com/products/electronic-signature/features",
+        "https://workspace.google.com/marketplace/app/docusign_esignature_for_google_workspace/469176070494"
+      ]
+    },
+    {
+      "id": "security-activity-monitoring",
+      "vendorName": "Docusign Monitor",
+      "description": "Near real-time tracking of account activity across web, mobile and API (logins, password changes, envelope deletions) with pre-built and custom alerts, dark-web credential monitoring and a Monitor API for SIEM tools such as Splunk.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Enhanced plans",
+      "tierNote": "Add-on to IAM and eSignature plans; contact sales",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.docusign.com/products/monitor",
+        "https://ecom.docusign.com/plans-and-pricing/esignature",
+        "https://developers.docusign.com/docs/monitor-api/"
+      ]
+    },
+    {
+      "id": "compliance-security",
+      "vendorName": "Trust and security (ISO 27001, SOC 2, HIPAA, FedRAMP, 21 CFR Part 11, data residency, retention)",
+      "description": "Certifications and regulated-industry support, AES-256 encryption, data residency, document retention policies with automatic purge, managed stamps, eWitness.",
+      "surfaces": ["web"],
+      "lowestTier": "Personal",
+      "tierNote": "Certifications on all plans; managed stamps and eWitness Business Pro; data residency, HIPAA BAA, FedRAMP, 21 CFR Part 11 and retention policies contact sales",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://ecom.docusign.com/plans-and-pricing/esignature",
+        "https://www.docusign.com/products/electronic-signature/features"
+      ]
+    },
+    {
+      "id": "users-teams",
+      "vendorName": "Add multiple users / groups",
+      "description": "Multiple users on one account with groups, shared documents and folders, custody transfer.",
+      "surfaces": ["web"],
+      "lowestTier": "Standard",
+      "tierNote": "Personal is single user; Standard and Business Pro up to 50 users; Enhanced 50+",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://ecom.docusign.com/plans-and-pricing/esignature"]
+    },
+    {
+      "id": "roles-permissions",
+      "vendorName": "User and group permissions",
+      "description": "Permission profiles for users and groups, recipient permissions per signer, document visibility, feature access controls.",
+      "surfaces": ["web"],
+      "lowestTier": "Standard",
+      "tierNote": "Document visibility contact sales (Enhanced)",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://ecom.docusign.com/plans-and-pricing/esignature",
+        "https://www.docusign.com/products/electronic-signature/features"
+      ]
+    },
+    {
+      "id": "sso-identity",
+      "vendorName": "Access management & SSO",
+      "description": "SAML SSO through the customer's identity provider, domain claim, just-in-time provisioning and SCIM provisioning/deprovisioning.",
+      "surfaces": ["web"],
+      "lowestTier": "IAM Professional",
+      "tierNote": "eSignature: contact sales (Enhanced); IAM: Professional and Enterprise, contact sales on Starter/Standard",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://ecom.docusign.com/plans-and-pricing/iam",
+        "https://ecom.docusign.com/plans-and-pricing/esignature",
+        "https://www.docusign.com/products/admin"
+      ]
+    },
+    {
+      "id": "admin-console",
+      "vendorName": "Docusign Admin / Organization management",
+      "description": "Central administration across accounts: organization management, account cloning, domain claim, delegated admin roles, bulk user actions by CSV, settings comparison, aggregated reporting; Admin API.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "IAM Starter",
+      "tierNote": "Included in all IAM plans; add-on (Organization management, contact sales) on eSignature",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.docusign.com/products/admin",
+        "https://ecom.docusign.com/plans-and-pricing/esignature",
+        "https://developers.docusign.com/docs/admin-api/"
+      ]
+    },
+    {
+      "id": "reporting-dashboards",
+      "vendorName": "Reporting / Team reports / Agreement Manager insights",
+      "description": "Envelope, recipient and account reports with real-time status; team reports; Agreement Manager dashboards and worksheets; Web Forms response reporting.",
+      "surfaces": ["web"],
+      "lowestTier": "Personal",
+      "tierNote": "Team reports Standard",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://ecom.docusign.com/plans-and-pricing/esignature",
+        "https://www.docusign.com/products/electronic-signature/features",
+        "https://www.docusign.com/products/platform/navigator"
+      ]
+    },
+    {
+      "id": "data-import-export",
+      "vendorName": "Data export / Download envelope information",
+      "description": "Export report data to CSV and download envelope data; bring agreements into Agreement Manager via APIs and connectors; bulk user CSV import in Admin.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.docusign.com/products/electronic-signature/features",
+        "https://www.docusign.com/products/platform/navigator",
+        "https://www.docusign.com/products/admin"
+      ]
+    },
+    {
+      "id": "custom-fields-objects",
+      "vendorName": "Envelope custom fields",
+      "description": "Admin-defined custom metadata fields attached to envelopes.",
+      "surfaces": ["web"],
+      "lowestTier": "Business Pro",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://ecom.docusign.com/plans-and-pricing/esignature"]
+    },
+    {
+      "id": "custom-branding",
+      "vendorName": "Customized branding",
+      "description": "Sender logo, colours and custom email domain applied to signing experience and notifications.",
+      "surfaces": ["web"],
+      "lowestTier": "Standard",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://ecom.docusign.com/plans-and-pricing/esignature",
+        "https://www.docusign.com/products/electronic-signature/features",
+        "https://www.docusign.com/products/admin"
+      ]
+    },
+    {
+      "id": "comments-mentions",
+      "vendorName": "Collaborative commenting",
+      "description": "Real-time comments between senders and signers on a document during signing.",
+      "surfaces": ["web"],
+      "lowestTier": "Standard",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://ecom.docusign.com/plans-and-pricing/esignature",
+        "https://www.docusign.com/products/electronic-signature/features"
+      ]
+    },
+    {
+      "id": "notifications",
+      "vendorName": "Notifications and reminders",
+      "description": "Automatic email reminders and status notifications, scheduled sending, push notifications in the mobile app.",
+      "surfaces": ["web", "ios", "android"],
+      "lowestTier": "Personal",
+      "tierNote": "Scheduled sending Standard",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://ecom.docusign.com/plans-and-pricing/esignature",
+        "https://www.docusign.com/products/electronic-signature/features",
+        "https://apps.apple.com/us/app/docusign-upload-sign-docs/id474990205"
+      ]
+    },
+    {
+      "id": "sms-messaging",
+      "vendorName": "SMS and WhatsApp delivery",
+      "description": "Deliver signing requests and notifications by SMS or WhatsApp in addition to email.",
+      "surfaces": ["web"],
+      "lowestTier": "Standard",
+      "tierNote": "Standard includes 5 bonus SMS deliveries; Business Pro and above contact sales",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://ecom.docusign.com/plans-and-pricing/esignature",
+        "https://www.docusign.com/products/electronic-signature/features"
+      ]
+    },
+    {
+      "id": "multi-currency-localization",
+      "vendorName": "Multiple languages (44+ signing)",
+      "description": "Signing experience in 44 languages with global time-zone support.",
+      "surfaces": ["web"],
+      "lowestTier": "Personal",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://ecom.docusign.com/plans-and-pricing/esignature",
+        "https://www.docusign.com/products/electronic-signature/features"
+      ]
+    },
+    {
+      "id": "file-storage",
+      "vendorName": "Shared documents and folders",
+      "description": "Store envelopes in folders shared among users, and pull documents from cloud storage.",
+      "surfaces": ["web"],
+      "lowestTier": "Standard",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://ecom.docusign.com/plans-and-pricing/esignature"]
+    },
+    {
+      "id": "search",
+      "vendorName": "Agreement Manager AI-powered search",
+      "description": "Search across the agreement repository using AI-extracted terms.",
+      "surfaces": ["web"],
+      "lowestTier": "IAM Starter",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.docusign.com/products/platform/navigator", "https://ecom.docusign.com/plans-and-pricing/iam"]
+    },
+    {
+      "id": "mobile-app",
+      "vendorName": "Docusign - Upload & Sign Docs",
+      "description": "Native iPhone, iPad and Android app to sign, send, scan documents, use templates, sign in person and work offline, with push notifications and Face ID.",
+      "surfaces": ["ios", "android"],
+      "lowestTier": "Personal",
+      "tierNote": "Pricing table lists the mobile app on all plans",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://apps.apple.com/us/app/docusign-upload-sign-docs/id474990205",
+        "https://play.google.com/store/apps/details?id=com.docusign.ink&hl=en_US",
+        "https://ecom.docusign.com/plans-and-pricing/esignature"
+      ]
+    },
+    {
+      "id": "api-webhooks",
+      "vendorName": "eSignature REST API / Connect",
+      "description": "REST API with OAuth 2 for envelopes, templates and embedded flows; Connect pushes real-time envelope status webhooks. Separate APIs for Web Forms, Maestro/Workflow Builder, Navigator/Agreement Manager, Connected Fields, Click, Admin, Rooms and Monitor.",
+      "surfaces": ["api"],
+      "lowestTier": "Business Pro",
+      "tierNote": "\"Industry-leading APIs\" from Business Pro",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://ecom.docusign.com/plans-and-pricing/esignature",
+        "https://www.docusign.com/products/electronic-signature/features",
+        "https://developers.docusign.com/tools/openapi-files/"
+      ]
+    },
+    {
+      "id": "embedded-signing",
+      "vendorName": "Embedded signing",
+      "description": "Signing and sending embedded inside a third-party website or app through the API.",
+      "surfaces": ["api"],
+      "lowestTier": "Business Pro",
+      "tierNote": "Requires API access (Business Pro and above)",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.docusign.com/products/electronic-signature/features",
+        "https://ecom.docusign.com/plans-and-pricing/esignature"
+      ]
+    },
+    {
+      "id": "developer-platform",
+      "vendorName": "Developer account / SDKs / MCP Server",
+      "description": "Free developer account, OpenAPI files for generating SDKs, extension apps published to App Center, and the Docusign MCP Server (open beta) connecting agents such as Claude and Copilot to Docusign.",
+      "surfaces": ["api"],
+      "lowestTier": "Business Pro",
+      "tierNote": "Developer account listed from Business Pro on the pricing table",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://ecom.docusign.com/plans-and-pricing/esignature",
+        "https://developers.docusign.com/tools/openapi-files/",
+        "https://developers.docusign.com/platform/mcp-server/"
+      ]
+    },
+    {
+      "id": "sandbox-environments",
+      "vendorName": "Enterprise development sandbox / developer account",
+      "description": "Separate demo/developer environment for building and testing integrations.",
+      "surfaces": ["api"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.docusign.com/products/electronic-signature/features",
+        "https://ecom.docusign.com/plans-and-pricing/esignature"
+      ]
+    },
+    {
+      "id": "app-marketplace",
+      "vendorName": "Docusign App Center",
+      "description": "Directory of connector and extension apps (Salesforce, Google, Microsoft, HubSpot, Stripe, Box, Dropbox, ServiceNow) including real-time data verification of signer input; apps plug into Workflow Builder.",
+      "surfaces": ["web"],
+      "lowestTier": "IAM Starter",
+      "tierNote": "App Center and 1000+ integrations in all IAM plans; 1000+ partner integrations from Business Pro on eSignature",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.docusign.com/products/platform/app-center",
+        "https://ecom.docusign.com/plans-and-pricing/iam",
+        "https://ecom.docusign.com/plans-and-pricing/esignature"
+      ]
+    },
+    {
+      "id": "native-integrations",
+      "vendorName": "Integrations (Google, Microsoft, Salesforce, Slack, Zoom)",
+      "description": "Vendor-built connectors: cloud storage (Google Drive, OneDrive, Dropbox, Box), Google Workspace and Microsoft 365 add-ins (Gmail, Docs, Outlook, Word, Teams), Slack, Zoom, Stripe, Salesforce, Microsoft Dynamics, NetSuite.",
+      "surfaces": ["web"],
+      "lowestTier": "Personal",
+      "tierNote": "Cloud storage and productivity all plans; Slack/Teams/Zoom/Stripe Standard; Salesforce/Dynamics/NetSuite contact sales",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://ecom.docusign.com/plans-and-pricing/esignature",
+        "https://workspace.google.com/marketplace/app/docusign_esignature_for_google_workspace/469176070494",
+        "https://www.docusign.com/integrations/microsoft"
+      ]
+    }
+  ],
+  "limits": [
+    "developers.docusign.com pages (home, eSignature API reference, rules-and-limits, OpenAPI files) returned only the page title to the fetcher (JS-rendered); API resource lists and rate limits are not captured, and API surfaces are listed only where a product page or search snippet shows an API.",
+    "Google Play listing fetch returned no usable content; the Android app is sourced from a search result snippet.",
+    "The IAM pricing page does not use the names Navigator or Maestro; the renames to Agreement Manager and Workflow Builder come from a Docusign community post and search snippets, and the /navigator and /maestro URLs now serve the renamed pages.",
+    "Pricing tables were read through a summarising fetcher; individual cells (especially IAM tiers for Document Generation, ID verification counts) should be spot-checked in a browser.",
+    "One fetch summary of the eSignature API overview appeared to echo the prompt's own list of resources and was not used as a source.",
+    "Tiers for Iris AI summary/Q&A, agents, Agreement Desk and Notary beyond 'contact sales' are not stated publicly.",
+    "No injected instructions were seen in fetched pages."
+  ],
+  "failures": [
+    {
+      "kind": "fetch",
+      "what": "https://www.docusign.com/products-and-pricing",
+      "result": "301 redirect to ecom.docusign.com/plans-and-pricing/esignature (followed)"
+    },
+    {
+      "kind": "fetch",
+      "what": "https://www.docusign.com/products/identity",
+      "result": "404; used /products/identify"
+    },
+    {
+      "kind": "fetch",
+      "what": "https://www.docusign.com/products/platform/monitor",
+      "result": "404; used /products/monitor"
+    },
+    {
+      "kind": "fetch",
+      "what": "https://www.docusign.com/products/platform/admin",
+      "result": "404; used /products/admin"
+    },
+    {
+      "kind": "fetch",
+      "what": "https://developers.docusign.com/",
+      "result": "title only (JS-rendered)"
+    },
+    {
+      "kind": "fetch",
+      "what": "https://developers.docusign.com/docs/esign-rest-api/reference/",
+      "result": "title only (JS-rendered)"
+    },
+    {
+      "kind": "fetch",
+      "what": "https://developers.docusign.com/tools/openapi-files/",
+      "result": "title only (JS-rendered); API list taken from search snippet"
+    },
+    {
+      "kind": "fetch",
+      "what": "https://developers.docusign.com/docs/esign-rest-api/esign101/rules-and-limits/",
+      "result": "title only (JS-rendered)"
+    },
+    {
+      "kind": "fetch",
+      "what": "https://play.google.com/store/apps/details?id=com.docusign.ink",
+      "result": "empty/truncated content"
+    }
+  ],
+  "dataExport": {
+    "extraction": {
+      "full": "partial",
+      "incremental": "yes",
+      "apiBased": "yes",
+      "note": "The eSignature REST API exposes envelope metadata, recipients, custom fields, documents (combined PDF, ZIP archive with certificate of completion), audit events and templates, and listStatusChanges takes from_date/to_date with a 'Changed' qualifier; Connect webhooks push status events. 'full' is partial because documents are fetched per envelope under a 3,000/hour default account limit, the web app has no multi-envelope document download (the bulk tool Retrieve is described as a paid add-on in community/search results), and purged documents are gone for good."
+    },
+    "exportOptions": [
+      {
+        "name": "Export Envelope Data (Export as CSV)",
+        "description": "From the envelope list, select envelopes and export a CSV with envelope ID, subject, sender, date sent, status, decline/void info and recipient data (ID, name, email, action, routing order, status).",
+        "formats": ["CSV"],
+        "limits": null,
+        "lowestTier": null,
+        "sources": [
+          "https://support.docusign.com/s/document-item?language=en_US&bundleId=oeq1643226594604&topicId=abb1578456349675.html&_LANG=kokr"
+        ]
+      },
+      {
+        "name": "Download Form Data",
+        "description": "CSV with a row per field in the documents: envelope ID, recipient name and email, field name and entered value.",
+        "formats": ["CSV"],
+        "limits": "Per search snippet: not available for drafts or for documents sent to you by others",
+        "lowestTier": null,
+        "sources": [
+          "https://support.docusign.com/s/document-item?language=en_US&bundleId=oeq1643226594604&topicId=nlu1579891674153.html&_LANG=jajp"
+        ]
+      },
+      {
+        "name": "Docusign Retrieve",
+        "description": "Tool that runs on the customer's system to download envelopes, documents and data in bulk as a one-time or recurring request, with configurable file type and storage location.",
+        "formats": ["PDF", "other (configurable file type)"],
+        "limits": "Search results describe it as a paid add-on available to specific plans; no tier named on the features page fetched",
+        "lowestTier": null,
+        "sources": [
+          "https://www.docusign.com/en-au/products/electronic-signature/features",
+          "https://community.docusign.com/esignature-111/how-can-i-download-all-of-the-signed-documents-that-i-sent-in-bulk-do-we-have-a-unified-option-instead-than-one-per-envelope-1253"
+        ]
+      },
+      {
+        "name": "Per-envelope document download (web app)",
+        "description": "Envelope documents and certificate of completion downloaded envelope by envelope; search results state there is no web-app option to bulk download documents across envelopes.",
+        "formats": ["PDF", "ZIP"],
+        "limits": "One envelope at a time in the web app",
+        "lowestTier": null,
+        "sources": [
+          "https://community.docusign.com/esignature-111/how-can-i-download-all-of-the-signed-documents-that-i-sent-in-bulk-do-we-have-a-unified-option-instead-than-one-per-envelope-1253"
+        ]
+      }
+    ],
+    "apis": [
+      {
+        "name": "eSignature REST API: Envelopes listStatusChanges",
+        "kind": "incremental",
+        "description": "Search envelopes by from_date/to_date with from_to_status (default 'Changed'), status list, user, and include=custom_fields,documents,attachments,extensions,folders,recipients,payment_tabs; up to 1,000 envelopes per call with nextUri/previousUri paging; without from_date only the last two years are returned; production calls cannot cross sites (NA2, EU1, CA...), so each site must be queried separately.",
+        "sources": ["https://developers.docusign.com/docs/esign-rest-api/reference/envelopes/envelopes/liststatuschanges/"]
+      },
+      {
+        "name": "eSignature REST API: EnvelopeDocuments get",
+        "kind": "read-api",
+        "description": "Download one document, or all via documentId keywords: combined (single PDF, optional certificate), archive (ZIP of all PDFs plus certificate of completion), certificate (certificate only), portfolio (PDF portfolio); PDF byte stream or base64.",
+        "sources": ["https://developers.docusign.com/docs/esign-rest-api/reference/envelopes/envelopedocuments/get/"]
+      },
+      {
+        "name": "eSignature REST API: Envelopes listAuditEvents",
+        "kind": "read-api",
+        "description": "Gets the audit events for a specified envelope (one envelope per call).",
+        "sources": ["https://developers.docusign.com/docs/esign-rest-api/reference/envelopes/envelopes/listauditevents/"]
+      },
+      {
+        "name": "eSignature REST API: Templates list/get",
+        "kind": "read-api",
+        "description": "Lists account templates (filterable by folder, owned/shared) with include=powerforms,documents,folders,favorite_template_status,advanced_templates; get returns a template definition.",
+        "sources": ["https://developers.docusign.com/docs/esign-rest-api/reference/templates/templates/list/"]
+      },
+      {
+        "name": "Docusign Connect",
+        "kind": "webhooks-events",
+        "description": "Account-level, user-level, envelope-level (eventNotification) and organization-level webhook configurations that POST XML or JSON to a public listener on envelope/recipient events (sent, delivered, completed, declined, voided, purge/delete, template modified/deleted, etc.); retries with exponential back-off; Connect messages do not count against API limits; preset configs can send documents to Box, OneDrive, Salesforce, eOriginal.",
+        "sources": [
+          "https://developers.docusign.com/platform/webhooks/connect/",
+          "https://developers.docusign.com/platform/webhooks/connect/event-triggers/"
+        ]
+      },
+      {
+        "name": "Admin API user list export (createUserListExport / getUserListExport)",
+        "kind": "bulk-export",
+        "description": "Asynchronous bulk export of an organization's users to CSV; requires Docusign Admin scopes; request then poll the export.",
+        "sources": ["https://developers.docusign.com/docs/admin-api/how-to/bulk-export-users/"]
+      },
+      {
+        "name": "Agreement Manager API (formerly Navigator API)",
+        "kind": "read-api",
+        "description": "Access to agreements and AI-extracted metadata (parties, dates, financial and renewal terms, clauses) in the Docusign agreement repository; getAgreementsList endpoint. Described as limited availability, enabled per account.",
+        "sources": ["https://www.docusign.com/blog/developers/navigator-api-bulk-ingestion-made-simple"]
+      }
+    ],
+    "auth": {
+      "models": ["oauth-app", "admin-consent"],
+      "notes": "OAuth 2 with Public or Confidential Authorization Code Grant or JWT Grant (JWT impersonation needs user consent or organization admin consent; admin consent for external apps is granted by an org admin via an authorization URI and covers the org's users). Admin API needs Docusign Admin scopes. To use a production account the integration key must pass Go-Live review (OAuth configured, paid production account, admin access; public multi-customer integrations must join the partner program; manual reviews typically 24-48 hours).",
+      "sources": [
+        "https://developers.docusign.com/platform/auth/consent/obtaining-admin-consent-external/",
+        "https://developers.docusign.com/platform/go-live/",
+        "https://developers.docusign.com/docs/admin-api/how-to/bulk-export-users/"
+      ]
+    },
+    "rateLimits": {
+      "summary": "By default at most 3,000 API requests per hour from all apps on an account (includes polling); burst limit 500 calls per 30 seconds; hourly eSignature limit can be raised via API limit management if prerequisites are met. Polling: GET of any specific URL no more than once every 15 minutes, and no polling of objects in a terminal state (e.g. completed/voided). Apps must honour rate-limit headers and stop until reset. Connect notifications are recommended instead of polling and do not count against limits.",
+      "sources": ["https://developers.docusign.com/platform/api-guidelines/", "https://developers.docusign.com/platform/webhooks/connect/"]
+    },
+    "hardToExtract": [
+      {
+        "dataClass": "attachments-files",
+        "detail": "Signed documents come per envelope (combined/archive call per envelope); at 3,000 requests/hour default, a large archive takes many hours; the web app has no cross-envelope bulk download, and bulk export via Retrieve is an add-on. listStatusChanges cannot cross production sites, so multi-site accounts need separate calls per site.",
+        "sources": [
+          "https://developers.docusign.com/docs/esign-rest-api/reference/envelopes/envelopedocuments/get/",
+          "https://developers.docusign.com/platform/api-guidelines/",
+          "https://developers.docusign.com/docs/esign-rest-api/reference/envelopes/envelopes/liststatuschanges/"
+        ]
+      },
+      {
+        "dataClass": "history-audit",
+        "detail": "Audit trail is per envelope (listAuditEvents) and the certificate of completion is a PDF per envelope; neither has a bulk endpoint in the pages checked, so each costs one or more calls per envelope against the hourly limit. The certificate is a PDF, not structured data.",
+        "sources": [
+          "https://developers.docusign.com/docs/esign-rest-api/reference/envelopes/envelopes/listauditevents/",
+          "https://developers.docusign.com/docs/esign-rest-api/reference/envelopes/envelopedocuments/get/"
+        ]
+      },
+      {
+        "dataClass": "other",
+        "detail": "Purged envelopes: Document Retention and Targeted Purge move documents to a purge queue and permanently remove documents and field data (event-triggers page: 'permanently removes documents and their field data from Docusign servers'; 14-day purge queue). An export must run before retention purges them.",
+        "sources": [
+          "https://developers.docusign.com/platform/webhooks/connect/event-triggers/",
+          "https://support.docusign.com/s/document-item?language=en_US&rsc_301=&bundleId=pik1583277475390&topicId=frq1583277404325.html&_LANG=enus"
+        ]
+      },
+      {
+        "dataClass": "other",
+        "detail": "listStatusChanges returns only the last two years unless from_date is set, and includes 'extraneous' envelopes for some status qualifiers, so an importer must re-check statuses client-side.",
+        "sources": ["https://developers.docusign.com/docs/esign-rest-api/reference/envelopes/envelopes/liststatuschanges/"]
+      }
+    ],
+    "migrationTools": [
+      {
+        "name": "Docusign Retrieve",
+        "direction": "out-of-vendor",
+        "description": "Bulk download of envelopes, documents and data to an external storage location, one-time or recurring.",
+        "sources": ["https://www.docusign.com/en-au/products/electronic-signature/features"]
+      },
+      {
+        "name": "Agreement Manager (Navigator) bulk ingestion",
+        "direction": "into-vendor",
+        "description": "API jobs uploading historical agreements (up to 10,000 documents per job, 100MB per document) for AI extraction; limited availability.",
+        "sources": ["https://www.docusign.com/blog/developers/navigator-api-bulk-ingestion-made-simple"]
+      }
+    ],
+    "limits": [
+      "support.docusign.com pages are JS-rendered and WebFetch returned only a loading state; Export Envelope Data, Download Form Data, Document Retention and Retrieve details come from search-result snippets and community threads, not the page text.",
+      "developers.docusign.com is JS-rendered; its content was read from the Gatsby page-data JSON (developers.docusign.com/page-data/<path>/page-data.json) with curl.",
+      "Plan tiers for CSV export, Retrieve, Connect and Document Retention were not confirmed; the features page fetched names no tiers.",
+      "Agreement Manager/Navigator reference page-data returned 404; its details come from the Docusign developer blog, which said GA was planned for early 2026 (current status unconfirmed).",
+      "Did not check Maestro/Web Forms/Rooms/CLM export or workflow-definition APIs; eSignature UI template download/upload (JSON) was not confirmed from a fetched source.",
+      "No injected instructions noticed in fetched content."
+    ],
+    "failures": [
+      {
+        "kind": "fetch",
+        "what": "https://developers.docusign.com/platform/account/rate-limits/",
+        "result": "404 (guessed URL)"
+      },
+      {
+        "kind": "fetch",
+        "what": "https://developers.docusign.com/platform/api-guidelines/ (HTML)",
+        "result": "JS shell only; used page-data JSON instead"
+      },
+      {
+        "kind": "fetch",
+        "what": "https://developers.docusign.com/page-data/docs/esign-rest-api/reference/envelopes/audit-events/listauditevents/page-data.json",
+        "result": "404 (wrong path; correct path fetched)"
+      },
+      {
+        "kind": "fetch",
+        "what": "https://developers.docusign.com/page-data/docs/navigator-api/page-data.json and .../navigator/agreements/getagreementslist/page-data.json",
+        "result": "404"
+      },
+      {
+        "kind": "fetch",
+        "what": "https://support.docusign.com/s/document-item?...topicId=abb1578456349675.html",
+        "result": "JS loading shell, no content"
+      }
+    ]
+  }
+}

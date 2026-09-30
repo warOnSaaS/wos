@@ -1,0 +1,782 @@
+{
+  "schema": "wos-scan.v0",
+  "label": "SCAN — unreviewed, 2026-09-30",
+  "reviewed": false,
+  "countsTowardProgress": false,
+  "target": {
+    "id": "TGT-07",
+    "slug": "jira",
+    "name": "Jira"
+  },
+  "scannedAt": "2026-09-30",
+  "scope": {
+    "included": "Jira Cloud, the single 'Jira' product formed when Jira Software and Jira Work Management merged (announced May 2024), on the Free, Standard, Premium and Enterprise plans, including Rovo AI and agent features bundled into Jira plans.",
+    "excluded": [
+      "Jira Service Management (separate ITSM/service desk product)",
+      "Confluence (separate wiki product; only its Jira integrations noted)",
+      "Jira Product Discovery (separate product)",
+      "Loom (separate video product)",
+      "Bitbucket (separate code hosting; appears only as a dev-tool integration)",
+      "Rovo as a standalone product (only Rovo features included in Jira plans are scanned)",
+      "Atlassian Guard as a product (noted only as the SSO add-on)",
+      "Jira Data Center / Server (not cloud)",
+      "Jira Align (separate enterprise agile product)"
+    ]
+  },
+  "clientApps": [
+    {
+      "surface": "web",
+      "name": "Jira (Cloud web app)",
+      "platforms": null,
+      "sources": ["https://www.atlassian.com/software/jira/pricing"]
+    },
+    {
+      "surface": "ios",
+      "name": "Jira Cloud by Atlassian",
+      "platforms": "iPhone and iPad (iOS/iPadOS 18.0 or later)",
+      "sources": ["https://apps.apple.com/us/app/jira-cloud-by-atlassian/id1006972087"]
+    },
+    {
+      "surface": "android",
+      "name": "Jira Cloud by Atlassian",
+      "platforms": "Android",
+      "sources": ["https://play.google.com/store/apps/details?id=com.atlassian.android.jira.core"]
+    },
+    {
+      "surface": "other",
+      "name": "Atlassian Command-Line Interface (acli)",
+      "platforms": null,
+      "sources": ["https://www.atlassian.com/software/jira/pricing"]
+    }
+  ],
+  "api": {
+    "style": "REST (JSON) v3 plus Jira Software agile REST API; webhooks; Forge app platform",
+    "notes": "Auth via OAuth 2.0 (3LO) apps, Forge apps, or basic auth with API tokens; rate limiting is documented on a dedicated page. Separate agile API covers boards, sprints, backlog, epics, builds, deployments, feature flags and development information.",
+    "sources": [
+      "https://developer.atlassian.com/cloud/jira/platform/rest/v3/intro/",
+      "https://developer.atlassian.com/cloud/jira/software/rest/intro/"
+    ]
+  },
+  "capabilities": [
+    {
+      "id": "issues-work-items",
+      "vendorName": "Work items (formerly issues)",
+      "description": "Unlimited work items with types, fields, assignees and statuses, viewable as list, board, calendar, timeline and summary views inside spaces (formerly projects).",
+      "surfaces": ["web", "ios", "android", "api"],
+      "lowestTier": "Free",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.atlassian.com/software/jira/pricing",
+        "https://developer.atlassian.com/cloud/jira/platform/rest/v3/intro/",
+        "https://apps.apple.com/us/app/jira-cloud-by-atlassian/id1006972087"
+      ]
+    },
+    {
+      "id": "boards-kanban",
+      "vendorName": "Board view",
+      "description": "Kanban/Scrum boards showing work moving through the team's workflow columns; company-managed boards can be based on JQL filters.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Free",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.atlassian.com/software/jira/pricing",
+        "https://developer.atlassian.com/cloud/jira/software/rest/intro/",
+        "https://support.atlassian.com/jira-software-cloud/docs/create-a-board/"
+      ]
+    },
+    {
+      "id": "sprints-agile",
+      "vendorName": "Backlog view and sprints",
+      "description": "Backlog view plus Scrum sprints planned from the Backlog tab, with sprint, burndown and velocity reports.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Free",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.atlassian.com/software/jira/pricing",
+        "https://support.atlassian.com/jira-software-cloud/docs/what-is-a-sprint/",
+        "https://developer.atlassian.com/cloud/jira/software/rest/intro/"
+      ]
+    },
+    {
+      "id": "roadmaps-timelines",
+      "vendorName": "Timeline view; Advanced planning (Plans)",
+      "description": "Single-space timeline for planning and dependencies on all plans; cross-team, cross-space Plans with scenario modelling and expandable work type hierarchy on higher tiers.",
+      "surfaces": ["web", "ios", "api"],
+      "lowestTier": "Free",
+      "tierNote": "Timeline view on Free; Advanced planning (Plans), Scenario Modeling and expandable hierarchy on Premium",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.atlassian.com/software/jira/pricing",
+        "https://apps.apple.com/us/app/jira-cloud-by-atlassian/id1006972087",
+        "https://developer.atlassian.com/cloud/jira/platform/rest/v3/intro/"
+      ]
+    },
+    {
+      "id": "issue-workflows",
+      "vendorName": "Customizable workflows",
+      "description": "Custom workflows with statuses, transitions and workflow rules for moving work from to do to done.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Free",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.atlassian.com/software/jira/pricing", "https://developer.atlassian.com/cloud/jira/platform/rest/v3/intro/"]
+    },
+    {
+      "id": "releases-versions",
+      "vendorName": "Versions and releases",
+      "description": "Group work into versions, track release progress on a release page and version report, and release a version; cross-project releases in Plans.",
+      "surfaces": ["web", "api"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://support.atlassian.com/jira-software-cloud/docs/release-your-teams-work-in-versions/",
+        "https://developer.atlassian.com/cloud/jira/platform/rest/v3/intro/"
+      ]
+    },
+    {
+      "id": "dependencies",
+      "vendorName": "Dependency management",
+      "description": "Link work items that block or depend on each other and visualise them on the timeline; cross-space dependencies need Plans.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Free",
+      "tierNote": "single project on Free/Standard; cross-project on Premium",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.atlassian.com/software/jira/pricing", "https://developer.atlassian.com/cloud/jira/platform/rest/v3/intro/"]
+    },
+    {
+      "id": "dev-tool-integration",
+      "vendorName": "Development tools",
+      "description": "Connect Bitbucket, GitHub and other SCM/CI tools to see branches, commits, PRs, builds and deployments on work items and auto-transition work on repo events.",
+      "surfaces": ["web", "api"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://support.atlassian.com/jira-software-cloud/docs/configure-development-tools/",
+        "https://developer.atlassian.com/cloud/jira/software/rest/intro/"
+      ]
+    },
+    {
+      "id": "goals-okrs",
+      "vendorName": "Unlimited goals",
+      "description": "Create goals, link work items to them and share status updates on goals and projects (via Atlassian Home).",
+      "surfaces": ["web"],
+      "lowestTier": "Free",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.atlassian.com/software/jira/pricing",
+        "https://support.atlassian.com/jira-software-cloud/docs/link-issues-to-goals-in-the-issue-view/"
+      ]
+    },
+    {
+      "id": "capacity-resource-planning",
+      "vendorName": "Capacity management",
+      "description": "Allocate each person's time to epics, tasks or non-specific work in hours, days or percentages, and monitor capacity in Plans.",
+      "surfaces": ["web"],
+      "lowestTier": "Premium",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.atlassian.com/software/jira/pricing", "https://support.atlassian.com/jira-software-cloud/resources/"]
+    },
+    {
+      "id": "custom-fields-objects",
+      "vendorName": "Custom fields and work types",
+      "description": "Admin-defined custom fields (text, dropdowns, dates, labels, user pickers) and work types; Premium adds custom hierarchy levels above epic.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Free",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.atlassian.com/software/jira/pricing", "https://developer.atlassian.com/cloud/jira/platform/rest/v3/intro/"]
+    },
+    {
+      "id": "forms",
+      "vendorName": "Unlimited forms",
+      "description": "Drag-and-drop form builder with conditional fields that collect data and create work items.",
+      "surfaces": ["web", "ios"],
+      "lowestTier": "Free",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.atlassian.com/software/jira/pricing",
+        "https://apps.apple.com/us/app/jira-cloud-by-atlassian/id1006972087",
+        "https://support.atlassian.com/jira-software-cloud/docs/create-a-form/"
+      ]
+    },
+    {
+      "id": "workflow-automation",
+      "vendorName": "Automation",
+      "description": "Rule-based automation flows within a space, across spaces or site-wide, including AI and coding-agent actions.",
+      "surfaces": ["web"],
+      "lowestTier": "Free",
+      "tierNote": "150 steps per subscription per month on Free; 400/750/1,000 steps per user per month on Standard/Premium/Enterprise",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.atlassian.com/software/jira/pricing",
+        "https://support.atlassian.com/jira-software-cloud/docs/set-up-ai-automations-using-recommended-templates/"
+      ]
+    },
+    {
+      "id": "templates",
+      "vendorName": "Templates; Custom templates",
+      "description": "Space templates by team function with preconfigured work types and workflows; custom space templates on Enterprise.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Free",
+      "tierNote": "Custom templates: Enterprise",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.atlassian.com/software/jira/pricing", "https://developer.atlassian.com/cloud/jira/platform/rest/v3/intro/"]
+    },
+    {
+      "id": "reporting-dashboards",
+      "vendorName": "Reports and insights; Dashboards; Atlassian Analytics",
+      "description": "Custom reports and summary dashboards with charts (including AI-created charts), agile reports (burndown, velocity, cycle time, deployment frequency), shared dashboards; Atlassian Analytics, Data Lake and data connectors on Enterprise.",
+      "surfaces": ["web", "ios", "api"],
+      "lowestTier": "Free",
+      "tierNote": "Atlassian Analytics, Data Lake, data connectors: Enterprise",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.atlassian.com/software/jira/pricing",
+        "https://support.atlassian.com/jira-software-cloud/docs/create-and-edit-dashboards/",
+        "https://apps.apple.com/us/app/jira-cloud-by-atlassian/id1006972087"
+      ]
+    },
+    {
+      "id": "search",
+      "vendorName": "Search and JQL",
+      "description": "Basic and advanced search with Jira Query Language, saved filters, and Rovo natural-language search for work items.",
+      "surfaces": ["web", "api"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://support.atlassian.com/jira-software-cloud/docs/what-is-advanced-search-in-jira-cloud/",
+        "https://support.atlassian.com/jira-software-cloud/docs/use-atlassian-intelligence-to-search-for-work-items/",
+        "https://developer.atlassian.com/cloud/jira/platform/rest/v3/intro/"
+      ]
+    },
+    {
+      "id": "data-import-export",
+      "vendorName": "CSV importer and export",
+      "description": "Import or bulk-update work items from CSV; export search results to CSV, Excel, Word, XML or Google Sheets; export Plans data as CSV.",
+      "surfaces": ["web", "api"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://support.atlassian.com/jira-software-cloud/docs/create-issues-using-the-csv-importer/",
+        "https://support.atlassian.com/jira-software-cloud/docs/export-search-results/"
+      ]
+    },
+    {
+      "id": "notifications",
+      "vendorName": "Notifications",
+      "description": "Email notifications configurable per space (notification schemes), watching work items, and push notifications on mobile; Free is capped at 100 emails per day.",
+      "surfaces": ["web", "ios", "api"],
+      "lowestTier": "Free",
+      "tierNote": "100 emails/day on Free; unlimited on paid",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.atlassian.com/software/jira/pricing",
+        "https://support.atlassian.com/jira-software-cloud/docs/customize-notifications-in-team-managed-projects/",
+        "https://apps.apple.com/us/app/jira-cloud-by-atlassian/id1006972087"
+      ]
+    },
+    {
+      "id": "comments-mentions",
+      "vendorName": "Comments, watch and share",
+      "description": "Comment on work items, @mention teammates, watch and share work items.",
+      "surfaces": ["web", "ios", "api"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://support.atlassian.com/jira-software-cloud/docs/watch-share-and-comment-on-a-work-item/",
+        "https://apps.apple.com/us/app/jira-cloud-by-atlassian/id1006972087",
+        "https://developer.atlassian.com/cloud/jira/platform/rest/v3/intro/"
+      ]
+    },
+    {
+      "id": "file-storage",
+      "vendorName": "Attachments and storage",
+      "description": "Attach files to work items; storage of 2 GB on Free, 250 GB on Standard, unlimited on Premium/Enterprise.",
+      "surfaces": ["web", "ios", "api"],
+      "lowestTier": "Free",
+      "tierNote": "2 GB Free / 250 GB Standard / unlimited Premium+",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.atlassian.com/software/jira/pricing",
+        "https://support.atlassian.com/jira-software-cloud/docs/add-an-attachment-to-an-issue/",
+        "https://developer.atlassian.com/cloud/jira/platform/rest/v3/intro/"
+      ]
+    },
+    {
+      "id": "time-tracking",
+      "vendorName": "Time tracking",
+      "description": "Estimate and log time on work items with original/remaining estimates shown in reports.",
+      "surfaces": ["web", "api"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://support.atlassian.com/jira-software-cloud/docs/log-time-on-an-issue/",
+        "https://developer.atlassian.com/cloud/jira/platform/rest/v3/intro/"
+      ]
+    },
+    {
+      "id": "approvals",
+      "vendorName": "Approvals",
+      "description": "Add approval steps to workflows so reviewers sign off before work advances; approvable on mobile.",
+      "surfaces": ["web", "ios"],
+      "lowestTier": "Premium",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.atlassian.com/software/jira/pricing",
+        "https://apps.apple.com/us/app/jira-cloud-by-atlassian/id1006972087",
+        "https://support.atlassian.com/jira-software-cloud/docs/set-up-approvals-in-jira/"
+      ]
+    },
+    {
+      "id": "users-teams",
+      "vendorName": "Users, teams and employee directory",
+      "description": "Users per site (10 on Free, up to 100,000 on paid), groups, Atlassian teams and an employee directory of people and teams.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Free",
+      "tierNote": "10-user limit on Free",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.atlassian.com/software/jira/pricing", "https://developer.atlassian.com/cloud/jira/platform/rest/v3/intro/"]
+    },
+    {
+      "id": "roles-permissions",
+      "vendorName": "User roles and permissions",
+      "description": "Roles, permission schemes and space-level permissions; on Free every user is an admin.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Standard",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.atlassian.com/software/jira/pricing", "https://developer.atlassian.com/cloud/jira/platform/rest/v3/intro/"]
+    },
+    {
+      "id": "external-collaboration",
+      "vendorName": "Free guest access; Anonymous access",
+      "description": "Invite outside collaborators as guests without a paid seat, and let anonymous users view and create work items.",
+      "surfaces": ["web"],
+      "lowestTier": "Standard",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.atlassian.com/software/jira/pricing"]
+    },
+    {
+      "id": "sso-identity",
+      "vendorName": "Atlassian Guard Standard (SSO, SCIM, Active Directory Sync)",
+      "description": "SAML SSO, SCIM provisioning and AD sync via Atlassian Guard; multiple IdPs on Enterprise.",
+      "surfaces": ["web"],
+      "lowestTier": "Free",
+      "tierNote": "Requires Atlassian Guard Standard subscription on Free/Standard/Premium; included in Enterprise",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.atlassian.com/software/jira/pricing"]
+    },
+    {
+      "id": "audit-log",
+      "vendorName": "Audit logs",
+      "description": "Audit log of site configuration changes on Standard+; comprehensive user-activity audit logging on Enterprise; audit records API.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Standard",
+      "tierNote": "user-activity audit logs: Enterprise",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.atlassian.com/software/jira/pricing", "https://developer.atlassian.com/cloud/jira/platform/rest/v3/intro/"]
+    },
+    {
+      "id": "compliance-security",
+      "vendorName": "Security and data residency",
+      "description": "Encryption in transit and at rest, password policies, MDM for mobile, work item-level security (Standard+), data residency (Standard+), IP allowlisting (Premium+).",
+      "surfaces": ["web", "ios", "android", "api"],
+      "lowestTier": "Free",
+      "tierNote": "data residency and work item security from Standard; IP allowlisting from Premium",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.atlassian.com/software/jira/pricing", "https://developer.atlassian.com/cloud/jira/platform/rest/v3/intro/"]
+    },
+    {
+      "id": "sandbox-environments",
+      "vendorName": "Sandbox",
+      "description": "Sandbox copy for testing products and apps before changing production; release tracks to control cloud change rollout.",
+      "surfaces": ["web"],
+      "lowestTier": "Premium",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.atlassian.com/software/jira/pricing"]
+    },
+    {
+      "id": "admin-console",
+      "vendorName": "Atlassian Administration",
+      "description": "Organisation admin: domain verification and account capture, session duration, admin insights (Premium), release tracks, site optimizer, product requests and centralized user subscriptions (Enterprise).",
+      "surfaces": ["web"],
+      "lowestTier": "Free",
+      "tierNote": "admin insights Premium; user counts, product requests Enterprise",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.atlassian.com/software/jira/pricing"]
+    },
+    {
+      "id": "app-marketplace",
+      "vendorName": "Apps and integrations",
+      "description": "Thousands of third-party apps and integrations built for Jira, installed from the Atlassian Marketplace.",
+      "surfaces": ["web"],
+      "lowestTier": "Free",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.atlassian.com/software/jira/pricing"]
+    },
+    {
+      "id": "developer-platform",
+      "vendorName": "Forge; Atlassian CLI; Teamwork Graph CLI",
+      "description": "Forge app platform (custom fields, UI modifications, JQL functions), the Atlassian Command-Line Interface on all plans, and the Teamwork Graph CLI for coding agents on paid plans.",
+      "surfaces": ["api"],
+      "lowestTier": "Free",
+      "tierNote": "Teamwork Graph CLI: Standard+",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://developer.atlassian.com/cloud/jira/platform/rest/v3/intro/", "https://www.atlassian.com/software/jira/pricing"]
+    },
+    {
+      "id": "api-webhooks",
+      "vendorName": "Jira Cloud REST API and webhooks",
+      "description": "REST API v3 and the Jira Software (agile) REST API, with webhooks, OAuth 2.0 (3LO), basic auth with API tokens and documented rate limiting.",
+      "surfaces": ["api"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://developer.atlassian.com/cloud/jira/platform/rest/v3/intro/",
+        "https://developer.atlassian.com/cloud/jira/software/rest/intro/"
+      ]
+    },
+    {
+      "id": "native-integrations",
+      "vendorName": "Slack, Microsoft Teams, Confluence integrations",
+      "description": "Vendor-built apps to create, update and get notifications for Jira work from Slack and Microsoft Teams, plus Confluence embeds of boards, dashboards, releases and plans.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://support.atlassian.com/jira-software-cloud/docs/use-jira-cloud-with-slack/",
+        "https://support.atlassian.com/jira-software-cloud/resources/"
+      ]
+    },
+    {
+      "id": "ai-assistant",
+      "vendorName": "Atlassian Rovo (Search, Chat) in Jira",
+      "description": "Rovo search, chat and AI features such as creating work items with Rovo and natural-language search; usage metered in pooled monthly credits.",
+      "surfaces": ["web"],
+      "lowestTier": "Standard",
+      "tierNote": "25/70/150 Rovo credits per user per month on Standard/Premium/Enterprise; Free plan excludes Rovo",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.atlassian.com/software/jira/pricing",
+        "https://support.atlassian.com/jira-software-cloud/docs/use-atlassian-intelligence-to-search-for-work-items/"
+      ]
+    },
+    {
+      "id": "ai-agents",
+      "vendorName": "Agents in Jira; Jira Coding Agent; Third-party agents",
+      "description": "Assign work items to Rovo and third-party agents (Claude, Cursor, GitHub Copilot), track them in Agent Sessions, use the Jira Coding Agent in a cloud sandbox, and govern with AI governance; Rovo Studio builds custom agents on Premium+.",
+      "surfaces": ["web"],
+      "lowestTier": "Standard",
+      "tierNote": "Rovo Studio: Premium",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.atlassian.com/software/jira/pricing",
+        "https://support.atlassian.com/jira-software-cloud/docs/what-is-the-jira-coding-agent/",
+        "https://support.atlassian.com/jira-software-cloud/docs/work-with-ai-agents-in-jira/"
+      ]
+    },
+    {
+      "id": "low-code-builder",
+      "vendorName": "Rovo Studio",
+      "description": "Build agents, automations and apps in plain language, no code required.",
+      "surfaces": ["web"],
+      "lowestTier": "Premium",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.atlassian.com/software/jira/pricing"]
+    },
+    {
+      "id": "mobile-app",
+      "vendorName": "Jira Cloud by Atlassian",
+      "description": "Native iPhone/iPad and Android apps to create and edit work, comment, attach files, view roadmaps and reports, approve work and get push notifications.",
+      "surfaces": ["ios", "android"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://apps.apple.com/us/app/jira-cloud-by-atlassian/id1006972087",
+        "https://play.google.com/store/apps/details?id=com.atlassian.android.jira.core"
+      ]
+    },
+    {
+      "id": "asset-management",
+      "vendorName": "Assets objects",
+      "description": "Assets object records available inside Jira.",
+      "surfaces": ["web"],
+      "lowestTier": "Standard",
+      "tierNote": "Standard and Premium single-site customers; rollout to others in progress",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.atlassian.com/software/jira/pricing"]
+    },
+    {
+      "id": "archiving",
+      "vendorName": "Space archiving; archive work items",
+      "description": "Archive inactive spaces and their work items to keep the site focused on current work.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Premium",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.atlassian.com/software/jira/pricing",
+        "https://support.atlassian.com/jira-software-cloud/docs/archive-an-issue/"
+      ]
+    }
+  ],
+  "limits": [
+    "No official Atlassian desktop app: the Jira Cloud for Mac app (2019, Mac Catalyst) was sunset per https://www.atlassian.com/blog/jira/jira-cloud-app-for-mac, and https://jira.atlassian.com/browse/JRACLOUD-78044 is an open 'Gathering Interest' request. Third-party 'Desktop App for Jira' listings exist (Microsoft Store, Mac App Store, seen in search results) requiring a Marketplace add-on; not Atlassian's, so desktop-app is omitted.",
+    "Pricing page is JS-rendered; WebFetch returned nothing useful, so the plan/feature matrix was read from the embedded structured data in the raw HTML (curl). Prices were not captured.",
+    "Google Play listing could not be read by WebFetch; Android presence is from search results only.",
+    "Rovo MCP Server (Standard+) and Teamwork Graph noted on pricing but folded into ai-agents/developer-platform rather than separate entries.",
+    "Tiers for releases, search/JQL, time tracking, dev-tool integration, import/export, comments and native integrations are not stated on the pricing page, so lowestTier is null.",
+    "Calendar view, list view and summary view are all on Free per pricing but have no dedicated vocabulary id; folded into issues-work-items.",
+    "No injected instructions observed in fetched pages."
+  ],
+  "failures": [
+    {
+      "kind": "fetch",
+      "what": "https://www.atlassian.com/software/jira/pricing",
+      "result": "WebFetch returned truncated/empty content (JS-rendered); worked around with curl of raw HTML"
+    },
+    {
+      "kind": "fetch",
+      "what": "https://developer.atlassian.com/cloud/jira/platform/rest/v3/intro/",
+      "result": "WebFetch returned truncated content; worked around with curl"
+    },
+    {
+      "kind": "fetch",
+      "what": "https://play.google.com/store/apps/details?id=com.atlassian.android.jira.core",
+      "result": "WebFetch returned truncated content; description not extracted"
+    },
+    {
+      "kind": "fetch",
+      "what": "https://support.atlassian.com/jira-software-cloud/docs/what-is-the-development-panel/ and 5 other guessed doc URLs",
+      "result": "404 (guessed paths); replaced with paths from the docs index"
+    }
+  ],
+  "dataExport": {
+    "extraction": {
+      "full": "partial",
+      "incremental": "yes",
+      "apiBased": "partial",
+      "note": "The site backup (Backup manager) exports work items, fields, comments, boards/sprints, users, attachments and space configuration including workflows and schemes, but excludes automation flows, third-party app data, JSM Assets, Opsgenie-powered features and some Jira Product Discovery data. The REST API supports JQL search (updated-since via JQL), changelogs, attachments, workflows and webhooks for issue/comment/worklog/attachment events, but the site backup itself is documented only as a UI action in Backup manager."
+    },
+    "exportOptions": [
+      {
+        "name": "Backup for cloud (Backup manager)",
+        "description": "Site backup of work items and field content (system and custom), board and sprint data, users and group settings, comments, optional media (attachments, avatars, logos, custom template icons), space configuration (workflows, global permissions, schemes, screens, custom field configuration, work types, board configuration) and Advanced Roadmaps. Unzips to activeobjects.xml, entities.xml and data/attachments, data/avatars, logos directories.",
+        "formats": ["ZIP", "XML"],
+        "limits": "Backups can be run at any time, but with attachments/avatars/logos included you must allow 48 hours between backups. Recommended limits: total data size 25 GB, attachment size 50-100 GB. Organization admins can block exports. Starting Jan 22, 2026, Backup Manager limits restores to backups 30 days old or less. 'Backup for server' was discontinued from June 30, 2025.",
+        "lowestTier": null,
+        "sources": ["https://support.atlassian.com/jira-cloud-administration/docs/export-issues/"]
+      },
+      {
+        "name": "Export CSV from the Issue Navigator",
+        "description": "Asynchronous export of the work items matching a JQL filter, with current fields or all fields.",
+        "formats": ["CSV (current fields)", "CSV (all fields)", "Excel CSV (all fields)"],
+        "limits": "Up to 10,000 work items per export; the pager/start URL workaround (1,000 per batch) is marked deprecated as of March 2026; recommended workaround is splitting by JQL into batches under 10,000. Google Sheets / Microsoft Excel apps are an alternative.",
+        "lowestTier": null,
+        "sources": ["https://support.atlassian.com/jira/kb/export-over-10-000-work-items-in-jira-cloud/"]
+      },
+      {
+        "name": "Export flows (Jira automation)",
+        "description": "Downloads all global and project-scoped automation flows in one file; requires a global administrator.",
+        "formats": ["JSON"],
+        "limits": "JSON file max 5MB (export in multiple segments if larger); import/export supported only for one-to-one migrations, not federation or consolidation.",
+        "lowestTier": null,
+        "sources": ["https://support.atlassian.com/cloud-automation/docs/import-and-export-jira-automation-rules/"]
+      },
+      {
+        "name": "Atlassian Backup and Restore",
+        "description": "Add-on for on-demand or scheduled (daily or weekly, via backup policies) backups and restores; needs organization admin and app admin permissions. Backups kept in Atlassian-owned storage.",
+        "formats": [],
+        "limits": "Purchasable add-on only for Premium or Enterprise plans. Backups retained 30 days, expire on the 31st day. Jira/JSM (up to 300 GB, 7M attachments): 24-hour RPO, 12-hour RTO. Amazon S3 storage for backups no longer available except for customers who used it in the past.",
+        "lowestTier": "Premium (paid add-on)",
+        "sources": [
+          "https://support.atlassian.com/organization-administration/docs/overview-of-atlassian-backups/",
+          "https://support.atlassian.com/organization-administration/docs/understand-billing-for-atlassian-backup-and-restore/"
+        ]
+      }
+    ],
+    "apis": [
+      {
+        "name": "JQL enhanced search (GET/POST /rest/api/3/search/jql)",
+        "kind": "incremental",
+        "description": "Searches issues by JQL (so an 'updated >=' clause gives an updated-since pull) with nextPageToken pagination, maxResults, fields, expand and includeArchivedProjects. Doc warns recent updates might not be immediately visible; reconcileIssues gives read-after-write consistency. POST /rest/api/3/search/approximate-count returns a count. The older /rest/api/3/search is marked deprecated / being removed.",
+        "sources": ["https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issue-search/"]
+      },
+      {
+        "name": "Issues API (bulk fetch, changelogs)",
+        "kind": "read-api",
+        "description": "POST /rest/api/3/issue/bulkfetch, GET /rest/api/3/issue/{id}, GET /rest/api/3/issue/{id}/changelog, POST /rest/api/3/issue/{id}/changelog/list, and POST /rest/api/3/changelog/bulkfetch (paginated changelogs for multiple issues, filterable by field) give per-issue field history.",
+        "sources": ["https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issues/"]
+      },
+      {
+        "name": "Issue attachments API",
+        "kind": "read-api",
+        "description": "GET /rest/api/3/attachment/content/{id} returns attachment bytes (supports HTTP Range), plus attachment metadata and thumbnails; attachment metadata with content URLs appears on the issue.",
+        "sources": ["https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issue-attachments/"]
+      },
+      {
+        "name": "Workflows API",
+        "kind": "read-api",
+        "description": "GET /rest/api/3/workflow/search, workflow history, usages by project/issue type and workflow schemes; configuration can be read by API.",
+        "sources": ["https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-workflows/"]
+      },
+      {
+        "name": "Audit records (GET /rest/api/3/auditing/record)",
+        "kind": "read-api",
+        "description": "Admin audit records filterable by text and created-from/created-to dates; requires Administer Jira global permission.",
+        "sources": ["https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-audit-records/"]
+      },
+      {
+        "name": "Webhooks",
+        "kind": "webhooks-events",
+        "description": "Events include jira:issue_created/updated/deleted, comment_created/updated/deleted, worklog_created/updated/deleted, attachment_created/deleted, issuelink_created/deleted, issue_property_set/deleted, sprint events and more, with JQL filtering for issue-scoped events. Registered in Jira Administration (admin webhooks), in a Connect descriptor, or dynamically by REST for Connect and OAuth 2.0 apps (POST /rest/api/3/webhook). Dynamic webhooks expire 30 days after creation/refresh (extend via REST); limit of 5 webhooks per app per user on a tenant for OAuth apps; deliveries carry an identifier stable across retries and an X-Atlassian-Webhook-Retry header.",
+        "sources": ["https://developer.atlassian.com/cloud/jira/platform/webhooks/"]
+      }
+    ],
+    "auth": {
+      "models": ["oauth-app", "api-key", "basic", "other"],
+      "notes": "OAuth 2.0 (3LO) apps are created in the developer console; offline_access scope yields refresh tokens; sharing a 3LO app with other users requires enabling Distribution, and users installing an unreviewed integration see a warning until Atlassian reviews it. Scripts can use basic auth with account email + API token (passwords deprecated); API tokens expire in 1 to 365 days, and scoped API tokens call api.atlassian.com/ex/jira/{cloudId}. Forge and Connect apps have built-in auth (Connect uses JWT). Audit records need manage:jira-configuration / Administer Jira.",
+      "sources": [
+        "https://developer.atlassian.com/cloud/jira/platform/oauth-2-3lo-apps/",
+        "https://developer.atlassian.com/cloud/jira/platform/basic-auth-for-rest-apis/",
+        "https://support.atlassian.com/atlassian-account/docs/manage-api-tokens-for-your-atlassian-account/"
+      ]
+    },
+    "rateLimits": {
+      "summary": "Points-based hourly quota for Forge, Connect and OAuth 2.0 (3LO) apps: Tier 1 Global Pool (default) 65,000 points/hour shared across all tenants; Tier 2 Per-Tenant Pool (assigned after review) Standard 100,000 + 10 x users, Premium 130,000 + 20 x users, Enterprise 150,000 + 30 x users points/hour, capped at 500,000. Each request has a base cost of 1 point plus points per object; writes cost only the base. Default per-endpoint burst limits of GET 100, POST 100, PUT 50, DELETE 50 requests per second (some endpoints have custom limits) and per-issue write limits of 20 writes per 2 seconds and 100 per 30 seconds. Exceeding returns 429 with Retry-After and RateLimit-Reason. API token traffic is not affected by the points model and stays under burst limits.",
+      "sources": ["https://developer.atlassian.com/cloud/jira/platform/rate-limiting/"]
+    },
+    "hardToExtract": [
+      {
+        "dataClass": "automations-workflows",
+        "detail": "Automation flows are not included in the site backup; they must be exported separately as JSON by a global admin (5MB cap per file). No automation REST API is mentioned on that page. Workflows themselves are in the backup and readable via the workflows API.",
+        "sources": [
+          "https://support.atlassian.com/jira-cloud-administration/docs/export-issues/",
+          "https://support.atlassian.com/cloud-automation/docs/import-and-export-jira-automation-rules/"
+        ]
+      },
+      {
+        "dataClass": "other",
+        "detail": "Site backup cannot export third-party apps and app data, JSM features powered by Opsgenie (alerts, on-call schedules), Assets for JSM, app access settings, or Jira Product Discovery views configurations, insights and vote fields. Custom email passwords are not copied in a cloud-to-cloud restore.",
+        "sources": ["https://support.atlassian.com/jira-cloud-administration/docs/export-issues/"]
+      },
+      {
+        "dataClass": "attachments-files",
+        "detail": "Including attachments/avatars/logos in a backup forces a 48-hour gap between backups, and Atlassian recommends staying within 50-100 GB of attachments; by API, attachments are fetched one at a time per attachment id.",
+        "sources": [
+          "https://support.atlassian.com/jira-cloud-administration/docs/export-issues/",
+          "https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issue-attachments/"
+        ]
+      },
+      {
+        "dataClass": "history-audit",
+        "detail": "Field history is available per issue via changelog endpoints (and bulk changelog fetch), but CSV export does not carry it; audit records require Administer Jira global permission.",
+        "sources": [
+          "https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issues/",
+          "https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-audit-records/"
+        ]
+      },
+      {
+        "dataClass": "other",
+        "detail": "Deletions: JQL search only finds existing issues, so a delta sync needs the jira:issue_deleted / comment_deleted / worklog_deleted webhooks to see removals. Search is eventually consistent ('recent updates might not be immediately visible').",
+        "sources": [
+          "https://developer.atlassian.com/cloud/jira/platform/webhooks/",
+          "https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issue-search/"
+        ]
+      }
+    ],
+    "migrationTools": [
+      {
+        "name": "Backup restore (Import backup data into Jira Cloud / Data Center)",
+        "direction": "both",
+        "description": "Restore a cloud backup (entities.xml + activeobjects.xml + media) into another Jira Cloud site or into Jira Data Center.",
+        "sources": ["https://support.atlassian.com/jira-cloud-administration/docs/export-issues/"]
+      },
+      {
+        "name": "CSV / JSON / Trello / Bitbucket importers",
+        "direction": "into-vendor",
+        "description": "Import work items from CSV (including the PVCS command), JSON, Trello and Bitbucket; a separate 'Migrate from other work trackers' path is documented.",
+        "sources": ["https://support.atlassian.com/jira-cloud-administration/docs/import-issues/"]
+      }
+    ],
+    "limits": [
+      "No public REST endpoint to trigger or download the site backup was found; the backup page documents only the Backup manager UI (the 'download large backup files using cURL' KB title was seen in search but not fetched).",
+      "Jira Cloud Migration Assistant and cloud-to-cloud 'Transfer data' were not fetched; not characterised.",
+      "Whether the Backup manager is available on the Free plan is not stated on the fetched page; lowestTier left null.",
+      "Audit log retention period was not found on the fetched API page.",
+      "No injected instructions were noticed in fetched pages."
+    ],
+    "failures": [
+      {
+        "kind": "fetch",
+        "what": "https://support.atlassian.com/jira-cloud-administration/docs/back-up-your-data/",
+        "result": "404"
+      },
+      {
+        "kind": "fetch",
+        "what": "https://support.atlassian.com/cloud-automation/docs/export-and-import-automation-rules/",
+        "result": "empty (wrong URL); found the right one by search"
+      }
+    ]
+  }
+}

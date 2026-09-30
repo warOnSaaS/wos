@@ -1,0 +1,916 @@
+{
+  "schema": "wos-scan.v0",
+  "label": "SCAN — unreviewed, 2026-09-30",
+  "reviewed": false,
+  "countsTowardProgress": false,
+  "target": {
+    "id": "TGT-01",
+    "slug": "salesforce",
+    "name": "Salesforce"
+  },
+  "scannedAt": "2026-09-30",
+  "scope": {
+    "included": "Sales Cloud across the editions on the public pricing page (Free Suite, Starter Suite, Pro Suite, Core, Advanced, Max) and the core Salesforce Platform it runs on: objects, Flow, Lightning App Builder, reports, security, AgentExchange, APIs, and Agentforce as it applies to sales.",
+    "excluded": [
+      "Service Cloud (Customer Service Management, Contact Center, Field Service) - separate cloud; only the case and knowledge rows bundled in Sales Cloud editions are noted",
+      "Field Service - part of Service, separate product",
+      "Marketing Cloud / Marketing Cloud Next - separate cloud; only the Starter/Pro Suite email marketing is noted",
+      "Commerce Cloud (B2C Commerce, B2B Commerce, Order Management, Point of Sale) - separate cloud",
+      "Data 360 (Data Cloud) as a separate product - only the bundled data sync features are noted",
+      "Tableau / Tableau Next / CRM Analytics as separate products - only what Sales Cloud editions bundle",
+      "MuleSoft - separate integration product",
+      "Slack as a product - only its bundling with Sales Cloud is noted",
+      "Industries clouds (Automotive, Communications, Consumer Goods, Education and others) - vertical products",
+      "Experience Cloud / Websites & Custom Apps as a separate product - PRM noted only as an add-on",
+      "Revenue Cloud / Revenue Lifecycle Management and CPQ in depth - add-on; noted only under quotes",
+      "Heroku, Informatica, Net Zero Cloud - separate products"
+    ]
+  },
+  "clientApps": [
+    {
+      "surface": "web",
+      "name": "Salesforce (Lightning Experience)",
+      "platforms": null,
+      "sources": ["https://www.salesforce.com/editions-pricing/sales-cloud/"]
+    },
+    {
+      "surface": "ios",
+      "name": "Salesforce",
+      "platforms": "iPhone, iPad, Mac, Apple Vision",
+      "sources": ["https://apps.apple.com/us/app/salesforce/id404249815"]
+    },
+    {
+      "surface": "android",
+      "name": "Salesforce",
+      "platforms": "Android",
+      "sources": ["https://play.google.com/store/apps/details?id=com.salesforce.chatter"]
+    },
+    {
+      "surface": "email_addin",
+      "name": "Outlook integration",
+      "platforms": "Outlook desktop and Outlook on the web",
+      "sources": ["https://help.salesforce.com/s/articleView?language=en_US&id=email_int_overview.htm&type=5"]
+    },
+    {
+      "surface": "browser_extension",
+      "name": "Gmail integration (Salesforce Chrome extension)",
+      "platforms": "Chrome",
+      "sources": ["https://help.salesforce.com/s/articleView?language=en_US&id=sales.app_for_gmail_user_install.htm&type=5"]
+    },
+    {
+      "surface": "browser_extension",
+      "name": "CRM Extension (Sales Cloud Everywhere)",
+      "platforms": null,
+      "sources": ["https://www.salesforce.com/sales/engagement-platform/"]
+    },
+    {
+      "surface": "desktop",
+      "name": "Data Loader",
+      "platforms": null,
+      "sources": ["https://help.salesforce.com/s/articleView?id=xcloud.import_with_data_import_wizard.htm&language=en_US&type=5"]
+    }
+  ],
+  "api": {
+    "style": "REST (JSON) and SOAP, plus Bulk API 2.0, GraphQL, Metadata and Tooling APIs, and gRPC Pub/Sub API for platform and Change Data Capture events",
+    "notes": "Help lists REST, SOAP, Connect REST, Apex REST/SOAP, Analytics REST, User Interface, GraphQL, Tooling, Bulk 2.0, Metadata and Pub/Sub APIs, authenticated by OAuth 2.0 or session ID. Web Services API is included from Core and costs $25 USD/user/month extra on Pro Suite. Rate limits not captured in this scan.",
+    "sources": [
+      "https://help.salesforce.com/s/articleView?id=platform.integrate_what_is_api.htm&language=en_US&type=5",
+      "https://www.salesforce.com/editions-pricing/sales-cloud/",
+      "https://developer.salesforce.com/docs/atlas.en-us.api_asynch.meta/api_asynch/bulk_api_2_0.htm"
+    ]
+  },
+  "capabilities": [
+    {
+      "id": "leads",
+      "vendorName": "Lead Management",
+      "description": "Lead records with capture, assignment and routing rules; Starter Suite adds built-in sales flows for lead routing.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Free Suite",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.salesforce.com/editions-pricing/sales-cloud/",
+        "https://help.salesforce.com/s/articleView?id=platform.integrate_what_is_api.htm&language=en_US&type=5"
+      ]
+    },
+    {
+      "id": "contacts",
+      "vendorName": "Account and Contact Management",
+      "description": "Contact records linked to accounts with activity history.",
+      "surfaces": ["web", "ios", "android", "api"],
+      "lowestTier": "Free Suite",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.salesforce.com/editions-pricing/sales-cloud/", "https://apps.apple.com/us/app/salesforce/id404249815"]
+    },
+    {
+      "id": "organizations",
+      "vendorName": "Accounts / Person Accounts",
+      "description": "Account (company) records that group contacts, opportunities and activity; Person Accounts model individual consumers.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Free Suite",
+      "tierNote": "Person Accounts from Pro Suite",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.salesforce.com/editions-pricing/sales-cloud/"]
+    },
+    {
+      "id": "pipelines-deals",
+      "vendorName": "Opportunity Management",
+      "description": "Opportunities through a customizable sales process, with Sales Teams, Opportunity Splits, Pipeline Inspection, Deal Insights and waterfall charts on higher editions.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Free Suite",
+      "tierNote": "Sales Teams, Opportunity Splits, Pipeline Inspection, Deal Insights from Core",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.salesforce.com/editions-pricing/sales-cloud/"]
+    },
+    {
+      "id": "forecasting",
+      "vendorName": "Collaborative Forecasts / Advanced Forecast & Pipeline Management",
+      "description": "Forecasts rolled up by role or territory with adjustments, embedded forecast charts and a forecasting mobile app; Predictive and Consumption Forecasting on higher editions.",
+      "surfaces": ["web", "ios", "android"],
+      "lowestTier": "Pro Suite",
+      "tierNote": "Pro Suite card lists 'Sales Quoting and Forecasting'; the 'Advanced Forecast & Pipeline Management' row starts at Core; Predictive Forecasting purchasable on Core, included Advanced",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.salesforce.com/editions-pricing/sales-cloud/",
+        "https://help.salesforce.com/s/articleView?id=000334120&language=en_US&type=1"
+      ]
+    },
+    {
+      "id": "territory-management",
+      "vendorName": "Sales Territories (Enterprise Territory Management)",
+      "description": "Model sales territories that map reps to accounts; territory hierarchy can drive forecast rollups.",
+      "surfaces": ["web"],
+      "lowestTier": "Core",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.salesforce.com/editions-pricing/sales-cloud/",
+        "https://help.salesforce.com/s/articleView?id=000387713&language=en_US&type=1"
+      ]
+    },
+    {
+      "id": "quotes-cpq",
+      "vendorName": "Quotes / Revenue Cloud (CPQ)",
+      "description": "Basic quotes built from products and price books; full configure-price-quote is the separate Revenue Cloud add-on; Agentforce can create quotes from natural language.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Pro Suite",
+      "tierNote": "CPQ via Revenue Cloud add-on, from $200 USD/user/month",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.salesforce.com/editions-pricing/sales-cloud/", "https://www.salesforce.com/sales/ai-sales-agent/"]
+    },
+    {
+      "id": "products-price-books",
+      "vendorName": "Products and Price Books",
+      "description": "A product catalogue with price books used on opportunities and quotes.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Free Suite",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.salesforce.com/editions-pricing/sales-cloud/"]
+    },
+    {
+      "id": "contracts-renewals",
+      "vendorName": "Contracts and Orders",
+      "description": "Contract records for approvals and renewals, plus sales order records.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Pro Suite",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.salesforce.com/editions-pricing/sales-cloud/"]
+    },
+    {
+      "id": "lead-scoring",
+      "vendorName": "Lead Scoring / Opportunity Scoring",
+      "description": "Predictive scoring that ranks leads and opportunities by likelihood to convert, showing the factors behind each score.",
+      "surfaces": ["web"],
+      "lowestTier": "Core",
+      "tierNote": "Lead Scoring purchasable on Core, included Advanced and Max; Opportunity Scoring included from Core",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.salesforce.com/editions-pricing/sales-cloud/"]
+    },
+    {
+      "id": "sales-sequences",
+      "vendorName": "Sales Cadences (Sales Engagement)",
+      "description": "Step-by-step cadences of email, call and social tasks that guide reps through prospecting, built in Cadence Builder.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": "Sales Engagement add-on listed at $50 USD/user/month; pricing table does not name the lowest edition",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.salesforce.com/sales/engagement-platform/",
+        "https://help.salesforce.com/s/articleView?language=en_US&id=sales.se_cadences_builder_2.htm&type=5"
+      ]
+    },
+    {
+      "id": "sales-engagement-tools",
+      "vendorName": "Email Productivity / Sales Engagement",
+      "description": "Email tracking, send-later, dynamic meeting scheduling, a unified to-do list, Sales Workspace seller homepage and the CRM Extension for working from the web.",
+      "surfaces": ["web"],
+      "lowestTier": "Free Suite",
+      "tierNote": "Email Productivity from Free Suite; Sales Workspace from Core",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.salesforce.com/editions-pricing/sales-cloud/", "https://www.salesforce.com/sales/engagement-platform/"]
+    },
+    {
+      "id": "conversation-intelligence",
+      "vendorName": "Conversation Intelligence (Einstein Conversation Insights) / Call Summaries",
+      "description": "Logs and transcribes sales calls, extracts action items, keywords, competitor and pricing mentions, and supports coaching playlists; AI call summaries.",
+      "surfaces": ["web"],
+      "lowestTier": "Core",
+      "tierNote": "Call Summaries purchasable on Core/Advanced, included Max",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.salesforce.com/editions-pricing/sales-cloud/", "https://www.salesforce.com/sales/engagement-platform/"]
+    },
+    {
+      "id": "email-calendar-sync",
+      "vendorName": "Outlook and Gmail Integration / Activity Capture",
+      "description": "Work with Salesforce records inside Outlook and Gmail, log emails and events, and automatically capture and sync email and calendar activity.",
+      "surfaces": ["web", "desktop"],
+      "lowestTier": "Free Suite",
+      "tierNote": "Activity Capture from Starter Suite; Inbox features need an Inbox license",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.salesforce.com/editions-pricing/sales-cloud/",
+        "https://help.salesforce.com/s/articleView?language=en_US&id=email_int_overview.htm&type=5",
+        "https://help.salesforce.com/s/articleView?language=en_US&id=sales.app_for_gmail_user_install.htm&type=5"
+      ]
+    },
+    {
+      "id": "email-sending",
+      "vendorName": "Mass Email / List Email",
+      "description": "Send emails to targeted lists of leads or contacts and track who received them.",
+      "surfaces": ["web"],
+      "lowestTier": "Free Suite",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.salesforce.com/editions-pricing/sales-cloud/"]
+    },
+    {
+      "id": "email-marketing",
+      "vendorName": "Dynamic Email Marketing and Analytics",
+      "description": "Marketing email with analytics bundled in Starter Suite and Pro Suite (the SMB suites that include marketing).",
+      "surfaces": ["web"],
+      "lowestTier": "Starter Suite",
+      "tierNote": "Full marketing platform is Marketing Cloud, out of scope",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.salesforce.com/editions-pricing/sales-cloud/"]
+    },
+    {
+      "id": "campaigns-attribution",
+      "vendorName": "Campaign Management / Campaign Influence",
+      "description": "Campaign records and attribution of opportunities to multiple campaigns.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Free Suite",
+      "tierNote": "Campaign Influence from Pro Suite (3 campaigns per opportunity; 5 from Core)",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.salesforce.com/editions-pricing/sales-cloud/"]
+    },
+    {
+      "id": "forms",
+      "vendorName": "Web-to-Lead Capture",
+      "description": "Website forms that create lead records from visitor submissions.",
+      "surfaces": ["web"],
+      "lowestTier": "Free Suite",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.salesforce.com/editions-pricing/sales-cloud/"]
+    },
+    {
+      "id": "data-quality-dedup",
+      "vendorName": "Duplicate Blocking / Validation Rules",
+      "description": "Duplicate rules that prevent duplicate records, and validation rules enforced on save and import.",
+      "surfaces": ["web"],
+      "lowestTier": "Free Suite",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.salesforce.com/editions-pricing/sales-cloud/",
+        "https://help.salesforce.com/s/articleView?id=xcloud.import_with_data_import_wizard.htm&language=en_US&type=5"
+      ]
+    },
+    {
+      "id": "tasks",
+      "vendorName": "To Do List / Task Management",
+      "description": "Tasks with owners and due dates and a seller to-do list.",
+      "surfaces": ["web", "ios", "android", "api"],
+      "lowestTier": "Free Suite",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.salesforce.com/editions-pricing/sales-cloud/", "https://apps.apple.com/us/app/salesforce/id404249815"]
+    },
+    {
+      "id": "activities",
+      "vendorName": "Activity Feed / Activity Timeline",
+      "description": "Logged calls, emails, events and tasks on each record's activity feed.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Free Suite",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.salesforce.com/editions-pricing/sales-cloud/"]
+    },
+    {
+      "id": "comments-mentions",
+      "vendorName": "Chatter",
+      "description": "Feeds, posts and @mentions on records for internal collaboration and with outside parties.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Pro Suite",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.salesforce.com/editions-pricing/sales-cloud/",
+        "https://help.salesforce.com/s/articleView?id=platform.integrate_what_is_api.htm&language=en_US&type=5"
+      ]
+    },
+    {
+      "id": "file-storage",
+      "vendorName": "Files",
+      "description": "Upload and share files on deals and records; file storage per user.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Free Suite",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.salesforce.com/editions-pricing/sales-cloud/",
+        "https://help.salesforce.com/s/articleView?id=platform.integrate_what_is_api.htm&language=en_US&type=5"
+      ]
+    },
+    {
+      "id": "templates",
+      "vendorName": "Email Templates",
+      "description": "Reusable email templates for sales outreach.",
+      "surfaces": ["web"],
+      "lowestTier": "Free Suite",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.salesforce.com/editions-pricing/sales-cloud/", "https://www.salesforce.com/sales/engagement-platform/"]
+    },
+    {
+      "id": "calendar-scheduling",
+      "vendorName": "Salesforce Meetings / Meeting Scheduling",
+      "description": "Meeting prep view of attendees and next steps; dynamic meeting-scheduling links in Email Productivity.",
+      "surfaces": ["web"],
+      "lowestTier": "Pro Suite",
+      "tierNote": "Meeting-scheduling links in Email Productivity from Free Suite",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.salesforce.com/editions-pricing/sales-cloud/", "https://www.salesforce.com/sales/engagement-platform/"]
+    },
+    {
+      "id": "reporting-dashboards",
+      "vendorName": "Customizable Reports and Dashboards / Tableau Next",
+      "description": "Report builder and dashboards on CRM data; advanced reporting features and Tableau Next agentic analytics on higher editions.",
+      "surfaces": ["web", "ios", "android", "api"],
+      "lowestTier": "Free Suite",
+      "tierNote": "Advanced Reporting Features and Tableau Next from Core",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.salesforce.com/editions-pricing/sales-cloud/",
+        "https://apps.apple.com/us/app/salesforce/id404249815",
+        "https://help.salesforce.com/s/articleView?id=platform.integrate_what_is_api.htm&language=en_US&type=5"
+      ]
+    },
+    {
+      "id": "workflow-automation",
+      "vendorName": "Flow Builder",
+      "description": "Point-and-click flows that automate business processes; Flow Orchestration for multi-step processes.",
+      "surfaces": ["web"],
+      "lowestTier": "Pro Suite",
+      "tierNote": "Pro Suite limited to 5 flows per org; Flow Orchestration is a paid add-on on all editions",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.salesforce.com/editions-pricing/sales-cloud/", "https://www.salesforce.com/platform/integration-automation/"]
+    },
+    {
+      "id": "approvals",
+      "vendorName": "Approval Processes",
+      "description": "Route records to approvers.",
+      "surfaces": ["web"],
+      "lowestTier": "Core",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.salesforce.com/editions-pricing/sales-cloud/"]
+    },
+    {
+      "id": "low-code-builder",
+      "vendorName": "Lightning App Builder",
+      "description": "Build custom pages and apps with clicks; Mobile App Builder for mobile.",
+      "surfaces": ["web"],
+      "lowestTier": "Pro Suite",
+      "tierNote": "Unlimited Custom Applications from Pro Suite",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.salesforce.com/editions-pricing/sales-cloud/",
+        "https://www.salesforce.com/platform/enterprise-app-development/"
+      ]
+    },
+    {
+      "id": "custom-fields-objects",
+      "vendorName": "Custom Objects / Record Types",
+      "description": "Custom fields and objects that extend the data model, with record types per object to tailor processes and picklists.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Free Suite",
+      "tierNote": "Record Types per object from Free Suite; custom object limits per edition not on the pricing page",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.salesforce.com/editions-pricing/sales-cloud/",
+        "https://help.salesforce.com/s/articleView?id=xcloud.import_with_data_import_wizard.htm&language=en_US&type=5"
+      ]
+    },
+    {
+      "id": "developer-platform",
+      "vendorName": "Lightning Platform (Apex, Lightning Web Components, Salesforce CLI, DevOps Center)",
+      "description": "Pro-code customisation with Apex (a Java-like language), Lightning Web Components and the Salesforce CLI for Salesforce DX projects.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Core",
+      "tierNote": "Pricing lists 'Lightning Platform' from Core",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.salesforce.com/editions-pricing/sales-cloud/",
+        "https://resources.docs.salesforce.com/latest/latest/en-us/sfdc/pdf/salesforce_apex_developer_guide.pdf",
+        "https://developer.salesforce.com/docs/atlas.en-us.sfdx_dev.meta/sfdx_dev/sfdx_dev_develop_create_lwc.htm"
+      ]
+    },
+    {
+      "id": "sandbox-environments",
+      "vendorName": "Sandboxes",
+      "description": "Developer, Developer Pro, Partial and Full sandbox copies of production for building and testing; Data Mask & Seed for sandbox data.",
+      "surfaces": ["web"],
+      "lowestTier": "Pro Suite",
+      "tierNote": "Developer Sandbox from Pro Suite; 1 Partial from Core; 1 Full included from Advanced (purchasable on Core)",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.salesforce.com/editions-pricing/sales-cloud/",
+        "https://www.salesforce.com/platform/enterprise-app-development/"
+      ]
+    },
+    {
+      "id": "roles-permissions",
+      "vendorName": "Roles and Permissions / Profiles and Page Layouts",
+      "description": "Roles, profiles and permissions for object and field access; agents inherit user permissions and field-level security.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Free Suite",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.salesforce.com/editions-pricing/sales-cloud/"]
+    },
+    {
+      "id": "sso-identity",
+      "vendorName": "Single Sign-On / Multi-Factor Authentication",
+      "description": "SAML SSO with Salesforce as service or identity provider, and MFA required for employee logins including SSO.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://help.salesforce.com/s/articleView?id=xcloud.sso_about.htm&language=en_US&type=5",
+        "https://help.salesforce.com/s/articleView?language=en_US&id=xcloud.mfa_sso_logins.htm&type=5"
+      ]
+    },
+    {
+      "id": "audit-log",
+      "vendorName": "Setup Audit Trail / Field Audit Trail / Event Monitoring",
+      "description": "Setup Audit Trail tracks admin setup changes; Shield adds Field Audit Trail (long-term field history) and Event Monitoring (user and API activity logs).",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": "Field Audit Trail and Event Monitoring are part of Salesforce Shield",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://help.salesforce.com/s/articleView?id=sf.admin_monitorsetup.htm&amp=&language=en_US&amp=&type=5",
+        "https://www.salesforce.com/platform/shield/guide/"
+      ]
+    },
+    {
+      "id": "compliance-security",
+      "vendorName": "Shield / Security Center / Trusted Services",
+      "description": "Shield Platform Encryption (at rest, BYOK), Data Detect, Security Center health checks across orgs, and Backup & Recover and Archive.",
+      "surfaces": ["web"],
+      "lowestTier": "Advanced",
+      "tierNote": "Backup & Recover, Archive, Data Detect, Security Center included from Advanced (Security Center purchasable lower); Shield sold separately",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.salesforce.com/editions-pricing/sales-cloud/", "https://www.salesforce.com/platform/shield/guide/"]
+    },
+    {
+      "id": "data-import-export",
+      "vendorName": "Data Import Wizard / Data Loader",
+      "description": "Import standard and custom object records from files with the Data Import Wizard; Data Loader for bulk insert, update, upsert, delete and export.",
+      "surfaces": ["web", "desktop", "api"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://help.salesforce.com/s/articleView?id=xcloud.import_with_data_import_wizard.htm&language=en_US&type=5",
+        "https://developer.salesforce.com/docs/atlas.en-us.api_asynch.meta/api_asynch/bulk_api_2_0.htm"
+      ]
+    },
+    {
+      "id": "api-webhooks",
+      "vendorName": "Web Services API",
+      "description": "REST, SOAP, Bulk API 2.0, GraphQL, Metadata, Tooling, User Interface and Connect REST APIs, plus Pub/Sub API for platform and Change Data Capture events.",
+      "surfaces": ["api"],
+      "lowestTier": "Core",
+      "tierNote": "Available on Pro Suite for an additional $25 USD/user/month",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.salesforce.com/editions-pricing/sales-cloud/",
+        "https://help.salesforce.com/s/articleView?id=platform.integrate_what_is_api.htm&language=en_US&type=5",
+        "https://developer.salesforce.com/docs/atlas.en-us.api_asynch.meta/api_asynch/bulk_api_2_0.htm"
+      ]
+    },
+    {
+      "id": "app-marketplace",
+      "vendorName": "AgentExchange (formerly AppExchange)",
+      "description": "Directory of partner apps and agents that install into the org.",
+      "surfaces": ["web"],
+      "lowestTier": "Pro Suite",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.salesforce.com/editions-pricing/sales-cloud/", "https://www.salesforce.com/platform/integration-automation/"]
+    },
+    {
+      "id": "native-integrations",
+      "vendorName": "Slack / Salesforce in Slack",
+      "description": "Slack plan bundled by edition, with Salesforce records and Agentforce in Slack.",
+      "surfaces": ["web"],
+      "lowestTier": "Free Suite",
+      "tierNote": "Slack Free on Free-Pro Suite; Slack Business+ on Core and Advanced; Slack Enterprise+ on Max",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.salesforce.com/editions-pricing/sales-cloud/", "https://www.salesforce.com/sales/ai-sales-agent/"]
+    },
+    {
+      "id": "mobile-app",
+      "vendorName": "Salesforce Mobile App",
+      "description": "Native iPhone, iPad, Vision Pro and Android app with mobile home, records, dashboards and offline use.",
+      "surfaces": ["ios", "android"],
+      "lowestTier": "Starter Suite",
+      "tierNote": "Full offline mobile functionality from Pro Suite; Forecasting Mobile App from Pro Suite",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.salesforce.com/editions-pricing/sales-cloud/",
+        "https://apps.apple.com/us/app/salesforce/id404249815",
+        "https://play.google.com/store/apps/details?id=com.salesforce.chatter"
+      ]
+    },
+    {
+      "id": "notifications",
+      "vendorName": "Notification Builder / push notifications",
+      "description": "Custom push notifications in the mobile app, powered by Notification Builder.",
+      "surfaces": ["ios", "android"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://apps.apple.com/us/app/salesforce/id404249815",
+        "https://play.google.com/store/apps/details?id=com.salesforce.chatter"
+      ]
+    },
+    {
+      "id": "ai-assistant",
+      "vendorName": "Agentforce for Sales (built-in AI)",
+      "description": "Generative AI inside Sales Cloud: drafts sales emails from CRM and call data, summarises calls, and researches accounts.",
+      "surfaces": ["web"],
+      "lowestTier": "Core",
+      "tierNote": "Agentforce: Sales Emails from Core; Account Research from Advanced; Agentforce for Sales add-on from $125 USD/user/month",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.salesforce.com/editions-pricing/sales-cloud/", "https://www.salesforce.com/sales/ai-sales-agent/"]
+    },
+    {
+      "id": "ai-agents",
+      "vendorName": "Agentforce Sales Agents",
+      "description": "Prebuilt agents for prospecting, lead nurture, pipeline updates (suggestive or autonomous), sales coaching and quoting, grounded in CRM data.",
+      "surfaces": ["web"],
+      "lowestTier": "Core",
+      "tierNote": "Most agents purchasable on Core and Advanced, all included in Max; consumes Flex Credits",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.salesforce.com/editions-pricing/sales-cloud/", "https://www.salesforce.com/sales/ai-sales-agent/"]
+    },
+    {
+      "id": "customer-data-platform",
+      "vendorName": "Data Synchronization & Harmonization (Data Cloud / Data 360)",
+      "description": "Connect Salesforce and external data through Data Cloud features bundled in Sales Cloud.",
+      "surfaces": ["web"],
+      "lowestTier": "Core",
+      "tierNote": "Limited Data Cloud features on Pro Suite; Data 360 as a product is out of scope",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.salesforce.com/editions-pricing/sales-cloud/"]
+    },
+    {
+      "id": "partner-management",
+      "vendorName": "Partner Relationship Management",
+      "description": "Partner-facing experiences to drive channel revenue.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": "Add-on, from $10 USD/login/month",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.salesforce.com/editions-pricing/sales-cloud/"]
+    },
+    {
+      "id": "ticketing",
+      "vendorName": "Case Management",
+      "description": "Basic case records included in Sales Cloud editions.",
+      "surfaces": ["web"],
+      "lowestTier": "Free Suite",
+      "tierNote": "Full service desk is Service Cloud, out of scope",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.salesforce.com/editions-pricing/sales-cloud/"]
+    },
+    {
+      "id": "knowledge-base",
+      "vendorName": "Knowledge",
+      "description": "Knowledge articles; read-only on Pro Suite to Advanced.",
+      "surfaces": ["web"],
+      "lowestTier": "Free Suite",
+      "tierNote": "Read/Write on Free/Starter/Max; Read-only on Pro Suite, Core and Advanced",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.salesforce.com/editions-pricing/sales-cloud/"]
+    },
+    {
+      "id": "sales-performance-management",
+      "vendorName": "Sales Performance Management (Sales Planning, Incentive Compensation / Spiff)",
+      "description": "Plan territories and quotas and manage incentive compensation native to the CRM.",
+      "surfaces": ["web"],
+      "lowestTier": "Max",
+      "tierNote": "Purchasable from Starter Suite; all included in Max",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.salesforce.com/editions-pricing/sales-cloud/"]
+    },
+    {
+      "id": "sales-enablement",
+      "vendorName": "Sales Programs",
+      "description": "Outcome-based seller enablement in the flow of work.",
+      "surfaces": ["web"],
+      "lowestTier": "Advanced",
+      "tierNote": "Add-on from $100 USD/user/month on lower editions",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.salesforce.com/editions-pricing/sales-cloud/"]
+    },
+    {
+      "id": "maps-route-planning",
+      "vendorName": "Salesforce Maps",
+      "description": "Map-based territory and route planning for field sellers.",
+      "surfaces": ["web"],
+      "lowestTier": "Max",
+      "tierNote": "Maps Advanced purchasable on lower editions",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.salesforce.com/editions-pricing/sales-cloud/"]
+    },
+    {
+      "id": "multi-currency-localization",
+      "vendorName": "Multiple Currencies",
+      "description": "Multiple currencies on records.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "unconfirmed",
+      "unconfirmedReason": "Only an indirect mention ('Rules for Importing Multiple Currencies') in a search snippet; help centre pages would not render for a direct check",
+      "sources": ["https://help.salesforce.com/s/articleView?id=xcloud.import_with_data_import_wizard.htm&language=en_US&type=5"]
+    }
+  ],
+  "limits": [
+    "Pricing matrix read from the structured data embedded in the edition page (per-feature edition flags), not from the rendered table; a WebFetch summary of the same page returned wrong cells (e.g. API on Free Suite), so only the embedded data was used.",
+    "Public pricing now shows Free Suite, Starter Suite, Pro Suite, Core, Advanced and Max; no standalone Enterprise, Unlimited or Agentforce 1 editions appear (Unlimited is mentioned only as bundling Premier Success). Help articles still use the older edition names, so their edition lines were not used for tiers.",
+    "help.salesforce.com articles mostly failed to render through the fetch tool (CSS error / loading screen); help URLs cited are search results whose snippets were seen, except the 'Which API Do I Use?' article which did render.",
+    "developer.salesforce.com returned 403 / an error page to direct fetches, including /docs/llms.txt; developer docs are cited from search results only.",
+    "Rate limits, per-edition custom object limits, global search and admin Setup were not scanned.",
+    "No injected instructions seen in fetched pages."
+  ],
+  "failures": [
+    {
+      "kind": "fetch",
+      "what": "https://developer.salesforce.com/docs/apis",
+      "result": "HTTP 403"
+    },
+    {
+      "kind": "fetch",
+      "what": "https://developer.salesforce.com/docs/llms.txt",
+      "result": "error page"
+    },
+    {
+      "kind": "fetch",
+      "what": "https://help.salesforce.com/s/articleView?id=sales.cadences_overview.htm&type=5",
+      "result": "loading screen / CSS error, no content"
+    },
+    {
+      "kind": "fetch",
+      "what": "https://help.salesforce.com/s/articleView?id=sales.forecasts3_intro.htm&type=5",
+      "result": "loading screen / CSS error, no content"
+    },
+    {
+      "kind": "fetch",
+      "what": "https://help.salesforce.com/s/articleView?id=platform.admin_monitorsetup.htm&type=5",
+      "result": "loading screen / CSS error, no content"
+    },
+    {
+      "kind": "fetch",
+      "what": "https://help.salesforce.com/s/articleView?language=en_US&id=sales.se_cadences_builder_2.htm&type=5",
+      "result": "loading screen / CSS error, no content"
+    },
+    {
+      "kind": "fetch",
+      "what": "https://play.google.com/store/apps/details?id=com.salesforce.chatter (WebFetch)",
+      "result": "summariser got truncated content; title and description read from raw HTML instead"
+    }
+  ],
+  "dataExport": {
+    "extraction": {
+      "full": "yes",
+      "incremental": "yes",
+      "apiBased": "yes",
+      "note": "Record data for all objects, including custom objects, can be pulled by Bulk API 2.0 query jobs (up to 1 TB of results per rolling 24 hours) or Data Loader, and the Data Export Service produces CSV backups that can include attachments and Salesforce Files. For deltas there are REST sObject Get Updated (30 days back) and Get Deleted (15 days back) resources, SystemModstamp-filtered SOQL, and Change Data Capture events kept for three days. Limits: CDC covers 5 entities without an add-on license, API access on Professional Edition must be enabled, and field history, audit trail and some metadata types have their own limits (see hardToExtract)."
+    },
+    "exportOptions": [
+      {
+        "name": "Data Export Service (Export Backup Data)",
+        "description": "Setup page that generates a CSV backup of org data, as zip files, with options to include images, documents and attachments, and Salesforce Files and CRM Content document versions. Salesforce's own Data Loader guide sends users here to export attachments.",
+        "formats": ["CSV"],
+        "limits": "Per search-result snippets (the help page did not render): manual export once every 7 days (weekly) or 29 days (monthly); Professional and Developer Edition only every 29 days / monthly schedule; files deleted 48 hours after they are ready. Not verified against rendered help text.",
+        "lowestTier": null,
+        "sources": [
+          "https://help.salesforce.com/s/articleView?language=en_US&id=sf.admin_exportdata.htm&type=5",
+          "https://resources.docs.salesforce.com/latest/latest/en-us/sfdc/pdf/salesforce_data_loader.pdf"
+        ]
+      },
+      {
+        "name": "Data Loader",
+        "description": "Salesforce's desktop client (macOS/Windows, with a command line on Windows only) for bulk import and export of any object, including custom objects. Exports produce CSV files. 'Export All' also includes archived activities and soft-deleted records. It cannot export attachments. It supports up to 150 million records with Bulk API 2.0.",
+        "formats": ["CSV"],
+        "limits": "Up to 150,000,000 records per CSV; exporting attachments is not supported (the guide points to the weekly export instead).",
+        "lowestTier": "Guide lists Enterprise, Performance, Unlimited and Developer editions",
+        "sources": ["https://resources.docs.salesforce.com/latest/latest/en-us/sfdc/pdf/salesforce_data_loader.pdf"]
+      }
+    ],
+    "apis": [
+      {
+        "name": "Bulk API 2.0 (query / queryAll jobs)",
+        "kind": "bulk-export",
+        "description": "Asynchronous SOQL query jobs returning CSV, chunked automatically (PK chunking) for custom objects and for the Sharing and History tables of standard objects. queryAll also returns merged or deleted records and archived Task/Event records. It does not support GROUP BY/OFFSET/TYPEOF, aggregates, compound address or geolocation fields, or parent-to-child subqueries. Results can be fetched for 7 days, paged with locator and maxRecords.",
+        "sources": [
+          "https://resources.docs.salesforce.com/latest/latest/en-us/sfdc/pdf/api_asynch.pdf",
+          "https://resources.docs.salesforce.com/latest/latest/en-us/sfdc/pdf/salesforce_app_limits_cheatsheet.pdf"
+        ]
+      },
+      {
+        "name": "REST API sObject Get Updated / Get Deleted (SOAP getUpdated()/getDeleted())",
+        "kind": "incremental",
+        "description": "Returns the IDs of records added or changed (Get Updated, v31.0+) or deleted (Get Deleted, v29.0+) for an object within a date range, which the docs say is for data replication. Updated reaches back at most 30 days and Deleted at most 15 days (less if the Recycle Bin was purged, and the delete log can be trimmed). Each call returns at most 600,000 IDs (EXCEEDED_ID_LIMIT). Full replication needs View All Data.",
+        "sources": ["https://resources.docs.salesforce.com/latest/latest/en-us/sfdc/pdf/api_rest.pdf"]
+      },
+      {
+        "name": "Change Data Capture (via Pub/Sub API or CometD)",
+        "kind": "webhooks-events",
+        "description": "Publishes create, update, delete and undelete change events for selected standard and custom objects. The header carries changedFields, nulledFields, commitTimestamp and transactionKey. Events stay on the event bus for three days and can be replayed by ReplayId. There are gap and overflow events, and the docs say some events may, in rare cases, never be persisted or delivered. Available in Enterprise, Performance, Unlimited and Developer; up to 5 entities without an add-on license.",
+        "sources": ["https://resources.docs.salesforce.com/latest/latest/en-us/sfdc/pdf/salesforce_change_data_capture.pdf"]
+      },
+      {
+        "name": "REST API sObject Blob Get",
+        "kind": "read-api",
+        "description": "Retrieves binary content for blob fields on Attachment, ContentNote, ContentVersion, Document, Folder and Note. It takes one request per record and cannot be used inside Composite requests.",
+        "sources": ["https://resources.docs.salesforce.com/latest/latest/en-us/sfdc/pdf/api_rest.pdf"]
+      },
+      {
+        "name": "Metadata API (retrieve)",
+        "kind": "other",
+        "description": "Retrieves configuration (objects, fields, flows, profiles and so on) as a zip of XML components listed in package.xml. Retrieves are capped at 10,000 files and about 39 MB compressed per call, and some metadata types are not supported at all.",
+        "sources": ["https://resources.docs.salesforce.com/latest/latest/en-us/sfdc/pdf/api_meta.pdf"]
+      }
+    ],
+    "auth": {
+      "models": ["oauth-app"],
+      "notes": "REST access is authorised by OAuth 2.0 through an External Client App or a Connected App configured in the customer's org. Creating new connected apps is restricted as of Spring '26 (existing ones keep working) and Salesforce recommends external client apps. Replicating all data needs a user with View All Data, and results follow sharing rules.",
+      "sources": ["https://resources.docs.salesforce.com/latest/latest/en-us/sfdc/pdf/api_rest.pdf"]
+    },
+    "rateLimits": {
+      "summary": "Daily API calls per org, pooled across all users: Developer Edition 15,000. Enterprise and Professional with API access enabled: 100,000 + 1,000 per Salesforce license + purchased add-ons. Unlimited and Performance: 100,000 + 5,000 per Salesforce license + add-ons. Full Sandbox: 5,000,000. These count REST, SOAP, Bulk API and Bulk API 2.0 calls. Paid orgs can briefly exceed the limit up to a hard cap. Long-running (20 s or more) concurrent requests: 25 in production and sandboxes, 5 in Developer and trial orgs. Bulk API 2.0: 10,000 query jobs and 1 TB of query results per rolling 24 hours; 15,000 ingest batches per 24 hours, shared with Bulk API 1.0. Metadata API: 10,000 files and about 39 MB per retrieve.",
+      "sources": [
+        "https://resources.docs.salesforce.com/latest/latest/en-us/sfdc/pdf/salesforce_app_limits_cheatsheet.pdf",
+        "https://resources.docs.salesforce.com/latest/latest/en-us/sfdc/pdf/api_meta.pdf"
+      ]
+    },
+    "hardToExtract": [
+      {
+        "dataClass": "history-audit",
+        "detail": "Field History Tracking keeps 18–24 months of data (up to 20 fields per object). Keeping it until deleted requires Field Audit Trail (Shield or a Field Audit Trail license, Enterprise and up), which stores it in the FieldHistoryArchive big object, readable by API only. Setup Audit Trail is reported as kept for 180 days, per a third-party search snippet that was not verified.",
+        "sources": [
+          "https://resources.docs.salesforce.com/latest/latest/en-us/sfdc/pdf/field_history_retention.pdf",
+          "https://gearset.com/blog/salesforce-audit-trail/"
+        ]
+      },
+      {
+        "dataClass": "attachments-files",
+        "detail": "Data Loader cannot export attachments. Binary content comes either from the Data Export Service zip (include-attachments and include-files options) or from one REST Blob Get call per record, each of which counts against the daily API allocation.",
+        "sources": [
+          "https://resources.docs.salesforce.com/latest/latest/en-us/sfdc/pdf/salesforce_data_loader.pdf",
+          "https://resources.docs.salesforce.com/latest/latest/en-us/sfdc/pdf/api_rest.pdf"
+        ]
+      },
+      {
+        "dataClass": "metadata-config",
+        "detail": "Some features' metadata types are not available in Metadata API and 'can't be retrieved or deployed'; they have to be recreated by hand (see the Metadata Coverage Report). Retrieves are capped at 10,000 files and about 39 MB compressed, and some types have daily retrieve limits.",
+        "sources": ["https://resources.docs.salesforce.com/latest/latest/en-us/sfdc/pdf/api_meta.pdf"]
+      },
+      {
+        "dataClass": "other",
+        "detail": "Deletions are only traceable for 15 days through Get Deleted/queryAll, and the delete log can be purged earlier. CDC keeps only three days of events, covers 5 entities without an add-on, and the docs say some events may be lost. A delta sync therefore needs a periodic full reconciliation.",
+        "sources": [
+          "https://resources.docs.salesforce.com/latest/latest/en-us/sfdc/pdf/api_rest.pdf",
+          "https://resources.docs.salesforce.com/latest/latest/en-us/sfdc/pdf/salesforce_change_data_capture.pdf"
+        ]
+      }
+    ],
+    "migrationTools": [
+      {
+        "name": "Data Loader",
+        "direction": "both",
+        "description": "Official bulk import/export client. Its guide also covers migrating attachments between orgs by using the export's Attachment.csv.",
+        "sources": ["https://resources.docs.salesforce.com/latest/latest/en-us/sfdc/pdf/salesforce_data_loader.pdf"]
+      },
+      {
+        "name": "Data Import Wizard",
+        "direction": "into-vendor",
+        "description": "In-app wizard for loads under 50,000 records into supported objects, with duplicate prevention.",
+        "sources": ["https://resources.docs.salesforce.com/latest/latest/en-us/sfdc/pdf/salesforce_data_loader.pdf"]
+      },
+      {
+        "name": "Data Export Service",
+        "direction": "out-of-vendor",
+        "description": "Scheduled or manual CSV backup of org data, with optional attachments and files.",
+        "sources": ["https://help.salesforce.com/s/articleView?language=en_US&id=sf.admin_exportdata.htm&type=5"]
+      }
+    ],
+    "limits": [
+      "developer.salesforce.com returned 403 to both WebFetch and curl, and help.salesforce.com renders by JavaScript, so neither WebFetch nor curl got article text. Facts were read instead from the official static PDF guides on resources.docs.salesforce.com ('latest', Winter '27 v68.0, updated 2026-09-11).",
+      "Data Export Service frequency, the 48-hour download window and edition rules come only from search-result summaries, not rendered Salesforce text.",
+      "Setup Audit Trail's 180-day retention comes only from a third-party search snippet (gearset.com).",
+      "The CDC event-delivery allocation numbers and Pub/Sub API limits were not captured.",
+      "Whether Professional Edition includes API access by default was not confirmed here. The limits guide says 'Professional Edition with API access enabled', and the Data Loader and CDC guides list Enterprise, Performance, Unlimited and Developer editions only.",
+      "Whether Bulk API 2.0 query can return base64/blob fields was not confirmed.",
+      "No injected instructions were noticed in fetched content."
+    ],
+    "failures": [
+      {
+        "kind": "fetch",
+        "what": "https://help.salesforce.com/s/articleView?id=sf.admin_exportdata.htm&type=5",
+        "result": "JS-rendered shell only (WebFetch and curl)"
+      },
+      {
+        "kind": "fetch",
+        "what": "https://developer.salesforce.com/docs/atlas.en-us.salesforce_app_limits_cheatsheet.meta/salesforce_app_limits_cheatsheet/salesforce_app_limits_platform_api.htm",
+        "result": "HTTP 403 (WebFetch and curl)"
+      },
+      {
+        "kind": "fetch",
+        "what": "resources.docs.salesforce.com PDFs salesforce_data_export / salesforce_import_export / salesforce_field_history_retention",
+        "result": "404 (guessed names)"
+      }
+    ]
+  }
+}

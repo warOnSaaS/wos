@@ -1,0 +1,879 @@
+{
+  "schema": "wos-scan.v0",
+  "label": "SCAN — unreviewed, 2026-09-30",
+  "reviewed": false,
+  "countsTowardProgress": false,
+  "target": {
+    "id": "TGT-06",
+    "slug": "quickbooks",
+    "name": "QuickBooks"
+  },
+  "scannedAt": "2026-09-30",
+  "scope": {
+    "included": "QuickBooks Online US plans as the pricing page names them (Free, Simple Start, Essentials, Plus, Advanced) plus the add-ons sold with them: Payroll (Workforce bundles), QuickBooks Payments, QuickBooks Time, and the QBO mobile and desktop apps.",
+    "excluded": [
+      "QuickBooks Desktop (Pro/Premier/Enterprise): separate installed product",
+      "Intuit Enterprise Suite: separate mid-market product, mentioned only where QBO pages pair it with Advanced",
+      "QuickBooks Solopreneur / Self-Employed: separate product",
+      "Intuit Accountant Suite: firm product; QBO Accountant noted only as accountant access",
+      "Intuit Expert / Live Bookkeeping and Full Service Bookkeeping: human services, not software",
+      "Non-US QuickBooks editions (CA, UK, AU, global)"
+    ]
+  },
+  "clientApps": [
+    {
+      "surface": "web",
+      "name": "QuickBooks Online",
+      "platforms": "browser",
+      "sources": ["https://quickbooks.intuit.com/pricing/"]
+    },
+    {
+      "surface": "ios",
+      "name": "Intuit QuickBooks for Business",
+      "platforms": "iPhone, iPad and Apple Watch",
+      "sources": ["https://apps.apple.com/us/app/quickbooks-accounting/id584606479"]
+    },
+    {
+      "surface": "android",
+      "name": "Intuit QuickBooks for Business (listed as QuickBooks Online Accounting in some regions)",
+      "platforms": "Android",
+      "sources": ["https://play.google.com/store/apps/details?id=com.intuit.quickbooks&hl=en_US"]
+    },
+    {
+      "surface": "desktop",
+      "name": "QuickBooks Online desktop app",
+      "platforms": "Windows; macOS (Apple silicon and Intel)",
+      "sources": [
+        "https://quickbooks.intuit.com/learn-support/en-us/help-article/download-products/download-use-quickbooks-online-advanced-desktop/L9BrRPlDD_US_en_US"
+      ]
+    },
+    {
+      "surface": "other",
+      "name": "Workforce app (QuickBooks Time / Payroll employee app)",
+      "platforms": null,
+      "sources": ["https://quickbooks.intuit.com/time-tracking/pricing/"]
+    }
+  ],
+  "api": {
+    "style": "REST (JSON) plus webhooks, Change Data Capture and batch operations",
+    "notes": "QuickBooks Online Accounting API on developer.intuit.com. Webhooks notify of changes to subscribed entities; CDC returns entities changed since a date-time; a batch request holds up to 30 payloads. Auth (OAuth 2.0) and the throttling limits are documented but the pages could not be read, so they are not confirmed here.",
+    "sources": [
+      "https://developer.intuit.com/app/developer/qbo/docs/develop/webhooks",
+      "https://developer.intuit.com/app/developer/qbo/docs/learn/explore-the-quickbooks-online-api/batch",
+      "https://developer.intuit.com/app/developer/qbo/docs/learn/rest-api-features",
+      "https://help.developer.intuit.com/s/article/API-call-limits-and-throttling"
+    ]
+  },
+  "capabilities": [
+    {
+      "id": "general-ledger",
+      "vendorName": "Track income and expenses / books",
+      "description": "Double-entry books of record for the company: income, expenses and accounts that feed every report; the pricing page lists income and expense tracking on every plan including Free.",
+      "surfaces": ["web"],
+      "lowestTier": "Free",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://quickbooks.intuit.com/pricing/", "https://quickbooks.intuit.com/online/"]
+    },
+    {
+      "id": "bank-feeds-reconciliation",
+      "vendorName": "Connect bank account, bank rules, Book reconciliation",
+      "description": "Bank and card connections pull transactions into a For review list; up to 2,000 bank rules auto-categorise them, and accounts are reconciled against statements. Pricing lists an AI-assisted book reconciliation on Plus.",
+      "surfaces": ["web", "ios", "android"],
+      "lowestTier": "Free",
+      "tierNote": "Free connects 1 bank; AI reconciliation and auto-verification listed from Plus",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://quickbooks.intuit.com/pricing/",
+        "https://quickbooks.intuit.com/learn-support/en-us/help-article/banking/set-bank-rules-categorize-online-banking-online/L0mjJl0nD_US_en_US",
+        "https://apps.apple.com/us/app/quickbooks-accounting/id584606479"
+      ]
+    },
+    {
+      "id": "invoicing",
+      "vendorName": "Invoices and estimates",
+      "description": "Create and send invoices from templates, and estimates that customers can sign on mobile and that convert into invoices; bulk invoice creation (AI) from Essentials and batch invoices on Advanced.",
+      "surfaces": ["web", "ios", "android"],
+      "lowestTier": "Free",
+      "tierNote": "Free is limited to 2 invoices a month (unlimited with Payments)",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://quickbooks.intuit.com/pricing/",
+        "https://quickbooks.intuit.com/online/",
+        "https://play.google.com/store/apps/details?id=com.intuit.quickbooks&hl=en_US"
+      ]
+    },
+    {
+      "id": "accounts-receivable",
+      "vendorName": "Get paid faster / Payments AI",
+      "description": "Tracks invoice status and payments received; Payments AI analyses customer payment behaviour, drafts reminders and gives cash-flow visibility to raise collection rates.",
+      "surfaces": ["web"],
+      "lowestTier": "Essentials",
+      "tierNote": "Payments AI is listed from Essentials",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://quickbooks.intuit.com/pricing/", "https://quickbooks.intuit.com/payments-agent/"]
+    },
+    {
+      "id": "accounts-payable",
+      "vendorName": "Bill pay",
+      "description": "Record vendor bills and pay them by ACH from QuickBooks; approval workflows for bills on Advanced; Bill Pay Elite is a separate add-on tier.",
+      "surfaces": ["web"],
+      "lowestTier": "Simple Start",
+      "tierNote": "approval workflows on Advanced; Bill Pay Elite add-on",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://quickbooks.intuit.com/pricing/",
+        "https://quickbooks.intuit.com/online/",
+        "https://quickbooks.intuit.com/learn-support/en-us/help-article/access-permissions/user-roles-access-rights-quickbooks-online/L66POfRrI_US_en_US"
+      ]
+    },
+    {
+      "id": "expense-management",
+      "vendorName": "Expense tracking and receipt capture",
+      "description": "Categorise expenses (AI categorisation from Simple Start) and snap receipts on mobile; QuickBooks reads merchant, date and amount and matches them to bank transactions. An Expense Submitter role lets staff submit expenses.",
+      "surfaces": ["web", "ios", "android"],
+      "lowestTier": "Simple Start",
+      "tierNote": "expense categorisation listed from Simple Start",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://quickbooks.intuit.com/pricing/",
+        "https://apps.apple.com/us/app/quickbooks-accounting/id584606479",
+        "https://play.google.com/store/apps/details?id=com.intuit.quickbooks&hl=en_US"
+      ]
+    },
+    {
+      "id": "mileage-tracking",
+      "vendorName": "Mileage tracking",
+      "description": "Automatic GPS trip tracking in the mobile app with swipe classification of business vs personal trips, to claim vehicle deductions; QuickBooks Time Elite also tracks employee mileage.",
+      "surfaces": ["ios", "android"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://quickbooks.intuit.com/accounting/mileage/",
+        "https://play.google.com/store/apps/details?id=com.intuit.quickbooks&hl=en_US",
+        "https://apps.apple.com/us/app/quickbooks-accounting/id584606479"
+      ]
+    },
+    {
+      "id": "payments-acceptance",
+      "vendorName": "QuickBooks Payments",
+      "description": "Accept cards, ACH, Apple Pay, PayPal/Venmo and Affirm on invoices and payment links, and in person via tap to pay on iPhone (card reader on Android); payments post automatically to QuickBooks Online, with instant deposit.",
+      "surfaces": ["web", "ios", "android"],
+      "lowestTier": null,
+      "tierNote": "sold as an add-on service with per-transaction fees",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://quickbooks.intuit.com/payments/", "https://quickbooks.intuit.com/pricing/"]
+    },
+    {
+      "id": "subscriptions-recurring-billing",
+      "vendorName": "Recurring transactions / recurring payments",
+      "description": "Recurring invoices and other transactions that are recorded automatically, as reminders or as unscheduled templates; QuickBooks Payments can charge customers on a schedule.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://quickbooks.intuit.com/learn-support/en-us/help-article/recurring-transactions/create-recurring-transactions-quickbooks-online/L3WoKX2R8_US_en_US",
+        "https://quickbooks.intuit.com/payments/"
+      ]
+    },
+    {
+      "id": "payroll",
+      "vendorName": "QuickBooks Payroll (Workforce Payroll / Workforce Premium)",
+      "description": "Payroll add-on bundled with a QBO plan: auto payroll, tax filing, next- or same-day direct deposit, benefits and workers' comp access; Payroll AI can collect employee info and run payroll.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": "add-on; bundles named Workforce Payroll + Simple Start/Essentials and Workforce Premium + Plus",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://quickbooks.intuit.com/payroll/pricing/",
+        "https://quickbooks.intuit.com/pricing/",
+        "https://quickbooks.intuit.com/learn-support/en-us/help-article/accounting-bookkeeping/overview-agents-quickbooks-online/L9irCAtK4_US_en_US"
+      ]
+    },
+    {
+      "id": "hr-people",
+      "vendorName": "HR tools (Workforce)",
+      "description": "HR tools included in the payroll bundles (basic on Workforce Payroll, advanced on Workforce Premium) and an HR Manager user role.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": "payroll add-on only",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://quickbooks.intuit.com/payroll/pricing/",
+        "https://quickbooks.intuit.com/learn-support/en-us/help-article/access-permissions/user-roles-access-rights-quickbooks-online/L66POfRrI_US_en_US"
+      ]
+    },
+    {
+      "id": "time-tracking",
+      "vendorName": "QuickBooks Time",
+      "description": "Employee time tracking on a mobile Workforce app or kiosk, shift and job scheduling, time off, and timesheets flowing to invoices and payroll; Time Elite adds project tracking and budget vs actual hours. Requires a QuickBooks Online account.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": "separate add-on (Time Premium, Time Elite) or included in Workforce Premium + Plus; pricing lists 'employee time to invoices' from Essentials",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://quickbooks.intuit.com/time-tracking/pricing/",
+        "https://quickbooks.intuit.com/payroll/pricing/",
+        "https://quickbooks.intuit.com/pricing/"
+      ]
+    },
+    {
+      "id": "sales-tax",
+      "vendorName": "Automated sales tax / Sales Tax AI",
+      "description": "Calculates sales tax from state rules, tracks liabilities and records or e-files returns in some states; Sales Tax AI categorises items and checks returns for discrepancies before filing.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": "Sales Tax AI discrepancy checks listed from Plus",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://quickbooks.intuit.com/learn-support/en-us/help-article/sales-taxes/set-use-automated-sales-tax-quickbooks-online/L4Lx8eL7V_US_en_US",
+        "https://quickbooks.intuit.com/learn-support/en-us/help-article/pay-sales-taxes/file-sales-tax-return-record-tax-payment-online/L7ZeSlAr1_US_en_US",
+        "https://quickbooks.intuit.com/pricing/"
+      ]
+    },
+    {
+      "id": "tax-1099-compliance",
+      "vendorName": "1099 e-filing",
+      "description": "Prepare and e-file 1099-NEC and 1099-MISC for contractors from data in the account; Advanced adds free 1099 e-filing with approval workflows.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": "1099 e-filing with approval workflows listed on Advanced",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://quickbooks.intuit.com/learn-support/en-us/help-article/form-1099-nec/create-file-1099s-using-quickbooks-online/L2BapEpb1_US_en_US",
+        "https://quickbooks.intuit.com/pricing/"
+      ]
+    },
+    {
+      "id": "financial-reports",
+      "vendorName": "Reports (P&L and more)",
+      "description": "Profit and loss on every plan, with enhanced reports from Essentials and comprehensive reports from Plus; mobile apps show real-time reports.",
+      "surfaces": ["web", "ios", "android"],
+      "lowestTier": "Free",
+      "tierNote": "report depth rises by plan",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://quickbooks.intuit.com/pricing/",
+        "https://apps.apple.com/us/app/quickbooks-accounting/id584606479",
+        "https://play.google.com/store/apps/details?id=com.intuit.quickbooks&hl=en_US"
+      ]
+    },
+    {
+      "id": "reporting-dashboards",
+      "vendorName": "Custom KPI dashboards",
+      "description": "Personalised dashboards with custom KPIs and metrics; unlimited custom KPIs on Advanced.",
+      "surfaces": ["web"],
+      "lowestTier": "Advanced",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://quickbooks.intuit.com/pricing/", "https://quickbooks.intuit.com/online/advanced/"]
+    },
+    {
+      "id": "budgeting-planning",
+      "vendorName": "Budgets, scenario planning, cash flow",
+      "description": "Budget planning from Plus, with a chat to model scenarios and save them as budgets (beta); cash flow projections in the mobile app; Finance AI summarises performance for planning on Advanced.",
+      "surfaces": ["web", "ios"],
+      "lowestTier": "Plus",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://quickbooks.intuit.com/pricing/",
+        "https://quickbooks.intuit.com/online/",
+        "https://apps.apple.com/us/app/quickbooks-accounting/id584606479"
+      ]
+    },
+    {
+      "id": "project-accounting",
+      "vendorName": "Projects / project profitability",
+      "description": "Track profitability per project from Plus; Advanced adds Project Management AI that auto-creates projects and allocates costs, advanced project financials and construction job costing.",
+      "surfaces": ["web"],
+      "lowestTier": "Plus",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://quickbooks.intuit.com/pricing/",
+        "https://quickbooks.intuit.com/online/advanced/",
+        "https://quickbooks.intuit.com/learn-support/en-us/help-article/accounting-bookkeeping/overview-agents-quickbooks-online/L9irCAtK4_US_en_US"
+      ]
+    },
+    {
+      "id": "inventory-management",
+      "vendorName": "Inventory",
+      "description": "Track quantities and costs of inventory items.",
+      "surfaces": ["web"],
+      "lowestTier": "Plus",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://quickbooks.intuit.com/pricing/", "https://quickbooks.intuit.com/online/"]
+    },
+    {
+      "id": "purchasing-procurement",
+      "vendorName": "Purchase orders",
+      "description": "Create and send purchase orders to vendors and attach accepted POs to bills, expenses or checks.",
+      "surfaces": ["web"],
+      "lowestTier": "Plus",
+      "tierNote": "help article: Plus and Advanced only",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://quickbooks.intuit.com/learn-support/en-us/help-article/purchase-orders/create-send-purchase-orders-quickbooks-online/L2mVpjOoq_US_en_US"
+      ]
+    },
+    {
+      "id": "tracking-dimensions",
+      "vendorName": "Classes and locations",
+      "description": "Tag transactions with classes and locations to report by department, site or segment.",
+      "surfaces": ["web"],
+      "lowestTier": "Plus",
+      "tierNote": "40 classes/locations on Plus; unlimited on Advanced",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://quickbooks.intuit.com/pricing/"]
+    },
+    {
+      "id": "revenue-recognition",
+      "vendorName": "Revenue recognition",
+      "description": "Automated revenue recognition schedules per product or service that post deferred revenue without spreadsheets.",
+      "surfaces": ["web"],
+      "lowestTier": "Advanced",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://quickbooks.intuit.com/online/advanced/revenue-recognition/",
+        "https://quickbooks.intuit.com/learn-support/en-us/help-article/accounting-standards/set-revenue-recognition-schedule-quickbooks-online/L0edAQ1Eg_US_en_US"
+      ]
+    },
+    {
+      "id": "fixed-assets",
+      "vendorName": "Fixed assets",
+      "description": "Automates fixed asset acquisition, depreciation and disposal.",
+      "surfaces": ["web"],
+      "lowestTier": "Advanced",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://quickbooks.intuit.com/global/resources/accountants/quickbooks-online-advanced-fixed-assets/"]
+    },
+    {
+      "id": "multi-currency-localization",
+      "vendorName": "Multicurrency",
+      "description": "Invoice and bill in foreign currencies with automatically updated exchange rates.",
+      "surfaces": ["web"],
+      "lowestTier": "Essentials",
+      "tierNote": "help article: Essentials, Plus and Advanced; not Simple Start",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://quickbooks.intuit.com/learn-support/en-us/help-article/multicurrency/learn-multicurrency-quickbooks-online/L5krkKQi8_US_en_US"
+      ]
+    },
+    {
+      "id": "users-teams",
+      "vendorName": "Users",
+      "description": "Invite users into the company; billable user limits of 1 (Free, Simple Start), 3 (Essentials), 5 (Plus) and 25 (Advanced), plus non-billable roles.",
+      "surfaces": ["web"],
+      "lowestTier": "Free",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://quickbooks.intuit.com/pricing/",
+        "https://quickbooks.intuit.com/learn-support/en-us/help-article/access-permissions/user-roles-access-rights-quickbooks-online/L66POfRrI_US_en_US"
+      ]
+    },
+    {
+      "id": "roles-permissions",
+      "vendorName": "User roles / custom roles",
+      "description": "Preset roles (Standard all access, In-house accountant, Bookkeeper, AR/AP manager, Sales/Expense/Inventory/Project manager, reports-only, time-only and more); custom roles with area and action-level permissions on Advanced.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": "custom roles on Advanced only",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://quickbooks.intuit.com/learn-support/en-us/help-article/access-permissions/user-roles-access-rights-quickbooks-online/L66POfRrI_US_en_US",
+        "https://quickbooks.intuit.com/learn-support/en-us/help-article/access-permissions/add-manage-custom-roles-quickbooks-online-advanced/L8Ugph7xl_US_en_US",
+        "https://quickbooks.intuit.com/pricing/"
+      ]
+    },
+    {
+      "id": "audit-log",
+      "vendorName": "Audit log",
+      "description": "Records sign-ins, settings changes, list edits, transactions and payroll submissions, kept for two years, viewable by clients and accountants.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://quickbooks.intuit.com/learn-support/en-us/help-article/audit-log/use-audit-log-quickbooks-online/L2WoVnW6I_US_en_US"
+      ]
+    },
+    {
+      "id": "custom-fields-objects",
+      "vendorName": "Custom fields",
+      "description": "Custom fields on sales forms, purchase orders, expenses and customer and vendor profiles; enhanced custom fields (up to 12 active per form or profile type) need Advanced.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": "enhanced custom fields require Advanced",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://quickbooks.intuit.com/learn-support/en-us/help-article/purchase-orders/create-edit-custom-fields-quickbooks-online/L56PQNif3_US_en_US"
+      ]
+    },
+    {
+      "id": "workflow-automation",
+      "vendorName": "Workflow automation",
+      "description": "Automate invoicing reminders, approvals and everyday workflows.",
+      "surfaces": ["web"],
+      "lowestTier": "Advanced",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://quickbooks.intuit.com/pricing/", "https://quickbooks.intuit.com/online/advanced/"]
+    },
+    {
+      "id": "approvals",
+      "vendorName": "Approval workflows",
+      "description": "Approval workflows for bill pay and for 1099 e-filing, with Bill Approver/Clerk/Payer roles.",
+      "surfaces": ["web"],
+      "lowestTier": "Advanced",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://quickbooks.intuit.com/online/advanced/",
+        "https://quickbooks.intuit.com/learn-support/en-us/help-article/access-permissions/user-roles-access-rights-quickbooks-online/L66POfRrI_US_en_US"
+      ]
+    },
+    {
+      "id": "ai-assistant",
+      "vendorName": "AI Chat / Intuit Intelligence",
+      "description": "A chat assistant for instant insights into the books (limited capacity, beta) and voice or document-based invoice creation on mobile.",
+      "surfaces": ["web", "ios"],
+      "lowestTier": "Simple Start",
+      "tierNote": "listed as limited on lower plans",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://quickbooks.intuit.com/pricing/",
+        "https://quickbooks.intuit.com/online/advanced/",
+        "https://apps.apple.com/us/app/quickbooks-accounting/id584606479"
+      ]
+    },
+    {
+      "id": "ai-agents",
+      "vendorName": "Intuit AI agents",
+      "description": "A set of named agents: Accounting AI (categorisation, reconciliation, asks for missing context), Payments AI, Customer AI, Project Management AI, Finance AI, Payroll AI, Sales Tax AI and Business Tax AI; pricing adds anomaly detection and continuous books quality checks on higher plans.",
+      "surfaces": ["web"],
+      "lowestTier": "Simple Start",
+      "tierNote": "automated bookkeeping listed from Simple Start; individual agents gated by plan (e.g. Payments AI from Essentials, Customer AI from Plus, Finance and Project AI on Advanced)",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://quickbooks.intuit.com/learn-support/en-us/help-article/accounting-bookkeeping/overview-agents-quickbooks-online/L9irCAtK4_US_en_US",
+        "https://quickbooks.intuit.com/pricing/"
+      ]
+    },
+    {
+      "id": "leads",
+      "vendorName": "Customer AI / lead sourcing",
+      "description": "Lead collection from Essentials; Customer AI from Plus automates lead generation, qualification, nurturing, outreach and proposals.",
+      "surfaces": ["web"],
+      "lowestTier": "Essentials",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://quickbooks.intuit.com/pricing/",
+        "https://quickbooks.intuit.com/learn-support/en-us/help-article/accounting-bookkeeping/overview-agents-quickbooks-online/L9irCAtK4_US_en_US"
+      ]
+    },
+    {
+      "id": "forms",
+      "vendorName": "Lead collection forms",
+      "description": "Forms that collect leads into QuickBooks.",
+      "surfaces": ["web"],
+      "lowestTier": "Essentials",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://quickbooks.intuit.com/pricing/"]
+    },
+    {
+      "id": "templates",
+      "vendorName": "Invoice templates",
+      "description": "Choose from multiple invoice templates or create your own.",
+      "surfaces": ["web", "android"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://play.google.com/store/apps/details?id=com.intuit.quickbooks&hl=en_US"]
+    },
+    {
+      "id": "accountant-collaboration",
+      "vendorName": "Accountant access / QuickBooks Online Accountant",
+      "description": "Accountant user seats (2 on Simple Start to Plus, 3 on Advanced) plus the QuickBooks Online Accountant workspace for firms, which the accountants page says is retired on 31 Dec 2026 in favour of Intuit Accountant Suite.",
+      "surfaces": ["web"],
+      "lowestTier": "Simple Start",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://quickbooks.intuit.com/pricing/", "https://quickbooks.intuit.com/accountants/"]
+    },
+    {
+      "id": "data-import-export",
+      "vendorName": "Import data / Spreadsheet Sync",
+      "description": "Upload bank transactions manually and move data in and out; Advanced syncs data both ways with Excel.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": "Excel data sync on Advanced",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://quickbooks.intuit.com/pricing/", "https://quickbooks.intuit.com/online/advanced/"]
+    },
+    {
+      "id": "app-marketplace",
+      "vendorName": "QuickBooks App Store / integrations",
+      "description": "A directory of third-party apps (Intuit pages cite 800+ and 1,500+ integrations); pricing says integrations are not available on Free, and third-party data integration is listed from Essentials.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": "not on Free",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://quickbooks.intuit.com/pricing/",
+        "https://quickbooks.intuit.com/online/",
+        "https://quickbooks.intuit.com/online/advanced/"
+      ]
+    },
+    {
+      "id": "mobile-app",
+      "vendorName": "QuickBooks mobile app",
+      "description": "Free companion app with paid plans: invoicing, receipts, mileage, payments, bank sync, reports and AI on iPhone, iPad, Apple Watch and Android.",
+      "surfaces": ["ios", "android"],
+      "lowestTier": "Simple Start",
+      "tierNote": "not available with QuickBooks Free",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://quickbooks.intuit.com/pricing/",
+        "https://apps.apple.com/us/app/quickbooks-accounting/id584606479",
+        "https://play.google.com/store/apps/details?id=com.intuit.quickbooks&hl=en_US"
+      ]
+    },
+    {
+      "id": "desktop-app",
+      "vendorName": "QuickBooks Online desktop app",
+      "description": "A downloadable Windows and macOS (Apple silicon and Intel) app for QuickBooks Online that keeps users signed in and opens several companies in tabs.",
+      "surfaces": ["desktop"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://quickbooks.intuit.com/learn-support/en-us/help-article/download-products/download-use-quickbooks-online-advanced-desktop/L9BrRPlDD_US_en_US"
+      ]
+    },
+    {
+      "id": "api-webhooks",
+      "vendorName": "QuickBooks Online Accounting API",
+      "description": "REST API with webhooks for changes to subscribed entities, Change Data Capture as a polling alternative, and batch requests of up to 30 payloads.",
+      "surfaces": ["api"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://developer.intuit.com/app/developer/qbo/docs/develop/webhooks",
+        "https://developer.intuit.com/app/developer/qbo/docs/learn/explore-the-quickbooks-online-api/batch",
+        "https://developer.intuit.com/app/developer/qbo/docs/learn/rest-api-features"
+      ]
+    }
+  ],
+  "limits": [
+    "developer.intuit.com docs pages (API explorer, entity reference, webhooks, rest-api-features) came back truncated or JS-rendered, and help.developer.intuit.com gave a CSS-error shell. API facts rest on search snippets. The 'api' surface is marked only on api-webhooks, although many entities (invoices, bills, customers) are probably exposed; the entity list was not confirmed.",
+    "The pricing page came back as plan cards only, with no full row-by-row comparison table. Tiers are taken from the plan cards, help articles and the Advanced page. Many lowestTier values are null where no page stated one.",
+    "The pricing page now shows a Free plan ($0, 1 user, 2 invoices/month, 1 bank) beside Simple Start/Essentials/Plus/Advanced. Where the page states it, Free is used as lowestTier.",
+    "The Google Play listing page came back truncated. Android facts come from search-result snippets of the Play listing and quickbooks.intuit.com.",
+    "The QuickBooks App Store (apps.intuit.com, which redirects to quickbooks.intuit.com/app/apps/home/) is JS-rendered. App counts (800+ on /online/, 1,500+ on the Advanced page) are inconsistent across Intuit pages.",
+    "A search snippet mentioned Advanced 'Backup and Restore' (automatic backup, version restore) but it could not be tied to a specific page, so it was left out. SSO/MFA, data security and sandbox companies were not scanned.",
+    "Plan-by-plan availability of the AI agents is only partly stated: the agents help article gives no plans, so the agent tiers come from the pricing cards.",
+    "No prompt-injection content was seen in the fetched pages."
+  ],
+  "failures": [
+    {
+      "kind": "fetch",
+      "what": "https://developer.intuit.com/app/developer/qbo/docs/api/accounting/all-entities/account",
+      "result": "truncated / no usable content"
+    },
+    {
+      "kind": "fetch",
+      "what": "https://developer.intuit.com/app/developer/qbo/docs/learn/explore-the-quickbooks-online-api",
+      "result": "truncated / no usable content"
+    },
+    {
+      "kind": "fetch",
+      "what": "https://developer.intuit.com/app/developer/qbo/docs/learn/rest-api-features",
+      "result": "truncated / no usable content"
+    },
+    {
+      "kind": "fetch",
+      "what": "https://developer.intuit.com/app/developer/qbo/docs/develop/webhooks",
+      "result": "truncated / no usable content"
+    },
+    {
+      "kind": "fetch",
+      "what": "https://help.developer.intuit.com/s/article/API-call-limits-and-throttling",
+      "result": "CSS error shell, no content"
+    },
+    {
+      "kind": "fetch",
+      "what": "https://play.google.com/store/apps/details?id=com.intuit.quickbooks",
+      "result": "truncated / no usable content"
+    },
+    {
+      "kind": "fetch",
+      "what": "https://quickbooks.intuit.com/app/apps/home/",
+      "result": "JS loading shell only"
+    }
+  ],
+  "dataExport": {
+    "extraction": {
+      "full": "partial",
+      "incremental": "yes",
+      "apiBased": "partial",
+      "note": "The UI Export data tool gives reports and lists as Excel in one .zip, with separate exports for attachments, estimates, POs, recurring templates and more, but the audit log cannot be exported to Excel and has no API. Backups exist only on Advanced, and restoring one leaves out budgets and inventory history. The Accounting API has query, Attachable and Change Data Capture (changedSince, up to 30 days back, deletes flagged), plus webhooks. So delta sync is possible, but not all data can be pulled by API."
+    },
+    "exportOptions": [
+      {
+        "name": "Export data (Settings > Tools > Export data)",
+        "description": "Exports reports and lists as Excel files in one .zip file, covering posting transactions such as invoices, receipts and bills. You pick a date range and switch reports and lists on or off.",
+        "formats": ["Excel", "ZIP"],
+        "limits": "No row or size limits stated on the page",
+        "lowestTier": null,
+        "sources": [
+          "https://quickbooks.intuit.com/learn-support/en-us/help-article/list-management/export-reports-lists-data-quickbooks-online/L1xleDrLp_US_en_US"
+        ]
+      },
+      {
+        "name": "Per-report / per-list Export to Excel",
+        "description": "Separate exports for non-posting items: estimates, purchase orders, customer statements (print then download as PDF), recurring templates (Recurring Template List report), chart of accounts, and products and services.",
+        "formats": ["Excel", "PDF"],
+        "limits": null,
+        "lowestTier": null,
+        "sources": [
+          "https://quickbooks.intuit.com/learn-support/en-us/help-article/list-management/export-reports-lists-data-quickbooks-online/L1xleDrLp_US_en_US"
+        ]
+      },
+      {
+        "name": "Attachments batch export",
+        "description": "Settings > Lists > Attachments: select attachments, then Batch actions > Export. The files come out in a zip file.",
+        "formats": ["ZIP"],
+        "limits": null,
+        "lowestTier": null,
+        "sources": [
+          "https://quickbooks.intuit.com/learn-support/en-us/help-article/list-management/export-reports-lists-data-quickbooks-online/L1xleDrLp_US_en_US"
+        ]
+      },
+      {
+        "name": "Export after cancellation (read-only access)",
+        "description": "After cancelling, you have read-only access and can export data to Excel or to a desktop version of QuickBooks.",
+        "formats": ["Excel", "QuickBooks Desktop file"],
+        "limits": "Paid subscriptions: read-only access and export for one year after cancelling. Cancelled or expired trials: 90 days. A declined card leaves 14 days to update billing before the account is suspended.",
+        "lowestTier": null,
+        "sources": [
+          "https://quickbooks.intuit.com/learn-support/en-us/help-article/access-permissions/happens-quickbooks-online-data-cancel/L6qDpbE1B_US_en_US"
+        ]
+      },
+      {
+        "name": "Online Backup and Restore (Personal cloud archive export)",
+        "description": "Automatic backups once turned on, a manual Full backup, and point-in-time restore that overwrites the whole company. Backups can be exported to a linked Google Drive as a Personal cloud archive in .cab format, and a cloud archive cannot be restored for now.",
+        "formats": [".cab"],
+        "limits": "Keeps snapshots from the last year and restores to within one previous calendar year. Restore leaves out budgets (save them as CSV), inventory history and adjustments, and tax rates that use expense accounts. A Google Drive export may take 10 minutes or more.",
+        "lowestTier": "QuickBooks Online Advanced (page is tagged Advanced and Intuit Enterprise Suite)",
+        "sources": [
+          "https://quickbooks.intuit.com/learn-support/en-us/help-article/back-data/back-restore-quickbooks-online-advanced-company/L9sTCQn9P_US_en_US"
+        ]
+      }
+    ],
+    "apis": [
+      {
+        "name": "Accounting API query",
+        "kind": "read-api",
+        "description": "SQL-like query of Accounting API entities, paged (a client library pages at 1000 per page by default). Deleted entities are not returned by a standard query. Filtering on MetaData.LastUpdatedTime was not confirmed from a readable page.",
+        "sources": [
+          "https://developer.intuit.com/app/developer/qbo/docs/learn/rest-api-features",
+          "https://raw.githubusercontent.com/ruckus/quickbooks-ruby/master/README.md"
+        ]
+      },
+      {
+        "name": "Change Data Capture (CDC)",
+        "kind": "incremental",
+        "description": "GET /v3/company/<realmID>/cdc?entities=<entityList>&changedSince=<dateTime> returns the listed entities changed since a date-time. Lookback is up to 30 days, and at most 1000 objects come back per response, so poll shorter windows if you hit it. Deleted entities come back with status \"Deleted\".",
+        "sources": [
+          "https://developer.intuit.com/app/developer/qbo/docs/learn/explore-the-quickbooks-online-api/change-data-capture",
+          "https://developer.intuit.com/app/developer/qbo/docs/api/accounting/all-entities/changedatacapture",
+          "https://raw.githubusercontent.com/ruckus/quickbooks-ruby/master/README.md"
+        ]
+      },
+      {
+        "name": "Webhooks",
+        "kind": "webhooks-events",
+        "description": "Notifies the app when subscribed entities change, per the earlier product scan. The event payload and retry details could not be read.",
+        "sources": ["https://developer.intuit.com/app/developer/qbo/docs/develop/webhooks"]
+      },
+      {
+        "name": "Batch",
+        "kind": "other",
+        "description": "Several operations or queries in one request. The maximum is 30 payloads per the Intuit search snippet and product scan, while the quickbooks-ruby README says 25. The official page could not be read to settle it.",
+        "sources": [
+          "https://developer.intuit.com/app/developer/qbo/docs/learn/explore-the-quickbooks-online-api/batch",
+          "https://raw.githubusercontent.com/ruckus/quickbooks-ruby/master/README.md"
+        ]
+      },
+      {
+        "name": "Attachable / Upload",
+        "kind": "read-api",
+        "description": "Attachable entities hold attachment metadata and a temporary download URI (temp_download_uri) for the file. Invoice, SalesReceipt and Payment PDFs can be downloaded. This comes from a third-party client library's docs, not an official page.",
+        "sources": ["https://raw.githubusercontent.com/ruckus/quickbooks-ruby/master/README.md"]
+      }
+    ],
+    "auth": {
+      "models": ["oauth-app"],
+      "notes": "OAuth 2.0 authorization code flow: the authorize URL is appcenter.intuit.com/connect/oauth2, tokens come from oauth.platform.intuit.com/oauth2/v1/tokens/bearer, the scope is com.intuit.quickbooks.accounting, and a realmId identifies the company. Access tokens last 1 hour. The client library falls back to 100 days for refresh-token expiry when x_refresh_token_expires_in is not returned. All of this is from a third-party client README. The official OAuth page and the production-key/app-assessment requirements could not be read.",
+      "sources": ["https://raw.githubusercontent.com/ruckus/quickbooks-ruby/master/README.md"]
+    },
+    "rateLimits": {
+      "summary": "Not confirmed from a vendor page. An Intuit developer forum question title cites '500 QBO API requests per minute and the maximum of 10 concurrent requests'. A search snippet says some concurrent and batch limits were not enforced until they were corrected on August 10th, 2024. CDC caps a response at 1000 objects. The official throttling articles are JS-rendered and returned no text.",
+      "sources": [
+        "https://help.developer.intuit.com/s/question/0D54R00008kHftwSAC/with-respect-to-calculating-throttling-limits-500-qbo-api-requests-per-minute-and-the-maximum-of-10-concurrent-requests-when-a-batch-query-containing-5-queries-is-sent-to-qbo-is-the-batch-query-considered-1-request-or-5-requests",
+        "https://help.developer.intuit.com/s/article/API-call-limits-and-throttling",
+        "https://help.developer.intuit.com/s/article/QuickBooks-Online-API-throttling-changes-coming-soon"
+      ]
+    },
+    "hardToExtract": [
+      {
+        "dataClass": "history-audit",
+        "detail": "The audit log keeps events for two years, is admin-only, and shows 150 records at a time in the UI. Intuit forum answers (search snippets) say the audit trail is not exposed to the API, is only reachable in the UI, and cannot be exported to Excel (PDF save or copy-paste only). The official help article describes no export.",
+        "sources": [
+          "https://quickbooks.intuit.com/learn-support/en-us/help-article/audit-log/use-audit-log-quickbooks-online/L2WoVnW6I_US_en_US",
+          "https://help.developer.intuit.com/s/question/0D54R0000A0XUkaSQG/how-i-access-qbo-audit-logs-with-sdk-api",
+          "https://quickbooks.intuit.com/learn-support/en-us/reports-and-accounting/qbo-audit-log/00/648418"
+        ]
+      },
+      {
+        "dataClass": "history-audit",
+        "detail": "Change Data Capture only reaches back 30 days, and a standard query does not return deleted entities. Deletions older than 30 days cannot be recovered by API, so a delta sync has to run at least that often.",
+        "sources": [
+          "https://developer.intuit.com/app/developer/qbo/docs/learn/explore-the-quickbooks-online-api/change-data-capture",
+          "https://raw.githubusercontent.com/ruckus/quickbooks-ruby/master/README.md"
+        ]
+      },
+      {
+        "dataClass": "other",
+        "detail": "Restoring a backup leaves out budgets (they must be saved as CSV), inventory history and inventory adjustments. The Personal cloud archive (.cab) cannot be restored for now, and a restore replaces the whole company rather than un-deleting items.",
+        "sources": [
+          "https://quickbooks.intuit.com/learn-support/en-us/help-article/back-data/back-restore-quickbooks-online-advanced-company/L9sTCQn9P_US_en_US"
+        ]
+      },
+      {
+        "dataClass": "attachments-files",
+        "detail": "In the UI, attachments are exported separately from the Export data zip, through the Attachments list's batch action. By API, each file needs its own Attachable download URI (from third-party docs).",
+        "sources": [
+          "https://quickbooks.intuit.com/learn-support/en-us/help-article/list-management/export-reports-lists-data-quickbooks-online/L1xleDrLp_US_en_US",
+          "https://raw.githubusercontent.com/ruckus/quickbooks-ruby/master/README.md"
+        ]
+      }
+    ],
+    "migrationTools": [
+      {
+        "name": "Export to QuickBooks Desktop",
+        "direction": "out-of-vendor",
+        "description": "After cancelling, data can be exported to a desktop version of QuickBooks as well as to Excel.",
+        "sources": [
+          "https://quickbooks.intuit.com/learn-support/en-us/help-article/access-permissions/happens-quickbooks-online-data-cancel/L6qDpbE1B_US_en_US"
+        ]
+      },
+      {
+        "name": "Third-party backup apps (app center)",
+        "direction": "out-of-vendor",
+        "description": "The export help page points to third-party backup apps in the QuickBooks app center, without naming any.",
+        "sources": [
+          "https://quickbooks.intuit.com/learn-support/en-us/help-article/list-management/export-reports-lists-data-quickbooks-online/L1xleDrLp_US_en_US"
+        ]
+      }
+    ],
+    "limits": [
+      "developer.intuit.com doc pages (CDC, webhooks, batch, REST features, API reference) and help.developer.intuit.com articles are JS-rendered. WebFetch came back truncated and curl got only a shell with no text. CDC facts come from Intuit-domain search snippets, backed up by the third-party quickbooks-ruby README.",
+      "Throttling limits (requests per minute, concurrency, batch rate) are not confirmed from a vendor page. The only figure is a developer-forum question title.",
+      "Batch maximum conflicts: 30 (Intuit snippet and product scan) against 25 (quickbooks-ruby README).",
+      "OAuth token lifetimes and endpoints come from a third-party README. The production-key requirements (app assessment, questionnaire) were not confirmed.",
+      "Whether query supports filtering on MetaData.LastUpdatedTime was not confirmed.",
+      "Webhook payload, retry and event-type details were not read.",
+      "Whether the Export data zip covers every transaction type in full detail (not just reports) was not confirmed. The help page says posting transactions are included, but it states no limits or exclusions.",
+      "No injected instructions were seen in fetched pages."
+    ],
+    "failures": [
+      {
+        "kind": "fetch",
+        "what": "https://quickbooks.intuit.com/learn-support/en-us/help-article/import-export-data-files/export-reports-lists-data-quickbooks-online/L1xleDrLp_US_en_US",
+        "result": "404 (the right path is under list-management)"
+      },
+      {
+        "kind": "fetch",
+        "what": "https://developer.intuit.com/app/developer/qbo/docs/learn/explore-the-quickbooks-online-api/change-data-capture",
+        "result": "WebFetch truncated; curl got a JS shell with no doc text"
+      },
+      {
+        "kind": "fetch",
+        "what": "https://developer.intuit.com/app/developer/qbo/docs/api/accounting/all-entities/changedatacapture",
+        "result": "WebFetch truncated"
+      },
+      {
+        "kind": "fetch",
+        "what": "https://developer.intuit.com/app/developer/qbo/docs/learn/rest-api-features and /docs/develop/webhooks",
+        "result": "curl got a JS shell with no doc text"
+      },
+      {
+        "kind": "fetch",
+        "what": "https://help.developer.intuit.com/s/article/QuickBooks-Online-API-Best-Practices",
+        "result": "JS loading shell, no content"
+      },
+      {
+        "kind": "fetch",
+        "what": "https://help.developer.intuit.com/s/article/API-call-limits-and-throttling",
+        "result": "curl got no readable text"
+      },
+      {
+        "kind": "fetch",
+        "what": "https://blogs.intuit.com/2023/08/24/building-smarter-with-intuit-stay-in-sync-with-cdc/",
+        "result": "redirects to medium.com/intuitdev index; not followed"
+      }
+    ]
+  }
+}
