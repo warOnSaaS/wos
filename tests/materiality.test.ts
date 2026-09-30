@@ -16,4 +16,15 @@ describe("materiality model", () => {
   it("matches the committed OUTPUT.md", () => {
     expect(run()).toBe(readFileSync(join(root, "tools/materiality/OUTPUT.md"), "utf8"));
   });
+
+  it("is copied verbatim into MATERIALITY.md (headings one level down)", () => {
+    const out = run();
+    const body = out
+      .slice(out.indexOf("## Sniper List"))
+      .trimEnd()
+      .split("\n")
+      .map((l) => (l.startsWith("#") ? `#${l}` : l))
+      .join("\n");
+    expect(readFileSync(join(root, "docs/whitepaper/MATERIALITY.md"), "utf8")).toContain(body);
+  });
 });
