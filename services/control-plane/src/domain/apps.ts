@@ -39,6 +39,8 @@ export interface ReleaseRow {
   surfaces: string[];
   desktop_package: ModulePackage | null;
   desktop_package_url: string | null;
+  /** sha256Of(the ModuleBundle bytes), written once at publish (migration 0008, B-0007-control-plane). */
+  desktop_bundle_sha256: string | null;
   source_repo: string;
   source_tag: string;
   source_commit: string;
@@ -64,42 +66,6 @@ export async function fetchHttpsBytes(url: string): Promise<Uint8Array> {
   const buf = new Uint8Array(await res.arrayBuffer());
   if (buf.byteLength > MAX_BUNDLE_BYTES) throw new Error("bundle is larger than 64 MiB");
   return buf;
-}
-
-/**
- * sha256Of(bundle bytes) per (app, version, url). Migration 0006 has no column for it (B-0007-control-plane), so it is
- * computed at publish and, after a cold start, from one download; the pair is immutable, so the cache never goes stale.
- */
-const bundleShaCache = new Map<string, string>();
-const bundleKey = (app: string, version: string, url: string) => `${app}@${version} ${url}`;
-
-export function rememberBundleSha(app: string, version: string, url: string, sha: string): void {
-  bundleShaCache.set(bundleKey(app, version, url), sha);
-}
-
-async function bundleSha(deps: Deps, r: ReleaseRow): Promise<string> {
-  const key = bundleKey(r.app_id, r.version, r.desktop_package_url!);
-  const hit = bundleShaCache.get(key);
-  if (hit) return hit;
-  let bytes: Uint8Array;
-  try {
-    bytes = await (deps.fetchBytes ?? fetchHttpsBytes)(r.desktop_package_url!);
-  } catch (err) {
-    deps.log("error", "module bundle download failed", {
-      app: r.app_id,
-      version: r.version,
-      error: err instanceof Error ? err.message : String(err),
-    });
-    throw new ApiFailure("INTERNAL", "the module bundle could not be read");
-  }
-  const reasons = verifyBundleBytes(bytes, r.desktop_package!);
-  if (reasons.length > 0) {
-    deps.log("error", "a published module bundle no longer matches its release", { app: r.app_id, version: r.version, reasons });
-    throw new ApiFailure("INTERNAL", "the module bundle does not match its release");
-  }
-  const sha = sha256Of(bytes);
-  bundleShaCache.set(key, sha);
-  return sha;
 }
 
 /** Checks a downloaded `ModuleBundle` against the signed package (WOS-APP-PROTOCOL section 6). Returns the reasons it fails. */
@@ -135,16 +101,24 @@ export async function currentReleases(tx: Tx): Promise<ReleaseRow[]> {
      order by g.app_id`;
 }
 
-async function desktopPackageView(deps: Deps, r: ReleaseRow) {
+/**
+ * The published package: its URL, the bundle hash stored at publish (never recomputed on a read) and the signing key.
+ * Migration 0009 makes the hash present exactly with a package; a row without one answers 500 rather than a guess.
+ */
+function desktopPackageView(deps: Deps, r: ReleaseRow) {
   if (!r.desktop_package || !r.desktop_package_url) return null;
-  return { url: r.desktop_package_url, sha256: await bundleSha(deps, r), keyId: r.desktop_package.signature.keyId };
+  if (!r.desktop_bundle_sha256) {
+    deps.log("error", "a release with a desktop package has no stored bundle hash", { app: r.app_id, version: r.version });
+    throw new ApiFailure("INTERNAL", "the release has no bundle hash");
+  }
+  return { url: r.desktop_package_url, sha256: r.desktop_bundle_sha256, keyId: r.desktop_package.signature.keyId };
 }
 
 /** An `AppRegistryEntry` from the app's current release (contracts 5.2.0: the registry is built from releases). */
 export async function registryEntry(deps: Deps, r: ReleaseRow): Promise<AppRegistryEntry> {
   const m = r.manifest;
   const v = r.version;
-  const pkg = await desktopPackageView(deps, r);
+  const pkg = desktopPackageView(deps, r);
   // Build is bundled in the Desktop binary (D16), so its desktop surface is available without a package.
   const desktopAvailable = m.surfaces.desktop.supported && (pkg !== null || m.app.id === "build");
   return {
@@ -180,7 +154,7 @@ export async function releaseView(deps: Deps, r: ReleaseRow): Promise<AppRelease
     state: r.state,
     manifest: r.manifest,
     manifestSha256: r.manifest_sha256,
-    desktopPackage: await desktopPackageView(deps, r),
+    desktopPackage: desktopPackageView(deps, r),
     source: { repo: r.source_repo, tag: r.source_tag, commit: r.source_commit },
     publishedAt: isoReq(r.published_at),
     yankedAt: r.yanked_at ? isoReq(r.yanked_at) : null,

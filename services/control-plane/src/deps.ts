@@ -9,6 +9,7 @@ import {
   AGENT_POLICY_V1,
   type AgentPolicyDocument,
   type Changeset,
+  HOSTS,
   NotImplementedError,
   PLATFORM_REPO,
   PRODUCT_REPO,
@@ -162,8 +163,13 @@ export const DEFAULT_LOGIC: Logic = {
 
 export interface Config {
   env: "production" | "preview" | "local" | "test";
-  /** https://waronsaas.com: CORS origin, cookie domain and every link in email. */
+  /** https://waronsaas.com: the only CORS origin, and the email links of every client kind except web_app. */
   webOrigin: string;
+  /**
+   * https://app.waronsaas.com (HOSTS.app): wOS Web, where a web_app sign-in link lands (WEB_APP_SIGNIN_CODE_PATH,
+   * S-43). Never a CORS origin: wOS Web calls the control plane server to server only.
+   */
+  appOrigin: string;
   /** https://api.waronsaas.com: OAuth callback base. */
   apiOrigin: string;
   cronSecret: string;
@@ -173,8 +179,6 @@ export interface Config {
   ipHashSecret: string;
   productRepo: string;
   platformRepo: string;
-  /** Cookie Domain attribute; null in local and test runs. */
-  cookieDomain: string | null;
   /** Retry budget for GitHub calls made inside a request. */
   githubRetries: number;
   /** Login of the wOS GitHub App's bot user: the only allowed PR author (S-18). */
@@ -198,7 +202,7 @@ export interface Deps {
    * re-verifies releases with (`appKeysFromEnv`). Absent: no token can be minted and no desktop package published.
    */
   appKeys?: AppKeys;
-  /** Downloads a module bundle for publish verification and its registry sha256 (default: global fetch, https only). */
+  /** Downloads a module bundle once, at publish, to verify it and store its sha256 (default: global fetch, https only). */
   fetchBytes?: (url: string) => Promise<Uint8Array>;
   /**
    * Test hook: when set, the router reports every error code a handler returns that the route's
@@ -218,13 +222,13 @@ export function configFromEnv(env: Readonly<Record<string, string | undefined>>)
   return {
     env: wosEnv,
     webOrigin,
+    appOrigin: env.APP_ORIGIN ?? HOSTS.app,
     apiOrigin: env.API_ORIGIN ?? "https://api.waronsaas.com",
     cronSecret: need("CRON_SECRET"),
     tokenPepper: need("SESSION_TOKEN_PEPPER"),
     ipHashSecret: need("IP_HASH_SECRET"),
     productRepo: env.PRODUCT_REPO ?? PRODUCT_REPO,
     platformRepo: PLATFORM_REPO,
-    cookieDomain: wosEnv === "production" ? new URL(webOrigin).hostname : null,
     githubRetries: 2,
     appBotLogin: `${env.GITHUB_APP_SLUG ?? "waronsaas-wos"}[bot]`,
   };

@@ -3,7 +3,7 @@
  * SECURITY.md S-1..S-6. Auth handlers run as the `system` actor (sessions and sign-in requests are
  * system-only under RLS) and never log request bodies.
  */
-import { DomainEvent, type Me, TargetSlug } from "@waronsaas/contracts";
+import { DomainEvent, type Me, TargetSlug, WEB_APP_SIGNIN_CODE_PATH } from "@waronsaas/contracts";
 import { devicePublicKeyFromBase64 } from "@waronsaas/contracts/canonical";
 import { inTransaction, type Tx } from "@waronsaas/db";
 import type { Deps, GithubUserIdentity } from "../deps.js";
@@ -28,6 +28,9 @@ const asAccount = (c: Caller) => ({ kind: "contributor" as const, accountId: c.a
 
 export const normalizeEmail = (email: string) => email.trim().toLowerCase();
 
+/** web: the public site (cookies, S-5). desktop, cli, web_app (wOS Web's server, S-43): tokens in bodies. */
+type ClientKind = "web" | "desktop" | "cli" | "web_app";
+
 interface SessionTokens {
   accessToken: string;
   accessExpiresAt: string;
@@ -38,7 +41,7 @@ interface SessionTokens {
 async function createSession(
   tx: Tx,
   deps: Deps,
-  input: { accountId: string; deviceId: string | null; clientKind: "web" | "desktop" | "cli"; familyId: string },
+  input: { accountId: string; deviceId: string | null; clientKind: ClientKind; familyId: string },
 ): Promise<SessionTokens> {
   const accessToken = `wos_at_${randomToken()}`;
   const refreshToken = `wos_rt_${randomToken()}`;
@@ -57,10 +60,16 @@ async function createSession(
   };
 }
 
-function setWebSessionCookies(ctx: HandlerCtx<"redeemEmailSignIn" | "refreshSession">, t: SessionTokens): void {
-  ctx.setCookie({ name: "wos_session", value: t.accessToken, httpOnly: true, maxAgeSeconds: ACCESS_TTL_SECONDS });
-  ctx.setCookie({ name: "wos_refresh", value: t.refreshToken, httpOnly: true, maxAgeSeconds: REFRESH_TTL_SECONDS, path: "/v1/auth" });
-  ctx.setCookie({ name: "wos_csrf", value: randomToken(16), httpOnly: false, maxAgeSeconds: REFRESH_TTL_SECONDS });
+/**
+ * S-5 (amended at 5.6.0): the web session travels in host-only HttpOnly cookies. The site cannot read `wos_csrf`, so
+ * its value is returned for the response body's `csrfToken` and the site sends it back as X-wOS-Csrf.
+ */
+function setWebSessionCookies(ctx: HandlerCtx<"redeemEmailSignIn" | "refreshSession">, t: SessionTokens): string {
+  const csrf = randomToken(24);
+  ctx.setCookie({ name: "wos_session", value: t.accessToken, maxAgeSeconds: ACCESS_TTL_SECONDS });
+  ctx.setCookie({ name: "wos_refresh", value: t.refreshToken, maxAgeSeconds: REFRESH_TTL_SECONDS, path: "/v1/auth" });
+  ctx.setCookie({ name: "wos_csrf", value: csrf, maxAgeSeconds: REFRESH_TTL_SECONDS });
+  return csrf;
 }
 
 async function revokeFamily(tx: Tx, familyId: string): Promise<void> {
@@ -72,18 +81,27 @@ export async function revokeAllSessions(tx: Tx, accountId: string): Promise<void
   await tx`update wos.sessions set revoked_at = now() where account_id = ${accountId} and revoked_at is null`;
 }
 
-function signinMail(deps: Deps, requestId: string, linkToken: string, code: string) {
-  const link = `${deps.config.webOrigin}/auth/verify?${new URLSearchParams({ r: requestId, t: linkToken })}`;
+/** The emailed link: wOS Web's code page for web_app (S-43), the site's verify page for every other client. */
+export function signinLink(deps: Deps, clientKind: ClientKind, requestId: string, linkToken: string): string {
+  const q = new URLSearchParams({ r: requestId, t: linkToken });
+  return clientKind === "web_app"
+    ? `${deps.config.appOrigin}${WEB_APP_SIGNIN_CODE_PATH}?${q}`
+    : `${deps.config.webOrigin}/auth/verify?${q}`;
+}
+
+function signinMail(deps: Deps, clientKind: ClientKind, requestId: string, linkToken: string, code: string) {
+  const link = signinLink(deps, clientKind, requestId, linkToken);
+  const where = clientKind === "web_app" ? "in the browser where you started signing in" : "on the device where you started signing in";
   const text = [
     "Sign in to warOnSaaS",
     "",
-    `Open this link on the device where you started signing in: ${link}`,
+    `Open this link ${where}: ${link}`,
     "",
     `Or type this code: ${code}`,
     "",
     "The link and the code work once and expire in 15 minutes. If you did not ask to sign in, ignore this email.",
   ].join("\n");
-  const html = `<p>Sign in to warOnSaaS</p><p><a href="${link}">Sign in</a> on the device where you started signing in.</p><p>Or type this code: <strong>${code}</strong></p><p>The link and the code work once and expire in 15 minutes. If you did not ask to sign in, ignore this email.</p>`;
+  const html = `<p>Sign in to warOnSaaS</p><p><a href="${link}">Sign in</a> ${where}.</p><p>Or type this code: <strong>${code}</strong></p><p>The link and the code work once and expire in 15 minutes. If you did not ask to sign in, ignore this email.</p>`;
   return { subject: `Your warOnSaaS sign-in code: ${code}`, text, html };
 }
 
@@ -165,7 +183,10 @@ export const accountHandlers: Pick<
   async startEmailSignIn(ctx) {
     const { deps, body } = ctx;
     const email = normalizeEmail(body.email);
-    if (body.clientKind !== "web" && body.devicePublicKey !== null) {
+    // web_app registers no device (S-43: wOS Web's server is not a contributor machine; the ruling says null).
+    if (body.clientKind === "web_app" && body.devicePublicKey !== null)
+      throw new ApiFailure("VALIDATION_FAILED", "web_app sign-in takes no devicePublicKey");
+    if ((body.clientKind === "desktop" || body.clientKind === "cli") && body.devicePublicKey !== null) {
       // Device keys are base64 of the raw 32 Ed25519 bytes only (canonical.ts C-5).
       try {
         devicePublicKeyFromBase64(body.devicePublicKey);
@@ -188,13 +209,13 @@ export const accountHandlers: Pick<
       const [row] = await tx<{ expires_at: Date }[]>`
         insert into wos.email_signin_requests (id, email_normalized, client_kind, device_name, device_public_key, link_token_hash,
                                                code_hash, poll_secret_hash, ip_hash, expires_at)
-        values (${requestId}, ${email}, ${body.clientKind}, ${body.deviceName}, ${body.clientKind === "web" ? null : body.devicePublicKey},
+        values (${requestId}, ${email}, ${body.clientKind}, ${body.deviceName}, ${body.clientKind === "desktop" || body.clientKind === "cli" ? body.devicePublicKey : null},
                 ${tokenHash(pepper, linkToken)}, ${tokenHash(pepper, `${requestId}${code}`)}, ${tokenHash(pepper, pollSecret)},
                 ${ipHash(deps.config.ipHashSecret, ctx.ip, now)}, now() + make_interval(mins => ${SIGNIN_TTL_MINUTES}))
         returning expires_at`;
       return isoReq(row!.expires_at);
     });
-    const mail = signinMail(deps, requestId, linkToken, code);
+    const mail = signinMail(deps, body.clientKind, requestId, linkToken, code);
     let status: "sent" | "failed" = "sent";
     let providerId: string | null = null;
     try {
@@ -212,7 +233,7 @@ export const accountHandlers: Pick<
     );
     ctx.status = 202;
     if (body.clientKind === "web") {
-      ctx.setCookie({ name: "wos_signin", value: pollSecret, httpOnly: true, maxAgeSeconds: SIGNIN_TTL_MINUTES * 60, path: "/v1/auth" });
+      ctx.setCookie({ name: "wos_signin", value: pollSecret, maxAgeSeconds: SIGNIN_TTL_MINUTES * 60, path: "/v1/auth" });
       return { requestId, pollSecret: null, expiresAt };
     }
     return { requestId, pollSecret, expiresAt };
@@ -236,14 +257,14 @@ export const accountHandlers: Pick<
       accountId: string;
       deviceId: string | null;
       created: boolean;
-      clientKind: "web" | "desktop" | "cli";
+      clientKind: ClientKind;
     } | null = null;
     try {
       result = await inTransaction(deps.sql, SYSTEM, async (tx) => {
         const [req] = await tx<
           {
             email_normalized: string;
-            client_kind: "web" | "desktop" | "cli";
+            client_kind: ClientKind;
             device_name: string | null;
             device_public_key: string | null;
           }[]
@@ -279,7 +300,7 @@ export const accountHandlers: Pick<
           returning id`;
         if (redeemed.length === 0) throw denied();
         let deviceId: string | null = null;
-        if (req.client_kind !== "web" && req.device_public_key) {
+        if ((req.client_kind === "desktop" || req.client_kind === "cli") && req.device_public_key) {
           const [existing] = await tx<{ id: string; account_id: string; revoked_at: Date | null }[]>`
             select id, account_id, revoked_at from wos.devices where public_key = ${req.device_public_key}`;
           if (existing) {
@@ -314,8 +335,8 @@ export const accountHandlers: Pick<
     }
     const me = await inTransaction(deps.sql, { kind: "contributor", accountId: result.accountId }, (tx) => loadMe(tx, result!.accountId));
     if (result.clientKind === "web") {
-      setWebSessionCookies(ctx, result.tokens);
-      ctx.setCookie({ name: "wos_signin", value: "", httpOnly: true, maxAgeSeconds: 0, path: "/v1/auth" });
+      const csrfToken = setWebSessionCookies(ctx, result.tokens);
+      ctx.setCookie({ name: "wos_signin", value: "", maxAgeSeconds: 0, path: "/v1/auth" });
       return {
         accessToken: "",
         accessExpiresAt: result.tokens.accessExpiresAt,
@@ -324,6 +345,7 @@ export const accountHandlers: Pick<
         deviceId: null,
         created: result.created,
         me,
+        csrfToken,
       };
     }
     return { ...result.tokens, deviceId: result.deviceId, created: result.created, me };
@@ -343,7 +365,7 @@ export const accountHandlers: Pick<
           family_id: string;
           account_id: string;
           device_id: string | null;
-          client_kind: "web" | "desktop" | "cli";
+          client_kind: ClientKind;
           rotated: boolean;
           revoked: boolean;
           live: boolean;
@@ -375,12 +397,13 @@ export const accountHandlers: Pick<
       throw new ApiFailure("UNAUTHENTICATED", "refresh token is not valid; sign in again");
     }
     if (outcome.web) {
-      setWebSessionCookies(ctx, outcome.tokens);
+      const csrfToken = setWebSessionCookies(ctx, outcome.tokens);
       return {
         accessToken: "",
         accessExpiresAt: outcome.tokens.accessExpiresAt,
         refreshToken: "",
         refreshExpiresAt: outcome.tokens.refreshExpiresAt,
+        csrfToken,
       };
     }
     return outcome.tokens;
@@ -390,8 +413,9 @@ export const accountHandlers: Pick<
     const caller = ctx.caller!;
     await inTransaction(ctx.deps.sql, SYSTEM, (tx) => revokeFamily(tx, caller.familyId));
     if (caller.viaCookie) {
-      ctx.setCookie({ name: "wos_session", value: "", httpOnly: true, maxAgeSeconds: 0 });
-      ctx.setCookie({ name: "wos_refresh", value: "", httpOnly: true, maxAgeSeconds: 0, path: "/v1/auth" });
+      ctx.setCookie({ name: "wos_session", value: "", maxAgeSeconds: 0 });
+      ctx.setCookie({ name: "wos_refresh", value: "", maxAgeSeconds: 0, path: "/v1/auth" });
+      ctx.setCookie({ name: "wos_csrf", value: "", maxAgeSeconds: 0 });
     }
     return { ok: true as const };
   },
