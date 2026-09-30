@@ -45,7 +45,7 @@ export default function Briefing() {
             <div className="cmds-row">
               <Link className="cmd" href="/targets/waronsaas">TGT-00 FEATURE PROPOSAL</Link>
               <Link className="cmd" href="/#targets">SNIPER LIST</Link>
-              <Link className="cmd" href="/download">DOWNLOAD wOS</Link>
+              <Link className="cmd" href="/contribute">HOW TO CONTRIBUTE</Link>
             </div>
           </Section>
         </div>

@@ -3,6 +3,7 @@ import { programme, targets } from "@/data/targets";
 import { formatPercent, listTargets, sniperListTotals } from "@/lib/data-source";
 import { desktopAppLd, pageMetadata, targetListLd } from "@/lib/seo";
 import { lastShipped } from "@/lib/build-log";
+import { getCliRelease } from "@/lib/cli-release";
 import { SITE_DESCRIPTION, SITE_NAME } from "@/lib/site";
 import { Section } from "@/components/Section";
 import { TargetTable } from "@/components/TargetTable";
@@ -22,6 +23,7 @@ export default async function Home() {
   const totals = await sniperListTotals();
   const items = await listTargets();
   const shipped = lastShipped();
+  const release = await getCliRelease();
   const sitrep: [string, string][] = [
     ["TARGETS", String(totals.targets)],
     ["ROADMAPS OPEN", String(totals.roadmapsOpen)],
@@ -46,7 +48,7 @@ export default async function Home() {
         <div className="cmds-row">
           <a className="cmd" href="#targets">SNIPER LIST</a>
           <Link className="cmd" href="/briefing">FULL BRIEFING</Link>
-          <Link className="cmd" href="/download">DOWNLOAD wOS</Link>
+          <Link className="cmd" href="/contribute">HOW TO CONTRIBUTE</Link>
         </div>
       </div>
 
@@ -99,8 +101,8 @@ export default async function Home() {
         </div>
       </Section>
 
-      <Section n="04" title="EQUIPMENT" id="equipment" aside={<Link href="/download">SETUP</Link>}>
-        <DownloadBlock />
+      <Section n="04" title="EQUIPMENT" id="equipment" aside={<Link href="/contribute">SETUP</Link>}>
+        <DownloadBlock release={release} />
       </Section>
 
       <JsonLd data={targetListLd(targets)} />

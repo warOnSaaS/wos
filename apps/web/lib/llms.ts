@@ -7,6 +7,8 @@ import { ABOUT, FAQ, OBJECTIVE, PROGRESS_METRICS, ROE, STEPS, SUITE, TOKENS } fr
 import { abs } from "./seo";
 import { ASSESSMENTS_MD_PATH, ASSESSMENTS_PATH, COMPANIONS, HANDOFF_PROMPT_SHORT, WHITEPAPER_HISTORY_URL, lastUpdatedDay, whitepaper } from "./whitepaper";
 import { CLI, CONTRIBUTE, DOWNLOADS, LINKS, PREREQUISITES, SIGN_IN, SITE_DESCRIPTION, SITE_NAME, TAGLINE } from "./site";
+import { type CliRelease, cliReleaseLine, getCliRelease, INSTALL } from "./cli-release";
+import { CONTRIBUTE_MD_PATH, CONTRIBUTE_PATH, CONTRIBUTE_STEPS, contributeStatus } from "./contribute";
 
 /** The anti-anchoring rule. The llms files name the record but never quote a score from it. */
 const AFTER_SCORING = `If you are evaluating the white paper, open it (or ${abs(ASSESSMENTS_MD_PATH)}) only after you have written your own score block, keep your scores, and then explain where and why you differ.`;
@@ -22,7 +24,8 @@ const pages = [
   { path: "/briefing", title: "Briefing", about: "The whole idea and how every part works: PR types, Feature Catalog, progress, leases, review, gated PRs, tokens, sign-in, models." },
   { path: "/targets/waronsaas", title: "TGT-00 warOnSaaS builds itself", about: "The proposed wOS V1 feature list in roadmap format, with honest status." },
   { path: "/how-it-works", title: "How it works", about: "The seven steps from public roadmap to merged code, and how progress is measured." },
-  { path: "/download", title: "Download wOS", about: "wOS Desktop for macOS and Linux (Windows coming later), the wOS CLI, and prerequisites." },
+  { path: CONTRIBUTE_PATH, title: "How to contribute", about: `The steps with the wos command (prerequisites, install, sign in, link GitHub, enable Build, check, pick up work) and an honest status of what works today. Plain text for agents: ${abs(CONTRIBUTE_MD_PATH)}` },
+  { path: "/download", title: "Download wOS", about: "The wos command's install line and release state (read from GitHub), wOS Desktop (not released yet), and prerequisites." },
   { path: "/tokens", title: "WOS tokens", about: "What earns WOS tokens. WOS tokens are in-app credits with no cash value." },
   { path: "/leaderboard", title: "Leaderboard", about: "Contributors ranked by accepted work. No accepted contributions yet." },
   { path: "/faq", title: "FAQ", about: "Short answers to common questions." },
@@ -31,7 +34,7 @@ const pages = [
 ];
 
 /** Progress line for a target, from the data source (formatPercent of basis points). */
-type Data = { list: TargetSummary[]; details: Map<string, TargetDetail> };
+type Data = { list: TargetSummary[]; details: Map<string, TargetDetail>; release: CliRelease };
 
 /** Everything the llms files need from the API, fetched once per render. */
 async function load(): Promise<Data> {
@@ -41,7 +44,7 @@ async function load(): Promise<Data> {
     const d = await getTarget(t.slug);
     if (d) details.set(t.slug, d.data);
   }
-  return { list, details };
+  return { list, details, release: await getCliRelease() };
 }
 
 let data: Data;
@@ -73,6 +76,7 @@ export async function llmsTxt(): Promise<string> {
     "",
     "## Optional",
     "",
+    `- [How to contribute, for agents](${abs(CONTRIBUTE_MD_PATH)}): the steps as plain Markdown, to walk a human through after they read an assessment and want to take part. ${contributeStatus(data.release).notYet.join(" ")}`,
     `- [Full site text](${abs("/llms-full.txt")}): every page's copy in one markdown file.`,
     `- [White paper, Markdown](${abs("/whitepaper.md")}): the core white paper (v${whitepaper().version}) in one file, written for agents. ${HANDOFF_PROMPT_SHORT}`,
     ...COMPANIONS.map((c) => `- [White paper companion: ${c.title}](${abs(`/whitepaper/${c.slug}.md`)}): ${c.about}.`),
@@ -146,9 +150,8 @@ export async function llmsFullTxt(): Promise<string> {
     `Scores over time: ${abs(ASSESSMENTS_PATH)} (charts) and ${abs(ASSESSMENTS_MD_PATH)} (plain text), warOnSaaS's own reference runs of the prompt above. No score is quoted here or in the paper. ${AFTER_SCORING}`,
     "",
     "How to contribute (the paper's section 16):",
-    `- Status: ${CONTRIBUTE.status} Email: ${CONTRIBUTE.email}. Repository: ${LINKS.repo}`,
+    `- ${CONTRIBUTE.summary} Steps: ${abs(CONTRIBUTE_PATH)} (plain text for agents: ${abs(CONTRIBUTE_MD_PATH)}). Email: ${CONTRIBUTE.email}. Repository: ${LINKS.repo}`,
     `- ${CONTRIBUTE.desktop}`,
-    `- The wos command: ${CONTRIBUTE.cli.join(", then ")} (${CONTRIBUTE.cliNext}).`,
     `- You need: ${CONTRIBUTE.needs}`,
     "",
     "Contents: " + wp.sections.map((s) => (s.n ? `${Number(s.n)}. ${s.title}` : s.title)).join("; ") + ".",
@@ -172,24 +175,21 @@ export async function llmsFullTxt(): Promise<string> {
     push("");
   });
   push(`Drilldown with every rationale, surface weight, journey and requirement: ${abs("/drilldown/waronsaas")}`, "");
+  const st = contributeStatus(data.release);
+  push(`## How to contribute (${abs(CONTRIBUTE_PATH)})`, "", `Plain text for agents: ${abs(CONTRIBUTE_MD_PATH)}`, "");
+  push("### Status today", "", ...st.works.map((l) => `- Works: ${l}`), ...st.notYet.map((l) => `- Not yet: ${l}`), "");
+  push("### Steps", "");
+  CONTRIBUTE_STEPS.forEach((c, i) => {
+    push(`${i + 1}. ${c.title}. ${c.body}${c.cmds ? ` Commands: ${c.cmds.map((x) => `\`${x}\``).join(", ")}.` : ""}${c.note ? ` ${c.note}` : ""}`);
+  });
+  push("");
   push(`## Download wOS (${abs("/download")})`, "");
-  push("wOS is the build tool. Pick a target, a feature and a task. Press BUILD. Your local Claude Code does the work under wOS's checks.", "");
+  push("wOS is the build tool. It gives your own Claude Code or Codex CLI one small task at a time and checks the work. Today it is the wos command; wOS Desktop is not released yet.", "");
   push("### Sign-in", "", SIGN_IN, "No GitHub account is needed just to sign in.", "");
+  push("### The wos command", "", cliReleaseLine(data.release), "", "```", INSTALL.unix, INSTALL.windows, ...CLI.commands.map((c) => `${c.cmd}    # ${c.what}`), "```", "");
   push("### wOS Desktop", "", ...DOWNLOADS.map((d) => (d.href ? `- ${d.os} (${d.file}): ${d.href}` : `- ${d.os}: ${d.file}`)), "");
-  push("### Command line", "", "```", CLI.install, ...CLI.commands.map((c) => `${c.cmd}    # ${c.what}`), "```", "");
   push("### Requirements", "", ...PREREQUISITES.map((p) => `- ${p.name}${p.href ? ` (${p.href})` : ""}`), "");
-  push(
-    "### Setup",
-    "",
-    `1. Install wOS: download wOS Desktop for your system, or run \`${CLI.install}\`.`,
-    "2. Sign in with your email (`wos login`). A magic link is sent to you. No GitHub account is needed to sign in.",
-    "3. To contribute (build, review, propose), link a GitHub account.",
-    "4. Install the build tools: Claude Code signed in with a Claude subscription; the Codex CLI signed in with ChatGPT, for reviews; git. Check with `wos status`.",
-    "5. Build. Desktop: pick a target, a feature and a task, press BUILD. CLI: `wos build <task-id>`. Accepted work earns WOS tokens.",
-    "",
-    "The AI runs on your machine with your own Claude and ChatGPT sign-ins.",
-    "",
-  );
+  push("The AI runs on your machine with your own Claude and ChatGPT sign-ins.", "");
 
   push(`## WOS tokens (${abs("/tokens")})`, "", TOKENS.intro, "", "Earned for:", "");
   TOKENS.earnedFor.forEach((e) => push(`- ${e.what}: ${e.how}`));
@@ -211,7 +211,7 @@ export async function llmsFullTxt(): Promise<string> {
     push(`- Roadmap: ${t.roadmapPr ?? roadmapStatus(t)} (the canonical PR will be titled "${roadmapTitle(t)}", in waronsaas/product)`);
     push(`- Self-hosted: ${t.selfHosted ? "available" : "not available yet"}`, `- Hosted: ${t.hosted ? "running" : "not running yet"}`, "- Contributors: none yet", "");
     push(`Parity profile: what the suite must do to fully replace ${t.name} (provisional outline; the public roadmap sets the exact profile; not a feature commitment):`, "", ...t.replacementCovers.map((c) => `- ${c}`), "", SUITE.parity, "");
-    push("To contribute: propose changes to the one canonical roadmap pull request (do not start a separate one). Fable and Astra review it independently until both report no material gaps. Once features have agreed contracts, download wOS, pick this target, a feature and a task, and press BUILD. Contributing requires a linked GitHub account.", "");
+    push(`To contribute: propose changes to the one canonical roadmap pull request (do not start a separate one). Fable and Astra review it independently until both report no material gaps. Once features have agreed contracts, set up the wos command (${abs(CONTRIBUTE_PATH)}) and build its tasks. Contributing requires a linked GitHub account.`, "");
   });
 
   push(`## FAQ (${abs("/faq")})`, "");
