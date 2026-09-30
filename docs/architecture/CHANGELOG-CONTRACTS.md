@@ -129,3 +129,11 @@ MINOR, additive.
   - There is one toolchain matcher, agent-policy's `scopeCanTouchGlob`. The control plane's literal-prefix copy made `apps/mobile/ios/**` require the Android SDK.
   - The product template's `**/*.podspec` is anchored to `modules/*/native/*.podspec`.
   - `github/local` serialises mirror work per repository (B-0005-desktop).
+
+## 5.1.0 — 2026-09-30 (white paper assessments, architect role for the assessments workstream)
+
+MINOR, additive. No route, no migration.
+- New module `assessment.ts` (imports only zod, so plain `node` scripts can import it by path):
+  - `AssessmentBlock` (`wos-assessment/v1`): the score block an evaluating agent appends to its report on the white paper (v0.7 brief): paper version, self-reported evaluator, date, stage 1 (problem real, importance 0–100 as five 0–20 dimensions whose sum must equal the total, the four theses each importance 0–10 / compelling 0–10 / confidence, overall confidence) and stage 2 (effectiveness 0–100, credibility 0–100, readiness class, verdict ignore/watch/test/participate, confidence).
+  - `AssessmentRecord` (`wos-assessment-record/v1`): one reference run stored as `docs/assessments/<id>.json` with the verbatim report in `<id>.md`; source is only `reference run by warOnSaaS` (founder, 2026-09-30: no reader submissions).
+  - `extractAssessmentBlock(report)`: finds the last fenced `wos-assessment` block (or a `json` block declaring the schema) and validates it; never guesses values.
