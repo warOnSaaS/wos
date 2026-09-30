@@ -1,9 +1,49 @@
 {
   "ref": "main",
-  "head": "1c11d6fdbe5e037774ce26cacd552dba55c3f9ea",
+  "head": "9c67058a4e93d25e3f1f9775ed550e5af98f961d",
   "complete": true,
-  "count": 63,
+  "count": 68,
   "commits": [
+    {
+      "sha": "9c67058a4e93d25e3f1f9775ed550e5af98f961d",
+      "short": "9c67058",
+      "date": "2026-09-30T11:05:55-04:00",
+      "day": "2026-09-30",
+      "subject": "OPEN IN CLAUDE opens the Claude desktop app, falling back to claude.ai",
+      "url": "https://github.com/warOnSaaS/wos/commit/9c67058a4e93d25e3f1f9775ed550e5af98f961d"
+    },
+    {
+      "sha": "9d843f2adc212c125b5d179821705126fa4b3aff",
+      "short": "9d843f2",
+      "date": "2026-09-30T11:02:18-04:00",
+      "day": "2026-09-30",
+      "subject": "Website: MATERIALITY.md companion, two-stage handoff prompt, site-sync rules for dated figures",
+      "url": "https://github.com/warOnSaaS/wos/commit/9d843f2adc212c125b5d179821705126fa4b3aff"
+    },
+    {
+      "sha": "4b587c4adf11d761227b32005c095f3a918a6452",
+      "short": "4b587c4",
+      "date": "2026-09-30T11:02:18-04:00",
+      "day": "2026-09-30",
+      "subject": "White paper v0.6: two parts, the thesis and its materiality first, the approach judged against it",
+      "url": "https://github.com/warOnSaaS/wos/commit/4b587c4adf11d761227b32005c095f3a918a6452"
+    },
+    {
+      "sha": "6c3822311e0ff1c5fdd291586460684d3736ca23",
+      "short": "6c38223",
+      "date": "2026-09-30T10:57:44-04:00",
+      "day": "2026-09-30",
+      "subject": "White paper: MATERIALITY.md companion with sourced figures and the model's output",
+      "url": "https://github.com/warOnSaaS/wos/commit/6c3822311e0ff1c5fdd291586460684d3736ca23"
+    },
+    {
+      "sha": "8fbcdc300899d39efda8317bbb5e8645ed192316",
+      "short": "8fbcdc3",
+      "date": "2026-09-30T10:55:24-04:00",
+      "day": "2026-09-30",
+      "subject": "Materiality model: deterministic estimate of the problem's size in money, compute and power",
+      "url": "https://github.com/warOnSaaS/wos/commit/8fbcdc300899d39efda8317bbb5e8645ed192316"
+    },
     {
       "sha": "1c11d6fdbe5e037774ce26cacd552dba55c3f9ea",
       "short": "1c11d6f",
