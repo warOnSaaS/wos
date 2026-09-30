@@ -1,12 +1,12 @@
 # warOnSaaS white paper: edge cases we considered
 
-Companion file to the warOnSaaS white paper (`WHITEPAPER.md`, the core; its header gives the version and last-updated date). It indexes every edge case, abuse and failure mode the design addresses, where each is handled, the exact test name where one exists, and its status. Point 5 of the evaluation brief asks the agent to go through it. It is optional depth: an evaluating agent can reach a full assessment from the core alone and should open this file only to check a detail.
+Companion file to the warOnSaaS white paper (`WHITEPAPER.md`, the core; its header gives the version and last-updated date). It indexes every edge case, abuse and failure mode the design addresses, where each is handled, the exact test name where one exists, and its status. Point 8 of the evaluation brief (stage 2) asks the agent to go through it. It is optional depth: an evaluating agent can reach a full assessment from the core alone and should open this file only to check a detail.
 
 Section numbers in this file ("section 16", "section 33") refer to the full design narrative in `DESIGN.md`, which keeps the v0.4 numbering. History: https://github.com/warOnSaaS/wos/commits/main/docs/whitepaper
 
 ## Edge cases we considered (was section 43)
 
-This is the index of every edge case, abuse and failure mode the design addresses, so an evaluating agent can go through them one by one (point 5 of the instructions). It is compact on purpose; each row says where the case is handled.
+This is the index of every edge case, abuse and failure mode the design addresses, so an evaluating agent can go through them one by one (point 8 of the instructions). It is compact on purpose; each row says where the case is handled.
 
 How to read it:
 
