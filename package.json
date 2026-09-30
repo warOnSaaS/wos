@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "description": "warOnSaaS monorepo: wOS (Desktop, CLI, control plane, shared packages) and the public website.",
-  "license": "UNLICENSED",
+  "license": "Apache-2.0",
   "engines": {
     "node": ">=22.12 <23",
     "npm": ">=10.9"

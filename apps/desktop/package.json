@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "license": "UNLICENSED",
+  "license": "Apache-2.0",
   "description": "wOS Desktop: the contributor build environment. Electron main process owns processes, git and the filesystem; the renderer is sandboxed.",
   "main": "dist/app/main.mjs",
   "scripts": {
