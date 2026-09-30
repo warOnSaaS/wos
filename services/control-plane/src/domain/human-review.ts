@@ -58,6 +58,10 @@ export async function humanSeatRefusals(tx: Tx, round: HumanSeatRound, accountId
 
 /** The review policy in force (public). */
 export async function reviewPolicyState(tx: Tx): Promise<ReviewPolicyState> {
+  // The API deploys from main, possibly before the coordinator applies migration 0013: until then the public status
+  // reports no fallback instead of failing (nothing else on the public read path touches 0013's objects).
+  const [t] = await tx<{ ok: boolean }[]>`select to_regclass('wos.review_policy_switches') is not null as ok`;
+  if (!t?.ok) return { fallback: "none", switchSeq: null, since: null, reason: null };
   const [last] = await tx<{ seq: number; fallback: ReviewFallback; reason: string; switched_at: Date }[]>`
     select seq, fallback, reason, switched_at from wos.review_policy_switches order by seq desc limit 1`;
   return last
