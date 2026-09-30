@@ -58,7 +58,7 @@ export default function WhitepaperPage() {
       <div className="sec handoff" id="handoff" aria-label="Hand the white paper to your agent">
         <div className="handoff-actions">
           <a className="cmd cmd--big" href={WHITEPAPER_DOWNLOAD_PATH} download={FILE}>
-            DOWNLOAD FOR YOUR AGENT
+            DOWNLOAD FOR AGENT
           </a>
           <button type="button" className="cmd cmd--big" id="wp-copy" hidden>
             COPY PROMPT
