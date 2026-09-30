@@ -1,0 +1,208 @@
+{
+  "policyVersion": "review-policy.v1",
+  "status": "draft",
+  "riskClasses": [
+    {
+      "id": "protocol",
+      "priority": 10,
+      "description": "Contracts, migrations, rewards, protocol docs, policy data",
+      "match": {
+        "anyPathGlobs": ["packages/contracts/**", "packages/db/migrations/**", "packages/rewards/**", "docs/protocol/**"],
+        "contributionTypes": ["GENESIS"],
+        "labels": []
+      }
+    },
+    {
+      "id": "accounting",
+      "priority": 20,
+      "description": "Money-like records in the suite (ledgers, invoices, payments)",
+      "match": {
+        "anyPathGlobs": ["modules/invoices/**", "modules/payments/**", "modules/ledger/**"],
+        "contributionTypes": [],
+        "labels": ["accounting"]
+      }
+    },
+    {
+      "id": "security",
+      "priority": 30,
+      "description": "Auth, sessions, secrets, crypto, permissions, security reports",
+      "match": {
+        "anyPathGlobs": ["**/auth/**", "**/crypto/**", "**/permissions/**", "services/control-plane/src/auth/**"],
+        "contributionTypes": ["SECURITY"],
+        "labels": ["security"]
+      }
+    },
+    {
+      "id": "low_risk",
+      "priority": 90,
+      "description": "Docs, tests and copy only: every changed path matches",
+      "match": {
+        "anyPathGlobs": ["docs/**", "**/*.md", "**/test/**", "**/tests/**", "**/*.test.ts", "**/copy/**"],
+        "contributionTypes": ["DOCUMENTATION"],
+        "labels": []
+      }
+    },
+    {
+      "id": "standard",
+      "priority": 100,
+      "description": "Everything else",
+      "match": {
+        "anyPathGlobs": [],
+        "contributionTypes": [],
+        "labels": []
+      }
+    }
+  ],
+  "defaultRiskClass": "standard",
+  "rules": [
+    {
+      "riskClass": "low_risk",
+      "deterministicVerification": true,
+      "agentReviews": [
+        {
+          "capability": "REVIEW_A",
+          "reasoning": "max"
+        },
+        {
+          "capability": "REVIEW_B",
+          "reasoning": "max"
+        }
+      ],
+      "humans": {
+        "count": 0,
+        "domains": [],
+        "distinctDomains": 0,
+        "minLevel": 1
+      },
+      "adminQuorum": 0
+    },
+    {
+      "riskClass": "standard",
+      "deterministicVerification": true,
+      "agentReviews": [
+        {
+          "capability": "REVIEW_A",
+          "reasoning": "max"
+        },
+        {
+          "capability": "REVIEW_B",
+          "reasoning": "max"
+        }
+      ],
+      "humans": {
+        "count": 1,
+        "domains": [],
+        "distinctDomains": 0,
+        "minLevel": 1
+      },
+      "adminQuorum": 0
+    },
+    {
+      "riskClass": "security",
+      "deterministicVerification": true,
+      "agentReviews": [
+        {
+          "capability": "REVIEW_A",
+          "reasoning": "max"
+        },
+        {
+          "capability": "REVIEW_B",
+          "reasoning": "max"
+        }
+      ],
+      "humans": {
+        "count": 1,
+        "domains": [],
+        "distinctDomains": 0,
+        "minLevel": 1
+      },
+      "adminQuorum": 0
+    },
+    {
+      "riskClass": "accounting",
+      "deterministicVerification": true,
+      "agentReviews": [
+        {
+          "capability": "REVIEW_A",
+          "reasoning": "max"
+        },
+        {
+          "capability": "REVIEW_B",
+          "reasoning": "max"
+        }
+      ],
+      "humans": {
+        "count": 1,
+        "domains": [],
+        "distinctDomains": 0,
+        "minLevel": 1
+      },
+      "adminQuorum": 0
+    },
+    {
+      "riskClass": "protocol",
+      "deterministicVerification": true,
+      "agentReviews": [
+        {
+          "capability": "REVIEW_A",
+          "reasoning": "max"
+        },
+        {
+          "capability": "REVIEW_B",
+          "reasoning": "max"
+        }
+      ],
+      "humans": {
+        "count": 1,
+        "domains": [],
+        "distinctDomains": 0,
+        "minLevel": 1
+      },
+      "adminQuorum": 0
+    }
+  ],
+  "independence": {
+    "humanMayBeSubjectAuthor": false,
+    "humanMayHoldAgentSlotOfSameRound": false,
+    "maxHumanReviewsOfSameAuthorPer7d": 10,
+    "assignment": "admin_assigned"
+  },
+  "humanReviewSlaHours": 72,
+  "recordDisagreementsAsEvalCases": true,
+  "bootstrap": {
+    "founderMergeAuthority": true,
+    "founderOwnWorkReceipt": "PROVISIONAL",
+    "selfReviewSatisfiesRules": false,
+    "publicLabel": "Merged under founder bootstrap authority: provisional until independently ratified",
+    "ratificationQueueFirst": true
+  },
+  "approvalBinding": "head_submission_context_policy",
+  "audits": {
+    "baseRateBp": 1000,
+    "newAccountRateBp": 3000,
+    "newAccountReceipts": 10,
+    "flaggedAccountRateBp": 5000,
+    "disagreementRevokesOriginal": true
+  },
+  "agentReviewerAssignment": "random_among_eligible",
+  "ratification": {
+    "quorum": 2,
+    "smallPoolThreshold": 10,
+    "dutyPerReceipt": 2,
+    "maxDutyTasksPerClaim": 3,
+    "dutyReasoning": "high",
+    "requireProviderDiversity": true,
+    "sealedUntilAllSubmit": true,
+    "unmetDutyCarryEpochs": 8,
+    "contradictedRatificationRevokesCredit": true
+  },
+  "canaries": {
+    "rateBp": 500,
+    "newAccountRateBp": 1500,
+    "flaggedAccountRateBp": 2500,
+    "mutationClasses": ["authorization", "inverted_condition", "off_by_one", "missing_validation", "secret_leak", "scope_violation"],
+    "maxUsesPerCase": 3,
+    "catchToleranceLines": 3,
+    "passEffect": "revoke_unfinalized_and_flag"
+  }
+}

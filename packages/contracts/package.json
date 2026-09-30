@@ -13,6 +13,10 @@
     "./canonical": {
       "types": "./dist/canonical.d.ts",
       "default": "./dist/canonical.js"
+    },
+    "./protocol": {
+      "types": "./dist/protocol/index.d.ts",
+      "default": "./dist/protocol/index.js"
     }
   },
   "files": [

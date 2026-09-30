@@ -1,0 +1,34 @@
+{
+  "policyVersion": "usage-proof-policy.v1",
+  "status": "draft",
+  "providers": [
+    {
+      "provider": "claude_cli",
+      "minCliVersion": "2.1.284",
+      "primarySource": "cli_result_event",
+      "crossCheckSource": "cli_stream_sum",
+      "notes": "claude -p --output-format stream-json --verbose: per-message usage on assistant events, run totals on the result event. Shapes: USAGE-PROOF.md section 2.1."
+    },
+    {
+      "provider": "codex_cli",
+      "minCliVersion": "0.155.0",
+      "primarySource": "cli_stream_sum",
+      "crossCheckSource": "transcript",
+      "notes": "codex exec --json: usage on turn.completed events (input_tokens INCLUDES cached_input_tokens). Shapes: USAGE-PROOF.md section 2.2."
+    }
+  ],
+  "plausibility": {
+    "maxOutputTokensPerSecond": 400,
+    "maxTotalTokensPerSecond": 200000,
+    "maxSourceMismatchBp": 200,
+    "requireProviderIdsHash": true,
+    "requireTranscriptHash": true,
+    "requireModelMatch": true
+  },
+  "audit": {
+    "randomRerunBp": 0,
+    "transcriptRequestBp": 500,
+    "transcriptRetentionDays": 60,
+    "divergenceFactorBp": 30000
+  }
+}
