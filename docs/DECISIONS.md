@@ -385,3 +385,42 @@ These override `docs/V1-SPEC.md` where they differ. Date: 2026-09-29.
 - **Pay: a published BASE price and a "+20% queue bonus"** (review 09 R09-1: the coefficient is PAY and lives in the pinned reward policy, `reward-policy.v2` `queue.queueBonusBp`; v2 work must carry complete claim terms at it, one set per task). Every task has a published base price (the self-pick price). The queue pays base x (1 + `queueBonusBp`), `queueBonusBp` = 2000 provisional, tunable by public AdminAction and pinned per lease. The reservation at issuance is the queue price (the budget-model output), so no extra capacity is locked. Rounding: base = floor(reservation x 10000 / (10000 + bonus)) in base units; a claim without the bonus is paid the base and the bonus portion (reservation − base) returns to R at acceptance (engine `queueBasePrice`, `queueBonusReturnedBase`; SQL Q1 caps its allocations at the base). Self-pick therefore pays budget / 1.2 ≈ 83.3%. The claim (mode, bonus, whether it applies) is pinned in the lease's `RunPolicySnapshot.claim`.
 - **Anti-gaming.** Contributor limits that filter the queue stay coarse: providers, maximum size points, the surfaces and toolchains the machine can build, wall time, ACU, unit counts (`ContributorLimits`, strict; a limit naming a feature, target or task is refused). Toolchain and specialist eligibility (e.g. native iOS) is a filter, so specialists are not penalised. Releasing an assigned task before submission (anything but an authorized cancel, a work hold, or an expiry the contributor did not cause) means "your next claim doesn't get the queue bonus"; 3 such releases within 168 h start a 24 h cooldown (`declines`, provisional). The v1 `assignedOnlyWindowMinutes` lever is not carried into work next: the bonus does its job (it stays in the frozen v1 data at 0).
 - **Priority voting is a DORMANT module (`priority_vote`).** A `priorityVote` ranking term fed by votes on targets, features or bugs; voter eligibility and weight reuse the governance seasoning rules (12-month lock, 6-month contribution, distributed-supply basis, organization cap) with the governance Sybil rules; the term is linear in seasoned weight and capped at `maxBoost` 500, which `workNextPolicyRefusals` keeps below the migration (100000) and critical (200000) boosts. Activation trigger in POLICIES §0; preconditions in GAPS G-98. In V1 the founder's focus list (F29) is the only priority input.
+
+## D64. Order: the CRM slice before the Solana devnet and wallets (founder decision, 2026-09-30)
+- Founder ("do what you think"): product before protocol. The v0.9 self-assessment's high gap `bottleneck-is-adoption-not-code` and its improvement `product-before-protocol` (docs/assessments/2026-09-30-v0.9-claude-opus.*) say the barrier is migration, trust and a usable product, not reward accounting.
+- The order is:
+  1. P1 shadow accounting, first: it is cheap and records real contributions from day one.
+  2. The first real agent runs.
+  3. The Salesforce CRM roadmap v1.
+  4. The CRM slice: Contacts, Organizations and Activities, plus `import-engine` with the Salesforce import (D59).
+  5. Then P2 Solana devnet, P3 wallets and claims, and P4 devnet end to end.
+- AGENTS.md "Next" follows this order.
+
+## D65. Amendment 04: identity and organizations (founder decision, 2026-09-30)
+- Founder ("do what you think"): the architect designs it. Text: `docs/AMENDMENT-04-IDENTITY-AND-ORGANIZATIONS.md`; contracts 5.12.0 (`identity.ts`, `IdentityRoutes`, `identity-policy.v1`); migration 0012.
+- **V1-active:**
+  - Sign in with GitHub on every client. It creates or links the account and is the contributor's GitHub link. Accounts are never auto-merged: a GitHub email that belongs to an account needs a code sent to that mailbox, redeemed by the same client.
+  - Invites by email with a role (7 days; the account's email must match the invite's).
+  - Member management, where the last owner cannot leave.
+  - Verified domains: a DNS TXT proof, one organization per domain, a public-domain blocklist, and a join policy of off, request or auto_join, applied at the member's own next sign-in and never after they leave.
+  - Per-app permission overrides by admins.
+  - Per-account and per-org rate limits, per-org quotas on plan `free`, and abuse guards.
+- **Dormant until an enterprise pays (D50):**
+  - SSO (OIDC, SAML) enforced per verified domain;
+  - SCIM;
+  - audit export.
+
+  Their contracts are designed now; their routes answer `MODULE_DORMANT` until a public AdminAction activates them. They are never gated on self-hosted Core (S-41).
+- Contributors keep one account. Build is independent of company organizations.
+
+## D66. Amendment 04 open items, decided (coordinator for the founder, "do what you think"; 2026-09-30)
+- **Quotas:** the `free` plan quotas are accepted as drafted; a paid plan is undecided until one is sold.
+- **Blocklists:** maintained open lists, pinned by commit hash and refreshed only by a reviewed PR, never fetched live.
+  - Disposable domains: `disposable-email-domains` (CC0-1.0) at 51fafcd8…, committed as `data/disposable-email-domains.v1.json`.
+  - Public mail providers: the curated committed list.
+- **SSO break-glass:** an email code plus a second owner's approval; with a single owner, a maintainer AdminAction with a public label.
+- **Account lifecycle:** account deletion, data export and email change are designed before Wave 3b (Amendment 04 addendum A, contracts 5.13.0).
+  - Deletion has a 14-day grace; personal data is deleted; contribution, ledger and receipt records are pseudonymised; git history is kept.
+  - An email change is re-verified at both addresses, or by the linked GitHub when the old mailbox is lost.
+- **Public site:** "Sign in with GitHub" appears next to the email code once the routes are live.
+- **GitHub App:** the founder enables the App's "Email addresses: read" permission (FOUNDER-CHECKLIST).

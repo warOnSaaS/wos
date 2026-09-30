@@ -35,6 +35,15 @@ export const HTTP_STATUS: Record<ApiErrorCode, number> = {
   NOT_ENTITLED: 403,
   DEPENDENCY_NOT_ENABLED: 409,
   DEPENDENT_ENABLED: 409,
+  // contracts 5.12.0 (Amendment 04); served in Wave 3b.
+  GITHUB_EMAIL_UNVERIFIED: 403,
+  LAST_OWNER: 409,
+  DOMAIN_CLAIMED: 409,
+  PUBLIC_EMAIL_DOMAIN: 400,
+  INVITE_EMAIL_MISMATCH: 403,
+  QUOTA_EXCEEDED: 403,
+  MODULE_DORMANT: 404,
+  DELETION_BLOCKED: 409,
 };
 
 export const fail = (code: ApiErrorCode, message: string, details?: unknown): never => {

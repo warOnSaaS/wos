@@ -399,3 +399,12 @@ Founder decisions raised by review 03 are listed separately in ADR-001 §6 (F17�
 
 ### G-102 Work-next inputs and bug records are server data not yet produced (D61, D63)
 - The control plane must publish per task: kind, dependents waiting (documents: the tasks their merge unblocks), effective severity, migration membership, active holds, the ageing epoch (`ageingIssueEpoch` over the reissue chain) and the base price; and record triage decisions, confirmations and red-then-green evidence from the planning side's events (`bug.triaged` with `decisionSha256`, `bug.fixed`). The queue bonus, decline window and bug factors are provisional (F35 covers the introducer offset). Review 09 §5: the payment adapter must consume the introducer-offset obligation (B4 validates only an inserted offset), and a reconciliation rule for a report whose payment a later challenge reduces is not yet written; hold-release and decline causes must come from the service's own records.
+
+### G-103 A deleted beneficiary has no protocol rule yet (Amendment 04 addendum A, D66; precondition for P2)
+- Addendum A (contracts 5.13.0) lets an account be deleted: its records are pseudonymised and, in V1, its balances are forfeited. The protocol does not yet say what that means for its own records. Harmless while nothing carries value (devnet shadow, P1), but it must be decided before receipts carry devnet value.
+- Open questions, each to be decided as a versioned protocol addition with its own review:
+  - pending allocations of an epoch not yet finalized, holdback tranches, claimable entitlements, unbroadcast or unconfirmed claim leaves, and offsets owed BY or TO the deleted beneficiary (including a D61 introducer offset);
+  - whether forfeited amounts return to R (and through which engine input, so conservation and the accounting traces still hold), or stay attributed to the pseudonymised record;
+  - how challenges against the deleted account's receipts proceed (R07-2 free challenges, D54 publications, disputes and confiscation notices need a party to reply to), and whether its receipts still count for others (co-contributors' shares, reviewers, reporters);
+  - organization beneficiaries (D38) whose sponsored contributor is deleted.
+- **Activation precondition:** P2 (Solana devnet settlement) does not start until this rule exists, is implemented in the engine and database with regressions (including an accounting-trace case), and has passed an Astra review. Queued after review 10 (R09); it does not block bundle 10.

@@ -284,7 +284,7 @@ Not in SQL by design (D51 engine-first): the red-then-green evidence (CI data), 
 
 ## 3m. Astra review 09: ACCEPT AFTER THE LISTED CHANGES — fix pass (for review 10)
 
-Probes re-run first on main c0db5ff (`reviews/ASTRA-REVIEW-09-repros-prefix.txt`: every Appendix A line reproduced with the adapted `tools/astra-09/probes.mjs` and `tools/astra-09/q1.sh`; R09-4 executed in SQL as a failing regression before its fix). Fixed on branch `ws/protocol-v2` from main; contracts 5.12.0; migration 0010 amended in place (never applied anywhere; excluded from production by its marker); no new migration.
+Probes re-run first on main c0db5ff (`reviews/ASTRA-REVIEW-09-repros-prefix.txt`: every Appendix A line reproduced with the adapted `tools/astra-09/probes.mjs` and `tools/astra-09/q1.sh`; R09-4 executed in SQL as a failing regression before its fix). Fixed on branch `ws/protocol-v2` from main; contracts 5.14.0; migration 0010 amended in place (never applied anywhere; excluded from production by its marker); no new migration.
 
 | Finding | Status | Changed paths | Regression |
 |---|---|---|---|

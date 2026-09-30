@@ -1050,6 +1050,156 @@ export const BugMachine = machine<BugState, BugEvent>({
   ],
 });
 
+// ---------------------------------------------------------------------------------------------
+// Amendment 04 (contracts 5.12.0): invites, verified domains, join requests.
+// ---------------------------------------------------------------------------------------------
+
+export const OrgInviteStates = ["pending", "accepted", "declined", "revoked", "expired"] as const;
+export type OrgInviteStateName = (typeof OrgInviteStates)[number];
+export type OrgInviteEvent = "accept" | "decline" | "revoke" | "expire";
+
+export const OrgInviteMachine = machine<OrgInviteStateName, OrgInviteEvent>({
+  name: "org_invite",
+  states: OrgInviteStates,
+  initial: ["pending"],
+  terminal: ["accepted", "declined", "revoked", "expired"],
+  transitions: [
+    {
+      from: "pending",
+      to: "accepted",
+      event: "accept",
+      actor: ["account"],
+      guard:
+        "now < expires_at; the caller's account email equals the invite email (normalized; INVITE_EMAIL_MISMATCH otherwise); the membership is created in the same transaction (an existing membership keeps its role); within the members quota",
+    },
+    { from: "pending", to: "declined", event: "decline", actor: ["account"], guard: "the caller's account email equals the invite email" },
+    {
+      from: "pending",
+      to: "revoked",
+      event: "revoke",
+      actor: ["account"],
+      guard: "caller is the inviter or an owner or admin of the organization",
+    },
+    { from: "pending", to: "expired", event: "expire", actor: ["system"], guard: "now >= expires_at (7 days after creation)" },
+  ],
+});
+
+export const OrgDomainStates = ["pending", "verified", "failed", "lapsed", "removed"] as const;
+export type OrgDomainStateName = (typeof OrgDomainStates)[number];
+export type OrgDomainEvent = "verify" | "fail" | "lapse" | "reverify" | "remove";
+
+export const OrgDomainMachine = machine<OrgDomainStateName, OrgDomainEvent>({
+  name: "org_domain",
+  states: OrgDomainStates,
+  initial: ["pending"],
+  terminal: ["failed", "removed"],
+  transitions: [
+    {
+      from: "pending",
+      to: "verified",
+      event: "verify",
+      actor: ["system", "account"],
+      guard:
+        "the TXT record _wos-verification.<domain> holds this domain's token; no other organization holds the domain verified (DOMAIN_CLAIMED)",
+    },
+    { from: "pending", to: "failed", event: "fail", actor: ["system"], guard: "the record was not seen within the verify window (7 days)" },
+    {
+      from: "verified",
+      to: "lapsed",
+      event: "lapse",
+      actor: ["system"],
+      guard: "the daily re-check failed for 7 consecutive days; the join policy stops applying",
+    },
+    {
+      from: "lapsed",
+      to: "verified",
+      event: "reverify",
+      actor: ["system", "account"],
+      guard: "the record is seen again and no other organization verified the domain meanwhile",
+    },
+    { from: "pending", to: "removed", event: "remove", actor: ["account"], guard: "caller is an owner" },
+    {
+      from: "verified",
+      to: "removed",
+      event: "remove",
+      actor: ["account"],
+      guard: "caller is an owner; memberships made by auto-join are kept",
+    },
+    {
+      from: "lapsed",
+      to: "removed",
+      event: "remove",
+      actor: ["account", "system"],
+      guard: "caller is an owner, or another organization verified the domain",
+    },
+  ],
+});
+
+export const OrgJoinRequestStates = ["pending", "approved", "denied", "withdrawn"] as const;
+export type OrgJoinRequestStateName = (typeof OrgJoinRequestStates)[number];
+export type OrgJoinRequestEvent = "approve" | "deny" | "withdraw";
+
+export const OrgJoinRequestMachine = machine<OrgJoinRequestStateName, OrgJoinRequestEvent>({
+  name: "org_join_request",
+  states: OrgJoinRequestStates,
+  initial: ["pending"],
+  terminal: ["approved", "denied", "withdrawn"],
+  transitions: [
+    {
+      from: "pending",
+      to: "approved",
+      event: "approve",
+      actor: ["account"],
+      guard:
+        "caller is an owner or admin; the requester's email is still on a verified domain of the organization; membership as member in the same transaction; within quota",
+    },
+    { from: "pending", to: "denied", event: "deny", actor: ["account"], guard: "caller is an owner or admin" },
+    { from: "pending", to: "withdrawn", event: "withdraw", actor: ["account"], guard: "caller is the requester" },
+  ],
+});
+
+// ---------------------------------------------------------------------------------------------
+// Amendment 04 addendum A (D66, contracts 5.13.0): account deletion.
+// ---------------------------------------------------------------------------------------------
+
+export const AccountDeletionStates = ["requested", "scheduled", "cancelled", "completed", "blocked"] as const;
+export type AccountDeletionStateName = (typeof AccountDeletionStates)[number];
+export type AccountDeletionEvent = "confirm" | "block" | "unblock" | "cancel" | "complete";
+
+export const AccountDeletionMachine = machine<AccountDeletionStateName, AccountDeletionEvent>({
+  name: "account_deletion",
+  states: AccountDeletionStates,
+  initial: ["requested"],
+  terminal: ["cancelled", "completed"],
+  transitions: [
+    {
+      from: "requested",
+      to: "scheduled",
+      event: "confirm",
+      actor: ["account"],
+      guard: "the emailed code is valid; accountDeletionRefusals is empty; scheduled_for = now + 14 days",
+    },
+    {
+      from: "requested",
+      to: "blocked",
+      event: "block",
+      actor: ["system"],
+      guard: "accountDeletionRefusals is not empty (DELETION_BLOCKED)",
+    },
+    { from: "blocked", to: "requested", event: "unblock", actor: ["account"], guard: "the blockers were resolved; a new code is emailed" },
+    { from: "requested", to: "cancelled", event: "cancel", actor: ["account"], guard: "caller is the account" },
+    { from: "scheduled", to: "cancelled", event: "cancel", actor: ["account"], guard: "caller is the account; before scheduled_for" },
+    {
+      from: "scheduled",
+      to: "completed",
+      event: "complete",
+      actor: ["system"],
+      guard:
+        "now >= scheduled_for and accountDeletionRefusals still empty; every RETENTION_RULES action is applied in one transaction; sessions revoked; the account row keeps only its id, status deleted and the pseudonym",
+    },
+  ],
+});
+
 export const ModuleInstallMachine = machine<ModuleInstallState, ModuleInstallEvent>({
   name: "module_install",
   states: ModuleInstallStates,
@@ -1128,4 +1278,8 @@ export const ALL_MACHINES = [
   ModuleInstallMachine,
   WorkHoldMachine,
   BugMachine,
+  OrgInviteMachine,
+  OrgDomainMachine,
+  OrgJoinRequestMachine,
+  AccountDeletionMachine,
 ] as const;

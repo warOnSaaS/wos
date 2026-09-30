@@ -1,0 +1,82 @@
+{
+  "schema": "wos-identity-policy.v1",
+  "rateLimits": {
+    "perAccount": { "requestsPerMinute": 600, "signInStartsPerHour": 10, "invitesPerHour": 30 },
+    "perOrg": { "requestsPerMinute": 3000 },
+    "perIp": { "signInStartsPerHour": 30 }
+  },
+  "plans": {
+    "free": {
+      "membersPerOrg": 25,
+      "pendingInvitesPerOrg": 50,
+      "verifiedDomainsPerOrg": 5,
+      "teamOrgsOwnedPerAccount": 10,
+      "invitesPerDayPerOrg": 100
+    }
+  },
+  "abuse": {
+    "newOrgInviteCap": { "hours": 24, "invites": 10 },
+    "removedMemberReinviteCooldownHours": 24,
+    "disposableDomains": ["mailinator.com", "guerrillamail.com", "10minutemail.com", "temp-mail.org", "yopmail.com", "trashmail.com"]
+  },
+  "domains": {
+    "publicEmailDomains": [
+      "gmail.com",
+      "googlemail.com",
+      "outlook.com",
+      "hotmail.com",
+      "live.com",
+      "msn.com",
+      "yahoo.com",
+      "ymail.com",
+      "icloud.com",
+      "me.com",
+      "mac.com",
+      "aol.com",
+      "proton.me",
+      "protonmail.com",
+      "pm.me",
+      "gmx.com",
+      "gmx.de",
+      "web.de",
+      "mail.com",
+      "zoho.com",
+      "yandex.com",
+      "yandex.ru",
+      "mail.ru",
+      "qq.com",
+      "163.com",
+      "126.com",
+      "fastmail.com",
+      "hey.com",
+      "tutanota.com",
+      "tuta.io"
+    ],
+    "verifyWindowDays": 7,
+    "recheckHours": 24,
+    "lapseAfterFailingDays": 7
+  },
+  "invites": { "ttlDays": 7 },
+  "lists": {
+    "disposable": { "file": "disposable-email-domains.v1.json", "refreshedBy": "reviewed_pr" },
+    "publicEmailProviders": { "source": "curated", "refreshedBy": "reviewed_pr" }
+  },
+  "ssoBreakGlass": { "rule": "email_code_and_second_owner", "singleOwnerFallback": "maintainer_admin_action_public_label" },
+  "modules": {
+    "sso": {
+      "status": "dormant",
+      "trigger": "a paying enterprise customer's signed order that requires SSO (D50); activated by a public AdminAction",
+      "activatedBy": null
+    },
+    "scim": {
+      "status": "dormant",
+      "trigger": "a paying enterprise customer's signed order that requires SCIM provisioning (D50); activated by a public AdminAction",
+      "activatedBy": null
+    },
+    "audit_export": {
+      "status": "dormant",
+      "trigger": "a paying enterprise customer's signed order that requires audit export (D50); activated by a public AdminAction",
+      "activatedBy": null
+    }
+  }
+}

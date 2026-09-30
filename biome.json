@@ -9,6 +9,8 @@
       "!**/dist-types",
       "!**/node_modules",
       "!docs/roadmap",
+      "!packages/contracts/src/data/disposable-email-domains.v1.json",
+      "!templates/product/modules/core-contracts/src/vendor/data/disposable-email-domains.v1.json",
       "!docs/protocol/reviews",
       "!docs/assessments"
     ]

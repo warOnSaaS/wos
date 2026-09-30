@@ -347,7 +347,60 @@ MINOR, additive, plus production migration 0011.
 
 Affected workstreams: control-plane, mobile-runtime, suite-shell (vendored contracts).
 
-## 5.12.0 — 2026-09-30 (protocol: Astra review 09 fix pass, R09-1 to R09-6; branch `ws/protocol-v2`)
+## 5.12.0 — 2026-09-30 (Amendment 04: identity and organizations, D65; D64 order)
+
+MINOR, additive, plus production migration 0012.
+- New module `identity.ts`:
+  - GitHub sign-in: `GithubSignInStartBody` / `Response`, `GithubSignInPollBody`, `resolveGithubSignIn` (never merges), `githubSignInFlowFor`, `GITHUB_SIGNIN_LANDING`;
+  - invites and members: `OrgInvite`, `OrgMemberView`, `memberActionRefusals`;
+  - domains and joining: `OrgDomain`, `DomainName`, `JoinPolicy`, `domainVerificationRecord`, `isBlockedDomain`, `emailDomain`, `domainJoinOutcome`, `OrgJoinRequest`;
+  - permissions: `PermissionOverride`, `effectiveGrants`;
+  - policy: `IdentityPolicy`, `quotaRefusal`;
+  - dormant: `OrgSsoConnection`, `ScimToken`, `AuditExportRequest`, `AUDIT_EVENT_TYPES`, `DormantModuleName`.
+- `IdentityRoutes` in `api.ts` (23 routes; the three enterprise routes answer `MODULE_DORMANT`).
+- `ApiErrorCode` gains `GITHUB_EMAIL_UNVERIFIED`, `LAST_OWNER`, `DOMAIN_CLAIMED`, `PUBLIC_EMAIL_DOMAIN`, `INVITE_EMAIL_MISMATCH`, `QUOTA_EXCEEDED` and `MODULE_DORMANT`. The control plane's `HTTP_STATUS` maps them.
+- `EnvironmentTokenClaims.permissions` (optional).
+- State machines `OrgInviteMachine`, `OrgDomainMachine`, `OrgJoinRequestMachine`.
+- Events `organization.invite_changed`, `organization.domain_changed`, `organization.join_request_changed`, `organization.permission_override_changed`, `account.github_signed_in` (all private).
+- Policy data `identity-policy.v1.json` (`IDENTITY_POLICY_V1`):
+  - rate limits;
+  - plan `free` quotas (members 25, pending invites 50, verified domains 5, team organizations owned 10, invites per day 100);
+  - abuse guards;
+  - public and disposable domains;
+  - SSO, SCIM and audit export dormant.
+- Migration `0012_identity_and_organizations.sql` (**production**):
+  - new tables `github_signin_requests`, `org_invites`, `org_domains`, `org_join_requests`, `org_join_exclusions`, `org_app_permissions`;
+  - new columns `organizations.plan` and `memberships.via`;
+  - trigger `memberships_rules_actor`;
+  - RLS;
+  - db assertions.
+- Docs:
+  - `docs/AMENDMENT-04-IDENTITY-AND-ORGANIZATIONS.md`;
+  - DECISIONS D64, D65;
+  - SECURITY S-44..S-46;
+  - WORKSTREAMS 17;
+  - AGENTS.md "Next" (D64).
+
+Affected workstreams: control-plane, suite-shell, desktop, cli, mobile-runtime, web, verification (section 17).
+
+## 5.13.0 — 2026-09-30 (D66: Amendment 04 decisions and addendum A, account lifecycle)
+
+MINOR, additive. No migration yet: the build's migration comes in Wave 3b (WORKSTREAMS 18).
+- `identity.ts`:
+  - domain lists: `DomainList`, `isDisposableDomain`;
+  - addendum A: `DataExportRequest`, `DATA_EXPORT_SECTIONS`, `AccountDeletionRequest`, `ACCOUNT_DELETION_GRACE_DAYS`, `RETENTION_RULES`, `deletedContributorPseudonym`, `accountDeletionRefusals`, `EmailChangeRequest`, `emailChangeComplete`;
+  - `IdentityPolicy.lists` and `ssoBreakGlass` (optional).
+- Data:
+  - `disposable-email-domains.v1.json` (`DISPOSABLE_EMAIL_DOMAINS`): 9189 domains from `disposable-email-domains` at 51fafcd878e7e67b82f8184c21134fa079f8609f, CC0-1.0, with the source sha256; refreshed by `tools/domain-lists/refresh-disposable.mjs` through a reviewed PR;
+  - `identity-policy.v1` gains `lists` and `ssoBreakGlass`.
+- `IdentityRoutes` gains `requestDataExport`, `confirmDataExport`, `getDataExport`, `requestAccountDeletion`, `confirmAccountDeletion`, `cancelAccountDeletion`, `startEmailChange` and `confirmEmailChange`. `ApiErrorCode` gains `DELETION_BLOCKED` (mapped to 409).
+- `AccountDeletionMachine`. Events `account.email_changed`, `account.deletion_changed` and `account.export_ready` (private).
+- Docs: DECISIONS D66; Amendment 04 sections 11 and addendum A; WORKSTREAMS 18.
+- `biome.json` skips the pinned list (and its vendored copy).
+
+Affected workstreams: control-plane, suite-shell, desktop, cli, mobile-runtime, web, verification, protocol (a note).
+
+## 5.14.0 — 2026-09-30 (protocol: Astra review 09 fix pass, R09-1 to R09-6; branch `ws/protocol-v2`)
 
 MINOR, additive to the pending v2 additions (frozen v1 unchanged). Pending Astra review 10. Not wired into authoritative accounting; devnet only.
 - `reward-policy.v2` gains `queue.queueBonusBp` (2000); `capability-policy.v2` `workNext` loses `queueBonusBp` (pay lives in the pinned reward policy) and its budgets gain `abu_revision` and `architecture_author`. Schema: optional `RewardPolicy.queue`; budget `taskKind` admits `architecture_author`.

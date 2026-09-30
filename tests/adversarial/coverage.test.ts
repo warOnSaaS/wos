@@ -118,6 +118,9 @@ const COVERAGE: Record<string, { status: Status; where: string }> = {
     status: "none",
     where: "Wave 3a: control-plane web_app bodies and link host; suite-shell sealed pollSecret binding, no Domain cookies",
   },
+  "S-44": { status: "none", where: "Wave 3b: GitHub sign-in never merges (control-plane route tests, adversarial)" },
+  "S-45": { status: "none", where: "Wave 3b: member management through the API; db assertions 0012 cover the database half" },
+  "S-46": { status: "none", where: "Wave 3b: DNS TXT verification cron; one verified organization per domain (db 0012)" },
 };
 
 describe("security-hardening: every SECURITY.md control is mapped", () => {

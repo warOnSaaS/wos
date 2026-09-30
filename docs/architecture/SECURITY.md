@@ -443,3 +443,23 @@ The protocol database (migration 0007 v6, not applied to production; v6 adds the
 - Tests: `web_app` bodies carry tokens and the link host is app.waronsaas.com; a link redeemed from another browser (no sealed pollSecret) fails; wOS Web sets no cookie with `Domain`.
 - Storage (contracts 5.7.0, migration 0009): sign-in requests and sessions record `client_kind = 'web_app'`; no device row. The control plane builds the link from `APP_ORIGIN` (default `HOSTS.app`).
 - Implemented tests: services/control-plane/test/web-app-signin.test.ts (bodies, link, binding, single use, expiry, rotation) and web-app-shell.test.ts (the template's wOS Web against the real control plane); templates/product/apps/web/test/shell.test.ts (the link page, another browser, cookie attributes).
+
+**S-44 Sign in with GitHub never merges accounts** (Amendment 04, contracts 5.12.0).
+- **Binding.** A GitHub sign-in is bound to the starting client by a pollSecret (S-2). Its OAuth `state` is single use and stored hashed. The GitHub token is discarded after reading `/user` and `/user/emails`.
+- **Resolution.** Only emails GitHub marks verified count. A GitHub user linked to an account signs in to it. A reserved one is refused. A verified email owned by an existing account requires a code sent to that mailbox, redeemed by the same client, before the GitHub user is linked: proof of both. Two existing accounts are never merged.
+- Workstreams: control-plane, verification.
+- Tests: `resolveGithubSignIn` table tests; an unverified GitHub email never links.
+
+**S-45 Organization membership changes are authorized twice** (Amendment 04).
+- **The API.** It applies `memberActionRefusals`: admins never manage owners, and the last owner cannot leave.
+- **The database.** It enforces the same for the application role (`memberships_rules_actor`, 0012) and keeps an owner (0006).
+- **Invites.** They are accepted only by the account whose email equals the invite's, so a forwarded invite is useless to anyone else.
+- Workstreams: control-plane, verification.
+- Tests: db assertions 0012; route tests.
+
+**S-46 Verified domains** (Amendment 04).
+- **Proof.** Ownership is a DNS TXT record under `_wos-verification.<domain>` holding a random token (stored hashed), re-checked daily, lapsing after 7 failing days. A domain is verified by at most one organization (unique index).
+- **Blocklist.** Public email domains cannot be claimed.
+- **Joining.** Join policies apply only to verified email addresses. auto_join happens at the member's own sign-in, never in bulk and never again after they leave.
+- Workstreams: control-plane.
+- Tests: unit (`domainJoinOutcome`, `isBlockedDomain`); db (one verified organization per domain).
