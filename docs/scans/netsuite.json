@@ -1,0 +1,1095 @@
+{
+  "schema": "wos-scan.v0",
+  "label": "SCAN — unreviewed, 2026-09-30",
+  "reviewed": false,
+  "countsTowardProgress": false,
+  "target": {
+    "id": "TGT-10",
+    "slug": "netsuite",
+    "name": "NetSuite"
+  },
+  "scannedAt": "2026-09-30",
+  "scope": {
+    "included": "NetSuite ERP core and main modules: financials, OneWorld, order-to-cash, procure-to-pay, inventory/WMS, manufacturing, CRM, PSA (SuiteProjects and SuiteProjects Pro), SuiteCommerce, SuitePeople HR/payroll, planning (NSPB), SuiteCloud platform, SuiteAnalytics, plus the NetSuite mobile apps.",
+    "excluded": [
+      "Industry editions and partner SuiteApps, not scanned module by module",
+      "NetSuite Analytics Warehouse and NSPB internals, noted only",
+      "Oracle Fusion Cloud ERP and other Oracle clouds, separate products"
+    ]
+  },
+  "clientApps": [
+    {
+      "surface": "web",
+      "name": "NetSuite",
+      "platforms": null,
+      "sources": ["https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/book_N473219.html"]
+    },
+    {
+      "surface": "ios",
+      "name": "NetSuite",
+      "platforms": "iPhone, iPad, Apple Vision",
+      "sources": ["https://apps.apple.com/us/app/netsuite/id1449263734"]
+    },
+    {
+      "surface": "android",
+      "name": "NetSuite",
+      "platforms": null,
+      "sources": ["https://play.google.com/store/apps/details?id=com.netsuite.nsforandroid.app&hl=en_GB"]
+    },
+    {
+      "surface": "ios",
+      "name": "NetSuite SuiteProjects Pro",
+      "platforms": null,
+      "sources": ["https://apps.apple.com/us/app/netsuite-suiteprojects-pro/id307099493"]
+    },
+    {
+      "surface": "android",
+      "name": "NetSuite SuiteProjects Pro",
+      "platforms": null,
+      "sources": ["https://play.google.com/store/apps/details?id=com.oracle.openair.android&hl=en"]
+    }
+  ],
+  "api": {
+    "style": "SOAP and REST web services (SuiteTalk), RESTlets (custom REST endpoints in SuiteScript), SuiteQL, SuiteAnalytics Connect; MCP server (AI Connector Service)",
+    "notes": "OAuth 2.0 is recommended for new REST integrations; token-based auth for SOAP. Concurrency limits are shared across SOAP, REST and RESTlets, and a REST governanceLimits operation reports them. REST batch operations can run in sequence.",
+    "sources": [
+      "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_N3950559.html",
+      "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_157780312610.html",
+      "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_N3418637.html"
+    ]
+  },
+  "capabilities": [
+    {
+      "id": "general-ledger",
+      "vendorName": "General Accounting / Multi-Book Accounting",
+      "description": "Core books of record in NetSuite ERP financials; the Accounting guide also covers multi-book accounting and statistical accounting.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/set_N1379402.html"]
+    },
+    {
+      "id": "bank-feeds-reconciliation",
+      "vendorName": "Banking",
+      "description": "Banking and reconciliation features; AI features listed include Enriched Bank Data and a Transaction Matching Assistant for matching bank lines.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/set_N1379402.html",
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/article_5101751849.html"
+      ]
+    },
+    {
+      "id": "financial-close",
+      "vendorName": "Intelligent Close Manager",
+      "description": "Centralised view of period-close tasks, system-generated and user-defined, with AI task prioritisation and narrative insights from the portlet.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/article_7202210350.html",
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/article_5101751849.html"
+      ]
+    },
+    {
+      "id": "invoicing",
+      "vendorName": "Billing and Invoices",
+      "description": "Billing sales orders and producing invoices in order-to-cash; the iOS app can bill orders and convert estimates.",
+      "surfaces": ["web", "ios"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/set_4423275132.html",
+        "https://apps.apple.com/us/app/netsuite/id1449263734"
+      ]
+    },
+    {
+      "id": "accounts-receivable",
+      "vendorName": "Overdue Balances and Collections",
+      "description": "Tracking customer balances and collections; an ML Payment Date Prediction feature estimates when invoices will be paid.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/set_4423275132.html",
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/article_5101751849.html"
+      ]
+    },
+    {
+      "id": "accounts-payable",
+      "vendorName": "Vendor bills / Bill Capture",
+      "description": "Recording vendor bills in procure-to-pay; Bill Capture uses AI to capture and process vendor bills.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/set_N1734902.html",
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/article_5101751849.html"
+      ]
+    },
+    {
+      "id": "purchasing-procurement",
+      "vendorName": "Vendors, Purchasing, and Receiving",
+      "description": "Vendor records, purchase orders and receiving within supply chain management; mobile approvals cover purchase-related business actions.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/set_N1734902.html",
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_1554194643.html"
+      ]
+    },
+    {
+      "id": "expense-management",
+      "vendorName": "Expense Reports",
+      "description": "Employees log expenses and purchase requests; the mobile app captures receipts and builds expense reports, with approvals.",
+      "surfaces": ["web", "ios", "android"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/preface_3714104131.html",
+        "https://apps.apple.com/us/app/netsuite/id1449263734",
+        "https://play.google.com/store/apps/details?id=com.netsuite.nsforandroid.app&hl=en_GB"
+      ]
+    },
+    {
+      "id": "time-tracking",
+      "vendorName": "Time Tracking",
+      "description": "Time entry and timesheets against projects and customers, with a mobile timer.",
+      "surfaces": ["web", "ios", "android"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/preface_3714104131.html",
+        "https://apps.apple.com/us/app/netsuite/id1449263734",
+        "https://play.google.com/store/apps/details?id=com.netsuite.nsforandroid.app&hl=en_GB"
+      ]
+    },
+    {
+      "id": "payments-acceptance",
+      "vendorName": "Payment Processing / NetSuite Pay",
+      "description": "Payment processing and the NetSuite Pay service for taking customer payments; the iOS app can accept payments.",
+      "surfaces": ["web", "ios"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/set_4423275132.html",
+        "https://apps.apple.com/us/app/netsuite/id1449263734"
+      ]
+    },
+    {
+      "id": "payroll",
+      "vendorName": "SuitePeople U.S. Payroll",
+      "description": "Payroll run inside NetSuite; the public payroll guide covers SuitePeople U.S. Payroll plus other payroll solutions.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/book_N917262.html"]
+    },
+    {
+      "id": "sales-tax",
+      "vendorName": "Taxation",
+      "description": "Tax setup and reporting within Accounting, with country-specific features documented separately; OneWorld is pitched for local and regional tax compliance.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/set_N1379402.html",
+        "https://www.netsuite.com/portal/products/global-business-management.shtml"
+      ]
+    },
+    {
+      "id": "financial-reports",
+      "vendorName": "Financial Statements",
+      "description": "Standard financial statements and financial reporting in the Accounting guide.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/set_N1379402.html"]
+    },
+    {
+      "id": "budgeting-planning",
+      "vendorName": "NetSuite Planning and Budgeting (NSPB)",
+      "description": "Departmental and company-wide budgets, forecasts and what-if scenarios (EPM); job costing and project budgeting also exist in core.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": "sold as a separate module by quote (per netsuite.com search snippet); no public price or edition list",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/article_5101751849.html",
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/preface_3714107248.html",
+        "https://www.netsuite.com/portal/resource/articles/erp/netsuite-modules.shtml"
+      ]
+    },
+    {
+      "id": "project-accounting",
+      "vendorName": "Job Costing and Project Budgeting",
+      "description": "Cost and billing budgets, expenditures, milestones and percent-complete on project records.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/preface_3714107248.html"]
+    },
+    {
+      "id": "fixed-assets",
+      "vendorName": "Fixed Assets Management",
+      "description": "Recording, depreciating and disposing of fixed assets.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/set_N1379402.html"]
+    },
+    {
+      "id": "multi-entity-consolidation",
+      "vendorName": "NetSuite OneWorld",
+      "description": "Multi-subsidiary, multinational management with consolidated global reporting, local currency and tax handling.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": "OneWorld is sold separately (by quote)",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/set_N125873.html",
+        "https://www.netsuite.com/portal/products/global-business-management.shtml",
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_N269257.html"
+      ]
+    },
+    {
+      "id": "revenue-recognition",
+      "vendorName": "Revenue and Expense Recognition / Revenue Management",
+      "description": "Automated revenue forecasting, allocation, recognition, reclassification and audit to current standards.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/set_N1379402.html",
+        "https://www.netsuite.com/portal/products/erp/financial-management/billing.shtml"
+      ]
+    },
+    {
+      "id": "multi-currency-localization",
+      "vendorName": "Currency Management / Multiple Currencies",
+      "description": "Transactions in foreign currencies, currency management, country-specific features and automatic language adaptation in the mobile app.",
+      "surfaces": ["web", "ios"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/chapter_N1395057.html",
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_N1398493.html",
+        "https://apps.apple.com/us/app/netsuite/id1449263734"
+      ]
+    },
+    {
+      "id": "subscriptions-recurring-billing",
+      "vendorName": "SuiteBilling",
+      "description": "Subscription, usage-based and hybrid billing with flat, tiered and consumption pricing; SaaS metric reporting in Order Management.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": "sold as a separate module by quote (per netsuite.com search snippet); no public price or edition list",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.netsuite.com/portal/products/erp/financial-management/billing.shtml",
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/set_4423275132.html"
+      ]
+    },
+    {
+      "id": "order-management",
+      "vendorName": "Sales Orders and Cash Sales / Customer Returns",
+      "description": "Order-to-cash: sales orders, cash sales, returns; the iOS app approves sales orders.",
+      "surfaces": ["web", "ios"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/set_4423275132.html",
+        "https://apps.apple.com/us/app/netsuite/id1449263734"
+      ]
+    },
+    {
+      "id": "shipping-fulfillment",
+      "vendorName": "Order Fulfillment and Shipping",
+      "description": "Fulfilling and shipping orders from inventory.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/set_4423275132.html"]
+    },
+    {
+      "id": "inventory-management",
+      "vendorName": "Inventory Management",
+      "description": "Item records and stock management across locations.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/set_N1734902.html"]
+    },
+    {
+      "id": "warehouse-management",
+      "vendorName": "Warehouse Management (WMS)",
+      "description": "Warehouse operations module, with an SCM Mobile guide for mobile warehouse processes.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/set_N1734902.html",
+        "https://www.netsuite.com/portal/resource/articles/erp/what-is-netsuite.shtml"
+      ]
+    },
+    {
+      "id": "manufacturing",
+      "vendorName": "Manufacturing",
+      "description": "Work orders, product data, WIP and routing, and quality management.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/set_N1734902.html",
+        "https://www.netsuite.com/portal/resource/articles/erp/what-is-netsuite.shtml"
+      ]
+    },
+    {
+      "id": "supply-chain-planning",
+      "vendorName": "Supply Planning / Supply Chain Control Tower",
+      "description": "MPS/MRP planning runs that create work orders, plus an ML-driven Supply Chain Control Tower.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/article_5101751849.html",
+        "https://www.netsuite.com/portal/resource/articles/erp/what-is-netsuite.shtml"
+      ]
+    },
+    {
+      "id": "online-storefront",
+      "vendorName": "SuiteCommerce / Site Builder",
+      "description": "Mobile-friendly B2C and B2B web stores run on the same NetSuite data, with site management and developer tooling.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": "sold as a separate module by quote (per netsuite.com search snippet); no public price or edition list",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/set_N2453322.html",
+        "https://www.netsuite.com/portal/resource/articles/erp/netsuite-modules.shtml"
+      ]
+    },
+    {
+      "id": "point-of-sale",
+      "vendorName": "SuiteCommerce InStore / NetSuite Point of Sale",
+      "description": "In-store selling with SCIS and NSPOS tied to the NetSuite catalogue.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/set_N2453322.html"]
+    },
+    {
+      "id": "product-catalog",
+      "vendorName": "Item Record Management / Merchandising",
+      "description": "Item records plus web-store merchandising; an AI Item Creation Assistant helps build item records.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/set_N1734902.html",
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/set_N2453322.html",
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/article_5101751849.html"
+      ]
+    },
+    {
+      "id": "organizations",
+      "vendorName": "Customer records / Customer 360",
+      "description": "Customer records across ERP and CRM, with AI Customer 360 narrative insights and multi-currency customers.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/article_5101751849.html",
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_N1398493.html"
+      ]
+    },
+    {
+      "id": "leads",
+      "vendorName": "Capturing Leads",
+      "description": "Lead capture and conversion in the Marketing guide.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/book_N973201.html"]
+    },
+    {
+      "id": "pipelines-deals",
+      "vendorName": "Opportunities and Estimates",
+      "description": "Opportunity records moving to estimates within sales force automation.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/book_N1035197.html"]
+    },
+    {
+      "id": "quotes-cpq",
+      "vendorName": "Estimates / NetSuite CPQ",
+      "description": "Estimates in SFA, with a separate NetSuite CPQ module that has an AI assistant.",
+      "surfaces": ["web", "ios"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/book_N1035197.html",
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/article_5101751849.html",
+        "https://apps.apple.com/us/app/netsuite/id1449263734"
+      ]
+    },
+    {
+      "id": "forecasting",
+      "vendorName": "Sales Forecasting",
+      "description": "Sales forecasts by rep and period.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/book_N1035197.html"]
+    },
+    {
+      "id": "sales-performance-management",
+      "vendorName": "Commissions",
+      "description": "Commission plans and calculation for sales reps.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/book_N1035197.html"]
+    },
+    {
+      "id": "activities",
+      "vendorName": "Calendar and Activities / Last Sales Activity",
+      "description": "Logged calls, events and tasks on records, with personal and shared calendars (list, week and month views on mobile) and last-sales-activity tracking.",
+      "surfaces": ["web", "ios"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/book_N473219.html",
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/book_N1035197.html",
+        "https://apps.apple.com/us/app/netsuite/id1449263734"
+      ]
+    },
+    {
+      "id": "email-marketing",
+      "vendorName": "Email Marketing Campaigns",
+      "description": "Email campaigns to customer groups, plus Upsell Manager and Intelligent Recommendations.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/book_N973201.html"]
+    },
+    {
+      "id": "campaigns-attribution",
+      "vendorName": "Campaigns / Keyword Campaigns / Promotional URLs",
+      "description": "Marketing campaign records, keyword campaigns and promotional URLs with marketing reports.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/book_N973201.html"]
+    },
+    {
+      "id": "partner-management",
+      "vendorName": "Partners",
+      "description": "Partner records and partner relationship management.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/set_N973142.html"]
+    },
+    {
+      "id": "ticketing",
+      "vendorName": "Case Management",
+      "description": "Support cases and issue management, with generative AI Case Summary.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/book_N2420978.html",
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/article_5101751849.html"
+      ]
+    },
+    {
+      "id": "knowledge-base",
+      "vendorName": "Knowledge Base",
+      "description": "Support knowledge base articles.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/book_N2420978.html"]
+    },
+    {
+      "id": "hr-people",
+      "vendorName": "SuitePeople",
+      "description": "Core HR: effective-dated employee data, org browser, onboarding/offboarding, time off, performance, compensation, workforce management.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/preface_3714104131.html",
+        "https://www.netsuite.com/portal/resource/articles/erp/what-is-netsuite.shtml"
+      ]
+    },
+    {
+      "id": "professional-services-automation",
+      "vendorName": "SuiteProjects / SuiteProjects Pro",
+      "description": "PSA for project-based services firms; SuiteProjects Pro (formerly OpenAir) has its own iOS and Android apps.",
+      "surfaces": ["web", "ios", "android"],
+      "lowestTier": null,
+      "tierNote": "SuiteProjects Pro is a separate product",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.netsuite.com/portal/products/professional-services-automation.shtml",
+        "https://www.netsuite.com/portal/products/professional-services-automation/suiteprojects-pro.shtml",
+        "https://apps.apple.com/us/app/netsuite-suiteprojects-pro/id307099493"
+      ]
+    },
+    {
+      "id": "capacity-resource-planning",
+      "vendorName": "Resource Allocations",
+      "description": "Allocating employees and resources to projects with utilisation rates.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/preface_3714107248.html"]
+    },
+    {
+      "id": "reporting-dashboards",
+      "vendorName": "SuiteAnalytics (Dashboards, Workbook, Reports, Saved Search)",
+      "description": "Dashboards, workbooks, reports and saved searches; NetSuite Analytics Warehouse is a separate analytics product; mobile dashboards with KPIs.",
+      "surfaces": ["web", "ios"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/set_N576235.html",
+        "https://apps.apple.com/us/app/netsuite/id1449263734"
+      ]
+    },
+    {
+      "id": "search",
+      "vendorName": "Global Search / Saved Search",
+      "description": "Global search, quick add and saved-search drill-down.",
+      "surfaces": ["web", "ios"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/set_N576235.html",
+        "https://apps.apple.com/us/app/netsuite/id1449263734"
+      ]
+    },
+    {
+      "id": "roles-permissions",
+      "vendorName": "Roles and Permissions",
+      "description": "Role-based permissions, advanced employee permissions and SSO-only roles.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/preface_3714104131.html",
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/chapter_N3825119.html"
+      ]
+    },
+    {
+      "id": "sso-identity",
+      "vendorName": "SAML Single Sign-on / Two-Factor Authentication",
+      "description": "SAML 2.0 SSO and role-based 2FA requirements.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/chapter_N3825119.html",
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/chapter_N327688.html"
+      ]
+    },
+    {
+      "id": "audit-log",
+      "vendorName": "System Notes / Auditing and Data Management",
+      "description": "System notes record changes on records; AI Audit Summarization summarises audit logs.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/set_N125873.html",
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/article_5101751849.html"
+      ]
+    },
+    {
+      "id": "data-import-export",
+      "vendorName": "CSV Imports / Exporting",
+      "description": "CSV import assistant and export of reports, searches and lists.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/set_N125873.html",
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/book_N473219.html"
+      ]
+    },
+    {
+      "id": "custom-fields-objects",
+      "vendorName": "Customization (SuiteBuilder) / Custom Records",
+      "description": "Custom fields, forms, record types; the mobile app supports custom records, forms and fields.",
+      "surfaces": ["web", "ios"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/set_N2807372.html",
+        "https://apps.apple.com/us/app/netsuite/id1449263734"
+      ]
+    },
+    {
+      "id": "workflow-automation",
+      "vendorName": "SuiteFlow (Workflow)",
+      "description": "Point-and-click workflows on records.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/set_N2807372.html"]
+    },
+    {
+      "id": "approvals",
+      "vendorName": "My Approvals",
+      "description": "Approving expense reports, purchase orders, timesheets and sales orders, including from the mobile app.",
+      "surfaces": ["web", "ios"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_1554194643.html",
+        "https://apps.apple.com/us/app/netsuite/id1449263734"
+      ]
+    },
+    {
+      "id": "developer-platform",
+      "vendorName": "SuiteScript / SuiteCloud SDK / SDF",
+      "description": "Hosted JavaScript (SuiteScript, including N/llm), SuiteCloud Development Framework, SDK and SuiteBundler; AI SuiteCloud Developer Assistant.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/set_N2807372.html",
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/article_5101751849.html"
+      ]
+    },
+    {
+      "id": "sandbox-environments",
+      "vendorName": "Sandbox and Development Accounts",
+      "description": "Sandbox copies of production and never-refreshed development accounts.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/chapter_N333400.html",
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/chapter_4422375565.html"
+      ]
+    },
+    {
+      "id": "api-webhooks",
+      "vendorName": "SuiteTalk Web Services / RESTlets",
+      "description": "SOAP and REST web services, SuiteQL over REST, RESTlets; OAuth 2.0.",
+      "surfaces": ["api"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_N3950559.html",
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_157780312610.html"
+      ]
+    },
+    {
+      "id": "app-marketplace",
+      "vendorName": "SuiteApp Marketplace",
+      "description": "Directory of SuiteApps from Oracle and partners installed into the account.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/set_N2807372.html"]
+    },
+    {
+      "id": "ai-assistant",
+      "vendorName": "Ask Oracle / Text Enhance / Narrative Insights",
+      "description": "Generative AI in the product: Ask Oracle, Text Enhance, narrative insights, Prompt Studio and the NetSuite Expert in SuiteAnswers.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/book_N473219.html",
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/article_5101751849.html"
+      ]
+    },
+    {
+      "id": "ai-agents",
+      "vendorName": "NetSuite AI Connector Service (MCP)",
+      "description": "MCP server letting external AI assistants and agents act on NetSuite data via standard or custom tools; AI Agent Plug-ins.",
+      "surfaces": ["api"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/article_7200233106.html",
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/article_5101751849.html",
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/set_N2807372.html"
+      ]
+    },
+    {
+      "id": "mobile-app",
+      "vendorName": "NetSuite for Mobile",
+      "description": "Native iOS/iPadOS and Android app for records, dashboards, expenses, time, approvals; works offline.",
+      "surfaces": ["ios", "android"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/book_1556538966.html",
+        "https://apps.apple.com/us/app/netsuite/id1449263734",
+        "https://play.google.com/store/apps/details?id=com.netsuite.nsforandroid.app&hl=en_GB"
+      ]
+    }
+  ],
+  "limits": [
+    "netsuite.com returned HTTP 403 to every fetch (products, ERP, modules article), so product-page claims come only from search result snippets, not full pages.",
+    "NetSuite publishes no price list or edition comparison; modules are sold by quote. lowestTier is null everywhere; tierNotes flag modules that netsuite.com snippets describe as add-ons.",
+    "The Google Play NetSuite listing came back truncated; the Android surface rests on the search result showing the listing, plus a search summary saying the app covers expenses and time.",
+    "The Globalization help book URL returned 404; multi-currency is sourced from the Currency Management chapters instead.",
+    "Docs table-of-contents pages were read at chapter level only. The 'api' surface appears only on api-webhooks and ai-agents because the per-record REST coverage was not checked.",
+    "Webhooks (outbound events) were not confirmed from public sources.",
+    "No prompt-injection content was seen."
+  ],
+  "failures": [
+    {
+      "kind": "fetch",
+      "what": "https://www.netsuite.com/portal/products.shtml",
+      "result": "HTTP 403"
+    },
+    {
+      "kind": "fetch",
+      "what": "https://www.netsuite.com/portal/products/erp.shtml",
+      "result": "HTTP 403"
+    },
+    {
+      "kind": "fetch",
+      "what": "https://www.netsuite.com/portal/resource/articles/erp/netsuite-modules.shtml",
+      "result": "HTTP 403"
+    },
+    {
+      "kind": "fetch",
+      "what": "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/book_158574785669.html",
+      "result": "HTTP 404"
+    },
+    {
+      "kind": "fetch",
+      "what": "https://play.google.com/store/apps/details?id=com.netsuite.nsforandroid.app&hl=en_GB",
+      "result": "content truncated, no description returned"
+    }
+  ],
+  "dataExport": {
+    "extraction": {
+      "full": "partial",
+      "incremental": "yes",
+      "apiBased": "yes",
+      "note": "Oracle states the Full CSV Export 'does not currently export all data' and points to a combination of saved searches, reports, SOAP web services and SuiteAnalytics Connect (a paid add-on) for complete extraction; REST record/SuiteQL/document services make extraction API-based. Incremental sync is documented for SOAP (search by lastModifiedDate plus getDeleted, anchored on getServerTime), and REST collection filtering supports date/time operators, but SOAP is being removed (gone with 2028.2)."
+    },
+    "exportOptions": [
+      {
+        "name": "Full CSV Export (Setup > Import/Export > Export Tasks > Full CSV Export)",
+        "description": "ZIP of CSV files covering a fixed set: accounting lists, classes, contacts, customers, departments, employees, expense categories, items, memorized transactions, notes, other names, partners, saved reports you own, ship items, solutions, tasks, topics, Transaction Detail report, vendors. Record lists export according to the selected list view; it runs saved searches under the hood and a failing saved search can fail the export.",
+        "formats": ["CSV (in ZIP)"],
+        "limits": "Explicitly not all data. Administrator role only. Can time out; fallback is per-list/report 'Export - CSV'.",
+        "lowestTier": null,
+        "sources": ["https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_N464443.html"]
+      },
+      {
+        "name": "Saved search and report CSV export",
+        "description": "Export search results or report results as CSV per record type; Oracle's recommended route for CRM data (saved searches by record type, notes via System Note or User Note searches) and financial data (Transaction Detail report filtered by type, run in date ranges). Include Internal ID on each row to keep relationships.",
+        "formats": ["CSV"],
+        "limits": "Oracle advises date-range filters and repeated runs to keep reports from running too long; no row limit stated on the page read.",
+        "lowestTier": null,
+        "sources": ["https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_N464759.html"]
+      },
+      {
+        "name": "File Cabinet Download",
+        "description": "Download individual files or whole folders; a folder downloads as a ZIP preserving subfolder structure. Subject to folder permissions.",
+        "formats": ["original file", "ZIP"],
+        "limits": "Oracle recommends working with files of 100 MB or smaller; larger transfers affected by time-outs and space limits.",
+        "lowestTier": null,
+        "sources": ["https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_N544050.html"]
+      }
+    ],
+    "apis": [
+      {
+        "name": "REST web services record service (record/v1)",
+        "kind": "read-api",
+        "description": "GET /services/rest/record/v1/{recordType} lists all instances (IDs + links, then fetch each record); q parameter filters with operators incl. Date/Time AFTER/ON_OR_AFTER etc. on fields marked x-ns-filterable in metadata. Paging 1000 per page, max 1000 pages; offset must be divisible by limit.",
+        "sources": [
+          "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_1540810951.html",
+          "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_1545222128.html",
+          "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_156414087576.html"
+        ]
+      },
+      {
+        "name": "SuiteQL via REST (query/v1/suiteql)",
+        "kind": "bulk-export",
+        "description": "POST SQL-like queries (joins, bound parameters) over the analytics data source with limit/offset paging and the required 'Prefer: transient' header. Records Catalog lists record types and fields available to REST/Connect. Max 100,000 results per query; beyond that Oracle points to SuiteAnalytics Connect.",
+        "sources": [
+          "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_157909186990.html",
+          "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_N3950559.html"
+        ]
+      },
+      {
+        "name": "SuiteAnalytics Connect (ODBC / JDBC / ADO.NET)",
+        "kind": "bulk-export",
+        "description": "Driver-based SQL access to NetSuite data (NetSuite2.com data source); Oracle's route for result sets above the REST/SuiteQL caps (collection paging page says up to one million results with Connect vs 100,000 without). Requires the feature to be provisioned and enabled, the SuiteAnalytics Connect permission, outbound port 1708, certificate-based server auth and Account ID + Role ID on every connection.",
+        "sources": [
+          "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_N464759.html",
+          "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_3996274388.html",
+          "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_4012735789.html",
+          "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_3998867068.html",
+          "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_156414087576.html"
+        ]
+      },
+      {
+        "name": "SOAP search by lastModifiedDate + getServerTime + getDeleted",
+        "kind": "incremental",
+        "description": "Documented sync pattern: call getServerTime (GMT), search records filtered by lastModifiedDate since the last run, and call getDeleted (filter by record type, script ID, deletion date; returns type, name, internal ID, external ID, deleted date). getDeleted needs the Deleted Records + Web Services permissions and not all record types support it. SOAP is deprecated: 2025.2 is the last planned endpoint and SOAP is removed with 2028.2.",
+        "sources": [
+          "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_N3508018.html",
+          "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_N3518534.html",
+          "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_N3497592.html",
+          "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_N3418637.html"
+        ]
+      },
+      {
+        "name": "Deleted records log (Deleted Record search / SuiteQL / Analytics Deleted Records)",
+        "kind": "incremental",
+        "description": "For listed record types NetSuite keeps a deletion log searchable via the Deleted Record search type (old data source) or SuiteQL/Connect (new analytics data source, which requires the NetSuite Analytics Warehouse feature). Useful for deletes during a delta sync.",
+        "sources": ["https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_4031815869.html"]
+      },
+      {
+        "name": "System Notes (search, SuiteScript, analytics/REST)",
+        "kind": "read-api",
+        "description": "Field-level change log on standard and custom records and financially relevant config: date/time, user, interface/context, change type, field, old and new value. Searchable (System Note search type, saved searches, audit trail), via SuiteScript, and queryable through the analytics data source with Administrator or 'System Notes for Analytics and REST' permission.",
+        "sources": [
+          "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/chapter_158644279544.html",
+          "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_N673560.html"
+        ]
+      },
+      {
+        "name": "REST document service (document/v1/file, folder)",
+        "kind": "read-api",
+        "description": "List/search File Cabinet files and folders (q filters e.g. createdDate AFTER, paging) and download content via /file/{id}/content or multipart ?expand=content. Synchronous.",
+        "sources": ["https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/article_0909085903.html"]
+      },
+      {
+        "name": "SuiteCloud Development Framework (SDF) import",
+        "kind": "other",
+        "description": "SuiteCloud SDK (CLI object:import / importobjects / importfiles, VS Code, WebStorm) pulls custom record types, customized record types, SDF custom objects (forms, workflows, roles, reports, saved searches, workbooks, etc.), files and scripts from an account into an account customization project as XML definitions.",
+        "sources": [
+          "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_4702656511.html",
+          "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_4706653920.html"
+        ]
+      }
+    ],
+    "auth": {
+      "models": ["oauth-app", "service-account", "admin-consent", "other"],
+      "notes": "An administrator (or user with the Integration Application permission) creates an integration record (Setup > Integration > Manage Integrations > New) enabling Authorization Code Grant and/or Client Credentials (machine-to-machine); users then authorize the app, per account (authorizations are not copied to sandbox or Release Preview and must be redone after sandbox refresh). OAuth 2.0 applies only to REST web services and RESTlets; SOAP uses token-based authentication (TBA). SuiteAnalytics Connect uses driver credentials with certificate-based server auth plus Account ID and Role ID. Public clients cannot use client credentials. No marketplace review step was seen on the pages read.",
+      "sources": [
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_157780312610.html",
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_157771733782.html",
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_157771171166.html",
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/bridgehead_1502455060.html",
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_3996274388.html"
+      ]
+    },
+    "rateLimits": {
+      "summary": "Concurrency is governed per account across all web services (SOAP, REST) and RESTlet requests combined. Base concurrent-request limit by service tier: legacy Shared/3 = 5, 2 = 10, 1/1+ = 15, 0 = 20; tiers for contracts from June 2020: Standard 5, Premium 15, Enterprise 20, Ultimate 20; +10 per SuiteCloud Plus license. Development and partner accounts are fixed at 5. TBA and RESTlets have no per-user limits (login/password SOAP keeps per-user limits). REST collections: 1000 results per page, max 1000 pages; 100,000 results max without Connect (one million with Connect); SuiteQL max 100,000 results. SOAP: search pageSize 5-1000 sync / up to 2000 async, getList 1000, asyncGetList 2000, request size 100MB. REST document service: 10 MB upload/download per request (413 above that).",
+      "sources": [
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_1500275531.html",
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/bridgehead_1500275603.html",
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/bridgehead_1502455060.html",
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_156414087576.html",
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_157909186990.html",
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_N3418637.html",
+        "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/article_0909085903.html"
+      ]
+    },
+    "hardToExtract": [
+      {
+        "dataClass": "other",
+        "detail": "No single complete export: Full CSV Export covers a fixed list of record types and Oracle says it does not export all data; full extraction means combining saved searches, reports (e.g. Transaction Detail per date range), web services and the paid SuiteAnalytics Connect add-on, and joining on Internal IDs yourself.",
+        "sources": [
+          "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_N464443.html",
+          "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_N464759.html"
+        ]
+      },
+      {
+        "dataClass": "attachments-files",
+        "detail": "REST document service caps each file download at 10 MB (413 above); UI folder ZIP download is recommended only up to about 100 MB, so large File Cabinet contents need per-file handling or another route.",
+        "sources": [
+          "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/article_0909085903.html",
+          "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_N544050.html"
+        ]
+      },
+      {
+        "dataClass": "custom-objects-fields",
+        "detail": "SuiteQL/Analytic APIs do not list application data from custom field subtabs (e.g. a custom transaction body field's subtabs return nothing); record/field names in SuiteQL results can change casing across releases; CLOB sorting only evaluates the first 250 characters.",
+        "sources": ["https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_156257796125.html"]
+      },
+      {
+        "dataClass": "history-audit",
+        "detail": "System Notes are readable but gated: querying all notes needs Administrator or 'System Notes for Analytics and REST' permission (otherwise only your own changes). Classic System Notes are deleted with their record; only System Notes v2 survive deletion. Deleted-record logs exist only for listed record types, and the new-data-source deletion search needs the NetSuite Analytics Warehouse feature.",
+        "sources": [
+          "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/chapter_158644279544.html",
+          "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_N673560.html",
+          "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_4031815869.html"
+        ]
+      },
+      {
+        "dataClass": "automations-workflows",
+        "detail": "Workflows, scripts, forms, roles and similar configuration come out only as SDF XML definitions/files via the SuiteCloud SDK, not through the data exports; locked record types cannot be imported into a SuiteCloud project.",
+        "sources": [
+          "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_4702656511.html",
+          "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_4706653920.html"
+        ]
+      },
+      {
+        "dataClass": "metadata-config",
+        "detail": "The documented incremental pattern (lastModifiedDate search + getDeleted) is on SOAP, which Oracle is removing (only the 2025.2 endpoint supported from 2027.1, SOAP gone with 2028.2); getDeleted does not support all record types.",
+        "sources": [
+          "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_N3418637.html",
+          "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_N3497592.html"
+        ]
+      }
+    ],
+    "migrationTools": [
+      {
+        "name": "SuiteCloud SDK (SDF account component import)",
+        "direction": "out-of-vendor",
+        "description": "Pulls customisation definitions (custom records, objects, scripts, files) from an account into a local SuiteCloud project; also deploys them back.",
+        "sources": ["https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_4702656511.html"]
+      },
+      {
+        "name": "Importing a Peachtree CSV File",
+        "direction": "into-vendor",
+        "description": "Help topic for importing Peachtree CSV data, listed alongside the export topics (title seen only, page not read).",
+        "sources": ["https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_N464759.html"]
+      }
+    ],
+    "limits": [
+      "REST record service: date/time filtering is documented (example uses dateCreated) but a REST page explicitly naming lastModifiedDate as the delta field was not read; SuiteQL lastmodifieddate columns not confirmed.",
+      "No native outbound webhook/event product was checked; none is claimed here.",
+      "SuiteAnalytics Connect price and the exact Oracle wording on its fee: only 'ODBC access is an additional service with an associated fee' was seen; tier availability not stated.",
+      "Token-based authentication setup pages and SuiteScript governance units were not fetched.",
+      "SuiteQL 'Records Catalog' completeness (which record types are missing from the analytics data source) not checked.",
+      "Pages fetched with curl from docs.oracle.com (static HTML) and read as text; netsuite.com returned 403 earlier. No injected instructions were noticed."
+    ],
+    "failures": []
+  }
+}

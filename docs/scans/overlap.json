@@ -1,0 +1,1559 @@
+{
+  "schema": "wos-scan-overlap.v0",
+  "label": "SCAN — unreviewed, 2026-09-30",
+  "reviewed": false,
+  "countsTowardProgress": false,
+  "targets": [
+    {
+      "id": "TGT-01",
+      "slug": "salesforce",
+      "name": "Salesforce",
+      "capabilities": 52
+    },
+    {
+      "id": "TGT-02",
+      "slug": "hubspot",
+      "name": "HubSpot",
+      "capabilities": 60
+    },
+    {
+      "id": "TGT-03",
+      "slug": "slack",
+      "name": "Slack",
+      "capabilities": 40
+    },
+    {
+      "id": "TGT-04",
+      "slug": "zoom",
+      "name": "Zoom",
+      "capabilities": 51
+    },
+    {
+      "id": "TGT-05",
+      "slug": "shopify",
+      "name": "Shopify",
+      "capabilities": 53
+    },
+    {
+      "id": "TGT-06",
+      "slug": "quickbooks",
+      "name": "QuickBooks",
+      "capabilities": 41
+    },
+    {
+      "id": "TGT-07",
+      "slug": "jira",
+      "name": "Jira",
+      "capabilities": 40
+    },
+    {
+      "id": "TGT-08",
+      "slug": "zendesk",
+      "name": "Zendesk",
+      "capabilities": 40
+    },
+    {
+      "id": "TGT-09",
+      "slug": "docusign",
+      "name": "DocuSign",
+      "capabilities": 40
+    },
+    {
+      "id": "TGT-10",
+      "slug": "netsuite",
+      "name": "NetSuite",
+      "capabilities": 60
+    }
+  ],
+  "capabilities": [
+    {
+      "id": "roles-permissions",
+      "group": "Platform",
+      "definition": "Roles, profiles and permission sets that decide who can see and change what.",
+      "count": 10,
+      "targets": ["salesforce", "hubspot", "slack", "zoom", "shopify", "quickbooks", "jira", "zendesk", "docusign", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "audit-log",
+      "group": "Platform",
+      "definition": "A record of who did what and when, for admins and compliance.",
+      "count": 10,
+      "targets": ["salesforce", "hubspot", "slack", "zoom", "shopify", "quickbooks", "jira", "zendesk", "docusign", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "mobile-app",
+      "group": "Platform",
+      "definition": "The vendor's native phone and tablet apps as a product area in their own right (offline use, mobile-only features).",
+      "count": 10,
+      "targets": ["salesforce", "hubspot", "slack", "zoom", "shopify", "quickbooks", "jira", "zendesk", "docusign", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "api-webhooks",
+      "group": "Platform",
+      "definition": "Public APIs and outgoing webhooks/events for programmatic access to the product.",
+      "count": 10,
+      "targets": ["salesforce", "hubspot", "slack", "zoom", "shopify", "quickbooks", "jira", "zendesk", "docusign", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "app-marketplace",
+      "group": "Platform",
+      "definition": "A directory of third-party and vendor apps and integrations that install into the product.",
+      "count": 10,
+      "targets": ["salesforce", "hubspot", "slack", "zoom", "shopify", "quickbooks", "jira", "zendesk", "docusign", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "workflow-automation",
+      "group": "Platform",
+      "definition": "Rules, triggers and visual flows that perform actions automatically when conditions are met.",
+      "count": 10,
+      "targets": ["salesforce", "hubspot", "slack", "zoom", "shopify", "quickbooks", "jira", "zendesk", "docusign", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "reporting-dashboards",
+      "group": "Platform",
+      "definition": "Reports, charts and dashboards built from the product's own data.",
+      "count": 10,
+      "targets": ["salesforce", "hubspot", "slack", "zoom", "shopify", "quickbooks", "jira", "zendesk", "docusign", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "ai-assistant",
+      "group": "Platform",
+      "definition": "A generative-AI assistant that helps the user inside the product (summaries, drafting, answering questions).",
+      "count": 10,
+      "targets": ["salesforce", "hubspot", "slack", "zoom", "shopify", "quickbooks", "jira", "zendesk", "docusign", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "ai-agents",
+      "group": "Platform",
+      "definition": "Autonomous or semi-autonomous AI agents that act on the user's or customer's behalf.",
+      "count": 10,
+      "targets": ["salesforce", "hubspot", "slack", "zoom", "shopify", "quickbooks", "jira", "zendesk", "docusign", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "sso-identity",
+      "group": "Platform",
+      "definition": "Single sign-on (SAML/OIDC), multi-factor authentication and user provisioning (SCIM).",
+      "count": 9,
+      "targets": ["salesforce", "hubspot", "slack", "zoom", "shopify", "jira", "zendesk", "docusign", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "data-import-export",
+      "group": "Platform",
+      "definition": "Bringing records in from files or other tools and exporting or backing them up.",
+      "count": 9,
+      "targets": ["salesforce", "hubspot", "slack", "zoom", "shopify", "quickbooks", "jira", "docusign", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "developer-platform",
+      "group": "Platform",
+      "definition": "Code-level customisation: a hosted language, SDKs, CLIs, packaging and deployment tooling.",
+      "count": 9,
+      "targets": ["salesforce", "hubspot", "slack", "zoom", "shopify", "jira", "zendesk", "docusign", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "approvals",
+      "group": "Platform",
+      "definition": "Routing a record or request to people who must approve or reject it.",
+      "count": 9,
+      "targets": ["salesforce", "hubspot", "slack", "zoom", "quickbooks", "jira", "zendesk", "docusign", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "compliance-security",
+      "group": "Platform",
+      "definition": "Encryption controls, data residency, retention policies, legal hold and compliance certifications.",
+      "count": 8,
+      "targets": ["salesforce", "hubspot", "slack", "zoom", "shopify", "jira", "zendesk", "docusign"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "custom-fields-objects",
+      "group": "Platform",
+      "definition": "Admin-defined fields, record types and custom objects that extend the data model.",
+      "count": 8,
+      "targets": ["salesforce", "hubspot", "shopify", "quickbooks", "jira", "zendesk", "docusign", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "native-integrations",
+      "group": "Platform",
+      "definition": "Vendor-built connectors to named outside products (email suites, calendars, accounting, dev tools).",
+      "count": 8,
+      "targets": ["salesforce", "hubspot", "slack", "zoom", "shopify", "jira", "zendesk", "docusign"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "forms",
+      "group": "Platform",
+      "definition": "Forms that collect data from people and create or update records.",
+      "count": 8,
+      "targets": ["salesforce", "hubspot", "zoom", "shopify", "quickbooks", "jira", "zendesk", "docusign"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "multi-currency-localization",
+      "group": "Platform",
+      "definition": "Multiple currencies, languages and regional formats.",
+      "count": 7,
+      "targets": ["hubspot", "slack", "zoom", "shopify", "quickbooks", "docusign", "netsuite"],
+      "unconfirmedTargets": ["salesforce"]
+    },
+    {
+      "id": "users-teams",
+      "group": "Platform",
+      "definition": "User accounts, invitations, teams and groups inside a workspace or organisation.",
+      "count": 7,
+      "targets": ["hubspot", "slack", "zoom", "shopify", "quickbooks", "jira", "docusign"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "sandbox-environments",
+      "group": "Platform",
+      "definition": "Separate test or staging copies of an account for building and testing changes.",
+      "count": 7,
+      "targets": ["salesforce", "hubspot", "shopify", "jira", "zendesk", "docusign", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "search",
+      "group": "Platform",
+      "definition": "Finding records, messages, files or content across the product.",
+      "count": 7,
+      "targets": ["slack", "zoom", "shopify", "jira", "zendesk", "docusign", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "notifications",
+      "group": "Platform",
+      "definition": "In-app, email and push alerts about activity a user cares about.",
+      "count": 6,
+      "targets": ["salesforce", "slack", "shopify", "jira", "zendesk", "docusign"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "templates",
+      "group": "Platform",
+      "definition": "Reusable templates for records, documents, messages or projects.",
+      "count": 6,
+      "targets": ["salesforce", "slack", "zoom", "quickbooks", "jira", "docusign"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "admin-console",
+      "group": "Platform",
+      "definition": "Central administration settings, usage and billing management for the account.",
+      "count": 6,
+      "targets": ["slack", "zoom", "shopify", "jira", "zendesk", "docusign"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "file-storage",
+      "group": "Platform",
+      "definition": "Uploading, storing, previewing and sharing files and attachments.",
+      "count": 5,
+      "targets": ["salesforce", "slack", "zoom", "jira", "docusign"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "comments-mentions",
+      "group": "Platform",
+      "definition": "Comments and @mentions on records for internal collaboration.",
+      "count": 5,
+      "targets": ["salesforce", "slack", "zoom", "jira", "docusign"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "sms-messaging",
+      "group": "Marketing",
+      "definition": "Sending and receiving SMS or WhatsApp messages with contacts.",
+      "count": 5,
+      "targets": ["hubspot", "zoom", "shopify", "zendesk", "docusign"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "calendar-scheduling",
+      "group": "Platform",
+      "definition": "Calendars, booking links and scheduling of meetings or appointments.",
+      "count": 4,
+      "targets": ["salesforce", "hubspot", "slack", "zoom"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "organizations",
+      "group": "CRM",
+      "definition": "Company or account records that group contacts and activity.",
+      "count": 4,
+      "targets": ["salesforce", "hubspot", "zendesk", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "leads",
+      "group": "CRM",
+      "definition": "Prospects not yet qualified, with capture, qualification and conversion.",
+      "count": 4,
+      "targets": ["salesforce", "hubspot", "quickbooks", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "pipelines-deals",
+      "group": "CRM",
+      "definition": "Opportunities or deals moving through configurable sales stages.",
+      "count": 4,
+      "targets": ["salesforce", "hubspot", "slack", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "email-marketing",
+      "group": "Marketing",
+      "definition": "Designing and sending bulk marketing emails and newsletters to lists.",
+      "count": 4,
+      "targets": ["salesforce", "hubspot", "shopify", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "subscriptions-recurring-billing",
+      "group": "Commerce",
+      "definition": "Recurring charges, subscription plans and billing schedules.",
+      "count": 4,
+      "targets": ["hubspot", "shopify", "quickbooks", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "invoicing",
+      "group": "Finance",
+      "definition": "Creating and sending invoices and estimates to customers.",
+      "count": 4,
+      "targets": ["hubspot", "shopify", "quickbooks", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "payments-acceptance",
+      "group": "Finance",
+      "definition": "Accepting customer payments online or by card through the product.",
+      "count": 4,
+      "targets": ["hubspot", "shopify", "quickbooks", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "ticketing",
+      "group": "Service",
+      "definition": "Receiving, tracking and resolving customer requests as tickets or cases.",
+      "count": 4,
+      "targets": ["salesforce", "hubspot", "zendesk", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "knowledge-base",
+      "group": "Service",
+      "definition": "Help-centre articles for customers and internal agents.",
+      "count": 4,
+      "targets": ["salesforce", "hubspot", "zendesk", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "low-code-builder",
+      "group": "Platform",
+      "definition": "Point-and-click builders for custom apps, pages, layouts or components on the platform.",
+      "count": 3,
+      "targets": ["salesforce", "jira", "zendesk"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "desktop-app",
+      "group": "Platform",
+      "definition": "The vendor's native desktop app for macOS, Windows or Linux.",
+      "count": 3,
+      "targets": ["slack", "zoom", "quickbooks"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "tasks",
+      "group": "Platform",
+      "definition": "To-dos with owners and due dates.",
+      "count": 3,
+      "targets": ["salesforce", "slack", "zoom"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "email-calendar-sync",
+      "group": "Platform",
+      "definition": "Two-way sync with outside email and calendar providers (e.g. Gmail, Outlook).",
+      "count": 3,
+      "targets": ["salesforce", "hubspot", "zoom"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "contacts",
+      "group": "CRM",
+      "definition": "People records with their details, history and relationships.",
+      "count": 3,
+      "targets": ["salesforce", "hubspot", "zendesk"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "activities",
+      "group": "CRM",
+      "definition": "Logged calls, emails, meetings and notes on a record's timeline.",
+      "count": 3,
+      "targets": ["salesforce", "hubspot", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "quotes-cpq",
+      "group": "CRM",
+      "definition": "Building quotes from products and prices, including configure-price-quote rules.",
+      "count": 3,
+      "targets": ["salesforce", "hubspot", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "forecasting",
+      "group": "CRM",
+      "definition": "Projected revenue by period, owner or team, with adjustments.",
+      "count": 3,
+      "targets": ["salesforce", "hubspot", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "campaigns-attribution",
+      "group": "Marketing",
+      "definition": "Grouping marketing work into campaigns and attributing revenue to touchpoints.",
+      "count": 3,
+      "targets": ["salesforce", "hubspot", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "external-collaboration",
+      "group": "Collaboration",
+      "definition": "Working with people outside the organisation in shared spaces or as guests.",
+      "count": 3,
+      "targets": ["slack", "zoom", "jira"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "transcription-captions",
+      "group": "Meetings",
+      "definition": "Live captions, translated captions and transcripts of spoken audio.",
+      "count": 3,
+      "targets": ["slack", "zoom", "zendesk"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "phone-calling",
+      "group": "Meetings",
+      "definition": "Cloud phone system or calling: numbers, dialing, call routing and voicemail.",
+      "count": 3,
+      "targets": ["hubspot", "zoom", "zendesk"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "inventory-management",
+      "group": "Commerce",
+      "definition": "Tracking stock levels across locations and adjusting inventory.",
+      "count": 3,
+      "targets": ["shopify", "quickbooks", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "accounts-payable",
+      "group": "Finance",
+      "definition": "Recording and paying bills from vendors.",
+      "count": 3,
+      "targets": ["shopify", "quickbooks", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "time-tracking",
+      "group": "Finance",
+      "definition": "Recording time worked against people, projects or customers.",
+      "count": 3,
+      "targets": ["quickbooks", "jira", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "sales-tax",
+      "group": "Finance",
+      "definition": "Calculating, tracking and filing sales tax or VAT.",
+      "count": 3,
+      "targets": ["shopify", "quickbooks", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "financial-reports",
+      "group": "Finance",
+      "definition": "Financial statements such as profit and loss, balance sheet and cash flow.",
+      "count": 3,
+      "targets": ["shopify", "quickbooks", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "purchasing-procurement",
+      "group": "Finance",
+      "definition": "Purchase requisitions, purchase orders, vendors and receiving.",
+      "count": 3,
+      "targets": ["shopify", "quickbooks", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "hr-people",
+      "group": "Operations",
+      "definition": "Employee records, org structure and HR processes.",
+      "count": 3,
+      "targets": ["slack", "quickbooks", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "live-chat-messaging",
+      "group": "Service",
+      "definition": "Web, in-app and social messaging with customers in real time.",
+      "count": 3,
+      "targets": ["hubspot", "shopify", "zendesk"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "docs-wiki",
+      "group": "Platform",
+      "definition": "Collaborative documents, canvases or wiki pages inside the product.",
+      "count": 2,
+      "targets": ["slack", "zoom"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "data-quality-dedup",
+      "group": "Platform",
+      "definition": "Duplicate detection, merging and data validation rules.",
+      "count": 2,
+      "targets": ["salesforce", "hubspot"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "products-price-books",
+      "group": "CRM",
+      "definition": "A catalogue of sellable products with prices and price lists.",
+      "count": 2,
+      "targets": ["salesforce", "hubspot"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "lead-scoring",
+      "group": "CRM",
+      "definition": "Ranking leads or contacts by fit and engagement, by rules or models.",
+      "count": 2,
+      "targets": ["salesforce", "hubspot"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "sales-sequences",
+      "group": "CRM",
+      "definition": "Multi-step outreach cadences of emails, calls and tasks.",
+      "count": 2,
+      "targets": ["salesforce", "hubspot"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "sales-engagement-tools",
+      "group": "CRM",
+      "definition": "Seller productivity tools such as email tracking, templates, meeting links and call coaching.",
+      "count": 2,
+      "targets": ["salesforce", "hubspot"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "partner-management",
+      "group": "CRM",
+      "definition": "Managing channel partners, partner portals and shared deals.",
+      "count": 2,
+      "targets": ["salesforce", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "contracts-renewals",
+      "group": "CRM",
+      "definition": "Tracking customer contracts, subscriptions and renewals on the CRM record.",
+      "count": 2,
+      "targets": ["salesforce", "hubspot"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "customer-portal",
+      "group": "CRM",
+      "definition": "A logged-in site where customers or partners view and act on their own records.",
+      "count": 2,
+      "targets": ["hubspot", "zendesk"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "sales-performance-management",
+      "group": "CRM",
+      "definition": "Sales quotas, commission and incentive compensation plans, and payout calculation.",
+      "count": 2,
+      "targets": ["salesforce", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "marketing-automation",
+      "group": "Marketing",
+      "definition": "Multi-step nurture journeys that react to contact behaviour.",
+      "count": 2,
+      "targets": ["hubspot", "shopify"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "segmentation-lists",
+      "group": "Marketing",
+      "definition": "Static and dynamic lists or segments of contacts.",
+      "count": 2,
+      "targets": ["hubspot", "shopify"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "ads-management",
+      "group": "Marketing",
+      "definition": "Creating, syncing audiences with and reporting on paid ad campaigns.",
+      "count": 2,
+      "targets": ["hubspot", "shopify"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "seo-tools",
+      "group": "Marketing",
+      "definition": "Search engine optimisation recommendations and tracking.",
+      "count": 2,
+      "targets": ["hubspot", "shopify"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "customer-data-platform",
+      "group": "Marketing",
+      "definition": "Unifying customer data from many sources into profiles for activation.",
+      "count": 2,
+      "targets": ["salesforce", "hubspot"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "video-hosting",
+      "group": "Marketing",
+      "definition": "Hosting and sharing recorded video content.",
+      "count": 2,
+      "targets": ["hubspot", "zoom"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "channels",
+      "group": "Collaboration",
+      "definition": "Persistent group conversations organised by topic, team or project.",
+      "count": 2,
+      "targets": ["slack", "zoom"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "direct-messages",
+      "group": "Collaboration",
+      "definition": "Private one-to-one and small-group conversations.",
+      "count": 2,
+      "targets": ["slack", "zoom"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "threads-reactions",
+      "group": "Collaboration",
+      "definition": "Replying in threads and reacting to messages with emoji.",
+      "count": 2,
+      "targets": ["slack", "zoom"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "presence-status",
+      "group": "Collaboration",
+      "definition": "Showing whether people are available, away or in a meeting, with custom status.",
+      "count": 2,
+      "targets": ["slack", "zoom"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "async-video-clips",
+      "group": "Collaboration",
+      "definition": "Recording and sharing short audio, video or screen clips instead of meeting.",
+      "count": 2,
+      "targets": ["slack", "zoom"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "bots-slash-commands",
+      "group": "Collaboration",
+      "definition": "Bots and command shortcuts that let users act on apps from a conversation.",
+      "count": 2,
+      "targets": ["slack", "zoom"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "lists-databases",
+      "group": "Collaboration",
+      "definition": "Structured lists or tables for tracking items inside a collaboration tool.",
+      "count": 2,
+      "targets": ["slack", "zoom"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "screen-sharing",
+      "group": "Meetings",
+      "definition": "Sharing a screen or window with others during a call.",
+      "count": 2,
+      "targets": ["slack", "zoom"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "meeting-recording",
+      "group": "Meetings",
+      "definition": "Recording meetings locally or to the cloud and playing them back.",
+      "count": 2,
+      "targets": ["hubspot", "zoom"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "online-storefront",
+      "group": "Commerce",
+      "definition": "An online store with themes, pages and a domain.",
+      "count": 2,
+      "targets": ["shopify", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "product-catalog",
+      "group": "Commerce",
+      "definition": "Products, variants, collections and media for sale.",
+      "count": 2,
+      "targets": ["shopify", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "order-management",
+      "group": "Commerce",
+      "definition": "Viewing, editing, fulfilling, refunding and returning orders.",
+      "count": 2,
+      "targets": ["shopify", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "shipping-fulfillment",
+      "group": "Commerce",
+      "definition": "Shipping rates, labels, carrier connections and fulfilment services.",
+      "count": 2,
+      "targets": ["shopify", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "point-of-sale",
+      "group": "Commerce",
+      "definition": "In-person selling with POS hardware and software tied to the same catalogue.",
+      "count": 2,
+      "targets": ["shopify", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "general-ledger",
+      "group": "Finance",
+      "definition": "The chart of accounts, journal entries and the books of record.",
+      "count": 2,
+      "targets": ["quickbooks", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "bank-feeds-reconciliation",
+      "group": "Finance",
+      "definition": "Connecting bank and card accounts, categorising transactions and reconciling.",
+      "count": 2,
+      "targets": ["quickbooks", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "accounts-receivable",
+      "group": "Finance",
+      "definition": "Tracking what customers owe, payments received, collections and dunning.",
+      "count": 2,
+      "targets": ["quickbooks", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "expense-management",
+      "group": "Finance",
+      "definition": "Capturing receipts and tracking business expenses and reimbursements.",
+      "count": 2,
+      "targets": ["quickbooks", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "payroll",
+      "group": "Finance",
+      "definition": "Paying employees, withholding and filing payroll taxes.",
+      "count": 2,
+      "targets": ["quickbooks", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "budgeting-planning",
+      "group": "Finance",
+      "definition": "Budgets, forecasts and financial planning.",
+      "count": 2,
+      "targets": ["quickbooks", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "project-accounting",
+      "group": "Finance",
+      "definition": "Tracking profitability, costs and billing per project or job.",
+      "count": 2,
+      "targets": ["quickbooks", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "fixed-assets",
+      "group": "Finance",
+      "definition": "Recording, depreciating and disposing of fixed assets.",
+      "count": 2,
+      "targets": ["quickbooks", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "revenue-recognition",
+      "group": "Finance",
+      "definition": "Recognising revenue over time according to accounting standards.",
+      "count": 2,
+      "targets": ["quickbooks", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "capacity-resource-planning",
+      "group": "Work management",
+      "definition": "Planning team capacity and allocating people to work.",
+      "count": 2,
+      "targets": ["jira", "netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "omnichannel-routing",
+      "group": "Service",
+      "definition": "Routing conversations and tickets across email, chat, phone and social to the right agent.",
+      "count": 2,
+      "targets": ["hubspot", "zendesk"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "sla-management",
+      "group": "Service",
+      "definition": "Service-level targets and breach tracking on tickets.",
+      "count": 2,
+      "targets": ["hubspot", "zendesk"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "csat-surveys",
+      "group": "Service",
+      "definition": "Customer satisfaction and feedback surveys.",
+      "count": 2,
+      "targets": ["hubspot", "zendesk"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "macros-canned-responses",
+      "group": "Service",
+      "definition": "Saved replies and actions agents apply to tickets in one step.",
+      "count": 2,
+      "targets": ["shopify", "zendesk"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "audio-huddles",
+      "group": "Collaboration",
+      "definition": "Quick drop-in audio or video conversations inside a chat tool.",
+      "count": 1,
+      "targets": ["slack"],
+      "unconfirmedTargets": ["zoom"]
+    },
+    {
+      "id": "archiving",
+      "group": "Platform",
+      "definition": "Archiving inactive projects, spaces or records so they leave active views and limits but can be restored.",
+      "count": 1,
+      "targets": ["jira"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "custom-branding",
+      "group": "Platform",
+      "definition": "Account logo, colours and sender domain applied to customer-facing pages and messages.",
+      "count": 1,
+      "targets": ["docusign"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "security-activity-monitoring",
+      "group": "Platform",
+      "definition": "Near real-time monitoring of account activity with security alerts and SIEM export.",
+      "count": 1,
+      "targets": ["docusign"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "territory-management",
+      "group": "CRM",
+      "definition": "Dividing accounts and leads among sales territories and teams.",
+      "count": 1,
+      "targets": ["salesforce"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "conversation-intelligence",
+      "group": "CRM",
+      "definition": "Recording, transcribing and analysing sales calls for insights, coaching and deal risk.",
+      "count": 1,
+      "targets": ["salesforce"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "sales-enablement",
+      "group": "CRM",
+      "definition": "Seller training, onboarding programs and content tied to sales outcomes.",
+      "count": 1,
+      "targets": ["salesforce"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "maps-route-planning",
+      "group": "CRM",
+      "definition": "Map views of accounts and route planning for field sellers.",
+      "count": 1,
+      "targets": ["salesforce"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "data-enrichment",
+      "group": "CRM",
+      "definition": "Filling in company and contact attributes automatically from a vendor-provided data source.",
+      "count": 1,
+      "targets": ["hubspot"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "email-sending",
+      "group": "Marketing",
+      "definition": "Sending one-to-one or transactional email from the product.",
+      "count": 1,
+      "targets": ["salesforce"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "website-cms",
+      "group": "Marketing",
+      "definition": "Hosting and managing a full website: pages, themes, blog, domains.",
+      "count": 1,
+      "targets": ["hubspot"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "social-media",
+      "group": "Marketing",
+      "definition": "Publishing to and monitoring social networks.",
+      "count": 1,
+      "targets": ["hubspot"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "affiliate-influencer",
+      "group": "Marketing",
+      "definition": "Recruiting and paying creators, influencers and affiliates to promote products.",
+      "count": 1,
+      "targets": ["shopify"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "whiteboard",
+      "group": "Collaboration",
+      "definition": "A shared digital canvas for drawing and visual collaboration.",
+      "count": 1,
+      "targets": ["zoom"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "hosted-email",
+      "group": "Collaboration",
+      "definition": "A vendor-hosted mailbox and calendar service with custom domains, as opposed to a client that syncs an outside provider.",
+      "count": 1,
+      "targets": ["zoom"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "workplace-facilities",
+      "group": "Collaboration",
+      "definition": "Physical-office tools: desk and room reservation, visitor check-in and digital signage.",
+      "count": 1,
+      "targets": ["zoom"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "employee-engagement",
+      "group": "Collaboration",
+      "definition": "An employee communications and engagement hub (intranet-style feed, company updates, recognition).",
+      "count": 1,
+      "targets": ["zoom"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "video-meetings",
+      "group": "Meetings",
+      "definition": "Scheduled and instant video and audio meetings.",
+      "count": 1,
+      "targets": ["zoom"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "meeting-controls",
+      "group": "Meetings",
+      "definition": "Host controls, waiting rooms, breakout rooms, polls and in-meeting chat.",
+      "count": 1,
+      "targets": ["zoom"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "webinars-events",
+      "group": "Meetings",
+      "definition": "Registration-based webinars and virtual or hybrid events for large audiences.",
+      "count": 1,
+      "targets": ["zoom"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "room-systems",
+      "group": "Meetings",
+      "definition": "Software and certified hardware for conference rooms and shared spaces.",
+      "count": 1,
+      "targets": ["zoom"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "contact-center",
+      "group": "Meetings",
+      "definition": "A multichannel contact centre with queues, agents and supervisors.",
+      "count": 1,
+      "targets": ["zendesk"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "checkout-payments",
+      "group": "Commerce",
+      "definition": "Cart, checkout and accepting card and wallet payments.",
+      "count": 1,
+      "targets": ["shopify"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "discounts-promotions",
+      "group": "Commerce",
+      "definition": "Discount codes, automatic discounts and gift cards.",
+      "count": 1,
+      "targets": ["shopify"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "customer-accounts",
+      "group": "Commerce",
+      "definition": "Buyer accounts, order history and customer records for a store.",
+      "count": 1,
+      "targets": ["shopify"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "multichannel-selling",
+      "group": "Commerce",
+      "definition": "Selling through marketplaces and social channels from one catalogue.",
+      "count": 1,
+      "targets": ["shopify"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "b2b-wholesale",
+      "group": "Commerce",
+      "definition": "Company buyers, price lists, payment terms and wholesale ordering.",
+      "count": 1,
+      "targets": ["shopify"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "international-selling",
+      "group": "Commerce",
+      "definition": "Selling in multiple markets with local currency, language, duties and domains.",
+      "count": 1,
+      "targets": ["shopify"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "headless-commerce",
+      "group": "Commerce",
+      "definition": "APIs and frameworks for building custom storefronts decoupled from the platform's own themes.",
+      "count": 1,
+      "targets": ["shopify"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "agentic-commerce",
+      "group": "Commerce",
+      "definition": "Making products discoverable and purchasable through third-party AI assistants and agents.",
+      "count": 1,
+      "targets": ["shopify"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "multi-entity-consolidation",
+      "group": "Finance",
+      "definition": "Managing multiple companies or subsidiaries and consolidating their books.",
+      "count": 1,
+      "targets": ["netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "tax-1099-compliance",
+      "group": "Finance",
+      "definition": "Contractor and tax-form filing such as US 1099s.",
+      "count": 1,
+      "targets": ["quickbooks"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "accountant-collaboration",
+      "group": "Finance",
+      "definition": "Tools for outside accountants and bookkeepers to access and work on client books.",
+      "count": 1,
+      "targets": ["quickbooks"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "business-banking-financing",
+      "group": "Finance",
+      "definition": "Merchant money accounts, business cards and lending offered inside the platform.",
+      "count": 1,
+      "targets": ["shopify"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "mileage-tracking",
+      "group": "Finance",
+      "definition": "Logging business trips (manually or by GPS) to claim vehicle expenses or reimburse mileage.",
+      "count": 1,
+      "targets": ["quickbooks"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "tracking-dimensions",
+      "group": "Finance",
+      "definition": "Tagging transactions with classes, locations, departments or other segments to report by dimension.",
+      "count": 1,
+      "targets": ["quickbooks"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "financial-close",
+      "group": "Finance",
+      "definition": "Period-close management: close checklists, task tracking and close status across accounting periods.",
+      "count": 1,
+      "targets": ["netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "warehouse-management",
+      "group": "Operations",
+      "definition": "Bins, picking, packing and warehouse operations.",
+      "count": 1,
+      "targets": ["netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "manufacturing",
+      "group": "Operations",
+      "definition": "Bills of materials, work orders and production management.",
+      "count": 1,
+      "targets": ["netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "supply-chain-planning",
+      "group": "Operations",
+      "definition": "Demand planning, supply planning and replenishment.",
+      "count": 1,
+      "targets": ["netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "professional-services-automation",
+      "group": "Operations",
+      "definition": "Resource planning, project delivery and billing for services businesses.",
+      "count": 1,
+      "targets": ["netsuite"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "issues-work-items",
+      "group": "Work management",
+      "definition": "Issues, tasks or work items with types, fields, assignees and statuses.",
+      "count": 1,
+      "targets": ["jira"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "boards-kanban",
+      "group": "Work management",
+      "definition": "Visual boards of cards moving across columns.",
+      "count": 1,
+      "targets": ["jira"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "sprints-agile",
+      "group": "Work management",
+      "definition": "Scrum sprints, backlogs, estimation and velocity.",
+      "count": 1,
+      "targets": ["jira"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "roadmaps-timelines",
+      "group": "Work management",
+      "definition": "Timeline or Gantt views planning work over time across teams.",
+      "count": 1,
+      "targets": ["jira"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "issue-workflows",
+      "group": "Work management",
+      "definition": "Configurable status workflows, transitions and rules for work items.",
+      "count": 1,
+      "targets": ["jira"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "releases-versions",
+      "group": "Work management",
+      "definition": "Grouping work into versions or releases and tracking what shipped.",
+      "count": 1,
+      "targets": ["jira"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "dependencies",
+      "group": "Work management",
+      "definition": "Linking work items that block or depend on each other.",
+      "count": 1,
+      "targets": ["jira"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "dev-tool-integration",
+      "group": "Work management",
+      "definition": "Connecting code repositories, builds and deployments to work items.",
+      "count": 1,
+      "targets": ["jira"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "goals-okrs",
+      "group": "Work management",
+      "definition": "Tracking goals or objectives and linking work to them.",
+      "count": 1,
+      "targets": ["jira"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "community-forums",
+      "group": "Service",
+      "definition": "Customer community forums for peer help.",
+      "count": 1,
+      "targets": ["zendesk"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "workforce-management",
+      "group": "Service",
+      "definition": "Forecasting, scheduling and tracking agent workforce.",
+      "count": 1,
+      "targets": ["zendesk"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "quality-assurance",
+      "group": "Service",
+      "definition": "Reviewing and scoring agent conversations for quality.",
+      "count": 1,
+      "targets": ["zendesk"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "asset-management",
+      "group": "Service",
+      "definition": "Tracking IT or physical assets and configuration items.",
+      "count": 1,
+      "targets": ["jira"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "customer-health-scores",
+      "group": "Service",
+      "definition": "Scoring customer accounts' health from behaviour and profile data to drive retention work.",
+      "count": 1,
+      "targets": ["hubspot"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "multi-brand",
+      "group": "Service",
+      "definition": "Running several customer-facing brands, each with its own help centre, channels and addresses, from one account.",
+      "count": 1,
+      "targets": ["zendesk"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "side-conversations",
+      "group": "Service",
+      "definition": "Separate threads started from a ticket to work with other teams, vendors or tools without exposing them to the customer.",
+      "count": 1,
+      "targets": ["zendesk"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "e-signature",
+      "group": "Agreements",
+      "definition": "Sending documents for legally binding electronic signature and signing them.",
+      "count": 1,
+      "targets": ["docusign"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "signer-identity-verification",
+      "group": "Agreements",
+      "definition": "Verifying signer identity (SMS, knowledge-based, ID document, qualified signatures).",
+      "count": 1,
+      "targets": ["docusign"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "bulk-send",
+      "group": "Agreements",
+      "definition": "Sending one document to many recipients individually at once.",
+      "count": 1,
+      "targets": ["docusign"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "document-generation",
+      "group": "Agreements",
+      "definition": "Generating agreements or documents from templates and record data.",
+      "count": 1,
+      "targets": ["docusign"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "contract-lifecycle-management",
+      "group": "Agreements",
+      "definition": "Authoring, negotiating, storing and tracking contracts through their lifecycle.",
+      "count": 1,
+      "targets": ["docusign"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "agreement-repository",
+      "group": "Agreements",
+      "definition": "A searchable store of completed agreements with extracted terms.",
+      "count": 1,
+      "targets": ["docusign"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "notary",
+      "group": "Agreements",
+      "definition": "Remote online notarisation of documents.",
+      "count": 1,
+      "targets": ["docusign"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "payment-collection-in-documents",
+      "group": "Agreements",
+      "definition": "Collecting payment as part of signing a document.",
+      "count": 1,
+      "targets": ["docusign"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "signing-order-routing",
+      "group": "Agreements",
+      "definition": "Recipient order and routing rules for a signing request: serial, parallel, conditional, delegated and signing groups.",
+      "count": 1,
+      "targets": ["docusign"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "document-fields-logic",
+      "group": "Agreements",
+      "definition": "Fillable fields placed in a document for signers, with validation, conditional display and calculated values.",
+      "count": 1,
+      "targets": ["docusign"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "embedded-signing",
+      "group": "Agreements",
+      "definition": "Signing or sending experience embedded inside a third-party website or app through the API.",
+      "count": 1,
+      "targets": ["docusign"],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "landing-pages",
+      "group": "Marketing",
+      "definition": "Building and publishing campaign landing pages.",
+      "count": 0,
+      "targets": [],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "field-service",
+      "group": "Service",
+      "definition": "Scheduling and dispatching mobile technicians for on-site work.",
+      "count": 0,
+      "targets": [],
+      "unconfirmedTargets": []
+    },
+    {
+      "id": "it-service-management",
+      "group": "Service",
+      "definition": "IT help desk: incidents, problems, changes, and service catalogue.",
+      "count": 0,
+      "targets": [],
+      "unconfirmedTargets": []
+    }
+  ],
+  "dataExport": {
+    "targets": [
+      {
+        "slug": "salesforce",
+        "name": "Salesforce",
+        "full": "yes",
+        "incremental": "yes",
+        "apiBased": "yes"
+      },
+      {
+        "slug": "hubspot",
+        "name": "HubSpot",
+        "full": "partial",
+        "incremental": "yes",
+        "apiBased": "yes"
+      },
+      {
+        "slug": "slack",
+        "name": "Slack",
+        "full": "partial",
+        "incremental": "partial",
+        "apiBased": "partial"
+      },
+      {
+        "slug": "zoom",
+        "name": "Zoom",
+        "full": "partial",
+        "incremental": "partial",
+        "apiBased": "yes"
+      },
+      {
+        "slug": "shopify",
+        "name": "Shopify",
+        "full": "partial",
+        "incremental": "yes",
+        "apiBased": "yes"
+      },
+      {
+        "slug": "quickbooks",
+        "name": "QuickBooks",
+        "full": "partial",
+        "incremental": "yes",
+        "apiBased": "partial"
+      },
+      {
+        "slug": "jira",
+        "name": "Jira",
+        "full": "partial",
+        "incremental": "yes",
+        "apiBased": "partial"
+      },
+      {
+        "slug": "zendesk",
+        "name": "Zendesk",
+        "full": "partial",
+        "incremental": "yes",
+        "apiBased": "yes"
+      },
+      {
+        "slug": "docusign",
+        "name": "DocuSign",
+        "full": "partial",
+        "incremental": "yes",
+        "apiBased": "yes"
+      },
+      {
+        "slug": "netsuite",
+        "name": "NetSuite",
+        "full": "partial",
+        "incremental": "yes",
+        "apiBased": "yes"
+      }
+    ],
+    "fullIncrementalApi": ["salesforce"],
+    "limitedOrUnknown": ["hubspot", "slack", "zoom", "shopify", "quickbooks", "jira", "zendesk", "docusign", "netsuite"],
+    "hardClasses": [
+      {
+        "dataClass": "attachments-files",
+        "count": 10,
+        "targets": ["salesforce", "hubspot", "slack", "zoom", "shopify", "quickbooks", "jira", "zendesk", "docusign", "netsuite"]
+      },
+      {
+        "dataClass": "history-audit",
+        "count": 10,
+        "targets": ["salesforce", "hubspot", "slack", "zoom", "shopify", "quickbooks", "jira", "zendesk", "docusign", "netsuite"]
+      },
+      {
+        "dataClass": "other",
+        "count": 10,
+        "targets": ["salesforce", "hubspot", "slack", "zoom", "shopify", "quickbooks", "jira", "zendesk", "docusign", "netsuite"]
+      },
+      {
+        "dataClass": "automations-workflows",
+        "count": 5,
+        "targets": ["hubspot", "slack", "jira", "zendesk", "netsuite"]
+      },
+      {
+        "dataClass": "permissions",
+        "count": 3,
+        "targets": ["slack", "shopify", "zendesk"]
+      },
+      {
+        "dataClass": "metadata-config",
+        "count": 3,
+        "targets": ["salesforce", "shopify", "netsuite"]
+      },
+      {
+        "dataClass": "custom-objects-fields",
+        "count": 2,
+        "targets": ["zendesk", "netsuite"]
+      }
+    ]
+  }
+}
