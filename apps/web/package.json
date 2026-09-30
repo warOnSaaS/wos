@@ -7,13 +7,15 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "node scripts/sync-shared.mjs && node scripts/gen-log.mjs && next build && node scripts/check-casing.mjs && node scripts/check-numbers.mjs",
+    "build": "node scripts/sync-shared.mjs && node scripts/gen-log.mjs && node scripts/gen-whitepaper-history.mjs && node scripts/check-whitepaper-version.mjs && next build && node scripts/check-casing.mjs && node scripts/check-numbers.mjs",
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "check:casing": "node scripts/check-casing.mjs",
     "check:numbers": "node scripts/check-numbers.mjs",
     "check:shared": "node scripts/sync-shared.mjs --check",
-    "gen:log": "node scripts/gen-log.mjs"
+    "gen:log": "node scripts/gen-log.mjs",
+    "gen:wp-history": "node scripts/gen-whitepaper-history.mjs",
+    "check:wp-version": "node scripts/check-whitepaper-version.mjs && node scripts/gen-whitepaper-history.mjs --verify"
   },
   "dependencies": {
     "next": "^16.3.7",

@@ -23,7 +23,17 @@ After merges to main, the site-sync agent (`apps/web/SITE-SYNC.md`, run by `.git
 - a changelog entry at the end of the file saying what changed and why, citing the source file;
 - a version bump in the header table: **patch** (0.2 to 0.2.1) for wording, corrections and updated evidence; **minor** (0.2 to 0.3) when a mechanism, a number in the design, or a decision changes. A major version is for the founder.
 
+**Never edit the paper without a version bump and a changelog entry.** The website build enforces it (`apps/web/scripts/check-whitepaper-version.mjs`): if `WHITEPAPER.md` differs from the previous commit's, its Version must be higher and "## Changelog" must have an entry for that version; a changelog entry newer than the header's version also fails.
+
 A human merges the pull request. The agent never invents evidence: every figure in the paper (test counts, links, dates, decisions) must come from a file or a URL it can cite, and unverifiable items are labelled as such.
+
+## Version history (since v0.8)
+
+https://waronsaas.com/whitepaper/changes (for agents: https://waronsaas.com/whitepaper/changes.md, without scores) lists every version newest first: its changelog entry verbatim, the GitHub compare diff from the previous version, the companion files it changed, a "PART I CHANGED" flag when the diff touches Part I (decided from the section headings) or `MATERIALITY.md` / `tools/materiality/model.ts` changed, and the reference runs recorded against it. Every version is readable in full at https://waronsaas.com/whitepaper/v/<version>.
+
+- `apps/web/scripts/gen-whitepaper-history.mjs` derives it from git: the Version row of the header table at each commit that changed the paper, its companions or the materiality model. It writes `apps/web/generated/whitepaper-history.json` and one snapshot per version in `apps/web/generated/whitepaper-history/` (v0.1 is `WHITEPAPER-v0.1-original.txt`, which never had a commit of its own). The rules are in `apps/web/scripts/wp-history-lib.mts`, tested in `tests/wp-history.test.ts`.
+- **The files are committed, because Vercel builds from a shallow clone** (depth 10; `git fetch --unshallow` does not work there). A build with full history (local, the site-sync workflow) regenerates them; a shallow build only verifies that the committed files match the working tree (the current version, its text, every tracked file's hash, every changelog entry) and fails if they are stale. After changing the paper, run `npm run build -w apps/web` (or `npm run gen:wp-history -w apps/web`) and commit `apps/web/generated` with the change. The output is a pure function of the committed history and the working tree, so committing it in the same commit as the paper is correct.
+- The current version is recorded without its commits (the commit that introduces a version cannot contain its own hash); its diff link runs to main and its date is the last-updated date. The next version bump records them.
 
 ## Rules for any editor
 

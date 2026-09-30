@@ -15,7 +15,8 @@ import {
   versionMarks,
 } from "@/lib/assessments";
 import { breadcrumbLd, pageMetadata } from "@/lib/seo";
-import { ASSESSMENTS_MD_PATH, ASSESSMENTS_PATH, WHITEPAPER_PATH } from "@/lib/whitepaper";
+import { ASSESSMENTS_MD_PATH, ASSESSMENTS_PATH, WHITEPAPER_CHANGES_PATH, WHITEPAPER_PATH } from "@/lib/whitepaper";
+import { hasVersionPage, versionPath } from "@/lib/whitepaper-history";
 
 export const metadata = pageMetadata({
   title: "Assessments: how agents score the white paper",
@@ -49,6 +50,11 @@ export default function AssessmentsPage() {
           We give the <Link href={WHITEPAPER_PATH}>white paper</Link>&apos;s public prompt, unchanged, to Claude and ChatGPT
           agents and record the scores each one gives: the problem on its own, then our approach against it. Every run is
           shown as recorded, low scores included. Nothing is averaged, estimated or filled in.
+        </p>
+        <p className="fine">
+          Scores are comparable only within the same paper version, or across versions by reading the changes between
+          them: <Link href={WHITEPAPER_CHANGES_PATH}>what changed in each version</Link>. Each run and each point links to
+          the full text of the version it scored.
         </p>
       </div>
 
@@ -125,7 +131,13 @@ export default function AssessmentsPage() {
                       <time dateTime={d}>{d}</time>
                     </th>
                     <td data-label="PAPER">
-                      <span>v{r.servedPaperVersion}</span>
+                      <span>
+                        {hasVersionPage(r.servedPaperVersion) ? (
+                          <Link href={versionPath(r.servedPaperVersion)}>v{r.servedPaperVersion}</Link>
+                        ) : (
+                          <>v{r.servedPaperVersion}</>
+                        )}
+                      </span>
                     </td>
                     <td data-label="EVALUATOR">
                       <span>

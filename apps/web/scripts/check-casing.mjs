@@ -6,7 +6,8 @@
  * Allowed exceptions:
  *   - lowercase in URLs, the domain, the npm scope and route slugs (waronsaas.com, @waronsaas/cli, /targets/waronsaas)
  *   - "WOS" only in "WOS token(s)" (required legal wording)
- *   - on the white paper only (whitepaper.html, /whitepaper/read, /whitepaper.md, /whitepaper/download and the companion .md bodies), "WOS" alone, because the
+ *   - on the white paper only (whitepaper.html, /whitepaper/read, /whitepaper.md, /whitepaper/download, the companion .md bodies,
+ *     /whitepaper/changes(.md) and every past version at /whitepaper/v/<version>), "WOS" alone, because the
  *     paper defines it once as the token's working symbol and uses it as a symbol ("100 WOS per ACU").
  *     Exactly "WOS": mis-cased forms (Wos, wos, WoS) still fail there.
  *   - "wos" only as the CLI command (wos build|login|…, "the wos command"), the Postgres schema ("wos Postgres")
@@ -86,11 +87,16 @@ const TOKEN_SYMBOL_PAGES = new Set([
   "whitepaper/design.md.body",
   "whitepaper/appendices.md.body",
   "whitepaper/sources.md.body",
+  // The version history: changelog entries quoted verbatim from the paper, and every past version in full.
+  "whitepaper/changes.html",
+  "whitepaper/changes.md.body",
 ]);
+const TOKEN_SYMBOL_PREFIXES = ["whitepaper/v/"];
 
 for (const f of pages) {
   const raw = readFileSync(f, "utf8");
-  const symbolOk = TOKEN_SYMBOL_PAGES.has(relative(join(root, "server", "app"), f));
+  const rel = relative(join(root, "server", "app"), f).split("\\").join("/");
+  const symbolOk = TOKEN_SYMBOL_PAGES.has(rel) || TOKEN_SYMBOL_PREFIXES.some((p) => rel.startsWith(p));
   const text = scrub(f.endsWith(".html") ? renderedText(raw) : raw);
   for (const m of text.matchAll(/waronsaas/gi)) {
     if (m[0] !== "warOnSaaS") errors.push(`${relative(process.cwd(), f)}: "${m[0]}" in …${context(text, m.index)}…`);

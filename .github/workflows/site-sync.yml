@@ -89,6 +89,7 @@ jobs:
             (main moved from ${{ steps.changes.outputs.last }} to ${{ steps.changes.outputs.head }}).
             Edit only files under apps/web/, the white paper files in docs/whitepaper/ (not the v0.1 original) and, for a sourced materiality refresh, tools/materiality/. Run `npm run build -w apps/web` before you finish, then write
             your summary to .site-sync/summary.md.
+            Never edit the paper without a version bump and a changelog entry.
           claude_args: |
             --model sonnet
             --max-turns 40

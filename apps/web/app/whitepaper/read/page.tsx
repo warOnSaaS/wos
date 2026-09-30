@@ -1,7 +1,7 @@
 import { Section } from "@/components/Section";
 import { renderBlock } from "@/lib/markdown";
 import { pageMetadata } from "@/lib/seo";
-import { WHITEPAPER_MD_PATH, WHITEPAPER_PATH, lastUpdatedDay, whitepaper } from "@/lib/whitepaper";
+import { WHITEPAPER_CHANGES_PATH, WHITEPAPER_MD_PATH, WHITEPAPER_PATH, lastUpdatedDay, whitepaper } from "@/lib/whitepaper";
 
 // The core white paper as one plain page, nothing collapsed, for agents that browse.
 // ChatGPT's fetch tool refused /whitepaper.md when it was served as text/markdown, so the handoff prompt links here.
@@ -18,13 +18,15 @@ export default function WhitepaperRead() {
   return (
     <div className="wrap">
       <div className="sec">
-        <p className="label">WHITE PAPER V{wp.version} · FULL TEXT{day ? ` · UPDATED ${day}` : ""}</p>
+        <p className="label">
+          WHITE PAPER V{wp.version} · FULL TEXT{day ? ` · UPDATED ${day}` : ""} · <a href={WHITEPAPER_CHANGES_PATH}>CHANGES</a>
+        </p>
         <p>
           The complete core, on one page, for AI agents. Plain text: <a href={WHITEPAPER_MD_PATH}>/whitepaper.md</a>. Handoff page:{" "}
-          <a href={WHITEPAPER_PATH}>/whitepaper</a>.
+          <a href={WHITEPAPER_PATH}>/whitepaper</a>. Every earlier version and what changed: <a href={WHITEPAPER_CHANGES_PATH}>/whitepaper/changes</a>.
         </p>
       </div>
-      <div className="brief wp">
+      <div className="brief brief--single wp">
         <div className="brief-body">
           {wp.sections.map((s) => (
             <Section key={s.id} n={s.n ?? undefined} title={s.title} id={s.id}>

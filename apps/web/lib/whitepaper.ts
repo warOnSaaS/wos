@@ -30,6 +30,9 @@ export const WHITEPAPER_MD_PATH = "/whitepaper.md";
 export const WHITEPAPER_DOWNLOAD_PATH = "/whitepaper/download";
 /** The core as a plain HTML page with nothing collapsed (see lib/handoff-prompt.ts for why prompts point here). */
 export const WHITEPAPER_READ_PATH = "/whitepaper/read";
+/** Every version: what changed and why, the diff, Part I flags, scores per version (lib/whitepaper-history.ts). */
+export const WHITEPAPER_CHANGES_PATH = "/whitepaper/changes";
+export const WHITEPAPER_CHANGES_MD_PATH = "/whitepaper/changes.md";
 /** The recorded trend, generated from docs/assessments (never in the paper, the pack or the companions). */
 export const ASSESSMENTS_MD_PATH = "/whitepaper/assessments.md";
 export const ASSESSMENTS_PATH = "/assessments";
@@ -85,8 +88,12 @@ export type Whitepaper = {
 let cached: Whitepaper | null = null;
 
 export function whitepaper(): Whitepaper {
-  if (cached) return cached;
-  const md = whitepaperMarkdown();
+  if (!cached) cached = parseWhitepaper(whitepaperMarkdown());
+  return cached;
+}
+
+/** Any version of the paper (the current one, or a past one from lib/whitepaper-history.ts), split into sections. */
+export function parseWhitepaper(md: string): Whitepaper {
   const blocks = parse(md);
   const title = blocks.find((b) => b.type === "h" && b.level === 1);
   const h2s = blocks.filter((b) => b.type === "h" && b.level === 2);
@@ -108,7 +115,7 @@ export function whitepaper(): Whitepaper {
     }
   }
 
-  cached = {
+  return {
     title: title && title.type === "h" ? plain(title.text) : "warOnSaaS",
     subtitle: subtitle && subtitle.type === "h" ? plain(subtitle.text) : "",
     version: field("Version") || "unversioned",
@@ -116,7 +123,6 @@ export function whitepaper(): Whitepaper {
     sections,
     words: md.split(/\s+/).filter(Boolean).length,
   };
-  return cached;
 }
 
 /** Companion files: optional depth for agents. Served at /whitepaper/<slug>.md and in the full pack. */

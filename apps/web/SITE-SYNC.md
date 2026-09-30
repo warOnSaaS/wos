@@ -80,6 +80,10 @@ When the paper is wrong or out of date, propose precise edits in the same PR:
   evidence; **minor** (0.2 → 0.3) when a mechanism, a number in the design, or a decision changes. Never a
   major version; that is the founder's.
 - Leave `{{LAST_UPDATED}}` in the header table as it is. The date is filled in from git at build.
+- Never edit the paper without a version bump and a changelog entry: the build fails otherwise
+  (`apps/web/scripts/check-whitepaper-version.mjs`). The build also regenerates the version history
+  (`apps/web/generated/whitepaper-history.json` and `apps/web/generated/whitepaper-history/`, shown at /whitepaper/changes);
+  leave those generated files in the PR as the build wrote them.
 
 ### The materiality figures (`MATERIALITY.md`, core section 3)
 

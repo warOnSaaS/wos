@@ -1,5 +1,17 @@
 import type { Evaluator, Marker, Metric, Run } from "@/lib/assessments";
 import { evaluatorOf, runDate } from "@/lib/assessments";
+import { hasVersionPage, versionPath } from "@/lib/whitepaper-history";
+
+/** A data point links to the full text of the paper version it was scored against, when git has that text. */
+function PointLink({ version, children }: { version: string; children: React.ReactNode }) {
+  return hasVersionPage(version) ? (
+    <a href={versionPath(version)} className="chart__pt">
+      {children}
+    </a>
+  ) : (
+    <g className="chart__pt">{children}</g>
+  );
+}
 
 /**
  * One small-multiple panel: one score over time, one series per evaluator. Server-rendered SVG, so it reads
@@ -113,11 +125,11 @@ export function ScoreChart({
               {pts.map((r) => {
                 const v = metric.get(r.block);
                 return (
-                  <g key={r.id} className="chart__pt">
+                  <PointLink key={r.id} version={r.servedPaperVersion}>
                     <title>{`${r.block.evaluator.model}, ${runDate(r)}, paper v${r.servedPaperVersion}: ${v}/${metric.max}`}</title>
                     <circle cx={x(runDate(r))} cy={y(v)} r={12} className="chart__hit" />
                     {markerPath(e.marker, x(runDate(r)), y(v))}
-                  </g>
+                  </PointLink>
                 );
               })}
               {showLabel ? (

@@ -1083,3 +1083,33 @@ button.cmd {
 .contribute > * + * {
   margin-top: 0.75rem;
 }
+
+/* White paper changes (/whitepaper/changes): the Part I flag must be impossible to miss. Shape only, no colour. */
+.wp-flag {
+  border: 2px solid var(--rule-strong);
+  padding: 0.75rem 1rem;
+}
+.wp-flag strong {
+  display: block;
+  letter-spacing: 0.04em;
+}
+.wp-flag p {
+  margin-top: 0.4rem;
+}
+.wp-changelog > * + * {
+  margin-top: 0.75rem;
+}
+.wp-banner {
+  border: 2px solid var(--rule-strong);
+  padding: 0.75rem 1rem;
+}
+/* A white paper text without a contents column (/whitepaper/read, /whitepaper/v/<version>): one column at every width. */
+@media (min-width: 1000px) {
+  .brief.brief--single {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.wp-pre--wrap {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

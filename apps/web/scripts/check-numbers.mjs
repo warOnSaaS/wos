@@ -122,6 +122,51 @@ for (const f of dataPages) {
   }
 }
 
+// ---- White paper changes: /whitepaper/changes shows the recorded runs per paper version. Its changelog entries are
+// the paper's own prose, quoted verbatim (prose numbers, like the paper itself); every SCORE it shows must be in the
+// assessments snapshot: every <data value> and data-figure anywhere on the page, and every "N/100|20|10" inside its
+// score tables (<table data-scores>). With no runs recorded it must show no figure and no score table.
+{
+  const page = join(app, "whitepaper", "changes.html");
+  const src = join(app, "assessments", "data.json.body");
+  let html = null;
+  let snap = null;
+  try {
+    html = readFileSync(page, "utf8");
+    snap = JSON.parse(readFileSync(src, "utf8"));
+  } catch {
+    errors.push("whitepaper changes: whitepaper/changes.html or assessments/data.json.body is missing from the build");
+  }
+  if (html && snap) {
+    const nums = new Set();
+    (function collect(v) {
+      if (typeof v === "number") nums.add(v);
+      else if (Array.isArray(v)) v.forEach(collect);
+      else if (v && typeof v === "object") Object.values(v).forEach(collect);
+    })(snap.runs);
+    const figures = [
+      ...[...html.matchAll(/<data value="([^"]*)"/g)].map((m) => m[1]),
+      ...[...html.matchAll(/\sdata-figure="([^"]*)"/g)].map((m) => m[1]),
+    ];
+    for (const f of figures) {
+      seen++;
+      if (!nums.has(Number(f))) errors.push(`whitepaper/changes.html: figure ${f} is not a score in the recorded runs`);
+    }
+    const tables = [...html.matchAll(/<table[^>]*\sdata-scores=""[^>]*>([\s\S]*?)<\/table>/g)].map((m) => m[1]);
+    for (const t of tables) {
+      for (const m of text(t).matchAll(/(\d+)\s*\/\s*(100|20|10)\b/g)) {
+        seen++;
+        if (!nums.has(Number(m[1]))) errors.push(`whitepaper/changes.html: "${m[0]}" is not a score in the recorded runs`);
+      }
+    }
+    if (snap.runs.length === 0) {
+      if (figures.length || tables.length) errors.push("whitepaper/changes.html: shows scores although no run is recorded");
+      if (!text(html).includes("No reference run recorded")) errors.push("whitepaper/changes.html: no runs recorded but the empty state is missing");
+    }
+    dataPages.push(page);
+  }
+}
+
 if (!dataPages.length) errors.push("No data pages found. Run next build first.");
 if (errors.length) {
   console.error(`check-numbers: ${errors.length} violation(s)`);

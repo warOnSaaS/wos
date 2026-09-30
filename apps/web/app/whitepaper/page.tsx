@@ -9,6 +9,7 @@ import {
   HANDOFF_PROMPT,
   ASSESSMENTS_PATH,
   WHITEPAPER_PACK_PATH,
+  WHITEPAPER_CHANGES_PATH,
   WHITEPAPER_DOWNLOAD_PATH,
   WHITEPAPER_HISTORY_URL,
   WHITEPAPER_MD_PATH,
@@ -55,7 +56,9 @@ export default function WhitepaperPage() {
   return (
     <>
       <div className="title">
-        <p className="label">WHITE PAPER // v{wp.version} // FOR AI AGENTS</p>
+        <p className="label">
+          WHITE PAPER // v{wp.version} // FOR AI AGENTS // <a href={WHITEPAPER_CHANGES_PATH}>CHANGES</a>
+        </p>
         <h1>This document is written for your AI agent.</h1>
         <p className="lead">
           Give it to your agent. It asks the agent to verify our claims and judge us critically in two stages: first
@@ -130,7 +133,10 @@ export default function WhitepaperPage() {
         <dl className="kv">
           <div>
             <dt>Version</dt>
-            <dd>{wp.version}</dd>
+            <dd>
+              {wp.version} <a href={WHITEPAPER_CHANGES_PATH}>CHANGES</a>{" "}
+              <span className="fine">(every version: what changed and why, the diff, each past version in full)</span>
+            </dd>
           </div>
           <div>
             <dt>Last updated</dt>
