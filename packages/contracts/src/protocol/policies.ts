@@ -51,6 +51,9 @@ export type ModelRateOracle = z.infer<typeof ModelRateOracle>;
 
 // ------------------------------------------------------------------------------------------------ RewardPolicy
 
+/** D61: a severity multiplier of a fix budget, in bp: 1x..2x. */
+const FixBp = z.number().int().min(10_000).max(20_000);
+
 export const RewardPolicy = z.object({
   policyVersion: z.string().regex(/^reward-policy\.v\d+$/),
   status: Status,
@@ -276,6 +279,35 @@ export const RewardPolicy = z.object({
     bugAcuEq: z.object({ low: z.number().int(), medium: z.number().int(), high: z.number().int(), critical: z.number().int() }),
     maxProposalsPaidPerAccountPerEpoch: z.number().int().positive(),
   }),
+  /**
+   * D61 bugs and maintenance (versioned addition to frozen protocol v1: present from reward-policy.v2; absent in v1, so v1 fails closed). A fix is an ordinary budgeted abu_build task
+   * whose model is multiplied by the confirmed severity (bounded; pinned at issuance with the budget); triage is a
+   * commissioned low-risk human-review task; a bug REPORT is the existing outcome weight (bugAcuEq), paid only for the
+   * first valid report of a confirmed bug whose fix merged, never to (a relative of) the introducer within the
+   * revert-offset window; sweeps are never paid by themselves.
+   */
+  bugs: z
+    .object({
+      /** Multipliers in bp (10000 = 1x), never below 1x, never above 2x (the budget's own hard maximum). */
+      severityFixBp: z.object({ low: FixBp, medium: FixBp, high: FixBp, critical: FixBp }),
+      /** Hard ceiling of the severity multiplier (the budget's 2x hard maximum still applies on top). */
+      maxSeverityFixBp: FixBp,
+      maxBugReportsPaidPerAccountPerEpoch: z.number().int().positive(),
+      /** Rejected or duplicate reports by one account in 30 days before a signal. */
+      rejectedReportsSignalAfter: z.number().int().positive(),
+      /** A bug blamed on a receipt accepted within this many days is a partial revert (the epoch's revertOffsetDays). */
+      introducerWindowDays: z.number().int().positive(),
+      /** Within the window the introducer carries an offset equal to what an unrelated reporter's report was paid. */
+      introducerOffsetEqualsReportPay: z.literal(true),
+      /** The introducer (or a related account) is never paid for reporting, and never takes the fix lease, within the window. */
+      introducerReportPaid: z.literal(false),
+      introducerMayFixWithinWindow: z.literal(false),
+      /** A reporter who is not the introducer may also fix; the report and the fix budget are both paid. */
+      reporterMayFix: z.literal(true),
+      /** Bug-bash sweeps earn nothing by themselves; only confirmed, fixed bugs are paid (as reports and fixes). */
+      sweepsPaid: z.literal(false),
+    })
+    .optional(),
   security: z.object({
     /** Security payouts debit the security reserve balance: weight x the epoch's issuance rate, at most maxShareBp of the balance. */
     severityAcuEq: z.object({ low: z.number().int(), medium: z.number().int(), high: z.number().int(), critical: z.number().int() }),
@@ -521,6 +553,17 @@ export const AgentCapabilityPolicy = z.object({
     tieBreak: z.literal("unit_id_ascending"),
     /** Optional lever (default 0 = off): freshly issued units are offered only to assigned mode for this long. */
     assignedOnlyWindowMinutes: z.number().int().nonnegative(),
+    /** D61: a published boost of fix units by confirmed severity. */
+    severityBoost: z
+      .object({
+        low: z.number().int().nonnegative(),
+        medium: z.number().int().nonnegative(),
+        high: z.number().int().nonnegative(),
+        critical: z.number().int().nonnegative(),
+      })
+      .optional(),
+    /** D60 protocol delta: the boost of an architecture record's migration units while it migrates (architecture-policy migrationBoost). */
+    architectureMigration: z.number().int().nonnegative().optional(),
   }),
   /** D52: ModelQualificationSuite — fixed units with known acceptance outcomes, run in devnet shadow mode. */
   qualificationSuites: z.array(

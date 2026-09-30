@@ -31,6 +31,9 @@ import {
   rankNextUnits,
   selfPickRefusals,
   budgetModelMicro,
+  bugReportOutcome,
+  CAPABILITY_POLICY_V2,
+  REWARD_POLICY_V2,
   budgetReleaseRefusals,
   canonicalOperationFields,
   DORMANT_MODULES,
@@ -1383,7 +1386,7 @@ describe("D56: build next — assigned mode", () => {
       6,
     );
     expect(ranked.map((r) => r.unitId)).toEqual(["c", "d", "a", "b", "e"]);
-    expect(ranked[0]!.score).toEqual({ reuse: 300, unlock: 0, focus: 200, ageing: 25, total: 525 });
+    expect(ranked[0]!.score).toEqual({ reuse: 300, unlock: 0, focus: 200, ageing: 25, severity: 0, migration: 0, total: 525 });
     expect(rankNextUnits(p, [unit("l3", { requiredClass: "BUILD_L3" })], 6)[0]!.score.focus).toBe(250);
     expect(rankNextUnits(p, [unit("e", { issuedEpoch: -100, target: "x" })], 6)[0]!.score.ageing).toBe(
       p.weights.ageingPerEpoch * p.ageingCapEpochs,
@@ -1890,5 +1893,164 @@ describe("Astra review 07: rule regressions (docs/protocol/reviews/ASTRA-REVIEW-
         labsWithEligibleResolver: ["openai"],
       }),
     ).toThrow(/unknown/);
+  });
+});
+
+// ------------------------------------------------------------------------------------------------ D61 bugs and maintenance
+describe("D61: bugs and maintenance (versioned addition: reward-policy.v2, capability-policy.v2)", () => {
+  const NOW61 = Date.UTC(2026, 8, 30);
+  it("v1 stays byte-identical in meaning: no bug routes, no severity data; v2 adds them", () => {
+    expect(REWARD_POLICY_V1.bugs).toBeUndefined();
+    expect(REWARD_POLICY_V1.acceptance.some((a) => a.contributionType.startsWith("BUG_") && a.contributionType !== "BUG_REPORT")).toBe(
+      false,
+    );
+    expect(CAPABILITY_POLICY_V1.assignment.rankingPolicyVersion).toBe("build-next-ranking.v1");
+    expect(REWARD_POLICY_V2.policyVersion).toBe("reward-policy.v2");
+    expect(REWARD_POLICY_V2.bugs).toMatchObject({ sweepsPaid: false, introducerReportPaid: false, introducerMayFixWithinWindow: false });
+    expect(CAPABILITY_POLICY_V2.assignment.rankingPolicyVersion).toBe("build-next-ranking.v2");
+  });
+  const m = (reward: typeof REWARD_POLICY_V1, cap: typeof CAPABILITY_POLICY_V1) => ({
+    capabilityBudgets: cap.budgets,
+    model: reward.budgets.model,
+    humanReviewWeights: reward.humanReview.weightAcuEqMicro,
+    bugs: reward.bugs,
+  });
+  const fix = { taskKind: "abu_build", sizePoints: 2, difficultyBp: 10_000, importanceBp: 10_000 };
+  it("a fix is an abu_build budget times its bounded severity factor; v1 and non-build kinds refuse a severity", () => {
+    const v2 = m(REWARD_POLICY_V2, CAPABILITY_POLICY_V2);
+    expect(budgetModelMicro(v2, fix)).toEqual({ modelMicro: 8_000_000n });
+    expect(budgetModelMicro(v2, { ...fix, severity: "low" })).toEqual({ modelMicro: 8_000_000n });
+    expect(budgetModelMicro(v2, { ...fix, severity: "high" })).toEqual({ modelMicro: 10_000_000n });
+    expect(budgetModelMicro(v2, { ...fix, severity: "critical" })).toEqual({ modelMicro: 12_000_000n });
+    expect(budgetModelMicro(m(REWARD_POLICY_V1, CAPABILITY_POLICY_V1), { ...fix, severity: "high" })).toHaveProperty("refusal");
+    expect(budgetModelMicro(v2, { ...fix, taskKind: "feature_review", severity: "high" })).toHaveProperty("refusal");
+    const over = { ...v2, bugs: { ...v2.bugs!, severityFixBp: { ...v2.bugs!.severityFixBp, critical: 30_000 } } };
+    expect(budgetModelMicro(over, { ...fix, severity: "critical" })).toHaveProperty("refusal");
+    const under = { ...v2, bugs: { ...v2.bugs!, severityFixBp: { ...v2.bugs!.severityFixBp, low: 5_000 } } };
+    expect(budgetModelMicro(under, { ...fix, severity: "low" })).toHaveProperty("refusal");
+  });
+  const triageRoute = {
+    acceptance: REWARD_POLICY_V2.acceptance,
+    contributionType: "BUG_TRIAGE",
+    slice: "human_review",
+    evidenceClass: "accepted_budget" as const,
+    taskKind: "human_review",
+    hasLease: false,
+    receiptAccountId: "t",
+    taskId: "tt1",
+    humanReview: null,
+    triage: { decidedByAccountId: "t", outcome: "rejected" as const, taskId: "tt1" },
+  };
+  it("BUG_TRIAGE is a commissioned human-review task paid for the decision, whatever it decides; needs its own record", () => {
+    expect(receiptRouteRefusals(triageRoute)).toEqual([]);
+    refused(receiptRouteRefusals({ ...triageRoute, triage: null }), /triage decision this account recorded/);
+    refused(receiptRouteRefusals({ ...triageRoute, triage: { ...triageRoute.triage, decidedByAccountId: "x" } }), /triage decision/);
+    refused(receiptRouteRefusals({ ...triageRoute, triage: { ...triageRoute.triage, taskId: "other" } }), /triage decision/);
+    refused(receiptRouteRefusals({ ...triageRoute, acceptance: REWARD_POLICY_V1.acceptance }), /no acceptance route/);
+    refused(receiptRouteRefusals({ ...triageRoute, evidenceClass: "outcome", taskId: null }), /commissioned task/);
+  });
+  const fixRoute = {
+    ...triageRoute,
+    contributionType: "BUG_FIX",
+    slice: "execution",
+    taskKind: "execution",
+    hasLease: true,
+    receiptAccountId: "f",
+    taskId: "ft1",
+    triage: null,
+    bugFix: { triageConfirmed: true, regressionFailsOnBase: true, regressionPassesOnHead: true, fixerIsBarredIntroducer: false },
+  };
+  it("BUG_FIX needs a confirmed triage, a regression test (fails on base, passes on head), the lease, and not the introducer", () => {
+    expect(receiptRouteRefusals(fixRoute)).toEqual([]);
+    refused(receiptRouteRefusals({ ...fixRoute, bugFix: { ...fixRoute.bugFix, triageConfirmed: false } }), /confirmed triage/);
+    refused(receiptRouteRefusals({ ...fixRoute, bugFix: { ...fixRoute.bugFix, regressionFailsOnBase: false } }), /regression test/);
+    refused(receiptRouteRefusals({ ...fixRoute, bugFix: { ...fixRoute.bugFix, regressionPassesOnHead: false } }), /regression test/);
+    refused(receiptRouteRefusals({ ...fixRoute, bugFix: { ...fixRoute.bugFix, fixerIsBarredIntroducer: true } }), /introducer/);
+    refused(receiptRouteRefusals({ ...fixRoute, bugFix: null }), /confirmed triage/);
+    refused(receiptRouteRefusals({ ...fixRoute, hasLease: false }), /needs the lease/);
+  });
+  it("a sweep has no acceptance route: sweeps are paid only through confirmed, fixed bugs", () => {
+    refused(receiptRouteRefusals({ ...triageRoute, contributionType: "BUG_SWEEP", triage: null }), /no acceptance route/);
+  });
+  const triage = {
+    outcome: "confirmed" as const,
+    firstReporterAccountId: "rep",
+    introducerAccountIds: ["intro"],
+    introducedWithinOffsetWindow: true,
+  };
+  const report = {
+    triage,
+    reporterAccountId: "rep",
+    reporterRelatedAccountIds: [] as string[],
+    fixMerged: true,
+    reportsPaidThisEpoch: 0,
+    maxReportsPaidPerEpoch: REWARD_POLICY_V2.bugs!.maxBugReportsPaidPerAccountPerEpoch,
+  };
+  it("a bug report is paid once: first valid report of a confirmed bug whose fix merged, under the reporter's cap", () => {
+    expect(bugReportOutcome(report)).toEqual({ paid: true, refusals: [], introducerOffset: true });
+    refused(bugReportOutcome({ ...report, reporterAccountId: "later" }).refusals, /first valid report/);
+    refused(bugReportOutcome({ ...report, triage: { ...triage, outcome: "duplicate" } }).refusals, /confirmed triage/);
+    refused(bugReportOutcome({ ...report, triage: { ...triage, outcome: "rejected" } }).refusals, /confirmed triage/);
+    refused(bugReportOutcome({ ...report, triage: null }).refusals, /confirmed triage/);
+    refused(bugReportOutcome({ ...report, fixMerged: false }).refusals, /fix merges/);
+    refused(bugReportOutcome({ ...report, reportsPaidThisEpoch: 10 }).refusals, /cap/);
+  });
+  it("self-dealing: the introducer (or a relative) reporting its own regression in the window is not paid; outside it, no offset", () => {
+    const intro = { ...report, reporterAccountId: "intro", triage: { ...triage, firstReporterAccountId: "intro" } };
+    refused(bugReportOutcome(intro).refusals, /own regression/);
+    refused(bugReportOutcome({ ...report, reporterRelatedAccountIds: ["intro"] }).refusals, /own regression/);
+    const outside = { ...intro, triage: { ...intro.triage, introducedWithinOffsetWindow: false } };
+    expect(bugReportOutcome(outside)).toEqual({ paid: true, refusals: [], introducerOffset: false });
+    expect(bugReportOutcome({ ...report, triage: { ...triage, introducerAccountIds: [] } }).introducerOffset).toBe(false);
+    expect(bugReportOutcome({ ...report, fixMerged: false }).introducerOffset).toBe(false);
+  });
+  const cap = CAPABILITY_POLICY_V2;
+  const unit = (id: string, over: Partial<Parameters<typeof nextUnitEligibilityRefusals>[2]> = {}) => ({
+    unitId: id,
+    target: "x",
+    requiredClass: "BUILD_L4",
+    targetsServed: 0,
+    dependentsWaiting: 0,
+    issuedEpoch: 6,
+    issuedAtMs: NOW61,
+    budgetAcuMicro: 8_000_000n,
+    estimatedMinutes: 60,
+    proposerAccountId: "p",
+    requiredToolchains: ["node22"],
+    budget: { released: false, expiresEpoch: 9 },
+    ...over,
+  });
+  const me = {
+    accountId: "me",
+    provider: "claude_cli",
+    modelId: "claude-opus-5-5",
+    attestedToolchains: ["node22"],
+    activeLeasesByProvider: {},
+    leaseLimitByProvider: { claude_cli: 1 },
+    relatedAccountIds: ["orgmate"],
+    remaining: { budgetAcuMicro: null, wallTimeMinutes: null },
+  };
+  const ACC = acceptanceRequirement(REVIEW_POLICY_V1, cap, "standard");
+  it("next-unit: the introducer (or a relative) is barred from the fix; an architecture-held unit is not offered (D60)", () => {
+    expect(nextUnitEligibilityRefusals(cap, me, unit("f", { barredAccountIds: ["someone"] }), 6, ACC)).toEqual([]);
+    refused(nextUnitEligibilityRefusals(cap, me, unit("f", { barredAccountIds: ["me"] }), 6, ACC), /introducer/);
+    refused(nextUnitEligibilityRefusals(cap, me, unit("f", { barredAccountIds: ["orgmate"] }), 6, ACC), /introducer/);
+    refused(nextUnitEligibilityRefusals(cap, me, unit("h", { heldByArchitectureRecord: "ADR-007" }), 6, ACC), /ADR-007/);
+  });
+  it("ranking v2: published severity boost, architecture-migration boost, ageing from the first generation (D60)", () => {
+    const p = cap.assignment;
+    const r = rankNextUnits(
+      p,
+      [unit("a"), unit("c", { severity: "critical" }), unit("h", { severity: "high" }), unit("m", { architectureMigration: true })],
+      6,
+    );
+    expect(r.map((x) => x.unitId)).toEqual(["m", "c", "h", "a"]);
+    expect(r[1]!.score.severity).toBe(400);
+    expect(r[0]!.score.migration).toBe(100_000);
+    const reissued = rankNextUnits(p, [unit("g2", { issuedEpoch: 6, rootIssuedEpoch: 2 })], 6)[0]!;
+    expect(reissued.score.ageing).toBe(p.weights.ageingPerEpoch * Math.min(4, p.ageingCapEpochs));
+    // v1 ranking data has no boosts: the same units score 0 on both.
+    const v1 = rankNextUnits(CAPABILITY_POLICY_V1.assignment, [unit("c", { severity: "critical", architectureMigration: true })], 6)[0]!;
+    expect(v1.score.severity + v1.score.migration).toBe(0);
   });
 });

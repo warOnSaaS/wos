@@ -454,6 +454,15 @@ export function receiptRouteRefusals(x: {
     assignmentReviewerAccountId: string | null;
     sealed: boolean;
   } | null;
+  /** D61, BUG_TRIAGE: the triage decision this task produced (its decider and outcome). */
+  triage?: { decidedByAccountId: string; outcome: "confirmed" | "rejected" | "duplicate"; taskId: string | null } | null;
+  /** D61, BUG_FIX: the confirmed triage of the bug and the regression test's evidence (fails on base, passes on head). */
+  bugFix?: {
+    triageConfirmed: boolean;
+    regressionFailsOnBase: boolean;
+    regressionPassesOnHead: boolean;
+    fixerIsBarredIntroducer: boolean;
+  } | null;
 }): string[] {
   const route = x.acceptance.find((a) => a.contributionType === x.contributionType);
   if (!route || route.slice === "none" || route.weightBasis === "none")
@@ -476,6 +485,19 @@ export function receiptRouteRefusals(x: {
     )
       r.push("a HUMAN_REVIEW receipt needs this account's sealed human review under the task's own assignment");
   }
+  if (x.contributionType === "BUG_TRIAGE") {
+    const t = x.triage;
+    if (!t || t.decidedByAccountId !== x.receiptAccountId || t.taskId !== x.taskId)
+      r.push("a BUG_TRIAGE receipt needs the triage decision this account recorded under the task");
+  }
+  if (x.contributionType === "BUG_FIX") {
+    const f = x.bugFix;
+    if (!f?.triageConfirmed) r.push("a BUG_FIX needs the bug's confirmed triage decision");
+    if (!f?.regressionFailsOnBase || !f.regressionPassesOnHead)
+      r.push("a BUG_FIX needs a regression test that fails on the base and passes on the head");
+    if (f?.fixerIsBarredIntroducer)
+      r.push("the introducer (or a related account) does not fix a bug blamed on its receipt within the window");
+  }
   return r;
 }
 
@@ -493,12 +515,16 @@ export interface BudgetBasis {
   importanceBp: number;
   /** Human reviews only. */
   riskClass?: string;
+  /** D61: a bug-fix unit (an abu_build task) carries its CONFIRMED severity; the model is multiplied by it. */
+  severity?: "low" | "medium" | "high" | "critical";
 }
 export function budgetModelMicro(
   policy: {
     capabilityBudgets: ReadonlyArray<{ taskKind: string; baseMicro: string; perSizePointMicro: string }>;
     model: { difficultyBp: { min: number; max: number }; importanceBp: { min: number; max: number } };
     humanReviewWeights: Readonly<Record<string, string>>;
+    /** D61: the bounded severity multipliers of fix units. */
+    bugs?: { severityFixBp: Readonly<Record<"low" | "medium" | "high" | "critical", number>>; maxSeverityFixBp: number };
   },
   basis: BudgetBasis,
 ): { modelMicro: bigint } | { refusal: string } {
@@ -518,7 +544,15 @@ export function budgetModelMicro(
     if (!Number.isInteger(basis.sizePoints) || basis.sizePoints < 0) return { refusal: "size points are a non-negative integer" };
     base = BigInt(row.baseMicro) + BigInt(row.perSizePointMicro) * BigInt(basis.sizePoints);
   }
-  const modelMicro = (base * BigInt(basis.difficultyBp) * BigInt(basis.importanceBp)) / 100_000_000n;
+  let modelMicro = (base * BigInt(basis.difficultyBp) * BigInt(basis.importanceBp)) / 100_000_000n;
+  if (basis.severity !== undefined) {
+    // D61: a fix is an ordinary abu_build budget times its confirmed severity (bounded), pinned with the budget.
+    if (basis.taskKind !== "abu_build") return { refusal: "only a bug-fix unit (abu_build) carries a severity" };
+    const f = policy.bugs?.severityFixBp[basis.severity];
+    if (f === undefined || f < 10_000 || f > (policy.bugs?.maxSeverityFixBp ?? 10_000))
+      return { refusal: `severity ${basis.severity} has no bounded fix multiplier in the pinned policy` };
+    modelMicro = (modelMicro * BigInt(f)) / 10_000n;
+  }
   return modelMicro > 0n ? { modelMicro } : { refusal: "the model budget is zero" };
 }
 
@@ -1512,6 +1546,14 @@ export interface NextUnitCandidate {
   proposerAccountId: string;
   requiredToolchains: readonly string[];
   budget: { released: boolean; expiresEpoch: number } | null;
+  /** D61: a bug-fix unit's confirmed severity (boost), and the accounts barred from it (the introducer within the window). */
+  severity?: "low" | "medium" | "high" | "critical";
+  barredAccountIds?: readonly string[];
+  /** D60 delta: held by an architecture record (not offered); a unit of a record's migration in progress (boosted). */
+  heldByArchitectureRecord?: string | null;
+  architectureMigration?: boolean;
+  /** D60 delta: the issue epoch of the unit's FIRST generation (follow reissueOf), so a hold never costs ranking. */
+  rootIssuedEpoch?: number;
 }
 
 export interface NextUnitContributor {
@@ -1547,6 +1589,9 @@ export function nextUnitEligibilityRefusals(
   if ((c.activeLeasesByProvider[c.provider] ?? 0) >= (c.leaseLimitByProvider[c.provider] ?? 1)) r.push(`no free ${c.provider} lease slot`);
   if (u.proposerAccountId === c.accountId || c.relatedAccountIds.includes(u.proposerAccountId))
     r.push("the contributor (or a related account) proposed this unit's budget");
+  if (u.heldByArchitectureRecord) r.push(`held by an architecture record (${u.heldByArchitectureRecord})`);
+  if ((u.barredAccountIds ?? []).some((a) => a === c.accountId || c.relatedAccountIds.includes(a)))
+    r.push("the introducer (or a related account) of a bug does not take its fix within the revert-offset window (D61)");
   r.push(...leaseBudgetRefusals({ rewardBearing: true, budget: u.budget, epochNumber }));
   if (c.remaining.budgetAcuMicro !== null && u.budgetAcuMicro > c.remaining.budgetAcuMicro)
     r.push("the unit exceeds the contributor's remaining ACU limit");
@@ -1585,10 +1630,16 @@ export function rankNextUnits(
     weights: { reuse: number; unlock: number; ageingPerEpoch: number };
     ageingCapEpochs: number;
     focus: ReadonlyArray<{ target: string; capabilityClass: string | null; priority: number }>;
+    /** D61 and the D60 delta (build-next-ranking.v2); absent in v1 data = 0. */
+    severityBoost?: Readonly<Record<"low" | "medium" | "high" | "critical", number>>;
+    architectureMigration?: number;
   },
   units: readonly NextUnitCandidate[],
   epochNumber: number,
-): Array<{ unitId: string; score: { reuse: number; unlock: number; focus: number; ageing: number; total: number } }> {
+): Array<{
+  unitId: string;
+  score: { reuse: number; unlock: number; focus: number; ageing: number; severity: number; migration: number; total: number };
+}> {
   return units
     .map((u) => {
       const reuse = policy.weights.reuse * u.targetsServed;
@@ -1596,8 +1647,14 @@ export function rankNextUnits(
       const focus = policy.focus
         .filter((f) => f.target === u.target && (f.capabilityClass === null || f.capabilityClass === u.requiredClass))
         .reduce((t, f) => t + f.priority, 0);
-      const ageing = policy.weights.ageingPerEpoch * Math.min(Math.max(0, epochNumber - u.issuedEpoch), policy.ageingCapEpochs);
-      return { unitId: u.unitId, score: { reuse, unlock, focus, ageing, total: reuse + unlock + focus + ageing } };
+      const since = u.rootIssuedEpoch ?? u.issuedEpoch;
+      const ageing = policy.weights.ageingPerEpoch * Math.min(Math.max(0, epochNumber - since), policy.ageingCapEpochs);
+      const severity = u.severity ? (policy.severityBoost?.[u.severity] ?? 0) : 0;
+      const migration = u.architectureMigration ? (policy.architectureMigration ?? 0) : 0;
+      return {
+        unitId: u.unitId,
+        score: { reuse, unlock, focus, ageing, severity, migration, total: reuse + unlock + focus + ageing + severity + migration },
+      };
     })
     .sort((a, b) => b.score.total - a.score.total || (a.unitId < b.unitId ? -1 : a.unitId > b.unitId ? 1 : 0));
 }
@@ -1805,4 +1862,42 @@ export function challengedAllocationPaymentRefusals(x: {
   if (!x.challenged) return [];
   if (!x.decision) return ["the allocation has an undecided challenge: nothing is entitled until its decision"];
   return x.entitledSoFar + x.amount > x.decision.resultingAmount ? ["entitlements exceed the decided amount"] : [];
+}
+
+// ------------------------------------------------------------------------------------------------ D61 bug reports
+
+/**
+ * D61: the outcome of a BUG_REPORT (the existing bugAcuEq outcome weight). Paid only when the bug's triage decision is
+ * CONFIRMED (not rejected, not a duplicate), this report is the decision's first valid report (0009 makes one report
+ * receipt per bug by its dedup key), the fix merged, and the reporter is under the per-epoch cap. Within the
+ * revert-offset window a bug blamed on an accepted receipt is a partial revert: the introducer (or a related account)
+ * is never paid for reporting it, and when an UNRELATED reporter is paid, the introducer carries an offset equal to that
+ * pay — so a planter and a friendly reporter gain nothing together, and the planter cannot take the fix. Outside the
+ * window nobody is penalized. A reporter who is not the introducer may also fix (both are paid).
+ */
+export function bugReportOutcome(x: {
+  triage: {
+    outcome: "confirmed" | "rejected" | "duplicate";
+    firstReporterAccountId: string | null;
+    introducerAccountIds: readonly string[];
+    introducedWithinOffsetWindow: boolean;
+  } | null;
+  reporterAccountId: string;
+  reporterRelatedAccountIds: readonly string[];
+  fixMerged: boolean;
+  reportsPaidThisEpoch: number;
+  maxReportsPaidPerEpoch: number;
+}): { paid: boolean; refusals: string[]; introducerOffset: boolean } {
+  const r: string[] = [];
+  const t = x.triage;
+  if (!t || t.outcome !== "confirmed") r.push("the bug has no confirmed triage decision (rejected and duplicate reports are not paid)");
+  else if (t.firstReporterAccountId !== x.reporterAccountId) r.push("only the first valid report of a bug is paid");
+  if (!x.fixMerged) r.push("a bug report is paid when its fix merges");
+  if (x.reportsPaidThisEpoch >= x.maxReportsPaidPerEpoch) r.push("the reporter's paid-report cap for the epoch is reached");
+  const reporterIsIntroducer =
+    !!t && t.introducerAccountIds.some((a) => a === x.reporterAccountId || x.reporterRelatedAccountIds.includes(a));
+  if (t?.introducedWithinOffsetWindow && reporterIsIntroducer)
+    r.push("the introducer (or a related account) is not paid for reporting its own regression");
+  const paid = r.length === 0;
+  return { paid, refusals: r, introducerOffset: paid && !!t?.introducedWithinOffsetWindow && t.introducerAccountIds.length > 0 };
 }

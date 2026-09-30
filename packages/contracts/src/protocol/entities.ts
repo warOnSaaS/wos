@@ -64,6 +64,9 @@ export const ContributionType = z.enum([
   "BUG_REPORT",
   "AUDIT_RERUN",
   "GENESIS",
+  // D61 (bugs and maintenance, a versioned addition to frozen protocol v1): the triage decision and the fix of a bug.
+  "BUG_TRIAGE",
+  "BUG_FIX",
 ]);
 export type ContributionType = z.infer<typeof ContributionType>;
 
@@ -95,6 +98,7 @@ export const AcceptanceEvent = z.enum([
   "security_confirmed_and_fix_merged",
   "proposal_incorporated",
   "bug_fix_merged",
+  "triage_decision_confirmed",
   "audit_report_accepted",
   "genesis_approved",
 ]);
@@ -1566,3 +1570,34 @@ export const TaskBudget = z.object({
   expiresEpoch: z.number().int().positive(),
 });
 export type TaskBudget = z.infer<typeof TaskBudget>;
+
+// ------------------------------------------------------------------------------------------------ D61 bugs and maintenance
+
+export const BugSeverity = z.enum(["low", "medium", "high", "critical"]);
+export type BugSeverity = z.infer<typeof BugSeverity>;
+
+/**
+ * D61: the triage DECISION of one bug — what "confirmed" binds to. One per bug (0009 `bug_triage_decisions`). It
+ * names the first valid report (the only one that can be paid), duplicates point at the original bug, the severity, the
+ * feature the bug maps to, and — when blame is established — the accepted receipt that introduced it; whether that
+ * receipt was accepted within the revert-offset window (14 days) is DERIVED by the database from the two timestamps.
+ */
+export const BugTriageDecision = z.object({
+  bugId: Uuid,
+  /** The commissioned triage task (a human_review budget) whose assigned reviewer decided. */
+  triageTaskId: Uuid,
+  /** The first valid report: its reporter (the only report that can be paid) and its reference (the issue). */
+  firstReporterAccountId: Uuid.nullable(),
+  firstReportRef: z.string().max(512).nullable(),
+  duplicateOfBugId: Uuid.nullable(),
+  outcome: z.enum(["confirmed", "rejected", "duplicate"]),
+  severity: BugSeverity.nullable(),
+  featureKey: FeatureKey.nullable(),
+  introducingReceiptId: Uuid.nullable(),
+  /** DERIVED: the introducing receipt's account, and whether it was accepted within the pinned window of the decision. */
+  introducerAccountId: Uuid.nullable(),
+  introducedWithinOffsetWindow: z.boolean(),
+  decidedByAccountId: Uuid,
+  decidedAt: Timestamp,
+});
+export type BugTriageDecision = z.infer<typeof BugTriageDecision>;

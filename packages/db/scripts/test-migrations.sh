@@ -31,6 +31,8 @@ echo "re-apply 0000_meta.sql (must be idempotent)"
 
 echo "assertions"
 "${PSQL[@]}" < "$HERE/test/db-assertions.sql"
+echo "D61 bug assertions (0009)"
+"${PSQL[@]}" < "$HERE/test/bugs-assertions.sql"
 echo "concurrency"
 bash "$HERE/test/concurrency.sh" "$NAME" "$DB"
 echo "accounting-projection trace (engine vs database; reviews 06, 07)"
