@@ -38,6 +38,7 @@ const ALL = [
   "0004_manifest_per_lease",
   "0005_surfaces",
   "0006_one_product",
+  "0007_proof_of_contribution",
 ];
 
 describe("migration files", () => {
