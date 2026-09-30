@@ -36,6 +36,7 @@ import {
   sha256Of,
 } from "@waronsaas/contracts/canonical";
 import { createMigratedDb, type MigratedDb } from "@waronsaas/db/testing";
+import { type AppKeys, signingKey } from "../domain/app-keys.js";
 
 export { HAS_DB } from "@waronsaas/db/testing";
 
@@ -328,8 +329,49 @@ export interface Account {
   handle: string | null;
 }
 
+/**
+ * Throwaway keys for one harness (never real ones): the environment-token key and its rotation successor, and a
+ * module-signing key whose public half is configured as pinned (WOS_MODULE_PUBLIC_KEYS in production).
+ */
+export interface TestKeys {
+  appKeys: AppKeys;
+  envTokenPrivate: KeyObject;
+  moduleKeyId: string;
+  modulePrivate: KeyObject;
+}
+
+export const TEST_MODULE_KEY_ID = "wos-module-2026";
+
+export function testKeys(): TestKeys {
+  const env = generateKeyPairSync("ed25519");
+  const next = generateKeyPairSync("ed25519");
+  const mod = generateKeyPairSync("ed25519");
+  const nextKey = signingKey("wos-env-2026-next", next.privateKey);
+  return {
+    appKeys: {
+      envToken: signingKey("wos-env-2026", env.privateKey),
+      envTokenNext: { kid: nextKey.kid, publicKey: nextKey.publicKey },
+      modulePublicKeys: { [TEST_MODULE_KEY_ID]: encodeDevicePublicKey(mod.publicKey) },
+    },
+    envTokenPrivate: env.privateKey,
+    moduleKeyId: TEST_MODULE_KEY_ID,
+    modulePrivate: mod.privateKey,
+  };
+}
+
+export interface HarnessOptions {
+  /**
+   * Every personal organization created in this harness gets Build enabled (default true), as migration 0006 did
+   * for every account that existed before it, so contributors can claim (the S-40 gate). Gate tests pass false.
+   */
+  buildForEveryAccount?: boolean;
+}
+
 export interface Harness {
   deps: Deps;
+  keys: TestKeys;
+  /** Module bundles served by the fake downloader (deps.fetchBytes), by URL. */
+  bundles: Map<string, Uint8Array>;
   app: ReturnType<typeof createControlPlane>;
   owner: postgres.Sql;
   github: FakeGithub;
@@ -350,10 +392,26 @@ export interface Harness {
 let ipCounter = 1;
 let ghCounter = 5000;
 
-export async function createHarness(overrides: Partial<Logic> = {}): Promise<Harness> {
+export async function createHarness(overrides: Partial<Logic> = {}, options: HarnessOptions = {}): Promise<Harness> {
   const db = await createMigratedDb("wos_cp");
   const sql = postgres(db.appUrl, { max: 10, onnotice: () => {} });
   const owner = postgres(db.ownerUrl, { max: 4, onnotice: () => {} });
+  if (options.buildForEveryAccount ?? true) {
+    // Test fixture in this scratch database only (not a migration): Build enabled on every new personal organization.
+    await owner.unsafe(`
+      create function wos.test_harness_enable_build() returns trigger
+      language plpgsql security definer set search_path = wos, pg_temp as $$
+      begin
+        if new.kind = 'personal' then
+          insert into wos.app_entitlements (organization_id, app_id, state) values (new.id, 'build', 'enabled');
+        end if;
+        return new;
+      end $$;
+      create trigger organizations_test_harness_build after insert on wos.organizations
+        for each row execute function wos.test_harness_enable_build();`);
+  }
+  const keys = testKeys();
+  const bundles = new Map<string, Uint8Array>();
   const github = new FakeGithub();
   const mailer = new FakeMailer();
   const violations: string[] = [];
@@ -380,6 +438,12 @@ export async function createHarness(overrides: Partial<Logic> = {}): Promise<Har
     schedule: REWARD_SCHEDULE_V1,
     log: (level, message, fields) => {
       if (level === "error" && process.env.WOS_TEST_LOG) console.error(message, fields);
+    },
+    appKeys: keys.appKeys,
+    fetchBytes: async (url) => {
+      const b = bundles.get(url);
+      if (!b) throw new Error(`no bundle at ${url}`);
+      return b;
     },
     onContractViolation: (route, detail) => violations.push(`${route}: ${detail}`),
   };
@@ -467,6 +531,8 @@ export async function createHarness(overrides: Partial<Logic> = {}): Promise<Har
 
   return {
     deps,
+    keys,
+    bundles,
     app,
     owner,
     github,

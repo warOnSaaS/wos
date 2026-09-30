@@ -126,6 +126,10 @@ async function targetSummary(tx: Tx, t: TargetRow): Promise<TargetSummary> {
     roadmap: await documentSummary(tx, { targetId: t.id }),
     hosted: { available: t.hosted_url !== null, url: t.hosted_url },
     selfHostable: t.self_hostable,
+    // contracts 5.2.0: the applications this target maps to (informative; progress never depends on them).
+    apps: (await tx<{ app_id: string }[]>`select app_id from wos.target_apps where target_id = ${t.id} order by app_id`).map(
+      (r) => r.app_id,
+    ),
   };
 }
 
