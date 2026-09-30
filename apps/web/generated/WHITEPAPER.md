@@ -4,10 +4,11 @@
 
 | Field | Value |
 |---|---|
-| Version | 0.7 |
+| Version | 0.8 |
 | Status | Living document. It changes when the design changes; every change is a commit with a changelog entry. |
 | Last updated | {{LAST_UPDATED}} |
 | History | https://github.com/warOnSaaS/wos/commits/main/docs/whitepaper/WHITEPAPER.md |
+| Changes | https://waronsaas.com/whitepaper/changes.md lists every version, newest first, with its changelog entry, the diff, the companion files it changed and whether Part I (the thesis or its numbers) moved. Each past version in full: https://waronsaas.com/whitepaper/v/0.7 (and so on for every version). |
 | Source | https://github.com/warOnSaaS/wos/blob/main/docs/whitepaper/WHITEPAPER.md |
 | Plain Markdown | https://waronsaas.com/whitepaper.md |
 | Companion files (optional depth) | https://waronsaas.com/whitepaper/materiality.md, https://waronsaas.com/whitepaper/edge-cases.md, https://waronsaas.com/whitepaper/design.md, https://waronsaas.com/whitepaper/appendices.md, https://waronsaas.com/whitepaper/sources.md |
@@ -429,7 +430,14 @@ The two stages above are the report: stage 1 (points 1 to 4) on Part I alone, st
 
 ## Changelog
 
-### v0.7 (this version)
+### v0.8 (this version)
+
+- **Every change is publicly traceable.** A new file for agents, https://waronsaas.com/whitepaper/changes.md, lists every version of this paper, newest first: its changelog entry verbatim, the GitHub diff from the previous version, the companion files it changed, and each past version in full. It is generated from git at every build: the versions come from the Version row of this header table at each commit, never typed by hand. v0.1 is the verbatim original; it had no commit of its own.
+- **Part I changes are flagged.** A version whose diff touches Part I (sections 1 to 4), `MATERIALITY.md` or the materiality model is marked "PART I CHANGED", so an agent comparing its assessment with earlier ones knows the thesis or its numbers moved. Part II changes are not flagged.
+- **Scores are tied to the version they scored.** The web page for people (/whitepaper/changes on the site) shows the reference runs recorded against each version; the Markdown file for agents does not, so it cannot anchor an evaluation. Each run on the recorded trend links to the version it scored. Scores are comparable only within one version, or across versions by reading the changes between them.
+- **The rule enforces itself.** The website build fails if this file changes without a version bump and a changelog entry for the new version, or if the changelog has an entry for a version newer than the header's. The header table gains the "Changes" row.
+
+### v0.7
 
 - **A score block, so assessments can be compared over time.** The brief asks the evaluating agent to end its report with one fenced `wos-assessment` block (schema `wos-assessment/v1`): paper version, self-reported evaluator, date, the stage 1 scores (problem real, importance out of 100 as the five rubric dimensions, each thesis's importance and how compelling it is, confidence) and the stage 2 scores (effectiveness and credibility out of 100, readiness, verdict, confidence). The machine schema is `packages/contracts/src/assessment.ts` (contracts 5.1.0). Appendix D and the handoff prompt ask for it.
 - **The recorded trend, read only after scoring.** warOnSaaS records its own reference runs of the public prompt (`tools/assessments/run-reference.ts`, files in `docs/assessments/`) and publishes them at https://waronsaas.com/assessments and https://waronsaas.com/whitepaper/assessments.md. No earlier score appears in this paper or its companions; the brief asks the agent to open the trend only after writing its block, never to change its scores after reading it, and to explain where and why it differs. Reader submissions are not collected (founder decision).

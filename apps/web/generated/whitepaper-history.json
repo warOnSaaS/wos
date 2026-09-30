@@ -15,9 +15,9 @@
     "docs/whitepaper/MATERIALITY.md",
     "tools/materiality/model.ts"
   ],
-  "current": "0.7",
+  "current": "0.8",
   "trackedHashes": {
-    "docs/whitepaper/WHITEPAPER.md": "sha256:728984c66fca866b72e59d5eb94de78940f455566b1790f9be2b45437f2d016a",
+    "docs/whitepaper/WHITEPAPER.md": "sha256:4d705daaa7ccfe887d162e5f902efc5411c884d0bbc9fba81aff8940fb9669ae",
     "docs/whitepaper/MATERIALITY.md": "sha256:7fb2d569ad720dc73cf524bdfe97b3b739f261d1899914838833d093fab1c528",
     "docs/whitepaper/EDGE-CASES.md": "sha256:e324564b6e4707540a96fc5edd1acc19dd60b735c6a44dfc38a65f3062e0ad43",
     "docs/whitepaper/DESIGN.md": "sha256:cd463e29fec63c5646d42954bdec0ba1bd66c88f036c730577b904ef1d81302d",
@@ -384,18 +384,39 @@
     },
     {
       "version": "0.7",
-      "current": true,
+      "current": false,
       "separateCommit": true,
-      "note": "The current version. Its commits are recorded once a newer version exists; its date is the paper's last-updated date from git.",
+      "note": null,
       "addedIn": null,
-      "firstCommit": null,
-      "lastCommit": null,
-      "commits": null,
+      "firstCommit": {
+        "sha": "e30de2c94bacb661fcdf3cc3a929bcd1b3d1bf5f",
+        "date": "2026-09-30T11:27:20-04:00",
+        "subject": "White paper v0.7: score block, recorded trend read only after scoring, how to contribute",
+        "url": "https://github.com/warOnSaaS/wos/commit/e30de2c94bacb661fcdf3cc3a929bcd1b3d1bf5f"
+      },
+      "lastCommit": {
+        "sha": "e30de2c94bacb661fcdf3cc3a929bcd1b3d1bf5f",
+        "date": "2026-09-30T11:27:20-04:00",
+        "subject": "White paper v0.7: score block, recorded trend read only after scoring, how to contribute",
+        "url": "https://github.com/warOnSaaS/wos/commit/e30de2c94bacb661fcdf3cc3a929bcd1b3d1bf5f"
+      },
+      "commits": [
+        {
+          "sha": "e30de2c94bacb661fcdf3cc3a929bcd1b3d1bf5f",
+          "date": "2026-09-30T11:27:20-04:00",
+          "subject": "White paper v0.7: score block, recorded trend read only after scoring, how to contribute",
+          "url": "https://github.com/warOnSaaS/wos/commit/e30de2c94bacb661fcdf3cc3a929bcd1b3d1bf5f",
+          "files": [
+            "docs/whitepaper/APPENDICES.md",
+            "docs/whitepaper/WHITEPAPER.md"
+          ]
+        }
+      ],
       "previous": "0.6",
       "compare": {
         "from": "4b587c4adf11d761227b32005c095f3a918a6452",
-        "to": "main",
-        "url": "https://github.com/warOnSaaS/wos/compare/4b587c4adf11d761227b32005c095f3a918a6452...main"
+        "to": "e30de2c94bacb661fcdf3cc3a929bcd1b3d1bf5f",
+        "url": "https://github.com/warOnSaaS/wos/compare/4b587c4adf11d761227b32005c095f3a918a6452...e30de2c94bacb661fcdf3cc3a929bcd1b3d1bf5f"
       },
       "filesChanged": [
         "docs/whitepaper/APPENDICES.md",
@@ -411,13 +432,49 @@
       },
       "changelog": {
         "source": "docs/whitepaper/WHITEPAPER.md",
-        "heading": "### v0.7 (this version)",
+        "heading": "### v0.7",
         "text": "- **A score block, so assessments can be compared over time.** The brief asks the evaluating agent to end its report with one fenced `wos-assessment` block (schema `wos-assessment/v1`): paper version, self-reported evaluator, date, the stage 1 scores (problem real, importance out of 100 as the five rubric dimensions, each thesis's importance and how compelling it is, confidence) and the stage 2 scores (effectiveness and credibility out of 100, readiness, verdict, confidence). The machine schema is `packages/contracts/src/assessment.ts` (contracts 5.1.0). Appendix D and the handoff prompt ask for it.\n- **The recorded trend, read only after scoring.** warOnSaaS records its own reference runs of the public prompt (`tools/assessments/run-reference.ts`, files in `docs/assessments/`) and publishes them at https://waronsaas.com/assessments and https://waronsaas.com/whitepaper/assessments.md. No earlier score appears in this paper or its companions; the brief asks the agent to open the trend only after writing its block, never to change its scores after reading it, and to explain where and why it differs. Reader submissions are not collected (founder decision).\n- **New section 16, how to contribute** (founder request): the two ways (wOS Desktop with the Build app, and the wos command), picking a unit or being assigned the next one (designed, not built), what a contributor needs, and the honest status: neither is released yet. The brief asks the agent to relay it only if its human is interested."
       },
       "snapshot": {
         "file": "0.7.md",
         "format": "markdown",
         "sha256": "sha256:728984c66fca866b72e59d5eb94de78940f455566b1790f9be2b45437f2d016a",
+        "sourceUrl": "https://github.com/warOnSaaS/wos/blob/e30de2c94bacb661fcdf3cc3a929bcd1b3d1bf5f/docs/whitepaper/WHITEPAPER.md"
+      }
+    },
+    {
+      "version": "0.8",
+      "current": true,
+      "separateCommit": true,
+      "note": "The current version. Its commits are recorded once a newer version exists; its date is the paper's last-updated date from git.",
+      "addedIn": null,
+      "firstCommit": null,
+      "lastCommit": null,
+      "commits": null,
+      "previous": "0.7",
+      "compare": {
+        "from": "e30de2c94bacb661fcdf3cc3a929bcd1b3d1bf5f",
+        "to": "main",
+        "url": "https://github.com/warOnSaaS/wos/compare/e30de2c94bacb661fcdf3cc3a929bcd1b3d1bf5f...main"
+      },
+      "filesChanged": [
+        "docs/whitepaper/WHITEPAPER.md"
+      ],
+      "companionsChanged": [],
+      "partI": {
+        "changed": false,
+        "sections": [],
+        "files": []
+      },
+      "changelog": {
+        "source": "docs/whitepaper/WHITEPAPER.md",
+        "heading": "### v0.8 (this version)",
+        "text": "- **Every change is publicly traceable.** A new file for agents, https://waronsaas.com/whitepaper/changes.md, lists every version of this paper, newest first: its changelog entry verbatim, the GitHub diff from the previous version, the companion files it changed, and each past version in full. It is generated from git at every build: the versions come from the Version row of this header table at each commit, never typed by hand. v0.1 is the verbatim original; it had no commit of its own.\n- **Part I changes are flagged.** A version whose diff touches Part I (sections 1 to 4), `MATERIALITY.md` or the materiality model is marked \"PART I CHANGED\", so an agent comparing its assessment with earlier ones knows the thesis or its numbers moved. Part II changes are not flagged.\n- **Scores are tied to the version they scored.** The web page for people (/whitepaper/changes on the site) shows the reference runs recorded against each version; the Markdown file for agents does not, so it cannot anchor an evaluation. Each run on the recorded trend links to the version it scored. Scores are comparable only within one version, or across versions by reading the changes between them.\n- **The rule enforces itself.** The website build fails if this file changes without a version bump and a changelog entry for the new version, or if the changelog has an entry for a version newer than the header's. The header table gains the \"Changes\" row."
+      },
+      "snapshot": {
+        "file": "0.8.md",
+        "format": "markdown",
+        "sha256": "sha256:4d705daaa7ccfe887d162e5f902efc5411c884d0bbc9fba81aff8940fb9669ae",
         "sourceUrl": "https://github.com/warOnSaaS/wos/blob/main/docs/whitepaper/WHITEPAPER.md"
       }
     }
