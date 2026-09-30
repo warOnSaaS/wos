@@ -569,7 +569,9 @@ const OUTPUT_SCHEMAS = {
  * in JSON Schema and are enforced by zod after the run (orchestrator and server).
  */
 export function outputJsonSchema(id: OutputSchemaId): string {
-  const schema = OUTPUT_SCHEMAS[id].toJSONSchema({ io: "output" });
+  // No "$schema": the claude CLI's validator only knows draft-07 by default and rejects the draft 2020-12
+  // meta-schema URI ("no schema with key or ref"); the keywords themselves validate under both.
+  const { $schema: _meta, ...schema } = OUTPUT_SCHEMAS[id].toJSONSchema({ io: "output" }) as Record<string, unknown>;
   return JSON.stringify({ ...schema, title: id });
 }
 
