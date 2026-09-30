@@ -1,4 +1,4 @@
--- Migration 0009 (versioned additions after the v1 freeze): D61 invariants B1-B4, the D60 delta H1, D63 Q1.
+-- Migration 0010 (versioned additions after the v1 freeze): D61 invariants B1-B4, the D60 delta H1, D63 Q1.
 -- Runs after db-assertions.sql and reuses its fixtures: alice (a) and carol (c) are maintainers; a, bob (b) and c are
 -- related (acme team and sponsorships); dave (d) and eve (e) are unrelated to everyone. Bob's receipt ...cc001
 -- (qualified now) is the introducing receipt: bob is the introducer, inside the window.
@@ -233,4 +233,4 @@ select wos_test.expect_error($$select wos_test.conf('a1', 'ratified', null)$$, '
 reset role;
 select set_config('wos.actor_kind', 'system', false);
 
-\echo 'all 0009 assertions passed'
+\echo 'all 0010 assertions passed'

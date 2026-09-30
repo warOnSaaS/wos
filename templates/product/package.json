@@ -1,0 +1,23 @@
+{
+  "name": "waronsaas-product",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The warOnSaaS suite: wOS Core (apps/api), wOS Web (apps/web), wOS Mobile (apps/mobile), and the bundled applications.",
+  "engines": {
+    "node": ">=22.12 <23",
+    "npm": ">=10.9"
+  },
+  "packageManager": "npm@10.9.8",
+  "workspaces": [
+    "apps/*",
+    "modules/*"
+  ],
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present",
+    "proof:self-host": "npm run proof:self-host -w apps/api"
+  }
+}

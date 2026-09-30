@@ -156,8 +156,10 @@ Continue with unaffected work. Do not implement around the blocker by changing a
 - **Contracts bump procedure (contracts 5.6.0, B-0003-suite-shell).** Every bump regenerates, in the same commit:
   - the vendored validator bundle: `node packages/verification/ci/bundle.mjs`;
   - the site's copy of `progress.ts`: `node apps/web/scripts/sync-shared.mjs`;
-  - the product template's vendored contracts: `node templates/product/modules/core-contracts/vendor.mjs`, once that script is on main;
-  - the golden files that embed the version (context-engine manifest hashes, CLI golden output: `npx vitest run -u` on those two test files, then checking that only manifest hashes changed).
+  - the product template's vendored contracts: `node templates/product/modules/core-contracts/vendor.mjs`;
+  - the golden files that embed the version (context-engine manifest hashes, CLI golden output: `npx vitest run <file> -u` for each of the two test files, the path before `-u`, then checking that only manifest hashes changed).
+
+  `node scripts/regen-contracts.mjs` does all four (5.7.0); `--check` only verifies the three copies.
 
   `npm run check` fails on any of them left stale.
 - D10 adds one more rule for the product repo's shared Feature Contracts: a new version must list `impactedTargets`, and its review contexts include every impacted app's roadmap reference and profile (FEATURE-CONTRACT.md).
@@ -426,7 +428,7 @@ Everything is additive at 5.5.0. No Wave 3a interface in section 12.4 changed. N
 | web | the record, its impact and the holds on the public activity feed | the two events |
 | protocol (ws/protocol) | the delta in `D60-PROTOCOL-DELTA.md` | |
 
-## 14. Blocker rulings for Wave 3a (contracts 5.6.0, migration 0008)
+## 14. Blocker rulings for Wave 3a (contracts 5.6.0 and 5.8.0, migrations 0008 and 0009)
 
 The blocker files live on their workstream branches. The coordinator copies each ruling into the file's `decision` when integrating.
 
@@ -438,14 +440,18 @@ The blocker files live on their workstream branches. The coordinator copies each
 | B-0003-suite-shell | **Accepted.** (1) suite-shell owns the template root: `templates/product/package.json` (workspaces `apps/api`, `apps/web`, `apps/mobile`, `modules/*`; scripts typecheck, lint, test), its `package-lock.json` (generated with `npm install --package-lock-only` in `templates/product`) and the root `docker-compose.yml`. Dependencies are those the template's apps declare today plus `nodemailer`. mobile-runtime edits only `apps/mobile/package.json`, and the lockfile is regenerated at each integration gate. Any other new dependency is a blocker. (2) `RepoManifest.appMigrationsDir` (`applications/*/migrations`); the template's `wos.json` sets it with `migrationsDir: null`. Writing under an app's migrations needs `db:migrations:<id>` exclusive (planning rule added). (3) The vendor regeneration is part of the bump procedure (section 5). (4) `nodemailer` is approved for `templates/product/apps/api`; the wos root has it as a devDependency so monorepo tests resolve it. | suite-shell: (1), the SMTP transport. verification: the changeset-time scope validator honours `appMigrationsDir` (`db:migrations:<id>`), then regenerates the bundle. |
 | B-0007-control-plane | **Accepted, migration `0008_build_release.sql`.** It relaxes the desktop-package check for `build` only, and adds `desktop_bundle_sha256` (allowed only with a package, immutable; the control plane writes it at every desktop publish). It is numbered 0008 because ws/protocol owns 0007. It touches only `wos.app_releases`, so it commutes with 0007 and production may apply 0008 first (the runner applies pending files in lexical order and does not refuse gaps). **Production migration: yes.** The coordinator runs it through the runner, listing with `--check` first, before Build's release is published. | control-plane: store the bundle hash at publish, drop the in-memory cache, and (the Build-release test was flipped to 200 by the architect to keep main green). Coordinator: apply 0008 in production, then publish Build's release. |
 
+| B-0009-control-plane (contracts 5.8.0) | **Accepted, migration `0009_web_app_client.sql`.** Found while implementing B-0002: 0001's `client_kind` checks refused `web_app` on `wos.email_signin_requests` and `wos.sessions`; both now accept it (`wos.devices` does not). `desktop_bundle_sha256` becomes present exactly with a package, as B-0007 asked, now that the control plane writes it. **Production migration: yes**, after 0008. | control-plane (done on ws/blockers). Coordinator: apply 0008 then 0009, then publish Build with `tools/registry/publish-build-release.mjs`. |
+
+Implementation status (ws/blockers, 5.7.0): every "Implements" item above for control-plane, suite-shell and verification is done and tested; the desktop, mobile-runtime and web (waronsaas.com browser sign-in) items remain with those workstreams. The template's workspaces are `apps/*` and `modules/*` (which covers `apps/mobile` once it exists; npm skips directories without a package.json). Its `lint` script runs each workspace's `lint` when present; no workspace has one yet.
+
 **Migration order:**
 - 0007 is `ws/protocol`'s `0007_proof_of_contribution.sql`, when it integrates.
-- 0008 is this ruling's migration.
-- The next free number is 0009. Any workstream needing a migration asks the architect for a number.
+- 0008 is B-0007's migration; 0009 is B-0009's.
+- The next free number is 0010. Any workstream needing a migration asks the architect for a number.
 
 ## 15. D61 bugs and maintenance: interfaces (contracts 5.7.0)
 
-Additive. The D60 hold is now `WorkHoldMachine` (`work_hold`); `ArchitectureHoldMachine` is the same object, kept as an alias. Migration 0009 will create `work_holds` with a source kind (`architecture` | `bug`) instead of `architecture_holds`, plus `bugs`, `triage_decisions` and `sweeps`. The architect writes it when the control plane serves this. Nothing is served yet. The economy side is on ws/protocol (`D61-PROTOCOL-NOTES.md`).
+Additive. The D60 hold is now `WorkHoldMachine` (`work_hold`); `ArchitectureHoldMachine` is the same object, kept as an alias. Migration 0010 (0009 is B-0009's) will create `work_holds` with a source kind (`architecture` | `bug`) instead of `architecture_holds`, plus `bugs`, `triage_decisions` and `sweeps`. The architect writes it when the control plane serves this. Nothing is served yet. The economy side is on ws/protocol (`D61-PROTOCOL-NOTES.md`).
 
 | Workstream | Implements (later) | Uses |
 |---|---|---|

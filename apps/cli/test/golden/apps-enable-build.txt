@@ -1,0 +1,14 @@
+$ wos apps enable build
+enabled  build on dev (personal, owner)
+(exit 0)
+
+$ wos apps enable build
+unchanged build is already enabled on dev (personal, owner)
+(exit 0)
+
+$ wos apps
+org      dev (personal, owner)
+APP    KIND  STATE     VERSION  NAME
+core   core  included  0.1.0    Core
+build  app   enabled   0.1.0    Build
+(exit 0)

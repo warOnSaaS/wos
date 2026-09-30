@@ -191,7 +191,7 @@ Totals: 118 v4 assertions; 45 still refused in SQL (some also by a rule); 73 mov
 
 Clip never raises a weight, audit outcomes only for revealed real quorums, duty events for the offered account, permanent exclusion needs governance, adapter switches need governance, Genesis dedup keys are Genesis keys, manifest admission, sponsorship approval, usage-receipt lease/run/snapshot binding: each is a function in `rules.ts` with a test in 'further write rules moved from 0007 v4 (no guarantee silently dropped)'.
 
-## Versioned additions (migration 0009: D61, the D60 delta, D63; review 09)
+## Versioned additions (migration 0010: D61, the D60 delta, D63; review 09)
 
 | Guarantee | Where | Test |
 |---|---|---|

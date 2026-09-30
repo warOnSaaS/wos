@@ -28,7 +28,7 @@ export interface Caller {
   accountId: string;
   sessionId: string;
   familyId: string;
-  clientKind: "web" | "desktop" | "cli";
+  clientKind: "web" | "desktop" | "cli" | "web_app";
   deviceId: string | null;
   isMaintainer: boolean;
   githubUserId: number | null;
@@ -36,10 +36,10 @@ export interface Caller {
   viaCookie: boolean;
 }
 
+/** Every control-plane cookie is HttpOnly, Secure (outside local/test), SameSite=Lax and host-only (S-5, 5.6.0). */
 export interface CookieSpec {
   name: string;
   value: string;
-  httpOnly: boolean;
   maxAgeSeconds: number;
   path?: string;
 }
@@ -219,12 +219,12 @@ async function dispatch(c: Context, name: AnyRouteName, route: RouteDef, handler
       setCookie: (ck) =>
         cookiesOut.push(
           generateCookie(ck.name, ck.value, {
-            httpOnly: ck.httpOnly,
+            httpOnly: true,
             secure: deps.config.env !== "test" && deps.config.env !== "local",
             sameSite: "Lax",
             path: ck.path ?? "/",
             maxAge: ck.maxAgeSeconds,
-            ...(deps.config.cookieDomain ? { domain: deps.config.cookieDomain } : {}),
+            // Host-only (S-5 as amended at 5.6.0): never a Domain attribute, so no other host receives a cookie (A10).
           }),
         ),
       status: 200,

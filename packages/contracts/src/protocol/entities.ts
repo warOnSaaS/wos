@@ -1586,7 +1586,7 @@ export type TaskBudget = z.infer<typeof TaskBudget>;
 /**
  * D61 (economy side; versioned addition after the v1 freeze). The protocol binds to the planning side's records
  * (contracts 5.7.0 `bugs.ts`: `BugId`, `BugSeverity`, `TriageOutcome`, `TriageDecision`, `RedGreenEvidence`), never to
- * their prose. `BugTriageRecord` is what the database stores per bug (0009 `bug_triage_decisions`): the decision's
+ * their prose. `BugTriageRecord` is what the database stores per bug (0010 `bug_triage_decisions`): the decision's
  * canonical hash (the triage reward binds to it), its outcome and severity, the reporter the intake authenticated, and
  * — when the mapping blames a merged receipt — the introducing receipt. The introducer and whether its receipt was
  * accepted inside the pinned revert-offset window are DERIVED by the database, never supplied.
@@ -1611,7 +1611,7 @@ export const BugTriageRecord = z.object({
 export type BugTriageRecord = z.infer<typeof BugTriageRecord>;
 
 /**
- * D61: a maintainer's confirmation of a triage decision (0009 `bug_triage_confirmations`, at most one of each kind per
+ * D61: a maintainer's confirmation of a triage decision (0010 `bug_triage_confirmations`, at most one of each kind per
  * bug): `ratified` (confirms a not_reproducible / not_a_bug decision, or any decision early; the only way a critical
  * severity becomes effective), `severity_corrected` (penalty-free: the triage is still paid, the corrected severity
  * prices and ranks the fix), `resolved` (a contract_revision's revision merged).

@@ -7,7 +7,7 @@ import { type MigrationDriver, MemoryMigrationDriver, planMigrations, runMigrati
 import { PostgresMigrationDriver } from "../../../modules/core/src/pg.js";
 import { createCoreApp } from "./app.js";
 import { type CoreConfig, loadConfig } from "./config.js";
-import { LogMailer } from "./mail.js";
+import { mailerFromEnv } from "./mail.js";
 import { PostgresStore } from "./pg-store.js";
 import { type CoreStore, MemoryStore } from "./store.js";
 
@@ -59,7 +59,7 @@ export async function bootCore(env: Env): Promise<Core> {
     config,
     bundle,
     store,
-    mailer: config.mode === "self_hosted" ? new LogMailer() : null,
+    mailer: config.mode === "self_hosted" ? mailerFromEnv(env, { log }) : null,
     fetch: (input, init) => fetch(input, init),
     now: () => new Date(),
     log,

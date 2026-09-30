@@ -438,6 +438,53 @@ export function changesetVectors(): ChangesetVector[] {
       abuCtx({ abu: { scope: { write: ["DB/**"], read: [] } } }),
     ),
 
+    // contracts 5.6.0 (B-0003-suite-shell): per-app migrations need db:migrations:<id> exclusive.
+    v(
+      "MIGRATION_WITHOUT_RESOURCE: an app's migration, no resource",
+      ["MIGRATION_WITHOUT_RESOURCE"],
+      signedChangeset([upsert("applications/crm/migrations/0002_deals.sql", "create table deals ();")]),
+      abuCtx({
+        abu: { scope: { write: ["applications/crm/**"], read: [] } },
+        manifest: { migrationsDir: null, appMigrationsDir: "applications/*/migrations" },
+      }),
+    ),
+    v(
+      "MIGRATION_WITHOUT_RESOURCE: an app's migration with another app's resource",
+      ["MIGRATION_WITHOUT_RESOURCE"],
+      signedChangeset([upsert("applications/crm/migrations/0002_deals.sql", "create table deals ();")]),
+      abuCtx({
+        abu: { scope: { write: ["applications/crm/**"], read: [] }, resources: [{ key: "db:migrations:contacts", mode: "exclusive" }] },
+        manifest: { migrationsDir: null, appMigrationsDir: "applications/*/migrations" },
+      }),
+    ),
+    v(
+      "MIGRATION_WITHOUT_RESOURCE: case variant of an app's migrations dir",
+      ["MIGRATION_WITHOUT_RESOURCE"],
+      signedChangeset([upsert("Applications/CRM/Migrations/0002_deals.sql", "create table deals ();")]),
+      abuCtx({
+        abu: { scope: { write: ["Applications/**"], read: [] }, resources: [{ key: "db:migrations:contacts", mode: "exclusive" }] },
+        manifest: { migrationsDir: null, appMigrationsDir: "applications/*/migrations" },
+      }),
+    ),
+    v(
+      "accepts an app's migration with that app's db:migrations:<id> resource",
+      [],
+      signedChangeset([upsert("applications/crm/migrations/0002_deals.sql", "create table deals ();")]),
+      abuCtx({
+        abu: { scope: { write: ["applications/crm/**"], read: [] }, resources: [{ key: "db:migrations:crm", mode: "exclusive" }] },
+        manifest: { migrationsDir: null, appMigrationsDir: "applications/*/migrations" },
+      }),
+    ),
+    v(
+      "accepts app code beside the migrations without a migrations resource",
+      [],
+      signedChangeset([upsert("applications/crm/web/index.ts", "export {};\n")]),
+      abuCtx({
+        abu: { scope: { write: ["applications/crm/**"], read: [] } },
+        manifest: { migrationsDir: null, appMigrationsDir: "applications/*/migrations" },
+      }),
+    ),
+
     // -- SYMLINK_OR_SPECIAL_FILE (a modified client bypassing the schema) ------------------------------
     ...(["120000", "160000", "040000"] as const).map((mode) =>
       v(

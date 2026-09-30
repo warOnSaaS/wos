@@ -88,6 +88,67 @@ describe("suite-shell wOS Web on wOS Cloud (proof steps 2, 3, 5, 7 against a con
     return { b: new Browser(web), web, clock, cp };
   }
 
+  const linkPath = (cp: ReturnType<typeof cloud>["cp"]) => {
+    const u = new URL(cp.mails.at(-1)!.link);
+    return { url: u, path: `${u.pathname}${u.search}`, token: u.searchParams.get("t")! };
+  };
+
+  it("S-43: the emailed link lands on app.waronsaas.com/sign-in/code and signs in the browser that started", async () => {
+    const { b, cp } = cloud();
+    await b.post("/sign-in", { email: "sam@example.test" });
+    const { url, path } = linkPath(cp);
+    expect(url.origin).toBe("https://app.waronsaas.com");
+    expect(url.pathname).toBe("/sign-in/code");
+    const done = await b.get(path);
+    expect(done.headers.get("location")).toBe("/core/apps");
+    expect((await b.get("/core/apps")).status).toBe(200);
+    // Every cookie wOS Web sets is host-only, HttpOnly, SameSite=Lax and Secure (secureCookies: true).
+    const again = cloud();
+    const started = await again.b.post("/sign-in", { email: "sam@example.test" });
+    const finished = await again.b.get(linkPath(again.cp).path);
+    const set = [...started.headers.getSetCookie(), ...finished.headers.getSetCookie()];
+    expect(set.length).toBeGreaterThanOrEqual(3);
+    for (const c of set) {
+      expect(c, c).not.toMatch(/;\s*domain=/i);
+      expect(c, c).toMatch(/;\s*HttpOnly/i);
+      expect(c, c).toMatch(/;\s*SameSite=Lax/i);
+      expect(c, c).toMatch(/;\s*Secure/i);
+    }
+  });
+
+  it("S-43: the link opened in another browser, reused, for another request or after 15 minutes does not sign in", async () => {
+    const { b, web, cp, clock } = cloud();
+    await b.post("/sign-in", { email: "sam@example.test" });
+    const { path, token, url } = linkPath(cp);
+    // Another browser: no sealed pollSecret. The page says so and never shows the token.
+    const elsewhere = new Browser(web);
+    const other = await elsewhere.get(path);
+    expect(other.status).toBe(400);
+    const page = await other.text();
+    expect(page).toContain("OPEN IT WHERE YOU STARTED");
+    expect(page).not.toContain(token);
+    expect(page).not.toContain('name="code"');
+    expect((await elsewhere.get("/core/apps")).headers.get("location")).toBe("/sign-in");
+    // Wrong request id in this browser.
+    const wrong = `${url.pathname}?${new URLSearchParams({ r: "0192f000-0000-7000-8000-00000000ffff", t: token })}`;
+    expect((await b.get(wrong)).status).toBe(400);
+    // The right browser signs in once; the same link again is refused.
+    expect((await b.get(path)).headers.get("location")).toBe("/core/apps");
+    const b2 = new Browser(web);
+    await b2.post("/sign-in", { email: "sam@example.test" });
+    const first = linkPath(cp);
+    expect((await b2.get(first.path)).status).toBe(302);
+    await b2.post("/sign-in", { email: "sam@example.test" });
+    const reuse = await b2.get(first.path);
+    expect(reuse.status).toBe(400);
+    // Expired: 15 minutes after start.
+    const b3 = new Browser(web);
+    await b3.post("/sign-in", { email: "sam@example.test" });
+    const late = linkPath(cp);
+    clock.advance(16 * 60);
+    expect((await b3.get(late.path)).status).toBe(400);
+  });
+
   it("enabling CRM puts it in navigation at once; disabling removes it; the entitlement row is kept", async () => {
     const { b, cp } = cloud();
     expect(await (await b.get("/sign-in")).text()).toContain("Sign in with your warOnSaaS account.");

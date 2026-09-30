@@ -1,8 +1,9 @@
 /**
  * wOS Web's server-side calls to the control plane (api.waronsaas.com) on wOS Cloud: account sign-in, organizations,
- * Your Apps / Available Apps, enable and disable, and environment tokens. The browser talks only to wOS Web; tokens
- * stay in wOS Web's sealed cookie. The control plane treats this as a `web` client, whose tokens arrive as
- * Set-Cookie headers, which this client reads server-side.
+ * Your Apps / Available Apps, enable and disable, and environment tokens. wOS Web signs in as the server-side client
+ * `web_app` (SECURITY S-43, contracts 5.6.0): the pollSecret and the session tokens come in response BODIES,
+ * server to server, and wOS Web keeps them in its own sealed, HttpOnly, host-only cookie. It never reads Set-Cookie
+ * from the control plane, and the browser never talks to the control plane.
  */
 import { AppRoutes, OrgApps, OrgAppView, type OrganizationView, Routes } from "../../../modules/core-contracts/src/index.js";
 import type { Fetch } from "../../../modules/core/src/env-token.js";
@@ -18,14 +19,8 @@ export class CloudError extends Error {
   }
 }
 
-const cookieValue = (res: Response, name: string): string | null => {
-  for (const c of res.headers.getSetCookie()) {
-    const [pair] = c.split(";");
-    const i = pair!.indexOf("=");
-    if (pair!.slice(0, i).trim() === name) return decodeURIComponent(pair!.slice(i + 1).trim());
-  }
-  return null;
-};
+/** Exactly one of them: the typed code, or the link token from the emailed link (WEB_APP_SIGNIN_CODE_PATH). */
+export type SignInProof = { code: string; linkToken?: never } | { linkToken: string; code?: never };
 
 export class CloudClient {
   constructor(
@@ -55,32 +50,31 @@ export class CloudClient {
     return { res, body };
   }
 
-  private tokensFrom(res: Response, body: unknown): Tokens {
-    const b = body as { accessToken: string; accessExpiresAt: string; refreshToken: string; refreshExpiresAt: string };
-    const access = b.accessToken || cookieValue(res, "wos_session");
-    const refresh = b.refreshToken || cookieValue(res, "wos_refresh");
-    if (!access || !refresh) throw new CloudError(502, "INTERNAL", "the control plane returned no session");
-    return { access, accessExp: b.accessExpiresAt, refresh, refreshExp: b.refreshExpiresAt };
+  /** Session tokens from a web_app body; an empty token means the control plane treated us as a cookie client. */
+  private tokensFrom(b: { accessToken: string; accessExpiresAt: string; refreshToken: string; refreshExpiresAt: string }): Tokens {
+    if (!b.accessToken || !b.refreshToken) throw new CloudError(502, "INTERNAL", "the control plane returned no session in the body");
+    return { access: b.accessToken, accessExp: b.accessExpiresAt, refresh: b.refreshToken, refreshExp: b.refreshExpiresAt };
   }
 
-  async startSignIn(email: string): Promise<{ requestId: string; pollSecret: string | null }> {
-    const { res, body } = await this.call(Routes.startEmailSignIn.method, Routes.startEmailSignIn.path, {
-      body: { email, clientKind: "web", deviceName: null, devicePublicKey: null },
+  async startSignIn(email: string): Promise<{ requestId: string; pollSecret: string }> {
+    const { body } = await this.call(Routes.startEmailSignIn.method, Routes.startEmailSignIn.path, {
+      body: { email, clientKind: "web_app", deviceName: null, devicePublicKey: null },
     });
-    const b = body as { requestId: string; pollSecret: string | null };
-    return { requestId: b.requestId, pollSecret: b.pollSecret ?? cookieValue(res, "wos_signin") };
+    const b = Routes.startEmailSignIn.response.parse(body);
+    if (!b.pollSecret) throw new CloudError(502, "INTERNAL", "the control plane returned no pollSecret for web_app");
+    return { requestId: b.requestId, pollSecret: b.pollSecret };
   }
 
-  async redeemSignIn(requestId: string, pollSecret: string | null, code: string): Promise<Tokens> {
-    const { res, body } = await this.call(Routes.redeemEmailSignIn.method, Routes.redeemEmailSignIn.path, {
-      body: { requestId, pollSecret, linkToken: null, code },
+  async redeemSignIn(requestId: string, pollSecret: string, proof: SignInProof): Promise<Tokens> {
+    const { body } = await this.call(Routes.redeemEmailSignIn.method, Routes.redeemEmailSignIn.path, {
+      body: { requestId, pollSecret, linkToken: proof.linkToken ?? null, code: proof.code ?? null },
     });
-    return this.tokensFrom(res, body);
+    return this.tokensFrom(Routes.redeemEmailSignIn.response.parse(body));
   }
 
   async refresh(refreshToken: string): Promise<Tokens> {
-    const { res, body } = await this.call(Routes.refreshSession.method, Routes.refreshSession.path, { body: { refreshToken } });
-    return this.tokensFrom(res, body);
+    const { body } = await this.call(Routes.refreshSession.method, Routes.refreshSession.path, { body: { refreshToken } });
+    return this.tokensFrom(Routes.refreshSession.response.parse(body));
   }
 
   async logout(access: string): Promise<void> {

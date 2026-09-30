@@ -132,9 +132,11 @@ describe.skipIf(!HAS_DB)("email sign-in (magic link and code)", () => {
     expect(r.body.accessToken).toBe("");
     const cookies = r.headers.getSetCookie();
     const session = /wos_session=([^;]+)/.exec(cookies.find((c) => c.startsWith("wos_session="))!)![1]!;
-    const csrf = /wos_csrf=([^;]+)/.exec(cookies.find((c) => c.startsWith("wos_csrf="))!)![1]!;
+    // S-5 as amended at 5.6.0: wos_csrf is HttpOnly too; the site gets the value from the body.
+    const csrf = r.body.csrfToken as string;
     expect(cookies.find((c) => c.startsWith("wos_session="))).toContain("HttpOnly");
-    expect(cookies.find((c) => c.startsWith("wos_csrf="))).not.toContain("HttpOnly");
+    expect(cookies.find((c) => c.startsWith("wos_csrf="))).toContain("HttpOnly");
+    expect(cookies.find((c) => c.startsWith("wos_csrf="))).toContain(`wos_csrf=${csrf};`);
     const me = await h.call("GET", "/v1/me", { headers: { cookie: `wos_session=${session}` } });
     expect(me.body.email).toBe("web@example.com");
     const noHeader = await h.call("PATCH", "/v1/me", {

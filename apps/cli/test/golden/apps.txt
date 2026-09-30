@@ -1,0 +1,29 @@
+$ wos apps
+org      dev (personal, owner)
+APP       KIND    STATE      VERSION  NAME
+core      core    included   0.1.0    Core
+contacts  module  included   0.1.0    Contacts
+crm       app     available  0.1.0    CRM
+helpdesk  app     disabled   0.1.0    Helpdesk
+note     build is not listed: the registry has no Build release yet
+(exit 0)
+
+$ wos apps
+org      dev (personal, owner)
+APP       KIND    STATE      VERSION  NAME
+core      core    included   0.1.0    Core
+build     app     enabled    0.1.0    Build
+contacts  module  included   0.1.0    Contacts
+crm       app     available  0.1.0    CRM
+helpdesk  app     disabled   0.1.0    Helpdesk
+(exit 0)
+
+$ wos apps --org acme
+org      acme (team, member)
+APP       KIND    STATE      VERSION  NAME
+core      core    included   0.1.0    Core
+contacts  module  included   0.1.0    Contacts
+build     app     available  0.1.0    Build
+crm       app     available  0.1.0    CRM
+helpdesk  app     available  0.1.0    Helpdesk
+(exit 0)

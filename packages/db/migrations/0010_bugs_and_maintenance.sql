@@ -1,6 +1,6 @@
--- 0009_bugs_and_maintenance.sql — DRAFT: the versioned additions after the protocol v1 freeze (D62): D61 bugs and
+-- 0010_bugs_and_maintenance.sql — DRAFT: the versioned additions after the protocol v1 freeze (D62): D61 bugs and
 -- maintenance (economy side), the D60 protocol delta, D63 one queue with the queue bonus. Owner: Protocol Architect.
--- DO NOT APPLY TO PRODUCTION (like 0007, which it extends; 0008 is main's build release and commutes with both).
+-- DO NOT APPLY TO PRODUCTION (like 0007, which it extends; main's 0008 build release and 0009 web_app client commute with both).
 --
 -- Engine-first (D51): the procedure lives in packages/contracts/src/protocol/rules.ts (effectiveBugSeverity,
 -- triageConfirmationRefusals, receiptRouteRefusals BUG_TRIAGE / BUG_FIX, bugReportOutcome, holdReleaseLabelRefusals,

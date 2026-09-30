@@ -1,18 +1,20 @@
 /**
- * A test double of the control plane's AppRoutes (the real one is the control-plane workstream's): accounts sign in
- * with a code, one personal organization, the registry built from the bundled manifests, EntitlementMachine-shaped
+ * A test double of the control plane's AppRoutes (the real one is the control-plane workstream's; tests/web-app-cloud
+ * .test.ts drives wOS Web against it): accounts sign in as clientKind web_app (S-43: pollSecret and tokens in bodies,
+ * the link to HOSTS.app + WEB_APP_SIGNIN_CODE_PATH, single use, 15 minutes), one personal organization, the registry built from the bundled manifests, EntitlementMachine-shaped
  * enable/disable and environment tokens signed with a throwaway key. Only for tests; no user ever sees it.
  */
 import { randomUUID } from "node:crypto";
-import { Hono } from "hono";
-import { setCookie } from "hono/cookie";
+import { type Context, Hono } from "hono";
 import { BUNDLED_APPS } from "../../../applications/registry.js";
 import {
   activeAppIds,
   AppRoutes,
   ENVIRONMENT_TOKEN_TTL_SECONDS,
+  HOSTS,
   Routes,
   signEnvironmentToken,
+  WEB_APP_SIGNIN_CODE_PATH,
   WOS_CLOUD_ENVIRONMENT_ID,
 } from "../../../modules/core-contracts/src/index.js";
 import { loadBundle } from "../../../modules/core/src/bundle.js";
@@ -33,6 +35,25 @@ export function fakeControlPlane(key: TestKey, clock: Clock, issuer: string) {
   const account = "0192f000-0000-7000-8000-00000000b001";
   const entitlements = new Map<string, { state: "enabled" | "disabled"; rowVersion: number; changedAt: string }>();
   const sessions = new Set<string>();
+  const refreshTokens = new Map<string, string>();
+  const requests = new Map<string, { pollSecret: string; linkToken: string; expiresAt: number; used: boolean }>();
+  /** What the control plane emailed: the link wOS Web receives and the code. */
+  const mails: { to: string; link: string; code: string }[] = [];
+  const me = {
+    id: account,
+    email: "sam@example.test",
+    handle: null,
+    github: null,
+    canContribute: false,
+    displayName: null,
+    roles: [],
+    leaderboardOptIn: false,
+    status: "active",
+    followedTargets: [],
+    progressEmails: false,
+    attestations: [],
+    balance: { held: 0, available: 0, score: 0 },
+  };
   const app = new Hono();
   const iso = () => clock.now.toISOString();
 
@@ -80,28 +101,46 @@ export function fakeControlPlane(key: TestKey, clock: Clock, issuer: string) {
   const authed = (h: string | undefined) => h?.startsWith("Bearer ") && sessions.has(h.slice(7));
 
   app.get(AppRoutes.getEnvironmentKeys.path, (c) => c.json({ keys: [{ kid: key.kid, alg: "EdDSA", publicKey: key.publicKey }] }));
-  app.post(Routes.startEmailSignIn.path, (c) => {
-    setCookie(c, "wos_signin", "poll-secret", { httpOnly: true, path: "/v1/auth" });
-    return c.json({ requestId: randomUUID(), pollSecret: null, expiresAt: iso() }, 202);
-  });
-  app.post(Routes.redeemEmailSignIn.path, async (c) => {
-    const b = (await c.req.json()) as { code: string; pollSecret: string };
-    if (b.code !== CODE || b.pollSecret !== "poll-secret")
-      return c.json({ error: { code: "UNAUTHENTICATED", message: "no", requestId: "x" } }, 401);
-    const access = randomUUID();
-    sessions.add(access);
-    setCookie(c, "wos_session", access, { httpOnly: true });
-    setCookie(c, "wos_refresh", `r-${access}`, { httpOnly: true, path: "/v1/auth" });
-    const exp = new Date(clock.now.getTime() + 3600_000).toISOString();
-    return c.json({
-      accessToken: "",
-      accessExpiresAt: exp,
-      refreshToken: "",
-      refreshExpiresAt: exp,
-      deviceId: null,
-      created: true,
-      me: {},
+  app.post(Routes.startEmailSignIn.path, async (c) => {
+    const b = Routes.startEmailSignIn.body.parse(await c.req.json());
+    if (b.clientKind !== "web_app")
+      return c.json({ error: { code: "VALIDATION_FAILED", message: "web_app only here", requestId: "x" } }, 400);
+    const requestId = randomUUID();
+    const pollSecret = `poll-${randomUUID()}`;
+    const linkToken = `link-${randomUUID()}`;
+    const expiresAt = clock.now.getTime() + 15 * 60_000;
+    requests.set(requestId, { pollSecret, linkToken, expiresAt, used: false });
+    mails.push({
+      to: b.email,
+      link: `${HOSTS.app}${WEB_APP_SIGNIN_CODE_PATH}?${new URLSearchParams({ r: requestId, t: linkToken })}`,
+      code: CODE,
     });
+    return c.json({ requestId, pollSecret, expiresAt: new Date(expiresAt).toISOString() }, 202);
+  });
+  const issue = () => {
+    const access = `wos_at_${randomUUID()}`;
+    const refresh = `wos_rt_${randomUUID()}`;
+    sessions.add(access);
+    refreshTokens.set(refresh, access);
+    const exp = new Date(clock.now.getTime() + 3600_000).toISOString();
+    return { accessToken: access, accessExpiresAt: exp, refreshToken: refresh, refreshExpiresAt: exp };
+  };
+  const denied = (c: Context) => c.json({ error: { code: "UNAUTHENTICATED", message: "no", requestId: "x" } }, 401);
+  app.post(Routes.redeemEmailSignIn.path, async (c) => {
+    const b = Routes.redeemEmailSignIn.body.parse(await c.req.json());
+    const r = requests.get(b.requestId);
+    const proofOk = b.code !== null ? b.code === CODE && b.linkToken === null : b.linkToken === r?.linkToken;
+    if (!r || r.used || r.expiresAt <= clock.now.getTime() || b.pollSecret !== r.pollSecret || !proofOk) return denied(c);
+    r.used = true;
+    return c.json({ ...issue(), deviceId: null, created: true, me });
+  });
+  app.post(Routes.refreshSession.path, async (c) => {
+    const b = Routes.refreshSession.body.parse(await c.req.json());
+    const access = refreshTokens.get(b.refreshToken);
+    if (!access) return denied(c);
+    refreshTokens.delete(b.refreshToken);
+    sessions.delete(access);
+    return c.json(issue());
   });
   app.post(Routes.logout.path, (c) => c.json({ ok: true }));
   app.get(AppRoutes.listMyOrganizations.path, (c) => (authed(c.req.header("authorization")) ? c.json({ items: [org] }) : c.json({}, 401)));
@@ -148,5 +187,5 @@ export function fakeControlPlane(key: TestKey, clock: Clock, issuer: string) {
     const token = signEnvironmentToken(claims, key.kid, key.privateKey);
     return c.json({ token, expiresAt: new Date((iat + ENVIRONMENT_TOKEN_TTL_SECONDS) * 1000).toISOString(), claims });
   });
-  return { app, org, entitlements };
+  return { app, org, entitlements, mails };
 }
