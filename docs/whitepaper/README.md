@@ -5,11 +5,12 @@
 | File | What it is |
 |---|---|
 | `WHITEPAPER.md` | The current version (Markdown), written for AI agents. https://waronsaas.com/whitepaper is a handoff page (download, prompt, open in an agent) with the full text collapsed below; https://waronsaas.com/whitepaper.md serves it inline for browsing agents; https://waronsaas.com/whitepaper/download serves it as `warOnSaaS-white-paper-v<version>.md`. |
+| `EDGE-CASES.md`, `DESIGN.md`, `APPENDICES.md`, `SOURCES.md` | Companion files (since v0.5): optional depth the core links to. Served at https://waronsaas.com/whitepaper/<name>.md (lowercase) and together with the core in https://waronsaas.com/whitepaper/full-pack.zip. Anything cut from the core must live in one of these; the core stays under 12,000 words. |
 | `WHITEPAPER-v0.1-original.txt` | The founder's v0.1, verbatim. Never edited; kept for history. |
 
 ## How the website gets it
 
-- `apps/web/scripts/sync-shared.mjs` copies `WHITEPAPER.md` byte-for-byte to `apps/web/generated/WHITEPAPER.md` (Vercel builds from `apps/web`, so the copy is committed). `npm run check:shared -w apps/web` fails if the copy is stale.
+- `apps/web/scripts/sync-shared.mjs` copies `WHITEPAPER.md` byte-for-byte to `apps/web/generated/WHITEPAPER.md`, and the companions to `apps/web/generated/whitepaper/` (Vercel builds from `apps/web`, so the copy is committed). `npm run check:shared -w apps/web` fails if the copy is stale.
 - `apps/web/scripts/gen-log.mjs` records the date and commit of the last change to `docs/whitepaper/WHITEPAPER.md` in `apps/web/generated/whitepaper-meta.json`, from git, at every build.
 - The page and the raw download replace the `{{LAST_UPDATED}}` placeholder in the header table with that date. Do not type a date there by hand.
 - The page renders a small, fixed Markdown subset (`apps/web/lib/markdown.tsx`): `#`, `##`, `###` headings, paragraphs, `-` and `1.` lists (one level), tables, fenced code blocks, `**bold**`, `` `code` `` and links. Write bare `https://` URLs rather than domain names without a scheme, so the casing gate can tell identifiers from prose.
