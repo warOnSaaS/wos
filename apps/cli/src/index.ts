@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { HOSTS } from "@waronsaas/contracts";
 import { createNodeProcessRunner, createOrchestrator } from "@waronsaas/orchestrator";
+import { createAppsApi } from "./apps.js";
 import { runCli } from "./cli.js";
 import { createKeychainSecretStore } from "./keychain.js";
 
@@ -54,6 +55,8 @@ process.once("SIGINT", () => {
 });
 
 const prompter = stdinPrompter();
+const apiBaseUrl = process.env.WOS_API_URL ?? HOSTS.api;
+const secrets = createKeychainSecretStore();
 const code = await runCli(
   process.argv.slice(2),
   {
@@ -69,14 +72,15 @@ const code = await runCli(
     signal: controller.signal,
     orchestrator: () =>
       createOrchestrator({
-        apiBaseUrl: process.env.WOS_API_URL ?? HOSTS.api,
+        apiBaseUrl,
         workspaceRoot: process.env.WOS_HOME ?? join(homedir(), ".wos"),
-        secrets: createKeychainSecretStore(),
+        secrets,
         processes: createNodeProcessRunner(),
         fetch: globalThis.fetch,
         clientKind: "cli",
         clientVersion: version,
       }),
+    apps: () => createAppsApi({ baseUrl: apiBaseUrl, fetch: globalThis.fetch, secrets, clientVersion: version }),
   },
 );
 prompter.close();

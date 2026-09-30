@@ -35,6 +35,10 @@ Commands:
   tasks [options]            List open tasks you could take
   work                       Your leases, tasks and attempts
   events [options]           Your recent events
+  orgs                       Your organizations and your role in each (the
+                             personal one first)
+  apps [options]             Your organization's apps: enabled, and available to
+                             enable
   help [command]             display help for command
 
 Exit codes: 0 ok, 1 failed, 2 usage, 3 not signed in or GitHub not linked.
