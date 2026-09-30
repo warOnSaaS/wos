@@ -1,0 +1,5 @@
+$ wos apps enable build
+error    NOT_FOUND: Build isn't available to enable yet (registry has no Build release)
+server   enableApp: NOT_FOUND: app build has no published release
+hint     nothing to fix on your side: once a maintainer publishes Build's release, run wos apps enable build again
+(exit 1)

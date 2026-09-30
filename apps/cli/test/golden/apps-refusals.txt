@@ -1,0 +1,41 @@
+$ wos apps enable crm --org acme
+error    FORBIDDEN: only an owner or admin of acme can enable apps; your role there is member
+server   enableApp: FORBIDDEN: only an owner or admin of the organization changes its apps
+hint     ask an owner of the organization, or use your personal one (omit --org)
+(exit 1)
+
+$ wos apps enable crm
+error    DEPENDENCY_NOT_ENABLED: crm needs apps that are not enabled on dev: contacts is not enabled
+server   enableApp: DEPENDENCY_NOT_ENABLED: enable what crm requires first: contacts is not enabled
+hint     enable it first: wos apps enable contacts
+hint     then: wos apps enable crm
+(exit 1)
+
+$ wos apps enable contacts
+enabled  contacts on dev (personal, owner)
+(exit 0)
+
+$ wos apps enable crm
+enabled  crm on dev (personal, owner)
+(exit 0)
+
+$ wos apps disable contacts
+error    DEPENDENT_ENABLED: other apps on dev require contacts: crm
+server   disableApp: DEPENDENT_ENABLED: disable the apps that require contacts first: crm
+hint     disable it first: wos apps disable crm
+hint     then: wos apps disable contacts
+(exit 1)
+
+$ wos apps disable crm
+unchanged crm is already disabled on dev (personal, owner)
+(exit 0)
+
+$ wos apps enable crm
+enabled  crm on dev (personal, owner)
+(exit 0)
+
+$ wos apps disable crm
+error    CONFLICT: crm changed on dev while this command ran; it is now enabled
+server   disableApp: CONFLICT: the entitlement changed since you read it; re-read and decide
+hint     check it with wos apps, then decide and run the command again
+(exit 1)

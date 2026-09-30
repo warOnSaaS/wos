@@ -1,0 +1,19 @@
+$ wos build salesforce/contacts#04
+LEASE    started  claiming salesforce/contacts#04
+result   failed   NOT_ENTITLED
+error    NOT_ENTITLED: claimBuild: NOT_ENTITLED: the build app is not enabled for any of your organizations
+hint     the Build app isn't enabled for your account, so wOS won't lease you work; enable it: wos apps enable build
+(exit 1)
+
+$ wos roadmap
+result   failed   NOT_ENTITLED
+error    NOT_ENTITLED: claimTask: NOT_ENTITLED: the build app is not enabled for any of your organizations
+hint     the Build app isn't enabled for your account, so wOS won't lease you work; enable it: wos apps enable build
+(exit 1)
+
+$ wos review --slot astra
+LEASE    started  asking for a astra review
+result   failed   NOT_ENTITLED
+error    NOT_ENTITLED: claimReview: NOT_ENTITLED: the build app is not enabled for any of your organizations
+hint     the Build app isn't enabled for your account, so wOS won't lease you work; enable it: wos apps enable build
+(exit 1)

@@ -1,0 +1,5 @@
+$ wos orgs
+ORG   KIND      ROLE    ID                                    NAME
+dev   personal  owner   0192ab3c-0000-7000-8000-00000000a001  dev
+acme  team      member  0192ab3c-0000-7000-8000-00000000a002  Acme
+(exit 0)

@@ -3,6 +3,7 @@
  * orchestrator's contract-faithful fake control plane and fake agent CLIs (its test harness).
  */
 import type { Orchestrator } from "@waronsaas/contracts";
+import type { AppsApi } from "../src/apps.js";
 import { type CliIo, runCli } from "../src/cli.js";
 
 export { type Harness, harness } from "../../../packages/orchestrator/test/support/harness.js";
@@ -22,6 +23,8 @@ export interface RunOptions {
   answer?: (question: string) => string | null;
   isTTY?: boolean;
   env?: Record<string, string>;
+  /** The AppRoutes client (wos orgs / wos apps); tests that never reach it leave it out. */
+  apps?: () => AppsApi;
 }
 
 export function testIo(lines: string[] = [], opts: RunOptions = {}) {
@@ -44,7 +47,12 @@ export function testIo(lines: string[] = [], opts: RunOptions = {}) {
 
 export async function wos(make: () => Orchestrator, argv: string[], opts: RunOptions = {}): Promise<Run> {
   const t = testIo(opts.lines, opts);
-  const code = await runCli(argv, t.io, { orchestrator: make, version: "0.0.0-test", hostname: "test-host" });
+  const apps =
+    opts.apps ??
+    (() => {
+      throw new Error("this test has no AppRoutes client");
+    });
+  const code = await runCli(argv, t.io, { orchestrator: make, apps, version: "0.0.0-test", hostname: "test-host" });
   return { code, out: t.out(), err: t.err(), asked: t.asked };
 }
 
