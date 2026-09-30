@@ -11,3 +11,8 @@
 {"name":"R07-6_hold_created_and_released_same_epoch","error":"hold h is not active"}
 {"name":"reissue_rule_rejects_duplicate_but_engine_needs_validated_input","result":{"engineFunded":["new1","new2"],"ruleRefusals":["a task is re-issued once (re-issue the latest generation)"]}}
 {"name":"R06-5_fixed_grace_pinning","result":{"pinnedExpiry":7,"expired":[]}}
+
+---- SQL (inspection findings, executed here on the pre-fix migration after the db-assertions fixture)
+R07-4 a submission asserting an old on-time epoch after the budget expired (current epoch later) => ACCEPTED: submitted_epoch 2 recorded at 2026-09-30 16:29:34.686594+00 (no evidence the work arrived in epoch 2)
+R07-5 restore a revoked FINAL_BY_SILENCE receipt to FINAL_BY_SILENCE => REJECTED: ERROR:  wos: FINAL_BY_SILENCE is reached only by the final_by_silence event
+R07-7 a D58 record for a finding that is not in the (unconfirmed) ruling => ACCEPTED: record for a finding absent from an awaiting_maintainer ruling
