@@ -20,7 +20,7 @@ Astra-01 asked for a table so an implementation never has to guess. "Kept" rules
 | Feature completion pool = 10% of implementation tokens | replaced | 15% completion accrual per epoch, utilisation-scaled, per-(target, feature) pools |
 | Application completion pool 10,000 | replaced | application pools (1/3 of completion accrual) |
 | 14-day hold, release sweeper | replaced | CALCULATING (48 h) + PROPOSED challenge (48 h) + finalization |
-| Void before release, clawback after | replaced | exclusion before finalization; offsets after (no on-chain reversal) |
+| Void before release, clawback after | replaced | exclusion before finalization; after it: holdback confiscation, unclaimed entitlements, offsets (no on-chain reversal, D39, D40) |
 | Bootstrap-self awards held until re-review | **removed** (D23) | PROVISIONAL receipts, test epochs, ratification |
 | Maintainer adjustments with memo | replaced | AdminActions (hash-chained, two-person where listed) |
 | Schedule versions, never recomputed | kept | policy versions, forward-only (D33) |
@@ -49,6 +49,14 @@ Code and docs (architect-owned, change with contracts 6.0.0 when the protocol is
 Website (web workstream; the architect does not edit `apps/web`): `apps/web/lib/site.ts` `TOKEN_DISCLAIMER`; `apps/web/lib/content.ts` (5 statements incl. "not cryptocurrency", FAQ "Are WOS tokens cryptocurrency? No"); `apps/web/lib/briefing.ts`; `apps/web/lib/llms.ts` (2); `apps/web/components/Footer.tsx`; `apps/web/app/leaderboard/page.tsx`; `apps/web/app/tokens/page.tsx`; `apps/web/app/download/page.tsx`; `apps/web/app/targets/[slug]/page.tsx`; `apps/web/SITE-SYNC.md`; `apps/web/generated/waronsaas.roadmap.json`.
 
 New wording (proposal): devnet — "WOS on devnet is a test token with no monetary value." Everywhere tokens appear — the OFF-RAMP disclosure. Never "earn", "pay", "investment", "price".
+
+## 3b. Wording superseded inside this design (Astra-02 pass)
+
+- "No silent confiscation" → **"no SILENT or ARBITRARY confiscation"** (D39): proven cheating is confiscated from protocol-held amounts after due process; released tokens are never seized.
+- "Bounty on the total excess" → bounty on the total **recovered** excess (D41).
+- "Stake forfeited only if nothing is clipped" → stake forfeited **per rejected item** (D43).
+- "One confirmed row makes settlement exactly once" → persisted signed transactions, one active attempt, historical resolution, finalized confirmation (H3).
+- "Expected gain ≈ 0 with the pattern lookback" → withdrawn; see TOKENOMICS-SIMULATION A2.
 
 ## 4. REVIEW-PROTOCOL, AGENT-POLICY, SECURITY
 

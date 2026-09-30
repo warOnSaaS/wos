@@ -14,16 +14,22 @@ A6 option 2: a one-time, transparent, **capped** credit for work done before the
 - Each retro ABU is one `GenesisContribution` with a dedup key `work:waronsaas/wos:<feature>#<nn>` in the **shared** `work_dedup_keys` namespace, so no work is credited both as Genesis and by a receipt (DB-enforced).
 - Contributors: whoever authored the merged work (V1: the founder, as contributor zero). Anyone else with pre-protocol merged work is eligible under the same rule.
 
-## 3. Valuation
+## 3. Valuation (D48)
 
 ```
-genesisWeight  = Σ retro size points × referenceAcuPerSizePoint
-referenceAcuPerSizePoint = median eligible ACU per size point of merged IMPLEMENTATION receipts in live epochs 1–12 (≥ 30 receipts)
-genesisWOS     = min(cap, genesisWeight × mean realised execution rate (WOS/ACU) over live epochs 1–12)
-cap            = 5,000,000 WOS (0.5% of max supply)
+genesisWeight            = Σ retro size points × referenceAcuPerSizePoint
+referenceAcuPerSizePoint = median eligible ACU per size point of the FROZEN reference population
+                           (merged IMPLEMENTATION receipts of live epochs 1–12, >= 30 receipts)
+genesisWOS               = min(cap, genesisWeight × mean realised execution rate over live epochs 1–12)
+fallback                 = min(cap, retro size points × 400 WOS)   if the population is insufficient
+cap                      = 5,000,000 WOS (0.5% of max supply)
 ```
 
-Illustration (TOKENOMICS-SIMULATION table H, assumptions, not the founder's figures): 2,000 retro size points at 4 ACU per point and ~42 WOS/ACU ≈ 340,000 WOS, well under the cap. The cap is a guarantee, not an expectation.
+- **Frozen reference population** (M16): an explicit list of receipts, approved by a two-person action and reviewed independently (`genesis_reference_receipts`). It excludes every Genesis beneficiary and their related parties (DB-enforced), so they cannot influence their own calibration. It is frozen before the valuation and published.
+- **The stated statistic, exactly:** epochs 1–12, not checkpoints; the simulation now computes it that way (table H: ~98 WOS/ACU in a 1,000-contributor network).
+- **Canonical work mapping:** each merged pre-protocol commit maps to exactly one retro unit (`genesis_commit_claims` primary key on the commit sha), so overlapping work cannot be credited under two keys; retro units also share the dedup namespace with receipts.
+
+Illustration (table H, assumptions, not the founder's figures): 2,000 retro size points ≈ 780,000 WOS at the reference rate, 800,000 by fallback — both well under the cap.
 
 ## 4. Approval
 
@@ -32,7 +38,7 @@ A protocol-class review of the retro roadmap PR and of the computation by **at l
 ## 5. Issuance and vesting
 
 - **Never on devnet** (`mintOnDevnet: false`); devnet shows the computed figure labelled "not issued; mainnet only".
-- **Mainnet only**, at launch, after the legal checkpoint, into a linear **2-year vesting** position with no cliff, through an audited vesting mechanism (SOLANA-ARCHITECTURE §5b). The unused part of the cap is never minted.
+- **Mainnet only**, after the legal checkpoint, vesting linearly over **2 years** from launch with no cliff, released by the protocol as scheduled entitlements each epoch (SOLANA-ARCHITECTURE §5b) — so unreleased Genesis remains confiscatable after proven cheating (D39). The unused part of the cap is never minted.
 - Unvested Genesis does not vote; vested Genesis can be locked like any WOS (GOVERNANCE.md).
 - 1 devnet WOS ≠ 1 mainnet WOS; no conversion ratio is promised for anything.
 

@@ -376,7 +376,7 @@ export const UsageProofPolicy = z.object({
     z.object({
       provider: ProviderId,
       minCliVersion: z.string(),
-      primarySource: z.enum(["cli_result_event", "cli_stream_sum"]),
+      primarySource: z.enum(["cli_result_event", "cli_stream_sum", "transcript"]),
       crossCheckSource: z.enum(["cli_stream_sum", "transcript", "none"]),
       notes: z.string(),
     }),

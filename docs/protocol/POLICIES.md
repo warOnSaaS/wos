@@ -24,12 +24,16 @@ Admin UX (web admin + Desktop Build app): policy list with versions and effectiv
 | `emission.maxSupplyBase` | 1,000,000,000 WOS | |
 | `emission.emissionReserveBase` | 995,000,000 WOS | |
 | `emission.budgetPpmOfRemaining` | 3,327 | ≈ 4-year half-life |
-| `emission.rateCeiling` | 100 WOS/ACU, decay 3,327 ppm/epoch | |
+| `emission.rateCeiling` | 100 WOS/ACU, decay 3,327 ppm/epoch, ≤ 1.5× trailing 4-epoch rate (Q3) | |
 | `slicesBp` | execution 6000, planning 1000, human_review 500, outcomes 500, completion_accrual 1500, security_reserve 500 | |
 | `eligibility.acceptedVerificationLevels` | devnet [VERIFIED, ATTESTED]; mainnet [] | fail closed until F1 |
 | `eligibility.acceptedEvidenceClasses` | devnet [attested_usage, accepted_output, outcome]; mainnet [] | |
 | `acceptance[]` | one row per contribution type (PROTOCOL §3) | event, acceptor, slice, weight basis, lease/usage needs |
-| `challenge` | window 48 h, reply 24 h, escalate 120 h, stake 2%/item cap 10% min 1 WOS, joiner min stake, ≤ 25 items, ≤ 3 disputes/epoch, bounty 20% of total excess, sampled audits 5%, rejected-disputes signal after 3, public allocations | D28–D32 |
+| `challenge` | window 48 h, reply 24 h, appeal 72 h, escalate 120 h, per-item stake max(1 WOS, min(2%, 10%/items)) of pending, forfeited per rejected item, joiner min stake, related parties never hold bounty priority, ≤ 25 items, ≤ 3 disputes/epoch, sampled audits 5%, rejected-disputes signal after 3, public allocations | D28–D32, D43 |
+| `holdback` | 50% for 13 epochs; forfeited on exclusion only | D40 |
+| `losses` | bounty 20% of RECOVERED; unrecovered losses absorb ≤ 10% of a budget per epoch; published | D41 |
+| `confiscation` | reply ≥ 72 h, appeal ≥ 168 h, time-boxed exclusion ≤ 52 epochs, permanent exclusion at the structural tier | D39 |
+| `auditCapacity` | unaudited release on schedule; never penalize the contributor | D42 |
 | `settlement` | unbound carry 52 epochs; devnet push; mainnet undecided; offset recovery ≤ 50% | |
 | `execution` | repairs inside cap; +10% own ACU per upheld finding (max 5); failed-attempt reviews paid only with upheld findings | |
 | `humanReview.weightAcuEqMicro` | low_risk 0.5, standard 1.0, security/accounting/protocol 2.0 ACU-eq; +0.5 per upheld finding (max 3) | decoupled from builder |
@@ -60,11 +64,11 @@ Risk classes (protocol 10, accounting 20, security 30, low_risk 90, standard 100
 
 ## 6. UsageProofPolicy (`usage-proof-policy.v1.json`)
 
-Providers (claude ≥ 2.1.284 primary `cli_result_event`, cross-check stream sum; codex ≥ 0.155.0 primary stream sum, cross-check rollout transcript), plausibility (≤ 400 output tokens/s, ≤ 200,000 total tokens/s, ≤ 2% source mismatch, provider-id hashes, transcript hash, model match), logs (required, ≤ 1 MiB, ≤ 2,000 turns, 365-day retention, bare ATTESTED weighted 50%, exact totals), audit (build re-runs 0%, transcript requests 5%, 60-day retention, divergence factor 3×).
+Providers (claude ≥ 2.1.284 primary `cli_result_event`, cross-check stream sum; codex ≥ 0.155.0 primary the rollout transcript deduplicated by response id, cross-check the exec stream), adapters fail on any parse error (M15), plausibility (≤ 400 output tokens/s, ≤ 200,000 total tokens/s, ≤ 2% source mismatch, provider-id hashes, transcript hash, model match), logs (required, ≤ 1 MiB, ≤ 2,000 turns, 365-day retention, bare ATTESTED weighted 50%, exact totals), audit (build re-runs 0%, transcript requests 5%, 60-day retention, divergence factor 3×).
 
 ## 7. RiskPolicy (`risk-policy.v1.json`)
 
-Detectors (peer outlier log-Z > 2.5 with ≥ 30 peers; cap saturation ≥ 95% on > 50% of ≥ 10 runs; throughput; source mismatch; model mismatch; duplicate provider ids; audit divergence 3×; transcript missing after 7 days; review pairs > 50% of ≥ 5; rubber stamp ≥ 98% pass over ≥ 20 with median < 120 s; wallet rebind within 30 days of a signal), effects (info/low none, medium hold, high exclude pending review), two-person actions, wallet rebind cooldown 7 days.
+Two-person actions are a property of the action kind in the database (`wos.two_person_action`), mirroring `twoPersonActions` (H12). Detectors (peer outlier log-Z > 2.5 with ≥ 30 peers; cap saturation ≥ 95% on > 50% of ≥ 10 runs; throughput; source mismatch; model mismatch; duplicate provider ids; audit divergence 3×; transcript missing after 7 days; review pairs > 50% of ≥ 5; rubber stamp ≥ 98% pass over ≥ 20 with median < 120 s; wallet rebind within 30 days of a signal), effects (info/low none, medium hold, high exclude pending review), two-person actions, wallet rebind cooldown 7 days.
 
 ## 8. MergePolicy (`merge-policy.v1.json`)
 
@@ -76,11 +80,11 @@ Feature pool split implementers 75 / contract authors 10 / roadmap authors 5 / r
 
 ## 10. GenesisAllocationPolicy (`genesis-policy.v1.json`)
 
-Cap 5,000,000 WOS; cutoff = first live receipt; valuation `accepted_output_reference` over live epochs 1–12 with ≥ 30 reference receipts; vesting from mainnet launch, 730 days, no cliff; protocol-class review with ≥ 2 independent humans, founder excluded; excludes provisional receipts and test epochs; never minted on devnet.
+Cap 5,000,000 WOS; cutoff = first live receipt; valuation `accepted_output_reference` over live epochs 1–12 with ≥ 30 receipts from a FROZEN, independently reviewed reference population excluding Genesis beneficiaries and related parties, fallback 400 WOS per retro size point; each commit maps to exactly one retro unit (D48); vesting released by the protocol as scheduled entitlements (confiscatable, D39); vesting from mainnet launch, 730 days, no cliff; protocol-class review with ≥ 2 independent humans, founder excluded; excludes provisional receipts and test epochs; never minted on devnet.
 
 ## 11. GovernancePolicy (`governance-policy.v1.json`)
 
-Mode `founder`; activation (≥ 50 voters, ≥ 10,000,000 WOS locked ≥ 12 months, no voter > 20%); lock rule (full weight while ≥ 365 days remain; 5% per wallet); contribution window 26 epochs, linear age-out; locked voters must have contributed; per-organization cap 10%; tiers (routine 60% / 20% turnout, structural 70% / 30%, governance 75% / 40%, emergency ratification > 50% / 10%); voting 168 h; timelock 1 epoch; limits ±5 pp slices, ±30% oracle; emergency 3-of-5, pause ≤ 336 h.
+Mode `founder`; activation (≥ 50 voters, ≥ 10,000,000 WOS locked ≥ 12 months, no voter > 20%); lock rule (full weight while ≥ 365 days remain AND the lock is seasoned ≥ 1 full epoch before the snapshot; 5% per beneficial owner); beneficial owner = an organization, or a person with every account and wallet they control; FINAL-share caps by water-filling with a feasibility guard (D44); contribution window 26 epochs, linear age-out; locked voters must have contributed; per-organization cap 10%; tiers (routine 60% / 20% turnout, structural 70% / 30%, governance 75% / 40%, emergency ratification > 50% / 10%); voting 168 h; timelock 1 epoch; limits ±5 pp slices, ±30% oracle; emergency 3-of-5, pause ≤ 336 h.
 
 ## 12. Organizations (D38)
 

@@ -198,3 +198,37 @@ These override `docs/V1-SPEC.md` where they differ. Date: 2026-09-29.
 
 ## D38. Organizations as beneficiaries
 - Contributor (the accountable person) vs Beneficiary (the person or an Organization). Sponsorship links approved by an org admin, with a split (default 100% org), recorded on every receipt as of qualification; forward-only. Org-mates are related accounts for every independence rule (DB-enforced). Governance weight accrues to the beneficiary with a 10% per-organization cap. Org wallets (multisig recommended).
+
+## Astra review 02 fix pass (founder decisions, 2026-09-29)
+
+## D39. Confiscation after proven cheating — no SILENT or ARBITRARY confiscation
+- Supersedes the looser "no confiscation" wording. When review, dispute or audit PROVES cheating, the protocol confiscates everything it still controls: unreleased holdback (all open lookback windows), pending allocations (risk-review and challenge windows), claimable-but-unclaimed entitlements, unreleased Genesis vesting; then offsets on future earnings until the proven excess is repaid; revocation of the cheater's receipts (append-only); zeroed governance weight; time-boxed or permanent exclusion from rewards, voting, review and duty.
+- Never on-chain seizure of released tokens: no permanent-delegate or freeze authority (a master key over every holder is an attack target and contradicts a neutral proof of contribution). More reach, if wanted, comes from a longer or larger holdback by policy.
+- Due process: recorded evidence, notice, a reply window, one appeal, an action-bound two-person AdminAction for confiscation, a governance vote (structural tier) for permanent exclusion (founder AdminAction in founder mode), a full public record on the permalinks. Confiscated amounts return to the epoch pool and fund recovered-only bounties — never wOS.
+
+## D40. Holdback
+- Usage-based rewards stay (A2). Each finalized allocation releases a share now and holds the rest (default 50%, policy data) for the 13-epoch lookback. Findings recover from the holdback first. Exclusion after proven cheating forfeits unreleased holdback (RiskPolicy); an ordinary pause in contributing never does. Attested usage stays mainnet-ineligible until F1 is decided with the fabrication results (TOKENOMICS-SIMULATION A2).
+
+## D41. Unrecoverable losses
+- Bounties are paid only from amounts actually recovered. Unrecovered fraud (a written-off offset) reduces the following epochs' pools, at most 10% of a budget per epoch, published.
+
+## D42. Audit capacity unavailable
+- When no eligible auditor exists by the deadline, the claim releases on schedule, flagged "unaudited" (still inside the holdback). Contributors are never penalised for missing auditors.
+
+## D43. Dispute burden
+- Stake forfeited per rejected item (not all-or-nothing); a minimum-stake floor so small earners pay a real but small amount; one appeal per resolved item; erroneously withheld amounts are released with the delay recorded; related parties of the accused never take bounty priority.
+
+## D44. What the governance cap promises
+- No organization's FINAL effective voting share exceeds 10% of either weight, enforced mathematically (water-filling; the tally refuses when too few independent groups make the caps infeasible). Turnout uses the same capped denominator. Locks count only if seasoned (held at least one full epoch before the snapshot). Beneficial-owner aggregation: an organization, or a person with every account and wallet they control.
+
+## D45. Organization obligations
+- Org admin consent is required for sponsorship; split changes are forward-only (end the link, start a new one); offsets and confiscations are charged to the beneficiary; the organization votes with its own capped weight; authorized wallet controllers are recorded.
+
+## D46. Multisig custody and pause resumption
+- Under mainnet option M1 the escrow releases on a schedule sized to at most a few epochs' budgets; the multisig never accumulates more. Resuming settlement after a pause requires an explicit safety confirmation; an expired pause does not auto-resume while the incident is open.
+
+## D47. Publication and retention
+- Contributors accept a disclosure of what becomes public BEFORE their first contribution or wallet binding. Run-log bodies expire after 365 days; commitments and hashes are kept. The responsible entity is named in the docs. Privacy items join the existing legal checkpoint only.
+
+## D48. Genesis calibration
+- A frozen, independently reviewed reference population excluding the founder and related parties; the stated twelve-epoch statistic computed exactly; a published fallback rate if evidence is insufficient; a canonical work mapping (each commit to exactly one retro unit) so keys cannot overlap.

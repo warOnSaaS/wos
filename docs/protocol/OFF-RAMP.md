@@ -17,7 +17,7 @@ The canonical record is off chain: receipts, allocations, claim leaves, admin ac
 
 | Trigger | Immediate action | Who | Then |
 |---|---|---|---|
-| security incident / exploit | pause settlement (`paused_accrual`) | emergency multisig (3-of-5; devnet 2-of-3) | expires ≤ 14 days; governance must ratify (simple majority) or it resumes |
+| security incident / exploit | pause settlement (`paused_accrual`) | emergency multisig (3-of-5; devnet 2-of-3) | the pause's EMERGENCY AUTHORITY expires ≤ 14 days after the server-stamped start; governance must ratify it (simple majority). Settlement does **not** auto-resume: a `resume` needs an explicit safety confirmation (D46) |
 | chain failure or deprecation | pause | emergency multisig | adapter switch or migration by structural vote |
 | legal or regulatory order | pause (or as the order requires) | emergency multisig + founder | legal checkpoint; structural vote |
 | program bug | pause | emergency multisig | fix or migrate by structural vote |
@@ -28,11 +28,12 @@ The canonical record is off chain: receipts, allocations, claim leaves, admin ac
 ## 3. Migration procedure
 
 1. **Declare** the snapshot epoch E (structural vote, or an emergency declaration ratified later).
-2. **Freeze** settlement at the end of E. Publish a `MigrationSnapshot`: admin-actions head, every epoch's allocations root, a balances root with, per beneficiary, settled-so-far and final-but-unclaimed amounts, and the total unclaimed.
-3. **Map deterministically**: default rule "1:1 base units of unclaimed entitlements under the new adapter". Any other rule (e.g. also mirroring settled balances onto a successor mint) must be published before the snapshot and passed at the structural tier. The mapping rule itself makes no one better or worse off.
-4. **Verify**: anyone recomputes the snapshot from public receipts and allocations and checks it against the anchored roots.
-5. **Claim window**: unclaimed entitlements remain claimable under the new mechanism for 365 days (policy data), then follow the ordinary unbound-carry rule.
-6. Governance weight continues on contribution weight (GOVERNANCE §6).
+2. **Fence and drain (H3):** pause settlement (the current adapter generation stops accepting attempts), give every in-flight attempt a terminal outcome (confirmed at finalized commitment, or expired-not-landed after a historical signature search), void unsettled leaves, record the finalized slot. The DB refuses the snapshot while settlement is not paused or any attempt is unresolved. Every entitlement is then settled under exactly one adapter generation: a void leaf frees its entitlements for a leaf of the next generation.
+3. **Freeze** accounting at the end of E. Publish a `MigrationSnapshot`: admin-actions head, every epoch's allocations root, a balances root with, per beneficiary, settled-so-far and final-but-unclaimed amounts, and the total unclaimed.
+4. **Map deterministically**: default rule "1:1 base units of unclaimed entitlements under the new adapter". Any other rule (e.g. also mirroring settled balances onto a successor mint) must be published before the snapshot and passed at the structural tier. The mapping rule itself makes no one better or worse off.
+5. **Verify**: anyone recomputes the snapshot from public receipts and allocations and checks it against the anchored roots.
+6. **Claim window**: unclaimed entitlements remain claimable under the new mechanism for 365 days (policy data), then follow the ordinary unbound-carry rule.
+7. Governance weight continues on contribution weight (GOVERNANCE §6).
 
 ## 4. Authorities
 

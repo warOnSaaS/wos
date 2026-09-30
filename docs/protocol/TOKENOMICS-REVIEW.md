@@ -36,6 +36,8 @@ Every WOS therefore enters circulation because an epoch allocated it to a person
 
 - **Early vs late:** WOS per ACU falls with time (ceiling decay, budget decay) and with participation (pro rata). At 1,000 contributors a median contributor receives ~1,442 WOS/week in week 1 and ~258 in year 10 (S1); at 10,000, ~145 and ~26 (S2).
 - **Low participation:** the ceiling holds the rate at ≤ 100 WOS/ACU and returns ~99% of the budget (S6, S9). No windfall for early solitude.
+- **Timing games (Q3):** the realised rate is min(slice/weight, ceiling), so accepting work in a quiet epoch could pay more. The ceiling is therefore also at most 1.5× the trailing 4-epoch rate (the gain from timing is at most 50%, and merges are not fully in a contributor's control). Flooding one epoch only dilutes that epoch and is bounded by caps; completion accrual attributed to flooded work that is later clipped is corrected.
+- **Holdback (D40):** 50% of every allocation is released 13 epochs later. Honest contributors see this as a delay; it is the only collectable collateral against post-finalization findings (exit and churn make future offsets worthless).
 - **Growth:** in extreme growth (S5, 10 → 1,000,000 in two years) the rate drops by three orders of magnitude within a year; early contributors are rewarded more per ACU, as Part B prefers, without a cliff.
 - **Inference cost decline:** if the oracle tracks falling prices, the same work yields fewer ACU and, once the ceiling binds, fewer WOS (S7: 95% of the year-10 budget returned). Re-basing the ceiling with each oracle version is required.
 - **Provider prices:** a cut in one provider's list price moves shares away from its users (S8). Damping (≤ 30% per oracle version) limits the jump; it does not remove it.
@@ -43,7 +45,7 @@ Every WOS therefore enters circulation because an epoch allocated it to a person
 
 ## 5. Gaming (summary; full list in ABUSE-MODEL.md)
 
-The dominant economic attack on a usage-weighted reward is inflation up to the cap. With V1 caps, inflation can pay +22% to +56% receipt by receipt (A). Countermeasures that make the expected gain ≈ 0: exact-total run logs (bare numbers halved), anomaly ranking and total-excess bounties (disputes become rational, C), sampled audits, and a 13-epoch pattern lookback with offsets. The simplest structural fix remains the founder's option to weight mainnet by accepted output (ADR 3.4, F1).
+The dominant economic attack on a usage-weighted reward is inflation up to the cap. With V1 caps, inflation pays +22% to +56% receipt by receipt (A). With real recovery (Astra-02 H4) — a 50% holdback over 13 epochs, confiscation and exclusion — the expected gain turns negative once detection exceeds ~0.5% per receipt, but stays positive at 0.1% (+29%), after early exit (+6%) or with cheap identity churn (+11%), and rises with contaminated baselines (A2). Detection is not measured yet, so the earlier claim that the expected gain is ≈ 0 is withdrawn. Mainnet stays fail-closed until F1; the structural fix remains weighting mainnet by accepted output (ADR 3.4).
 
 ## 6. Governance locks on Solana (D34)
 
@@ -54,6 +56,8 @@ Governance counts WOS locked for ≥ 12 months (GOVERNANCE.md). Options:
 | **SPL Governance (Realms) with a voter-stake-registry (VSR) plugin** | Solana's governance program; VSR adds time-locked deposits with vote weight by lock duration | existing, used in production by several DAOs; supports lockups | Token-2022 support in the VSR plugin: UNVERIFIED; the program and plugin upgrade authorities must be checked; Realms counts votes on chain, while V1 counts off chain |
 | A vesting/escrow program (e.g. Streamflow or Bonfida token vesting) as the "lock" | tokens escrowed with a release date | simple, audited vendors (audit status UNVERIFIED by us) | vote weight must be read off chain from escrow accounts |
 | Custom vote-escrow program | ve-style locks | exactly our rule | new Rust, audit required |
+
+**Seasoning (Q9):** whichever program is chosen, the snapshot reads each lock's creation slot and counts only locks at least one full epoch old.
 
 **Recommendation:** V1 runs governance **off chain** (signed votes, deterministic tally, weights snapshotted by wOS) with **devnet** locks for rehearsal using an existing escrow/vesting program; the snapshot reads lock accounts at a declared slot. Choose between VSR and an escrow program at the mainnet gate after verifying Token-2022 support, audits and upgrade authorities (MAINNET-READINESS G-8). Do not write a custom lock program.
 

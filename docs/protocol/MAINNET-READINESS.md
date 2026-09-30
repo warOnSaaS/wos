@@ -14,15 +14,17 @@ Mainnet is a separate, deliberate milestone (A5). Every item below needs evidenc
 | G-8 | Governance locks | lock program chosen (TOKENOMICS-REVIEW §6), Token-2022 support verified, snapshot-by-slot tested | protocol-chain |
 | G-9 | Epoch finality | 26 consecutive devnet epochs CLOSED with reconciliation; windows never violated (DB-enforced); at least one dispute resolved each way | protocol-engine |
 | G-10 | Oracle integrity | oracle rates `verified: true` from providers' price pages; damping and ceiling re-basing exercised | architect |
-| G-11 | Evidence eligibility | founder decision F1 recorded (ATTESTED usage on mainnet: yes/no; or accepted-output weight) and reflected in `reward-policy` | founder |
+| G-11 | Evidence eligibility | founder decision F1 recorded with the fabrication results (TOKENOMICS-SIMULATION A2) and a MEASURED per-receipt detection rate from devnet (audits, disputes, canaries against an adaptive red-team client); ATTESTED usage on mainnet yes/no, or accepted-output weight | founder |
 | G-12 | Genesis | retro roadmap PR merged; computation reviewed by ≥ 2 independent humans; `record_genesis` two-person action | founder, reviewers |
 | G-13 | Receipt integrity | every devnet receipt recomputes to its hash; admin-actions chain verifies; roots match Memo anchors | protocol-engine |
 | G-14 | Economic attacks | skim, cap-saturation and dispute-griefing drills on devnet with measured detection | protocol-review |
 | G-15 | Upgrade authority | no upgradeable program under anyone's unilateral control | protocol-chain |
 | G-16 | Emergency procedures | pause drill (auto-expiry observed), incident runbook, contact list | founder |
 | G-17 | **Off-ramp drill** | pause → accrue under `paused_accrual` → migrate to `in_app_credits` from a snapshot → every claimant reconciles (automated in the E2E test) | protocol-engine |
-| G-18 | Legal checkpoint (the one) | a written opinion covering: whether WOS allocated for contribution is a security in the founder's jurisdictions; whether allocation, transferability or wOS Cloud accepting WOS changes that; tax reporting for recipients (contractor paperwork deferred to here by A8); consumer protection; the subscription-terms question G-03 | founder |
+| G-18 | Legal checkpoint (the one) | a written opinion covering: whether WOS allocated for contribution is a security in the founder's jurisdictions; whether allocation, transferability or wOS Cloud accepting WOS changes that; tax reporting for recipients (contractor paperwork deferred to here by A8), including organization beneficiaries and employee/contractor responsibility (D45); consumer protection; the subscription-terms question G-03; **privacy (D47)**: publication of pseudonymous allocations and wallets, retention, the named responsible entity, organization-linked personal data; the confiscation and exclusion process (D39) | founder |
 | G-19 | Transferability (F8) | decided with G-18 | founder |
+| G-21 | Canaries against an adaptive client | measured catch rate of payout canaries when a red-team client cross-checks everything public; results published | protocol-review |
+| G-22 | Holdback and confiscation drill | a proven-cheating drill on devnet: notice, reply, appeal, confiscation of holdback/pending/unclaimed/vesting, exclusion, recovered-only bounty; conservation checked | protocol-engine |
 | G-20 | Public disclosure | "WOS may become worthless or be replaced…" (OFF-RAMP) on every token surface; no price talk anywhere | web, desktop |
 
 A failing item blocks mainnet. Passing all items does not oblige anyone to launch.

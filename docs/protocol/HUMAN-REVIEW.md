@@ -1,4 +1,4 @@
-# HUMAN-REVIEW (DRAFT) — review policy, human reviewers, audits
+# HUMAN-REVIEW (DRAFT v2) — review policy, human reviewers, audits
 
 Contracts: `ReviewPolicy` (`policies.ts`, data `review-policy.v1.json`), `HumanReview`, `HumanReviewContext`, `ReviewerQualification`, `ReviewEvalCase`, `PayoutAuditPacket`/`Verdict`, `PayoutCanary` (`entities.ts`). DB: `human_reviews`, `reviewer_qualification_events`, `review_eval_cases`, `payout_audit_*`, `payout_canaries` (0007). Decisions: A4, D23–D27, D32, D38. Changes to `docs/architecture/REVIEW-PROTOCOL.md` are listed in section 8.
 
@@ -12,7 +12,9 @@ A versioned record, evaluated deterministically:
 
 1. **Classify.** Risk classes have a priority and a matcher (`anyPathGlobs`, `contributionTypes`, `labels`). The first match in priority order wins; `low_risk` matches only when **every** changed path matches its globs; otherwise the default `standard`.
 2. **Require.** The class's rule gives: deterministic verification (always), agent reviews by capability (`REVIEW_A`, `REVIEW_B` at `max`), humans (`count`, allowed `domains`, `distinctDomains`, `minLevel`), and an `adminQuorum`.
-3. **Check independence.** Humans never review their own or an org-mate's work (DB `check_human_review`, `related_accounts`), never hold an agent slot of the same round, at most 10 reviews of the same author per 7 days.
+3. **Check independence.** Humans never review their own or a related account's work, never hold an agent seat of the same round (checked in BOTH insertion orders: `check_human_review` and `check_review_related`, under one per-round lock), at most 10 reviews of the same author per 7 days. **Related accounts** (H8) = same account, members of the same team organization (any role), or anyone ever sponsored by the same organization (ended links included). The check runs as a privileged function, so rows hidden by RLS (sealed verdicts, other organizations' memberships) still count.
+4. **Scope.** A human's latest qualification must include the review's risk class (H8); qualification changes are append-only events bound to an `authorize_reviewer` / `revoke_reviewer` AdminAction on that account.
+5. **Binding.** A pre-merge approval names a round that belongs to the reviewed subject and matches its head sha and submission hash (H8).
 
 V1 values:
 
@@ -58,9 +60,9 @@ All agent compute runs on contributors' own subscriptions; wOS runs no model (D2
 | Mechanism | What it checks | Who | Rate / trigger |
 |---|---|---|---|
 | **Review audit** | re-review of a merged subject's pre-merge verdicts | a random third contributor (not author, not original reviewer, not related) on their own subscription | 10% of rounds; 30% for accounts with < 10 receipts; 50% for flagged accounts. A material disagreement upheld by a ruling revokes the original reviewer's receipts (append-only) and raises an AbuseSignal. Audits are rewarded (AUDIT_RERUN). |
-| **Payout audit** | plausibility of payout lines (usage vs diff/contract/complexity, padded repairs, context inflation, model choice, attribution, peer outliers) — never code, never arithmetic | a quorum of 2 random auditors from outside the feature (+ one optional own-feature seat that counts as signal only), provider-diverse, sealed until all submit | 5% sampled every epoch; every disputed allocation; every PROVISIONAL ratification |
-| **Duty** | supplies payout audits | the claimant's client, automatically, at claim time | owed only when offered, ≤ 3 per claim, effort `high` |
-| **Payout canaries** | whether the auditor's client actually judges | model-free perturbations of real lines (inflated usage, padded repairs, context inflation, model mismatch, duplicated attribution, wrong split), magnitude ≥ 1.5× | 5% of audit tasks (15% new, 25% flagged). Approving one: duty credit lost, unfinalized receipts of the auditor revoked, `payout_canary_passed` |
+| **Payout audit** | plausibility of payout lines (verdict bound to the auditor's own active `payout_audit` lease and a signed run of it; related accounts never share a quorum; the last seat must add the second provider; quorums and verdicts are PRIVATE until revealed, only real outcomes are published — H8, H11) (usage vs diff/contract/complexity, padded repairs, context inflation, model choice, attribution, peer outliers) — never code, never arithmetic | a quorum of 2 random auditors from outside the feature (+ one optional own-feature seat that counts as signal only), provider-diverse, sealed until all submit | 5% sampled every epoch; every disputed allocation; every PROVISIONAL ratification |
+| **Duty** | supplies payout audits | the claimant's client, automatically, at claim time | owed only when offered, ≤ 3 per claim, effort `high`; append-only offer → completion / no-fault expiry events (M14); when no eligible audit can be offered by the deadline the claim releases on schedule flagged `unaudited` (D42) |
+| **Payout canaries** | a BEHAVIOURAL check of the auditor's client — never an attestation that a model ran (H11); a catch needs the matching judgment AND the planted reason | model-free perturbations of real lines (inflated usage, padded repairs, context inflation, model mismatch, duplicated attribution, wrong split), magnitude ≥ 1.5× | 5% of audit tasks (15% new, 25% flagged). Approving one: duty credit lost, unfinalized receipts of the auditor revoked, `payout_canary_passed` |
 
 Verdict substance: every line judged with cited evidence (run-log turn, diff path, baseline, contract) and a rationale; for dispute gates one `focusAnswers` entry per concern. A bare "all plausible" is schema-invalid. An auditor whose "plausible" is contradicted by an upheld finding loses that duty credit; an upheld inflation finding earns the auditor 10% of the clipped amount as bonus weight; inflation claims overruled three times in 30 days raise `false_inflation_findings`.
 

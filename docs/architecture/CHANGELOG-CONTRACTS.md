@@ -1,5 +1,9 @@
 # Contracts changelog
 
+## Unreleased — DRAFT v2 (Astra review 02 fix pass, `ws/protocol`)
+
+Still unreleased and unwired. Engine v2 (identified sources, conservation with non-negative balances asserted on input and output, per-beneficiary rounding, holdback, confiscation, recovered-only bounties, bounded loss absorption, application pools, rate damping); governance water-filling caps with feasibility, lock seasoning; adapters report errors; new entities (Confiscation, Exclusion, DutyEvent, EntitlementRecord, SettlementAttempt, PublicationConsent, RunLogCommitment, BeneficiaryRef, per-item dispute stakes); receipt statuses ACTIVE/PROVISIONAL/RATIFIED/REVOKED; migration 0007 rewritten (see ADR-001 §7 and REVIEW-PACKET §3b). Policy data: holdback, losses, confiscation, audit capacity, damping, Genesis reference population and fallback, governance seasoning and beneficial owner, Genesis cap 0.5%.
+
 ## Unreleased — DRAFT (Proof of Contribution, `ws/protocol`, pending the Astra review)
 
 Not released and not wired into any service. Will ship as **6.0.0** (MAJOR) when the review is resolved: `TaskKind`/`AgentRole` gain `payout_audit`/`payout_auditor`, `TOKEN_DISCLAIMER` is replaced (D18), new routes and events.

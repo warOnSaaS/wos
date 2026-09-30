@@ -20,7 +20,7 @@ Signers of the mainnet multisig: at least 5 named people, the founder at most on
 ## 2. What no one can do, by construction
 
 - mint beyond max supply (escrowed supply + revoked mint authority);
-- freeze or seize anyone's WOS (no freeze authority, no permanent delegate);
+- freeze or seize anyone's released WOS (no freeze authority, no permanent delegate). Confiscation after proven cheating (D39) reaches only amounts the protocol still holds off chain (holdback, pending, unclaimed, unreleased Genesis vesting);
 - change past allocations (append-only ledger, anchored roots, forward-only policy);
 - move escrowed emission except on the escrow's schedule (section 3);
 - vote with unemitted, pooled, multisig or wOS-controlled WOS (D37).
@@ -29,7 +29,7 @@ Signers of the mainnet multisig: at least 5 named people, the founder at most on
 
 | Option | How | Unlimited mint? | Custom code | Verdict |
 |---|---|---|---|---|
-| **M1 Escrow + revoke (recommended)** | at launch mint the emission reserve into an audited time-lock/vesting escrow whose unlock schedule upper-bounds the emission curve (e.g. monthly tranches of the 4-year half-life curve) with the settlement multisig as beneficiary; revoke mint authority | no — supply fixed on chain | none | best available; unlocked-but-unemitted WOS sits in the multisig vault and is publicly reconciled each epoch (vault balance = cumulative unlocked − cumulative settled); unused emission (rate ceiling) accumulates there and is re-offered by the engine, never spent otherwise |
+| **M1 Escrow + revoke (recommended)** | at launch mint the emission reserve into an audited time-lock escrow whose release schedule is sized to **at most a few epochs' budgets** at a time (D46), with the settlement multisig as recipient; revoke mint authority | no — supply fixed on chain | none | the multisig never accumulates more than a few epochs of emission: releases are small and frequent; the vault is publicly reconciled each epoch (balance = cumulative released − cumulative settled); unused emission under the rate ceiling stays in the ESCROW, not the vault. Residual: the escrow program's own authority and audit must be verified (MAINNET-READINESS G-2) |
 | M2 Emission controller program | a small program holds mint authority and mints per epoch at most `curve(e)` into the settlement vault, only with multisig approval | bounded by code | yes (audit required) | cleaner accounting; costs an audit |
 | M3 Retained timelocked multisig mint authority | a governance-controlled multisig mints each epoch | yes, bounded only by signers | none | rejected: an unlimited mint held by people |
 

@@ -312,3 +312,20 @@ Sources: `docs/V1-SPEC.md` (the spec), `docs/DECISIONS.md` (D1–D12 and the nam
 
 ### G-03 addendum (observation, D38)
 - Contributing through an organization may fit vendor terms better on business Claude/ChatGPT plans than on personal subscriptions; to be covered by the legal read (G-03, MAINNET-READINESS G-18).
+
+## L. Found in Astra review 02 (protocol DRAFT v2)
+
+### G-78 Detection is unmeasured — FOUNDER DECISION with F1/F16
+- Fabrication economics depend on the per-receipt detection rate (TOKENOMICS-SIMULATION A2): at 0.1% cheating pays (+29% with holdback), above ~0.5% it loses. Measure it on devnet with an adaptive red-team client before F1.
+
+### G-79 Contaminated baselines raise caps
+- If many contributors inflate, peer P75 caps drift up (A2: +20% cap raises gains markedly). Mitigation to design with data: caps from a trusted, audited reference subset rather than all peers.
+
+### G-80 Team-membership removal evades relatedness
+- Relatedness uses live team memberships (deletable) and all sponsorship links (never deleted). A colleague who leaves the org just before an assignment is not related. Needs an append-only membership history in a later migration.
+
+### G-81 Audit capacity timing model
+- Duty supply arrives at claim time while sampled audits are due during CALCULATING; the non-punitive `unaudited` release (D42) covers shortfalls, but a deadline-by-provider capacity model needs devnet data.
+
+### G-82 Responsible entity not yet named (F14)
+- Publication and retention need a named responsible entity (D47); until then the founder. Privacy review is part of the single legal checkpoint.

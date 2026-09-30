@@ -42,6 +42,10 @@ Versions on the founder's machine: `claude` 2.1.285, `codex-cli` 0.155.0.
 
 The DB refuses an `attested_usage` receipt resting on ESTIMATED or UNVERIFIED usage (`check_contribution_receipt`). The receipt stores its `lowestVerificationLevel` and `evidenceClass` permanently.
 
+## 3b. Adapters fail loudly (M15)
+
+The adapters (`protocol/usage.ts`) return `errors[]` and `ok`. Malformed JSON lines, non-integer or negative counters, cached input above total input (codex), reasoning above output, unsafe sums, claude assistant events without a message id, sub-agent events, and codex rollouts with more than one thread id are all reported; any error makes the run UNVERIFIED. Zero is never a silent default for bad evidence. The codex exec stream has no response ids and is a cross-check source only; the rollout (response-id deduplicated) is authoritative. Pinned CLI versions without recorded fixtures stay ineligible until a founder-run capture establishes their shapes.
+
 ## 4. Canonical accounting (Astra-01 item 6)
 
 - **Categories** (exclusive): uncached input, cache read, cache write, output (reasoning included). Integers; no floats anywhere.
@@ -60,10 +64,10 @@ Every AgentRun whose usage carries weight submits a `RunLog`:
 - per turn: index, start/end timestamps, hashed provider response id, the four usage numbers, tool calls (tool name, repo-relative path or null, sha256 of the arguments, exit code), sha256 of the transcript chunk; repair loops with reason and turn range;
 - **scrubbed by construction:** no prompt or response text, no tool arguments, no environment values, no paths outside the worktree, secret patterns (SECURITY.md) removed from anything textual; the scrubber version is recorded;
 - **bounds:** ≤ 1 MiB, ≤ 2,000 turns, ≤ 200 tool calls per turn;
-- **retention:** 365 days, then only the summary (turns, repairs, tool calls) and hashes remain; raw transcripts stay on the contributor's machine and may be requested by an audit by chunk hash (5% of receipts, 60-day retention obligation on the contributor);
+- **retention (M17):** the commitment (`run_log_commitments`: log hash, turns, repairs, tool calls, totals match, expiry) is kept forever; the body (`run_log_bodies`) is deleted after 365 days — the DB refuses deletion before expiry and any edit; raw transcripts stay on the contributor's machine and may be requested by an audit by chunk hash (5% of receipts, 60-day retention obligation on the contributor);
 - **privacy:** logs are private until the run's epoch finalizes, then public (RLS `published_or_own`).
 
-**Mismatch means:** per-turn totals ≠ usage receipt → the run is UNVERIFIED (fail closed); impossible timings (output faster than 400 tokens/s sustained, or total throughput above 200,000 tokens/s) → `impossible_throughput` (high); log vs diff implausible (many turns and tokens, tiny diff) → shown to auditors, not automatic. Log-consistent ATTESTED usage ranks above bare numbers: a run with no consistent log is weighted at 50%.
+**Mismatch means:** no log at all → bare numbers, weighted 50%; a log present but with per-turn totals ≠ usage receipt → the run is UNVERIFIED (fail closed, 0); impossible timings (output faster than 400 tokens/s sustained, or total throughput above 200,000 tokens/s) → `impossible_throughput` (high); log vs diff implausible (many turns and tokens, tiny diff) → shown to auditors, not automatic. Log-consistent ATTESTED usage ranks above bare numbers: a run with no consistent log is weighted at 50%.
 
 ## 6. Plausibility checks at receipt time
 

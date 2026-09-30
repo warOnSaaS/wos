@@ -1,6 +1,6 @@
-# PROTOCOL — Proof of Contribution, end to end (DRAFT)
+# PROTOCOL — Proof of Contribution, end to end (DRAFT v2, after Astra review 02)
 
-Status: DRAFT pending the Astra review. Contracts: `packages/contracts/src/protocol/` (`@waronsaas/contracts/protocol`, not wired). Schema: `packages/db/migrations/0007_proof_of_contribution.sql` (DRAFT, never applied to production). Decisions: D18–D38 in `docs/DECISIONS.md`. Rationale and deviations: `ADR-001-proof-of-contribution.md`.
+Status: DRAFT pending the Astra review. Contracts: `packages/contracts/src/protocol/` (`@waronsaas/contracts/protocol`, not wired). Schema: `packages/db/migrations/0007_proof_of_contribution.sql` (DRAFT, never applied to production). Decisions: D18–D48 in `docs/DECISIONS.md`. Astra review 02 resolutions: `REVIEW-PACKET.md` §3b. Rationale and deviations: `ADR-001-proof-of-contribution.md`.
 
 The protocol records verified contribution and allocates WOS by published rules (A1). The words are **contribution**, **receipt** and **allocation**; never payment, earnings or investment.
 
@@ -12,7 +12,9 @@ lease (fenced) -> agent run (own subscription) -> UsageReceipt + RunLog -> verif
    -> epoch OPEN .. close -> CALCULATING (sampled audits, canaries, bounded risk review) -> engine
    -> PROPOSED (every allocation public with explanation + anomaly metrics; 48 h challenge window; silence accepts)
         \-> disputes on any set of allocations -> focused payout-audit gate (reply 24 h) -> UPHELD / CLIPPED / REVOKED
-   -> FINALIZED (undisputed final; disputed escrowed) -> DISTRIBUTABLE (Memo anchor) -> claim (duty audits run) -> settlement adapter
+   -> FINALIZED: per-beneficiary ENTITLEMENTS (50% released now, 50% held back 13 epochs; disputed lines escrowed)
+   -> DISTRIBUTABLE (Memo anchor) -> claim: entitlements -> one leaf per beneficiary wallet (duty audits run, or "unaudited")
+   -> settlement adapter: signed tx persisted before broadcast, one active attempt per leaf, finalized confirmation
    -> CLOSED (reconciled)
 ```
 
@@ -27,27 +29,31 @@ All schemas are zod in `entities.ts`, `policies.ts`, `governance.ts`; tables in 
 | RunPolicySnapshot | `RunPolicySnapshot` | `run_policy_snapshots` | frozen at lease issue: all policy versions, capability class, reasoning, reserved cap |
 | AgentRun | existing `AgentRunRecord` + `AgentRunView` | `agent_runs` (0001) | first-class view assembled from runs, leases, usage receipts, review state |
 | UsageReceipt | `UsageReceipt` | `usage_receipts`, `usage_event_ids` | 5 exclusive token categories, provider response-id dedup, verification level, ACU at the pinned oracle |
-| RunLog | `RunLog` | `run_logs` | scrubbed per-turn log; private until the epoch finalizes |
+| RunLog | `RunLog`, `RunLogCommitment` | `run_log_commitments`, `run_log_bodies` | commitment kept forever; body private until finalization, deleted after 365 days (M17) |
+| Qualification | — | `qualification_results` | QUALIFY's persisted result per subject revision, lease generation and accepted changeset (H7) |
+| Publication consent | `PublicationConsent` | `publication_consents` | required before the first receipt or wallet binding (D47) |
 | ContributionReceipt | `ContributionReceipt` | `contribution_receipts` | immutable; weight, evidence class, acceptance event, beneficiary, independence, policy versions |
 | Receipt status | `ReceiptStatusEvent` | `receipt_status_events` | ACTIVE / PROVISIONAL / RATIFIED / REVOKED |
 | ReceiptClip | `ReceiptClip` | `receipt_clips` | an upheld inflation finding lowers weight once, never raises it |
 | Epoch | `Epoch`, `EpochTransition` | `epochs`, `epoch_transitions` | definition row freezes windows and limits; transitions validated in the DB |
 | Epoch manifest | `EpochManifestEntry` | `epoch_manifest_entries` | frozen receipt set; exactly once per mode |
-| Allocation | `Allocation`, `AllocationExplanation` | `allocations` | one line per receipt (disputable) or per payout; stable id = permalink |
+| Allocation (proposed) | `Allocation`, `AllocationExplanation` | `allocations` | one line per (receipt, beneficiary) or per payout; written once while CALCULATING under the epoch lock; must be in the manifest with the receipt's slice, contributor and beneficiary; stable id = permalink |
+| Entitlement (final) | `EntitlementRecord` | `entitlements` | per beneficiary: release_now, holdback_tranche, holdback_matured (names its tranche once), bounty, genesis_vesting, withheld_release; written from FINALIZED on |
 | AnomalyMetrics | `AnomalyMetrics` | `anomaly_metrics` | deterministic engine output; ranks the challenge list |
-| Dispute | `AllocationDispute`, `DisputeItemResolution`, `DisputeSettlement` | `allocation_disputes`, `dispute_items`, `dispute_gates`, `dispute_replies`, `dispute_item_resolutions`, `dispute_settlements` | any set of allocations; per-item outcomes; bounty on total excess |
+| Dispute | `AllocationDispute`, `DisputeItemResolution`, `DisputeSettlement` | `allocation_disputes`, `dispute_items`, `dispute_gates`, `dispute_replies`, `dispute_item_resolutions`, `dispute_appeals`, `dispute_appeal_decisions`, `dispute_settlements` | frozen bundle; per-item stakes and outcomes; one appeal; settlement derived from priority gates; bounty from recovered only |
+| Confiscation, exclusion | `Confiscation`, `Exclusion` | `confiscations`, `confiscation_appeal_decisions`, `confiscation_sources`, `exclusions` | D39: each source consumed once, after notice, reply and appeal |
 | Payout audit | `PayoutAuditPacket`, `PayoutAuditVerdict`, `PayoutAuditQuorum` | `payout_audit_quorums`, `payout_audit_verdicts` | sealed until all seats submit |
 | PayoutCanary | `PayoutCanary` | `payout_canaries`, `payout_canary_outcomes` | private |
-| Duty | `DutyStatement` | `duty_statements` | audits owed at claim, only when offered |
+| Duty | `DutyEvent`, `dutyOutstanding` | `duty_events` | offer, then completion or no-fault expiry (M14); owed only when offered |
 | Pools | `CompletionPool`, `CompletionDefinition`, `PoolAccrual` | `completion_pools`, `completion_definitions`, `pool_accruals`, `pool_events` | frozen, versioned definitions |
-| Claim leaf, settlement | `ClaimLeaf`, `SettlementRecord` | `claim_leaves`, `settlement_records` | one confirmed transfer per leaf |
+| Claim leaf, settlement | `ClaimLeaf`, `SettlementAttempt` | `claim_leaves`, `entitlement_claims`, `leaf_voids`, `settlement_attempts`, `settlement_outcomes` | a leaf per claim to the currently bound wallet; each entitlement in one live leaf; signed tx persisted before broadcast; one active attempt; finalized confirmation |
 | Offset | — | `offsets` | post-finalization reversal, recovered from future allocations |
 | GenesisContribution | `GenesisContribution` | `genesis_contributions`, `work_dedup_keys` | historical credit, shared dedup namespace |
 | AbuseSignal, ContributionRiskFlag | same | `abuse_signals`, `risk_flags` | private; published in aggregate |
 | AdminAction | `AdminAction` | `admin_actions` | hash-chained like the ledger |
 | HumanReview, qualification | `HumanReview`, `HumanReviewContext`, `ReviewerQualification` | `human_reviews`, `reviewer_qualification_events` | bound to head/submission/context/policy |
 | ReviewEvalCase | `ReviewEvalCase` | `review_eval_cases` | permanent disagreement data |
-| WalletBinding | `WalletBinding` | `wallet_bindings` | one account (or organization) per wallet per cluster |
+| WalletBinding | `WalletBinding` | `wallet_bindings`, `wallet_registry` | the log is append-only; the privileged registry enforces one beneficiary per wallet and one wallet per beneficiary per cluster (H9); Squads vaults bind by an executed multisig Memo |
 | SponsorshipLink | `SponsorshipLink` | `sponsorship_links`, `sponsorship_link_ends` | organizations as beneficiaries (D38) |
 | Policies | nine policy schemas + `PolicyActivation` | `policy_documents`, `policy_activations` | forward-only (D33) |
 | Governance | `GovernancePolicy`, `GovernanceProposal`, `GovernanceVote` | `governance_*` | tiered dual supermajority |
@@ -103,11 +109,19 @@ PROPOSED → CHALLENGE_OPEN → FINALIZED → FINAL, or CHALLENGE_OPEN → DISPU
 1. **Standing:** any account with an allocation in the same epoch (the pool is shared). Not one's own allocation.
 2. **Scope:** any set of allocations of the epoch, up to 25 per dispute, 3 disputes per account per epoch: one allocation, several receipts of one person (a pattern), or a suspected cluster.
 3. **Form:** per allocation a reason (inflated usage, padded repairs, context inflation, misreported model, misattribution, duplicate work, split gaming, other), evidence (run-log turns, diff, peer baseline, anomaly metric, cluster), optional proposed amount; shared evidence; a free-text note (untrusted).
-4. **Stake:** 2% of the disputer's pending allocation per item, capped at 10%, minimum 1 WOS; joiners of an existing gate pay the minimum. Forfeited to the reserve only if nothing in the dispute is clipped or revoked.
-5. **Gate:** the first dispute on an allocation opens its gate (bounty priority). Everyone involved is notified; finality never depends on notifications (the list is public from the PROPOSED timestamp). The accused has 24 h to reply. Then a payout-audit quorum per allocation, with a **focus** section built from the concerns (section 6).
-6. **Outcome per allocation:** UPHELD, CLIPPED (a ReceiptClip; amount recomputed at the epoch rate) or REVOKED. The excess leaves issuance; 20% of the **total** excess of the dispute is the bounty; the rest returns to the reserve (engine `disputeSettlements`). Deadlock after 120 h: a maintainer decides by AdminAction.
+4. **Stake (D43):** per item, max(1 WOS floor, min(2% of the disputer's pending allocation, 10% of pending / items)); the total may never exceed the pending allocation. Each REJECTED item forfeits its own stake to the reserve; valid items refund theirs. The bundle is frozen at submission (the header's trigger inserts the items); quotas are serialized per (epoch, disputer).
+5. **Gate:** the first UNRELATED dispute on an allocation opens its gate with bounty priority; related parties of the accused may add evidence but never hold priority. Everyone involved is notified; finality never depends on notifications (the list is public from the PROPOSED timestamp, server-stamped). The accused has 24 h to reply. Then a payout-audit quorum per allocation with a **focus** section built from the concerns (section 6).
+6. **Outcome per allocation:** UPHELD, CLIPPED (a ReceiptClip; amount recomputed at the epoch rate) or REVOKED, with the amount actually recovered. One appeal by the accused or the priority disputer within 72 h, decided by an action-bound AdminAction. The settlement is DERIVED: excess and recovered amounts from the gates the dispute holds priority on, bounty ≤ 20% of what was RECOVERED (D41), forfeited stakes of rejected items. The excess leaves issuance; the rest of the recovered amount returns to the reserve. Deadlock after 120 h: a maintainer decides. An allocation found wrong but upheld late is released with the delay recorded (`withheld_release`, D43).
 
-### 4.5 Existing machines touched
+### 4.5 Holdback, entitlements and claims (D40, H2)
+
+At FINALIZED each undisputed net allocation becomes two entitlements: `release_now` (50%) and a `holdback_tranche` (50%) that matures after 13 epochs as a `holdback_matured` entitlement naming the tranche (once). Disputed lines stay escrowed until their gate resolves. A claim (`wos claim`, Desktop Claim) turns claimable entitlements into one leaf for the beneficiary's currently bound wallet (organization beneficiaries: the org's registered wallet); each entitlement can be in at most one live leaf; a void leaf frees them. When no eligible audit can be offered by the deadline the claim releases on schedule flagged `unaudited` (D42).
+
+### 4.6 Confiscation after proven cheating (D39)
+
+States: FINDING (an upheld finding or a revoked receipt with recorded evidence) → NOTICE (the confiscation row: proven excess, finding reference, reply window ≥ 72 h, appeal window ≥ 168 h, a two-person AdminAction bound to its id) → REPLY → APPEAL (decided by a two-person action, or the window lapses) → EXECUTED (sources recorded, each `(kind, id)` consumed exactly once, never more than the proven excess) → OFFSET (any remainder, recovered from future earnings) → CLOSED. Sources, in order: pending allocations of open windows, unreleased holdback tranches, unclaimed entitlements, unreleased Genesis vesting (issued by the protocol as scheduled entitlements precisely so it stays confiscatable). Released tokens are never touched on chain. The engine consumes the same sources (`confiscations`), pays a bounty only from what was recovered, and returns the rest to the reserve. Exclusions (rewards, voting, review, duty) are time-boxed by AdminAction or permanent by a structural governance vote; an excluded account forfeits unreleased holdback and has zero governance weight. Everything appears on the allocation and receipt permalinks.
+
+### 4.7 Existing machines touched
 
 `AttemptMachine`: a merged attempt now also triggers a ContributionReceipt; `max_lifetime_at` bounds how long an ABU can be held. `LeaseMachine`: `generation` fences every submission. `RoundMachine`: unchanged, but bootstrap_self rounds never produce a qualifying receipt (D23).
 
@@ -143,7 +157,7 @@ A new role `payout_auditor` (task kind `payout_audit`, migration 0007 adds both 
 | 18 | Epoch closes | OPEN → CALCULATING, manifest frozen | `epoch_transitions`, `epoch_manifest_entries` |
 | 19 | Engine allocates | PROPOSED with explanations and anomalies | `allocations`, `anomaly_metrics` |
 | 20 | Distribution root / transaction | FINALIZED → DISTRIBUTABLE; Memo anchor of roots | `epoch_transitions.anchor_signature` |
-| 21 | Contributor claims | `wos claim` / Desktop Claim; duty audits run; push transfer | `claim_leaves`, `settlement_records`, `duty_statements` |
+| 21 | Contributor claims | `wos claim` / Desktop Claim; duty audits run (or `unaudited`); leaf; signed tx persisted, then broadcast | `entitlements`, `claim_leaves`, `settlement_attempts`, `settlement_outcomes`, `duty_events` |
 | 22 | Profile updates | receipts and allocations shown | public API |
 | 23 | Leaderboard (opt-in) | unchanged opt-in rule | `v_leaderboard` successor view |
 | 24 | Sniper List progress | progress recompute | `progress_snapshots` |
@@ -176,10 +190,13 @@ Plus, in the same automated test: a dispute on one allocation (clipped), a payou
 
 **Events (public unless noted):** `receipt.issued`, `receipt.status_changed`, `receipt.clipped`, `epoch.state_changed`, `allocation.proposed`, `allocation.state_changed`, `dispute.opened`, `dispute.reply_added`, `dispute.resolved`, `claim.requested`, `settlement.recorded`, `policy.activated`, `oracle.activated`, `settlement_adapter.changed`, `governance.proposal_opened`, `governance.tallied`, `admin_action.recorded`, `abuse_signal.raised` (private).
 
-## 9. Transparency and privacy
+## 9. Transparency, privacy and the responsible entity (D47)
+
+Before the first contribution or wallet binding, a contributor accepts the **publication disclosure** (recorded in `publication_consents`; the DB refuses receipts without it): what becomes public (receipts, allocations with explanations, pseudonym, wallet, beneficiary organization, usage and run-log summaries after finalization, dispute records), when (allocations at PROPOSED, usage at FINALIZED), and for how long (commitments forever; run-log bodies 365 days). The **responsible entity** for publication and retention is the operator of wOS Cloud; until a legal entity is named at the legal checkpoint (MAINNET-READINESS G-18), the founder is responsible. Pseudonyms are not anonymity: public GitHub work, wallet transfers and timestamps make correlation easy, and the disclosure says so.
+
 
 Every allocation of an epoch is visible to everyone under a **pseudonym** (the account handle, or `wos-` + 8 hex of the account id hash) and the wallet, with its explanation, usage (after finalization), model, run-log summary, attribution and beneficiary organization. E-mail is never shown. The **leaderboard stays opt-in** for ranking and featuring; allocation transparency is a condition of receiving allocations, stated at wallet binding. Cluster evidence (shared devices, IP ranges, GitHub creation patterns) is visible only to maintainers and only where lawful; the public anomaly view shows the deterministic metrics and per-organization concentration.
 
-## 10. Organizations (D38)
+## 10. Organizations (D38, D45)
 
-A contributor may contribute on behalf of an organization: they request, an org owner/admin approves, the link records the organization's share (default 100%). Every receipt records the contributor (the accountable person) and the beneficiary as of qualification. Ending a link is forward-only. Org-mates are **related accounts**: they cannot review, audit or ratify each other's work, cannot fill two seats of one round or quorum, and their disputes against outsiders count individually but never as independent confirmation of each other. Governance weight accrues to the beneficiary, capped at 10% per organization.
+A contributor may contribute on behalf of an organization: they request, an org owner/admin approves, the link records the organization's share (default 100%). Every receipt records the contributor (the accountable person) and the beneficiary as of qualification. Ending a link is forward-only. Org-mates are **related accounts**: they cannot review, audit or ratify each other's work, cannot fill two seats of one round or quorum, and their disputes against outsiders count individually but never as independent confirmation of each other. Governance weight accrues to the beneficiary; the organization votes with its own weight, whose FINAL share is capped at 10% (D44). Obligations (D45): org admin consent; split changes are forward-only (end the link and start a new one); offsets and confiscations are charged to the beneficiary that received the allocation; organization wallets record their authorized controllers and are bound by an owner/admin (Squads vaults by an executed multisig Memo). Related accounts now include members of the same team organization and anyone ever sponsored by the same organization (H8).

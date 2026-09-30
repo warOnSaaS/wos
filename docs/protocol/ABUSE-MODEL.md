@@ -1,4 +1,4 @@
-# ABUSE-MODEL (DRAFT) — threats, signals, flags, admin actions
+# ABUSE-MODEL (DRAFT v2) — threats, signals, flags, confiscation, admin actions
 
 Contracts: `AbuseSignal`, `ContributionRiskFlag`, `AdminAction`, `RiskPolicy` (`risk-policy.v1.json`), anomaly metrics (`engine.ts`). DB: `abuse_signals`, `risk_flags` (private), `admin_actions` (public, hash-chained). Numbers referenced as (A)…(L) are tables in TOKENOMICS-SIMULATION.md.
 
@@ -6,13 +6,13 @@ Contracts: `AbuseSignal`, `ContributionRiskFlag`, `AdminAction`, `RiskPolicy` (`
 
 SECURITY S-24 said Sybil incentives are small because tokens have no cash value. A5 makes WOS a real Solana token that may become tradeable, so **every incentive below is real money at mainnet**. The design assumes contributors run modified clients, own several accounts, collude, and read every public record.
 
-No perfect fraud algorithm exists here. What exists: (1) bounds on what any lie can gain (caps, the rate ceiling, clipping, offsets); (2) many independent chances to be caught (random gates, human review, anomaly ranking, disputes with bounties, sampled audits, canaries, the pattern lookback); (3) auditable, immutable responses (AdminActions, no silent confiscation).
+No perfect fraud algorithm exists here. What exists: (1) bounds on what any lie can gain (caps, the rate ceiling, clipping, a 50% holdback, confiscation, exclusion); (2) many independent chances to be caught (random gates, human review, anomaly ranking, disputes with bounties, sampled audits, canaries, the pattern lookback); (3) auditable, immutable responses (AdminActions, no silent confiscation).
 
 ## 2. Threats (Part B's list plus ours)
 
 | # | Threat | Bound / control | Signals | Residual |
 |---|---|---|---|---|
-| T1 | Suspicious token consumption | cap P75×1.25; clipping; run logs; bare-number haircut | `usage_outlier_vs_peers`, `cap_saturation_pattern` | fabricated consistent logs at the cap: +56% receipt by receipt, 0% expected with the pattern lookback (A) |
+| T1 | Suspicious token consumption | cap P75×1.25; clipping; run logs; bare-number haircut; holdback + confiscation + exclusion | `usage_outlier_vs_peers`, `cap_saturation_pattern` | fabricated consistent logs at the cap: +56% receipt by receipt (A); with real recovery the expected gain is +29% at 0.1% detection per receipt, -54% at 0.5%, +11% with cheap identity churn (A2). Detection is unmeasured — hence F1 |
 | T2 | Repeated cap saturation | anomaly `capSaturationBp`; decomposition when units always need more | `cap_saturation_pattern` | honest hard units look the same; human judgement in the gate |
 | T3 | Abnormal usage vs comparable ABUs | peer baselines per key | `usage_outlier_vs_peers` | needs ≥ 30 peers per key |
 | T4 | Repeated failures | `maxFailedAttemptsPerAbu`, nothing paid for failure | `repeated_failures` | quota burn only (theirs) |
@@ -43,16 +43,24 @@ No perfect fraud algorithm exists here. What exists: (1) bounds on what any lie 
 
 A detector (RiskPolicy `detectors`, versioned) raises an `AbuseSignal` (kind, severity, subject, detector version, numeric evidence). A signal is evidence, not an accusation. Flags attach signals to receipts with an effect by highest severity: info/low → none; medium → `hold` (deferred to the next epoch, at most twice, then decided); high → `exclude_pending_review` (excluded from this epoch's manifest until a maintainer or a gate decides). Signals, flags and canaries are private (RLS) and published in aggregate each epoch (counts by kind and outcome).
 
-## 4. Admin actions (no silent confiscation)
+## 4. Confiscation after proven cheating (D39) — no SILENT or ARBITRARY confiscation
 
-Every effect on a person's standing or allocation is an `AdminAction` row: actor, action, target, reason (≥ 20 characters), affected receipts and epochs, previous state, resulting state, co-signer for two-person actions (`invalidate_receipt`, `suspend_account`, `record_offset`, `activate_policy`, `activate_oracle`, `record_genesis`), hash-chained (`admin_actions_chain`, advisory lock 7313372) so the log is tamper-evident and published. Actions: authorize/revoke reviewer, suspend/restore reward eligibility, suspend/restore reviewer privileges, suspend/restore account, invalidate/restore/hold receipt, clear/uphold risk flag, record offset, clip receipt, activate policy/oracle, set model eligibility, epoch transitions, record Genesis, award security, bootstrap merge, ratify/reject ratification, resolve ratification dispute, end bootstrap, start/end test epochs. Invalidation before finalization excludes the receipt; after finalization it becomes an offset. Restoration is always possible and recorded. Nothing is deleted.
+Proven cheating (an upheld finding or a revoked receipt, with recorded evidence) leads, after notice, a reply window (≥ 72 h) and one appeal (≥ 168 h, decided by a two-person action), to confiscation of what the protocol still controls, each source consumed exactly once and never more than the proven excess: pending allocations, unreleased holdback tranches, unclaimed entitlements, unreleased Genesis vesting. Any remainder becomes an offset on future earnings; an uncollectable offset is written off and absorbed by later budgets (bounded). The cheater's receipts are revoked (append-only), governance weight is zeroed, and the account is excluded — time-boxed by AdminAction (≤ 52 epochs), or permanently by a structural governance vote. Confiscated amounts return to the epoch pool and fund recovered-only bounties; wOS never receives them.
 
-## 5. What canaries and client checks cannot do (stated plainly)
+**Not on chain.** Released tokens are never seized: there is no freeze authority and no permanent delegate, because a master key over every holder is itself the largest attack target and contradicts a neutral proof of contribution. More reach comes only from a longer or larger holdback, by policy.
+
+## 5. Admin actions (every effect recorded, action-bound)
+
+Every effect on a person's standing or allocation is an `AdminAction` row: actor, action, target, reason (≥ 20 characters), the exact payload it authorizes, previous state, resulting state, and a co-signer when the ACTION KIND requires two people (`wos.two_person_action`: invalidate_receipt, suspend_account, record_offset, activate_policy, activate_oracle, record_genesis, approve_genesis_reference, confiscate, decide_confiscation_appeal, exclude, clip_receipt, switch_adapter, write_off) — a caller's label is ignored (H12). Every consuming mutation (status events, clips, offsets, activations, qualifications, resolutions, appeals, pauses, confiscations, exclusions) must cite an action of an allowed kind whose target is exactly that row (`wos.require_admin_action`); hash-chained (`admin_actions_chain`, advisory lock 7313372) so the log is tamper-evident and published. Actions: authorize/revoke reviewer, suspend/restore reward eligibility, suspend/restore reviewer privileges, suspend/restore account, invalidate/restore/hold receipt, clear/uphold risk flag, record offset, clip receipt, activate policy/oracle, set model eligibility, epoch transitions, record Genesis, award security, bootstrap merge, ratify/reject ratification, resolve ratification dispute, end bootstrap, start/end test epochs. Invalidation before finalization excludes the receipt; after finalization it becomes an offset. Restoration is always possible and recorded. Nothing is deleted.
+
+## 6. What canaries and client checks cannot do (stated plainly)
 
 - The CLI cannot detect tampering by asking the agent: the client, the `claude`/`codex` binaries and the machine are contributor-controlled, and the model cannot see host integrity. Binary checks are speed bumps.
 - **Code-defect canaries are not used**: any mutated commit is distinguishable from real public history.
-- **Payout canaries** are indistinguishable only during the audit window, because per-run usage and logs are unpublished until finalization and packets carry no ids. A client can still cross-check a packet against work it contributed to, or share packets within a ring. Canaries therefore catch lazy and scripted clients (E: at 5% and 3 audits/epoch, 95% are caught within ~19 epochs); they do not stop a careful adversary, who must then actually run the model on real tasks — which is the goal.
+- **Payout canaries** are behavioural checks, never execution attestation (H11). Their classification is private (quorums and verdicts are not public; only real outcomes are published) and packets carry no ids, feature keys or public dispute ids. They are indistinguishable only during the audit window, because per-run usage and logs are unpublished until finalization and packets carry no ids. A client can still cross-check a packet against work it contributed to, or share packets within a ring. Canaries therefore catch lazy and scripted clients (E: at 5% and 3 audits/epoch, 95% are caught within ~19 epochs); they do not stop a careful adversary, who must then actually run the model on real tasks — which is the goal.
 
-## 6. Small pools (honest statement, D24)
+## 7. Small pools (honest statement, D24)
 
 With fewer than ~10 eligible auditors, random assignment concentrates and one person with several accounts can plausibly land on their own work (D). Backstops, in order: the admin-authorized human reviewer (the founder in V1), related-account rules, GitHub-age and one-GitHub rules, KYC at the mainnet gate, caps bounding any gain to the unit budget of real accepted work, and the provisional-receipt rule for the founder's own work. Below `smallPoolThreshold` (10) the human sign-off replaces the audit quorum.
+
+**Residual (H8):** relatedness is evaluated live. Sponsorship history is never deleted, but team memberships can be; a colleague who leaves the organization just before an assignment is no longer related. Membership history is a gap (GAPS G-80).

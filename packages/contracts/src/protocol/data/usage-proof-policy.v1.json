@@ -12,9 +12,9 @@
     {
       "provider": "codex_cli",
       "minCliVersion": "0.155.0",
-      "primarySource": "cli_stream_sum",
-      "crossCheckSource": "transcript",
-      "notes": "codex exec --json: usage on turn.completed events (input_tokens INCLUDES cached_input_tokens). Shapes: USAGE-PROOF.md section 2.2."
+      "primarySource": "transcript",
+      "crossCheckSource": "cli_stream_sum",
+      "notes": "Authoritative: the session rollout (token_usage_record per response_id, deduplicated). The codex exec --json stream (turn.completed usage, no response ids) is a cross-check only (Astra-02 M15)."
     }
   ],
   "plausibility": {

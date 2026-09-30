@@ -1,6 +1,6 @@
 # ADR-001: Proof of Contribution — implement as written, or modified?
 
-Status: **PROPOSED (DRAFT), pending the Astra review** (`REVIEW-PACKET.md`). Date: 2026-09-29. Author: Protocol Architect (Claude Opus 5.5), on `ws/protocol`.
+Status: **PROPOSED (DRAFT v2)** — Astra review 02 returned DO NOT IMPLEMENT; this revision resolves it (section 7) and awaits Astra review 03 (`REVIEW-PACKET.md`). Date: 2026-09-29. Author: Protocol Architect (Claude Opus 5.5), on `ws/protocol`.
 Inputs: Amendment 02 (Part A binding, Part B proposal, Part C draft), Astra review 01 (`reviews/ASTRA-REVIEW-01-amendment-02.md`), and the founder decisions received during this design pass, recorded as D18–D38 in `docs/DECISIONS.md`.
 
 ## 1. Decision in one paragraph
@@ -56,7 +56,7 @@ Git history proves authorship and accepted output, not token consumption. Genesi
 ### 3.9 Devnet settlement: claim-triggered push transfers, not a Merkle distributor
 Astra-01 called Merkle distribution "an option, not a V1 requirement". With tens or hundreds of contributors, a devnet distribution wallet pushing SPL transfers when a contributor claims is simpler, needs no third-party program, and is retry-safe by blockhash expiry. wOS still computes a Merkle root of allocations and anchors it with an SPL Memo, so anyone can verify. The mainnet mechanism (push vs an audited Merkle distributor) is decided at the readiness gate with real numbers (SOLANA-ARCHITECTURE §5).
 
-### 3.10 Token-2022, metadata only, no confiscation powers
+### 3.10 Token-2022, metadata only, no on-chain seizure powers
 No freeze authority, no permanent delegate, no transfer hook, no transfer fee, no default-frozen state. Only MetadataPointer + TokenMetadata. A non-transferable extension would be permanent and would force a new mint if WOS ever becomes tradeable (A5). Devnet WOS is transferable and worthless, and the UI says so.
 
 ### 3.11 Mint authority and the off-ramp (D35)
@@ -71,6 +71,9 @@ Two options to keep migration possible without an unlimited mint: (a) keep mint 
 - **Sybil posture changes**: SECURITY S-24 assumed tokens have no cash value. That is no longer true (A5). Controls now rely on the human gate, caps, related-account rules, random assignment, audits and, at mainnet, KYC at the legal checkpoint.
 - **D3 superseded** (D18). Every statement that must change is listed in SUPERSESSION.md §3.
 
+### 3.13 Confiscation after proven cheating, from protocol-held amounts only (D39, D40)
+The founder replaced "no confiscation" with "no SILENT or ARBITRARY confiscation". This design implements it without any on-chain power: 50% of every allocation is held back for 13 epochs, and after proven cheating (evidence, notice, reply, one appeal, a two-person action bound to the confiscation) the protocol consumes pending allocations, unreleased holdback, unclaimed entitlements and unreleased Genesis vesting — each source exactly once, never more than the proven excess — then offsets, revocation, zero governance weight and exclusion. Released tokens are never seized; there is no freeze or permanent-delegate authority. Genesis vesting is released by the protocol (not an on-chain vesting program) so it stays in reach.
+
 ## 4. Critique of the founder proposals received during this pass
 
 - **Review duty at claim (D25):** sound as a *supply* mechanism for audits, weak as a universal gate. Every receipt ratified by X peers means X more max-effort agent runs per receipt on contributors' quotas, and aggregate duty supply must be at least X per receipt or a backlog forms. It also cannot prove consumption. Kept only for dispute gates, sampled audits and provisional ratification (table I shows supply covers demand with up to 3 duty runs per claim).
@@ -78,6 +81,16 @@ Two options to keep migration possible without an unlimited mint: (a) keep mint 
 - **Optimistic payouts (D28):** the right default. The risk is apathy: if nobody disputes, only sampled audits and canaries act. The anomaly ranking and total-excess bounty are what make disputing rational (C).
 - **Governance with tiered dual supermajorities (D34, D36, D37):** good defence against pure capital capture. Early concentration is real (K: contributor zero could meet routine turnout alone in a 6-person network), so governance stays in founder mode until the activation threshold.
 - **Organizations as beneficiaries (D38):** necessary for companies; creates correlated accounts, handled by the related-account rules in the DB and a 10% per-organization governance cap (L).
+
+## 7. Astra review 02 — what changed (full table: REVIEW-PACKET.md §3b)
+
+Every finding was accepted; three were accepted in a modified form, none rejected:
+- **H4 modified by founder decision (D40, D41):** usage rewards stay; instead of a loss budget or external collateral, a 50% holdback is the collateral, bounties come only from recovered amounts, and unrecovered losses reduce later budgets (≤ 10%). The simulation now models real recovery with exit, churn, collusion and contaminated baselines (A2); the result — positive expected gains at very low detection — keeps attested usage mainnet-ineligible until F1.
+- **H8 modified:** relatedness is evaluated live by a privileged function (memberships, and sponsorships including ended ones) under per-round/per-quorum locks, rather than a frozen per-round relationship snapshot. Sponsorship history is never deleted, so the live view only grows; the residual is team-membership removal just before an assignment (GAPS G-80).
+- **M14 partly deferred:** duty is now append-only events with a non-punitive `unaudited` release when capacity is missing (D42); a deadline-specific capacity model by provider and independence constraint is deferred to devnet measurement (GAPS G-81).
+- **Q3 (rate-ceiling timing):** answered with damping (ceiling ≤ 1.5× the trailing realised rate), not by switching value-bearing rewards to accepted output — that remains the flagged recommendation for mainnet (3.4, F1).
+- **Q9 (lock before snapshot):** answered with lock seasoning (≥ one full epoch).
+- The executed counterexamples (H1 returns and replay, H5 organization cap, H13 application pool, L18 rounding) and SQL repros A–G were confirmed against the old code, then turned into tests that now reject them.
 
 ## 5. Open questions
 
@@ -106,3 +119,8 @@ Two options to keep migration possible without an unlimited mint: (a) keep mint 
 | F11 | Seed reviewers: who the founder authorizes as human reviewers in V1 | none yet |
 | F12 | Unclaimed/unbound carry period (52 epochs) | as drafted |
 | F13 | The token name casing (G-31: "WOS" vs "wOS") now that WOS is a token ticker | keep "WOS" as the ticker |
+| F14 | Name the responsible legal entity for publication and retention (D47) | the founder until named |
+| F15 | Holdback share and lookback (D40: 50%, 13 epochs) once devnet measures detection | as drafted |
+| F16 | Minimum measured detection rate that makes F1 acceptable (A2 suggests > 0.5% per receipt) | none set |
+
+Decided in this pass (no longer open): Astra-02's eight missing decisions → D39–D48 (confiscation, holdback, unrecoverable losses, audit capacity, dispute burden, cap promise, organization obligations, multisig custody and resumption, publication and retention, Genesis calibration).
