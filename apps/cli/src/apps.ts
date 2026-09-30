@@ -6,7 +6,7 @@
  * Only `listMyOrganizations`, `listOrgApps`, `enableApp` and `disableApp` are used. Error bodies keep their `details`
  * (the `missing` requirements, the `dependents`, the `current` entitlement) so the CLI can explain them.
  */
-import { AppRoutes, type AppRouteName, ApiError, Routes } from "@waronsaas/contracts";
+import { AppRoutes, type AppRouteName, ApiError, type RouteName, Routes } from "@waronsaas/contracts";
 import { idempotencyKey, type SecretStore } from "@waronsaas/orchestrator";
 import type { z } from "zod";
 
@@ -43,11 +43,19 @@ export class AppsCallError extends Error {
   }
 }
 
+type CoreRes<N extends RouteName> = z.infer<(typeof Routes)[N]["response"]>;
+type CoreBody<N extends RouteName> = z.infer<(typeof Routes)[N]["body"]>;
+
 export interface AppsApi {
   listMyOrganizations(): Promise<OrganizationView[]>;
   listOrgApps(orgId: string): Promise<OrgApps>;
   enableApp(orgId: string, app: string, expectedRowVersion: number | null): Promise<OrgAppView>;
   disableApp(orgId: string, app: string, expectedRowVersion: number | null): Promise<OrgAppView>;
+  /** D53 human review seat (contracts 5.14.0, maintainer routes; not in the frozen Orchestrator interface). */
+  listHumanReviews(): Promise<CoreRes<"listHumanReviews">["items"]>;
+  getHumanReview(roundId: string): Promise<CoreRes<"getHumanReview">>;
+  submitHumanReview(roundId: string, body: CoreBody<"submitHumanReview">): Promise<CoreRes<"submitHumanReview">>;
+  submitHumanRuling(documentId: string, body: CoreBody<"submitHumanRuling">): Promise<CoreRes<"submitHumanRuling">>;
 }
 
 export interface AppsApiOptions {
@@ -123,6 +131,11 @@ export function createAppsApi(opts: AppsApiOptions): AppsApi {
     input: { params?: Record<string, string>; body?: unknown; idempotencyKey?: string } = {},
   ): Promise<Res<N>> => (await request(name, AppRoutes[name], { ...input, token: await accessToken() })) as Res<N>;
 
+  const core = async <N extends RouteName>(
+    name: N,
+    input: { params?: Record<string, string>; body?: unknown; idempotencyKey?: string } = {},
+  ): Promise<CoreRes<N>> => (await request(name, Routes[name], { ...input, token: await accessToken() })) as CoreRes<N>;
+
   const change = (name: "enableApp" | "disableApp") => (orgId: string, app: string, expectedRowVersion: number | null) =>
     call(name, {
       params: { id: orgId, app },
@@ -136,5 +149,20 @@ export function createAppsApi(opts: AppsApiOptions): AppsApi {
     listOrgApps: (orgId) => call("listOrgApps", { params: { id: orgId } }),
     enableApp: change("enableApp"),
     disableApp: change("disableApp"),
+    listHumanReviews: async () => (await core("listHumanReviews")).items,
+    getHumanReview: (roundId) => core("getHumanReview", { params: { id: roundId } }),
+    // Deterministic keys: a retried submission of the same verdict replays instead of sealing twice.
+    submitHumanReview: (roundId, body) =>
+      core("submitHumanReview", {
+        params: { id: roundId },
+        body,
+        idempotencyKey: idempotencyKey("cli", "submitHumanReview", roundId, JSON.stringify(body)),
+      }),
+    submitHumanRuling: (documentId, body) =>
+      core("submitHumanRuling", {
+        params: { id: documentId },
+        body,
+        idempotencyKey: idempotencyKey("cli", "submitHumanRuling", documentId, JSON.stringify(body)),
+      }),
   };
 }

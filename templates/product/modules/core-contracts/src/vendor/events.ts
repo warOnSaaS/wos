@@ -53,6 +53,20 @@ export const DomainEventBody = z.discriminatedUnion("type", [
     materialFindings: z.number().int(),
     independence: ReviewIndependence,
   }),
+  // contracts 5.14.0 (D53): the review policy fallback, public.
+  e("review_policy.switched", "public", {
+    seq: z.number().int().positive(),
+    fallback: z.enum(["none", "fable_unavailable"]),
+    reason: z.string(),
+  }),
+  e("round.single_lab_review", "public", {
+    roundId: Uuid,
+    subjectKind: z.enum(["roadmap", "feature_contract", "implementation"]),
+    subjectId: Uuid,
+    label: z.literal("single_lab_review"),
+    reason: z.string(),
+  }),
+  e("round.human_review_sealed", "private", { roundId: Uuid, humanReviewId: Uuid }),
   e("finding.ruled", "public", { findingId: Uuid, decision: z.enum(["upheld", "overruled"]), confirmedBy: Uuid }),
 
   e("catalog.feature_added", "public", { feature: FeatureKey, proposedBy: TargetSlug }),

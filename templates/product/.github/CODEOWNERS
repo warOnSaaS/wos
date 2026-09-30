@@ -7,6 +7,12 @@
 # exclusive toolchain:<path> resource and a maintainer.
 /.github/                 @waronsaas/maintainers
 /wos.json                 @waronsaas/maintainers
+
+# planning documents (FOUNDER-CHECKLIST 3.6, GAPS G-04): during bootstrap a maintainer approves every roadmap,
+# catalog and Feature Contract PR before it can merge.
+/roadmaps/                @waronsaas/maintainers
+/catalog/                 @waronsaas/maintainers
+/features/*/CONTRACT.yaml @waronsaas/maintainers
 /db/migrations/           @waronsaas/maintainers
 .gitattributes            @waronsaas/maintainers
 .gitmodules               @waronsaas/maintainers

@@ -435,6 +435,56 @@ export async function setCommitStatus(
 }
 
 /**
+ * First-run fix (contracts 5.14.0, ROADMAP-PROTOCOL section 3): marks a draft PR ready for review (GraphQL
+ * `markPullRequestReadyForReview`) once its document reached consensus. A PR that is not a draft is left as it is.
+ */
+export async function markPullRequestReadyForReview(creds: AppCredentials, repo: string, prNumber: number): Promise<{ changed: boolean }> {
+  const { owner, repo: name } = splitRepo(repo);
+  const gh = await installationClient(creds, repo);
+  try {
+    const pr = await gh.request("GET /repos/{owner}/{repo}/pulls/{pull_number}", { owner, repo: name, pull_number: prNumber });
+    if (!pr.data.draft) return { changed: false };
+    await gh.graphql(
+      "mutation($pullRequestId: ID!) { markPullRequestReadyForReview(input: {pullRequestId: $pullRequestId}) { clientMutationId } }",
+      { pullRequestId: pr.data.node_id },
+    );
+    return { changed: true };
+  } catch (e) {
+    throw wrap(e, `markPullRequestReadyForReview ${repo}#${prNumber}`);
+  }
+}
+
+/**
+ * Posts one PR review with event COMMENT (never APPROVE or REQUEST_CHANGES: the App has no review authority,
+ * REVIEW-PROTOCOL section 6 step 5), pinned to `commitId` (the round's head).
+ */
+export async function createPullRequestReview(
+  creds: AppCredentials,
+  repo: string,
+  prNumber: number,
+  input: { body: string; commitId: string },
+): Promise<{ id: number }> {
+  const { owner, repo: name } = splitRepo(repo);
+  assertSha(input.commitId, "commitId");
+  if (!input.body.trim()) throw new GithubAppError("INVALID_INPUT", "review body is empty");
+  if (input.body.length > GITHUB_BODY_LIMIT) throw new GithubAppError("INVALID_INPUT", "review body over GitHub's 65536 character limit");
+  const gh = await installationClient(creds, repo);
+  try {
+    const r = await gh.request("POST /repos/{owner}/{repo}/pulls/{pull_number}/reviews", {
+      owner,
+      repo: name,
+      pull_number: prNumber,
+      commit_id: input.commitId,
+      body: input.body,
+      event: "COMMENT",
+    });
+    return { id: Number(r.data.id) };
+  } catch (e) {
+    throw wrap(e, `createPullRequestReview ${repo}#${prNumber}`);
+  }
+}
+
+/**
  * Turns on auto-merge (GraphQL `enablePullRequestAutoMerge`); with a required merge queue GitHub
  * enqueues the PR once its checks pass. If the PR is already mergeable ("clean status") GitHub
  * refuses auto-merge, so the PR is added to the merge queue directly (`enqueuePullRequest`).

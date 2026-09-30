@@ -1471,4 +1471,26 @@ select wos_test.expect_error($$insert into wos.admin_action_approvals (admin_act
 reset role;
 select set_config('wos.actor_kind', 'system', false);
 
+-- 0013 (first real run): repository case, the D53 review policy switch and the human seat -----------------------------
+select wos_test.expect_error($$update wos.targets set repo_full_name = 'waronsaas/Product' where slug = 'salesforce'$$,
+  'B2: a repository name stored in mixed case', 'targets_repo_lowercase');
+select wos_test.expect_error($$insert into wos.review_policy_switches (seq, fallback, reason, switched_by)
+  values (5, 'fable_unavailable', 'skipping ahead', '00000000-0000-0000-0000-00000000000c')$$, 'D53: a switch that is not the next one', 'not the next one');
+select wos_test.expect_error($$insert into wos.review_policy_switches (seq, fallback, reason, switched_by)
+  values (1, 'none', 'nothing to switch', '00000000-0000-0000-0000-00000000000c')$$, 'D53: a switch to the fallback already in force', 'already none');
+select wos_test.expect_error($$insert into wos.review_policy_switches (seq, fallback, reason, switched_by)
+  values (1, 'fable_unavailable', 'not a maintainer', '00000000-0000-0000-0000-00000000000b')$$, 'D53: a switch by a non-maintainer', 'only a maintainer');
+select wos_test.expect_error($$insert into wos.review_policy_switches (seq, fallback, reason, switched_by)
+  values (1, 'fable_unavailable', 'while rounds are open', '00000000-0000-0000-0000-00000000000c')$$,
+  'D53: a switch while a round is awaiting reviews (rounds pin their seats)', 'awaiting reviews');
+select wos_test.expect_error($$insert into wos.round_human_reviews (round_id, account_id, head_sha, submission_sha256, verdict, body, review_label, review_label_reason)
+  values ('00000000-0000-0000-0007-0000000000e3', '00000000-0000-0000-0000-00000000000c', repeat('d', 40), 'sha256:' || repeat('7', 64),
+          'NO_MATERIAL_GAPS', '{}', 'single_lab_review', 'x')$$, 'D53: a human verdict on a round with a Fable seat', 'no human seat');
+select wos_test.expect_error($$update wos.rounds set second_seat = 'human', review_label = 'single_lab_review', review_label_reason = 'late'
+  where id = '00000000-0000-0000-0007-0000000000e3'$$, 'D53: changing a round''s seats after it opened', 'fixed when it opens');
+do $$ begin
+  if wos.active_review_fallback() <> 'none' then raise exception 'the fallback is none before any switch'; end if;
+  raise notice 'ok: 0013 repository case, switch, seat pinning';
+end $$;
+
 \echo 'all db assertions passed'

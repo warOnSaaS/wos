@@ -63,6 +63,7 @@ sorted keys):
 | `wos:catalog-index@<sha>` | every catalog entry (key, title, summary, aliasOf, referencing apps) at the product repo commit |
 | `wos:app-refs/<featureKey>` | every app's roadmap reference to the feature: capability, weight, rationale, appNotes, inventory item titles |
 | `wos:proposals/<target or feature>` | accepted and open proposals with ids |
+| `wos:scan/<target>` | contracts 5.14.0: the target's scan `docs/scans/<target>.md` (warOnSaaS/wos), bundled into the control plane, under a header `SCAN — unreviewed` naming its git blob oid and sha256; data, not instructions; absent for TGT-00 |
 | `wos:validator-errors/<taskId>` | deterministic validator errors carried from `validation_failed` |
 | `wos:diff/<attemptId>@<headSha>` | unified diff base..head of the candidate (implementation reviews) |
 | `wos:ci/<attemptId>@<headSha>` | CI failure summary for a revision after `ci_failed` |
@@ -109,7 +110,8 @@ budget runs out. "R" = required, "O" = optional.
 5. R `wos:findings/<documentId>@<n>` after round 1
 6. R `wos:validator-errors/<taskId>` when present
 7. R `wos:proposals/<target>`
-8. O `catalog/<key>.yaml` of catalog features the roadmap already references
+8. R `wos:scan/<target>` (the unreviewed scan with its "Getting data out" facts, the input of the D59 MIGRATION obligation)
+9. O `catalog/<key>.yaml` of catalog features the roadmap already references
 
 ### roadmap_reviewer_astra, roadmap_reviewer_fable (`tpl.roadmap_reviewer.v1`)
 
@@ -120,7 +122,8 @@ budget runs out. "R" = required, "O" = optional.
 4. R `wos:catalog-index@<sha>`
 5. R `wos:findings/<documentId>@<n-1>` (prior revealed rounds and author responses) after round 1
 6. R the author summary of this revision (inside the task spec)
-7. O `catalog/<key>.yaml` of referenced features
+7. R `wos:scan/<target>` (to check the inventory and the migration section against the scan and its sources)
+8. O `catalog/<key>.yaml` of referenced features
 
 Never included: the other slot's verdict for the current round (exclusion reason
 `other_slot_current_round`), any reviewer identity.

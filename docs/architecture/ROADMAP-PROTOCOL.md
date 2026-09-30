@@ -144,13 +144,13 @@ The roadmap workflow is a `documents` row with `kind = 'roadmap'` driven by `Doc
 
 | From | Event | To | Actor | Guard / effect |
 |---|---|---|---|---|
-| (none) | maintainer `openRoadmap` | `drafting` | maintainer | 409 `CONFLICT` if an open roadmap exists. Creates the `documents` row (version = last merged + 1), branch `wos/roadmap/<target>/v<n>`, and one open `roadmap_author` task. Event `document.opened`. |
+| (none) | maintainer `openRoadmap` | `drafting` | maintainer | 409 `CONFLICT` if an open roadmap exists. Creates the `documents` row (version = last merged + 1, abandoned rows excluded), branch `wos/roadmap/<target>/v<n>` (a re-opening after an abandoned opening of the same version: `wos/roadmap/<target>/v<n>-<k>`, k = 2, 3, …, because the abandoned branch stays App-owned), and one open `roadmap_author` task. Event `document.opened`. |
 | `drafting` / `revising` | `revision_submitted` | `validating` | contributor | Caller holds the author task lease; changeset only touches document paths. |
 | `validating` | `validation_passed` | `in_review` | system | Section 2 checks pass; the App commits the changeset to the branch; on the first valid revision the App opens the PR as a draft titled `<productName> Replacement Roadmap` (e.g. "Zoom Replacement Roadmap"); `round_number += 1`; a round opens on the head sha + submission hash with one Astra and one Fable review task. |
 | `validating` | `validation_failed` | `revising` | system | New author task with the errors. |
 | `in_review` | `round_gaps` | `revising` | system | Round revealed with at least one open material finding and `round_number < roadmapMaxRounds` (6). New author task. |
 | `in_review` | `round_limit_reached` | `escalated` | system | Open material findings at round 6, or a finding disputed in 2 consecutive rounds (`disputeEscalationRounds`). A `conflict_resolution` task opens. |
-| `in_review` | `round_consensus` | `consensus` | system | Both slots `NO_MATERIAL_GAPS` on the same head sha and submission hash in the same round. App sets `wos/consensus` = success, marks the PR ready for review. Event `document.consensus_reached`. This is ROADMAP CONSENSUS. |
+| `in_review` | `round_consensus` | `consensus` | system | Both slots `NO_MATERIAL_GAPS` on the same head sha and submission hash in the same round. App sets `wos/consensus` = success and `wos/qualified` = success (one context every mergeable PR carries, contracts 5.14.0), marks the PR ready for review. Under the D53 fallback the second slot is the required human review (REVIEW-PROTOCOL "D53 in the V1 control plane"). Event `document.consensus_reached`. This is ROADMAP CONSENSUS. |
 | `escalated` | `ruling_upheld` | `revising` | maintainer | Every escalated finding ruled and confirmed; at least one upheld. |
 | `escalated` | `ruling_all_overruled` | `validating` | maintainer | All overruled; a fresh round opens on the unchanged head with overruled findings closed. |
 | `consensus` | `maintainer_reopen` | `revising` | maintainer | Public reason. |
@@ -159,7 +159,7 @@ The roadmap workflow is a `documents` row with `kind = 'roadmap'` driven by `Doc
 
 Who runs the Roadmap Agent: any eligible contributor who claims the `roadmap_author` task (`GET /v1/tasks?kind=roadmap_author`, `POST /v1/tasks/:id/claim`, or `wos roadmap`), on their own Claude subscription with Fable or Opus at the policy's reasoning (`max`, floor). Nobody is assigned; the task sits open until claimed. Its obligations (inventory from public sources, exactly-once placement, catalog reuse, D12 weights with rationale, answering every open finding) are rendered verbatim from `agent-policy.v1.json` `roles[roadmap_author].obligations`.
 
-Who merges: FOUNDER DECISION (see GAPS.md). Recommendation: during bootstrap a maintainer approves the PR; the App then adds it to the merge queue. Required status checks: `wos/consensus` (App-only source) and `wos-verify`.
+Who merges: FOUNDER DECISION (see GAPS.md). Recommendation: during bootstrap a maintainer approves the PR; the App then adds it to the merge queue. Required status checks: `wos/consensus` (App-only source) and `wos-verify`. With the merge queue (contracts 5.14.0) the App answers `merge_group.checks_requested` by setting `wos/qualified` (and `wos/consensus` for documents) on the merge-group commit when the group's PR is an open wOS PR at consensus or qualified, `failure` otherwise; the ruleset can then require `wos/qualified` for every PR.
 
 Proposals: `wos propose` creates a `proposals` row and a GitHub Issue labelled `wos:proposal` (opened by the App, D9). Open proposals for the target are included in the next author task's context; the author lists the ones it incorporated in `proposals[]` and in `AuthorSummary.proposalsAddressed`. A proposal moves `open -> accepted` (maintainer or the author task) and `accepted -> incorporated` when a merged version references it.
 

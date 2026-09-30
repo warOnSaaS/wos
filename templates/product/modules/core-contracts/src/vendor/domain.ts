@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ReviewPolicyState } from "./review-fallback.js";
 import { AgentRole, ModelRef, ProviderId, ReasoningLevel, ReviewerSlot } from "./agent-policy.js";
 import { ProviderAttestation, ReviewIndependence, TaskKind } from "./agent-io.js";
 import {
@@ -402,5 +403,7 @@ export const PlatformStatus = z.object({
   contractsVersion: z.string(),
   policyVersion: z.string(),
   rewardScheduleVersion: z.string(),
+  /** contracts 5.14.0 (D53): the review policy fallback in force; public. Optional for older producers. */
+  reviewPolicy: ReviewPolicyState.optional(),
 });
 export type PlatformStatus = z.infer<typeof PlatformStatus>;

@@ -49,6 +49,8 @@ const ALL = [
   "0011_mobile_client",
   // 0012 is Amendment 04 (production).
   "0012_identity_and_organizations",
+  // 0013 is the first-run fixes (production): repository case, D53 human seat, versions after an abandon.
+  "0013_review_fallback_and_first_run",
 ];
 
 /** The first number after the last real migration: the runner tests add throwaway files there. */

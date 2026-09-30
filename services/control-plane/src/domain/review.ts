@@ -3,10 +3,12 @@
  * revealing both atomically with the outcome, and driving the subject; plus implementation
  * qualification (BUILD-PROTOCOL.md section 9).
  */
-import { type ReviewIndependence, type ReviewVerdict, RoundMachine } from "@waronsaas/contracts";
+import { type ReviewIndependence, type ReviewVerdict, RoundMachine, SINGLE_LAB_REVIEW_REASON } from "@waronsaas/contracts";
+import { reviewSeatRefusals } from "@waronsaas/contracts/protocol";
 import type { Tx } from "@waronsaas/db";
 import type { Deps } from "../deps.js";
 import { transition } from "../db/transition.js";
+import { insertEvent } from "../db/events.js";
 import { uuidv7 } from "../util/crypto.js";
 import { loadAttempt, type AttemptRow } from "../views.js";
 import { createContribution, settleKeyedContribution } from "./ledger.js";
@@ -20,7 +22,11 @@ export type RoundSubject =
 
 const REVIEW_KIND = { implementation: "implementation_review", roadmap: "roadmap_review", feature_contract: "feature_review" } as const;
 
-/** Opens a round on (headSha, submissionSha256) with exactly one review task per slot. */
+/**
+ * Opens a round on (headSha, submissionSha256). The database pins the review policy in force (migration 0013): two agent
+ * seats normally, or under the D53 fallback `fable_unavailable` the Astra seat plus the required human review (no Fable
+ * task), labelled `single_lab_review`.
+ */
 export async function openRound(
   tx: Tx,
   subject: RoundSubject,
@@ -28,17 +34,19 @@ export async function openRound(
   submissionSha256: string,
   excludedAccountIds: string[],
   by: ActorRef,
-): Promise<{ roundId: string; roundNumber: number }> {
+): Promise<{ roundId: string; roundNumber: number; secondSeat: "fable" | "human" }> {
   const subjectId = subject.kind === "implementation" ? subject.attemptId : subject.documentId;
   const [n] = await tx<{ n: number }[]>`
     select coalesce(max(round_number), 0)::int + 1 as n from wos.rounds
      where ${subject.kind === "implementation" ? tx`attempt_id = ${subjectId}` : tx`document_id = ${subjectId}`}`;
   const roundId = uuidv7();
-  await tx`
+  const [seats] = await tx<{ second_seat: "fable" | "human"; review_label: string | null; review_label_reason: string | null }[]>`
     insert into wos.rounds (id, subject_kind, document_id, attempt_id, round_number, head_sha, submission_sha256, state)
     values (${roundId}, ${subject.kind}, ${subject.kind === "implementation" ? null : subjectId},
-            ${subject.kind === "implementation" ? subjectId : null}, ${n!.n}, ${headSha}, ${submissionSha256}, 'awaiting_reviews')`;
-  for (const slot of ["astra", "fable"] as const) {
+            ${subject.kind === "implementation" ? subjectId : null}, ${n!.n}, ${headSha}, ${submissionSha256}, 'awaiting_reviews')
+    returning second_seat, review_label, review_label_reason`;
+  const agentSlots = seats!.second_seat === "human" ? (["astra"] as const) : (["astra", "fable"] as const);
+  for (const slot of agentSlots) {
     await createTask(
       tx,
       {
@@ -55,7 +63,62 @@ export async function openRound(
       by,
     );
   }
-  return { roundId, roundNumber: n!.n };
+  if (seats!.second_seat === "human") {
+    await insertEvent(
+      tx,
+      {
+        type: "round.single_lab_review",
+        v: 1,
+        visibility: "public",
+        payload: {
+          roundId,
+          subjectKind: subject.kind,
+          subjectId,
+          label: "single_lab_review",
+          reason: seats!.review_label_reason ?? SINGLE_LAB_REVIEW_REASON,
+        },
+      },
+      { aggregateKind: "round", aggregateId: roundId, actor: by.actor, actorAccountId: by.accountId },
+    );
+  }
+  return { roundId, roundNumber: n!.n, secondSeat: seats!.second_seat };
+}
+
+/**
+ * D53 "a model never reviews work built by the same model": the model ids that produced any accepted revision of the
+ * subject (the builder's runs, or every author run of the document). Rule `reviewSeatRefusals` (contracts/protocol).
+ */
+export async function subjectModelIds(tx: Tx, round: { attempt_id: string | null; document_id: string | null }): Promise<string[]> {
+  const rows = round.attempt_id
+    ? await tx<{ model_id: string }[]>`
+        select distinct m.model_id from wos.changesets c join wos.tasks t on t.id = c.task_id
+          join wos.context_manifests m on m.lease_id = c.lease_id and m.manifest_sha256 = c.manifest_sha256
+         where c.ok and (t.attempt_id = ${round.attempt_id}
+                or (t.kind = 'abu_build' and t.abu_id = (select abu_id from wos.attempts where id = ${round.attempt_id})
+                    and c.account_id = (select account_id from wos.attempts where id = ${round.attempt_id})))`
+    : await tx<{ model_id: string }[]>`
+        select distinct m.model_id from wos.changesets c join wos.tasks t on t.id = c.task_id
+          join wos.context_manifests m on m.lease_id = c.lease_id and m.manifest_sha256 = c.manifest_sha256
+         where c.ok and t.document_id = ${round.document_id}`;
+  return rows.map((r) => r.model_id).sort();
+}
+
+/** Refusals for an agent seat of this round (D53): the Fable seat under the fallback, and same-model review. */
+export async function agentSeatRefusals(
+  tx: Tx,
+  round: { id: string; attempt_id: string | null; document_id: string | null },
+  slot: "astra" | "fable",
+  reviewerModelId: string,
+): Promise<string[]> {
+  const [r] = await tx<{ second_seat: "fable" | "human" }[]>`select second_seat from wos.rounds where id = ${round.id}`;
+  const activeFallback = r?.second_seat === "human" ? "fable_unavailable" : "none";
+  const out = new Set<string>();
+  // ReviewPolicy `fallbacks[fable_unavailable].sameModelSelfReview = false`: the rule belongs to the fallback; rounds
+  // with two agent seats keep the V1 rules (two labs by construction).
+  const models = activeFallback === "fable_unavailable" ? await subjectModelIds(tx, round) : [];
+  for (const builderModelId of models.length > 0 ? models : [null])
+    for (const x of reviewSeatRefusals({ activeFallback, slot, reviewerModelId, builderModelId })) out.add(x);
+  return [...out];
 }
 
 /** Accounts that authored the subject: the builder, or every author of an accepted revision of the document. */
@@ -81,15 +144,23 @@ interface RoundRow {
   head_sha: string;
   submission_sha256: string;
   state: "awaiting_reviews" | "revealed" | "cancelled";
+  second_seat: "fable" | "human";
+  review_label: string | null;
+  review_label_reason: string | null;
 }
 
-/**
- * Called in the verdict transaction once both slots have a sealed review: reveal atomically, compute the
- * outcome with planning.computeRoundOutcome, write findings, then drive the subject's machine.
- */
-export async function revealRound(tx: Tx, deps: Deps, roundId: string): Promise<"consensus" | "gaps"> {
-  const [round] = await tx<RoundRow[]>`select * from wos.rounds where id = ${roundId}`;
-  if (round?.state !== "awaiting_reviews") throw new Error(`round ${roundId} is not awaiting reviews`);
+/** One sealed seat of a round: an agent review (astra or fable) or the D53 human review. */
+interface Seat {
+  kind: "agent" | "human";
+  slot: "astra" | "fable" | "human";
+  id: string;
+  account_id: string;
+  github_user_id: string | null;
+  body: ReviewVerdict;
+  independence: ReviewIndependence;
+}
+
+async function sealedSeats(tx: Tx, round: RoundRow): Promise<{ first: Seat | null; second: Seat | null }> {
   const reviews = await tx<
     {
       id: string;
@@ -99,11 +170,44 @@ export async function revealRound(tx: Tx, deps: Deps, roundId: string): Promise<
       body: ReviewVerdict;
       independence: ReviewIndependence;
     }[]
-  >`
-    select id, account_id, github_user_id, slot, body, independence from wos.reviews where round_id = ${roundId}`;
-  const astra = reviews.find((r) => r.slot === "astra");
-  const fable = reviews.find((r) => r.slot === "fable");
-  if (!astra || !fable) throw new Error(`round ${roundId} needs both slots before reveal`);
+  >`select id, account_id, github_user_id, slot, body, independence from wos.reviews where round_id = ${round.id}`;
+  const agent = (slot: "astra" | "fable"): Seat | null => {
+    const r = reviews.find((x) => x.slot === slot);
+    return r ? { kind: "agent", ...r } : null;
+  };
+  if (round.second_seat === "fable") return { first: agent("astra"), second: agent("fable") };
+  const [h] = await tx<{ id: string; account_id: string; github_user_id: string | null; body: ReviewVerdict }[]>`
+    select h.id, h.account_id, a.github_user_id, h.body from wos.round_human_reviews h join wos.accounts a on a.id = h.account_id
+     where h.round_id = ${round.id}`;
+  let human: Seat | null = null;
+  if (h) {
+    // The human seat is never the author (migration 0013); in bootstrap a maintainer reviewer is labelled as such.
+    const [b] = await tx<{ on: boolean }[]>`
+      select coalesce((value ->> 'enabled')::boolean, false) as on from wos.platform_settings where key = 'bootstrap_mode'`;
+    human = { kind: "human", slot: "human", ...h, independence: b?.on ? "bootstrap_maintainer" : "independent" };
+  }
+  return { first: agent("astra"), second: human };
+}
+
+/** True when every seat of the round has a sealed verdict (two agents, or Astra plus the human under D53). */
+export async function roundComplete(tx: Tx, roundId: string): Promise<boolean> {
+  const [round] = await tx<RoundRow[]>`select * from wos.rounds where id = ${roundId}`;
+  if (round?.state !== "awaiting_reviews") return false;
+  const { first, second } = await sealedSeats(tx, round);
+  return first !== null && second !== null;
+}
+
+/**
+ * Called in the verdict transaction once every seat has a sealed verdict: reveal atomically, compute the outcome with
+ * planning.computeRoundOutcome (under D53 the human verdict takes the Fable argument: consensus = both NO_MATERIAL_GAPS),
+ * write findings, then drive the subject's machine.
+ */
+export async function revealRound(tx: Tx, deps: Deps, roundId: string): Promise<"consensus" | "gaps"> {
+  const [round] = await tx<RoundRow[]>`select * from wos.rounds where id = ${roundId}`;
+  if (round?.state !== "awaiting_reviews") throw new Error(`round ${roundId} is not awaiting reviews`);
+  const { first: astra, second } = await sealedSeats(tx, round);
+  if (!astra || !second) throw new Error(`round ${roundId} needs every seat before reveal`);
+  const seats = [astra, second];
   const subjectId = (round.attempt_id ?? round.document_id)!;
   const subjectCol = round.attempt_id ? tx`attempt_id = ${subjectId}` : tx`document_id = ${subjectId}`;
 
@@ -114,7 +218,7 @@ export async function revealRound(tx: Tx, deps: Deps, roundId: string): Promise<
        and severity = 'material'`;
   const priorIds = new Set(prior.map((p) => p.id));
   const verdictsOn = new Map<string, Array<"resolved" | "still_open">>();
-  for (const r of [astra, fable]) {
+  for (const r of seats) {
     for (const p of r.body.priorFindings) {
       if (!priorIds.has(p.findingId)) continue;
       await tx`insert into wos.finding_responses (id, finding_id, round_id, account_id, source, action, note)
@@ -133,37 +237,40 @@ export async function revealRound(tx: Tx, deps: Deps, roundId: string): Promise<
   const overruled = await tx<{ id: string }[]>`select id from wos.findings where ${subjectCol} and state = 'overruled'`;
   const outcome = deps.logic.computeRoundOutcome({
     astra: astra.body,
-    fable: fable.body,
+    fable: second.body,
     priorOpenFindingIds: stillOpen.sort(),
     overruledFindingIds: overruled.map((o) => o.id).sort(),
   });
 
   let material = 0;
-  for (const r of [astra, fable]) {
+  for (const r of seats) {
     for (const f of r.body.findings) {
       const findingId = uuidv7();
       await tx`
-        insert into wos.findings (id, review_id, round_id, document_id, attempt_id, local_id, severity, category, title, detail, evidence,
-                                  suggested_resolution, state)
-        values (${findingId}, ${r.id}, ${roundId}, ${round.document_id}, ${round.attempt_id}, ${f.localId}, ${f.severity}, ${f.category},
-                ${f.title}, ${f.detail}, ${tx.json(f.evidence as never)}, ${f.suggestedResolution}, 'open')`;
+        insert into wos.findings (id, review_id, human_review_id, round_id, document_id, attempt_id, local_id, severity, category, title, detail,
+                                  evidence, suggested_resolution, state)
+        values (${findingId}, ${r.kind === "agent" ? r.id : null}, ${r.kind === "human" ? r.id : null}, ${roundId}, ${round.document_id},
+                ${round.attempt_id}, ${f.localId}, ${f.severity}, ${f.category}, ${f.title}, ${f.detail}, ${tx.json(f.evidence as never)},
+                ${f.suggestedResolution}, 'open')`;
       if (f.severity === "material") {
         material++;
         // A material finding is a contribution; accepted when it becomes resolved or upheld (REWARD-PROTOCOL.md section 3).
-        await createContribution(tx, {
-          accountId: r.account_id,
-          githubUserId: r.github_user_id,
-          category: "review_finding",
-          attemptId: round.attempt_id,
-          documentId: round.document_id,
-          reviewId: r.id,
-          independence: r.independence,
-          idempotencyKey: `review_finding:${findingId}:${r.account_id}`,
-        });
+        // rewards.v1 has no human-review category: the human seat's findings earn nothing in V1 (P1 prices them).
+        if (r.kind === "agent")
+          await createContribution(tx, {
+            accountId: r.account_id,
+            githubUserId: r.github_user_id!,
+            category: "review_finding",
+            attemptId: round.attempt_id,
+            documentId: round.document_id,
+            reviewId: r.id,
+            independence: r.independence,
+            idempotencyKey: `review_finding:${findingId}:${r.account_id}`,
+          });
       }
     }
   }
-  const independence = [astra.independence, fable.independence].sort((a, b) => WEAKNESS[b] - WEAKNESS[a])[0]!;
+  const independence = seats.map((x) => x.independence).sort((a, b) => WEAKNESS[b] - WEAKNESS[a])[0]!;
   await transition(tx, {
     machine: RoundMachine,
     table: "rounds",
@@ -186,7 +293,7 @@ export async function revealRound(tx: Tx, deps: Deps, roundId: string): Promise<
     const attempt = await loadAttempt(tx, round.attempt_id);
     if (attempt && attempt.state === "in_review") await attemptAfterReveal(tx, deps, attempt, round, outcome.outcome);
   } else {
-    await documentAfterReveal(tx, deps, round.document_id!, round, outcome.outcome, [astra.account_id, fable.account_id]);
+    await documentAfterReveal(tx, deps, round.document_id!, round, outcome.outcome, [astra.account_id, second.account_id]);
   }
   return outcome.outcome;
 }
@@ -271,6 +378,14 @@ export async function qualify(
   const [ci] = await tx<{ id: string }[]>`
     select id from wos.verification_runs where attempt_id = ${attempt.id} and source = 'ci' and conclusion = 'success' and head_sha = ${attempt.head_sha}
      order by created_at desc limit 1`;
+  // D53: under the fable_unavailable fallback the round has one agent seat (Astra) and the human review.
+  const [seat] = await tx<{ second_seat: "fable" | "human" }[]>`select second_seat from wos.rounds where id = ${round.id}`;
+  const humanSeat = seat?.second_seat === "human";
+  const agentSeats = humanSeat ? 1 : 2;
+  const [human] = humanSeat
+    ? await tx<{ id: string; account_id: string; verdict: string; head_sha: string; submission_sha256: string }[]>`
+        select id, account_id, verdict, head_sha, submission_sha256 from wos.round_human_reviews where round_id = ${round.id}`
+    : [];
   const checks: Qualification["checks"] = [
     {
       n: 1,
@@ -297,26 +412,30 @@ export async function qualify(
         !!cs &&
         cs.submission_sha256 === round.submission_sha256 &&
         round.head_sha === attempt.head_sha &&
-        reviews.every((r) => r.head_sha === round.head_sha && r.submission_sha256 === round.submission_sha256),
+        reviews.every((r) => r.head_sha === round.head_sha && r.submission_sha256 === round.submission_sha256) &&
+        (!humanSeat || (!!human && human.head_sha === round.head_sha && human.submission_sha256 === round.submission_sha256)),
       evidence: round.submission_sha256,
     },
     { n: 5, check: "scope validation passed", pass: !!cs?.ok, evidence: cs?.id ?? null },
     { n: 6, check: "context manifest accepted for the lease", pass: !!manifest, evidence: manifest?.id ?? null },
     {
       n: 7,
-      check: "signed agent runs for builder and both reviewers",
-      pass: !!builderRun && reviews.length === 2 && reviews.every((r) => r.run_signed),
+      check: humanSeat ? "signed agent runs for builder and the Astra reviewer" : "signed agent runs for builder and both reviewers",
+      pass: !!builderRun && reviews.length === agentSeats && reviews.every((r) => r.run_signed),
       evidence: builderRun?.id ?? null,
     },
     {
       n: 8,
-      check: "Astra and Fable NO_MATERIAL_GAPS by accounts other than the builder",
+      check: humanSeat
+        ? "Astra and the human review NO_MATERIAL_GAPS by accounts other than the builder (single_lab_review)"
+        : "Astra and Fable NO_MATERIAL_GAPS by accounts other than the builder",
       pass:
-        reviews.length === 2 &&
+        reviews.length === agentSeats &&
         reviews.every(
           (r) => r.verdict === "NO_MATERIAL_GAPS" && (r.account_id !== attempt.account_id || r.independence === "bootstrap_self"),
-        ),
-      evidence: reviews.map((r) => r.id).join(","),
+        ) &&
+        (!humanSeat || (!!human && human.verdict === "NO_MATERIAL_GAPS" && human.account_id !== attempt.account_id)),
+      evidence: [...reviews.map((r) => r.id), ...(human ? [human.id] : [])].join(","),
     },
     { n: 9, check: "wos-verify succeeded on the head sha", pass: !!ci, evidence: ci?.id ?? null },
   ];

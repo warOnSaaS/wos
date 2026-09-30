@@ -180,6 +180,18 @@ export class FakeGithub implements GithubPort {
   async requestTeamReview(repo: string, prNumber: number, team: string) {
     this.teamReviews.push({ repo, prNumber, team });
   }
+  readonly readyForReview: Array<{ repo: string; prNumber: number }> = [];
+  async markPullRequestReadyForReview(repo: string, prNumber: number) {
+    const pr = this.prs.find((p) => p.repo === repo && p.number === prNumber);
+    if (!pr) throw new Error(`no PR ${repo}#${prNumber}`);
+    if (pr.draft) this.readyForReview.push({ repo, prNumber });
+    pr.draft = false;
+  }
+  readonly reviewComments: Array<{ repo: string; prNumber: number; body: string; commitId: string; event: "COMMENT" }> = [];
+  async createPullRequestReview(repo: string, prNumber: number, input: { body: string; commitId: string }) {
+    if (!this.prs.some((p) => p.repo === repo && p.number === prNumber)) throw new Error(`no PR ${repo}#${prNumber}`);
+    this.reviewComments.push({ repo, prNumber, body: input.body, commitId: input.commitId, event: "COMMENT" });
+  }
 }
 
 export class FakeMailer {

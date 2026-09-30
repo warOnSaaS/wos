@@ -29,6 +29,7 @@ import { type EventBody, insertEvent } from "../db/events.js";
 import { transition } from "../db/transition.js";
 import { uuidv7 } from "../util/crypto.js";
 import { openRound, subjectAuthors } from "./review.js";
+import { caseInsensitiveRepoMap, repoKey } from "./repo-name.js";
 import { abuTransition, type ActorRef, createTask, endAttempt, SYSTEM, taskTransition } from "./work.js";
 import { loadAttempt } from "../views.js";
 
@@ -97,17 +98,21 @@ async function openDocument(
   openedBy: string | null,
   carry: unknown,
 ): Promise<{ documentId: string; taskId: string; version: number }> {
-  const [v] =
+  // ROADMAP-PROTOCOL section 3: version = last MERGED version + 1 (validation expects the same number). An abandoned
+  // opening of that version keeps its row and its branch, so a re-opening gets the next free branch name for it.
+  const subject =
     input.kind === "roadmap"
-      ? await tx<
-          { n: number }[]
-        >`select coalesce(max(version), 0)::int + 1 as n from wos.documents where kind = 'roadmap' and target_id = ${input.targetId}`
-      : await tx<
-          { n: number }[]
-        >`select coalesce(max(version), 0)::int + 1 as n from wos.documents where kind = 'feature_contract' and catalog_feature_id = ${input.featureId}`;
+      ? tx`kind = 'roadmap' and target_id = ${input.targetId}`
+      : tx`kind = 'feature_contract' and catalog_feature_id = ${input.featureId}`;
+  const [v] = await tx<
+    { n: number }[]
+  >`select coalesce(max(version) filter (where state = 'merged'), 0)::int + 1 as n from wos.documents where ${subject}`;
   const version = v!.n;
+  const [prior] = await tx<{ n: number }[]>`select count(*)::int as n from wos.documents where ${subject} and version = ${version}`;
+  const opening = (prior?.n ?? 0) + 1;
   const id = uuidv7();
-  const branch = input.kind === "roadmap" ? roadmapBranch(input.slug, version) : featureBranch(input.key, version);
+  const base = input.kind === "roadmap" ? roadmapBranch(input.slug, version) : featureBranch(input.key, version);
+  const branch = opening === 1 ? base : `${base}-${opening}`;
   // repo_full_name: a roadmap lives in its target's repo, a contract in its catalog feature's (migration 0003).
   await tx`
     insert into wos.documents (id, kind, target_id, catalog_feature_id, version, state, branch, opened_by, repo_full_name)
@@ -260,6 +265,19 @@ export async function validateDocumentRevision(
     for (const e of deps.logic.validateRoadmap(roadmap.value, inventory.value, catalog, prev?.v ?? null)) {
       errors.push({ path: ARTIFACT_PATHS.roadmap(slug), code: e.code, message: e.message });
     }
+    // First-run fix B2: an in-scope surface names a registered repository (any case; stored lowercase). Unknown ones would
+    // only fail at materialisation, after the merge, where nothing can fix them.
+    const registered = new Set(
+      (await tx<{ repo_full_name: string }[]>`select repo_full_name from wos.repositories`).map((r) => r.repo_full_name),
+    );
+    for (const sf of roadmap.value.surfaces) {
+      if (sf.status === "in_scope" && sf.repo && !registered.has(repoKey(sf.repo)))
+        errors.push({
+          path: `${ARTIFACT_PATHS.roadmap(slug)}:surfaces.${sf.surface}.repo`,
+          code: "SURFACE_REPO_UNKNOWN",
+          message: `surface ${sf.surface} names repository ${sf.repo}, which is not a registered warOnSaaS repository (${[...registered].sort().join(", ")})`,
+        });
+    }
     return errors;
   }
   const key = doc.feature_key!;
@@ -300,7 +318,11 @@ export async function validateDocumentRevision(
      order by t.slug, s.surface`;
   const surfacesInScope = new Map<string, Surface[]>();
   for (const r of surfaceRows) surfacesInScope.set(r.slug, [...(surfacesInScope.get(r.slug) ?? []), r.surface]);
-  const context = { repositories: new Map(repos.map((r) => [r.repo_full_name, r.family])), contractRepo: doc.repo, surfacesInScope };
+  const context = {
+    repositories: caseInsensitiveRepoMap(repos.map((r) => [r.repo_full_name, r.family] as const)),
+    contractRepo: doc.repo,
+    surfacesInScope,
+  };
   for (const i of deps.logic.validateBuildGraph(graph.value, contract.value, manifest, estimate, deps.policy, context)) {
     errors.push({ path: `${ARTIFACT_PATHS.buildGraph(key)}${i.abu ? `:${i.abu}` : ""}`, code: i.code, message: i.message });
   }
@@ -388,7 +410,7 @@ export async function documentAfterReveal(
   tx: Tx,
   deps: Deps,
   documentId: string,
-  round: { id: string; round_number: number; head_sha: string },
+  round: { id: string; round_number: number; head_sha: string; second_seat?: "fable" | "human" },
   outcome: "consensus" | "gaps",
   reviewerIds: string[],
 ): Promise<void> {
@@ -414,6 +436,9 @@ export async function documentAfterReveal(
       visibility: "public",
       payload: { documentId, roundId: round.id },
     });
+    // D53 / D58: under the fable_unavailable fallback every conflict goes to the human, never to a (Fable) resolver
+    // task. A maintainer who is neither an author nor a reviewer of the subject rules with submitHumanRuling.
+    if (round.second_seat === "human") return;
     const authors = await subjectAuthors(tx, { attempt_id: null, document_id: documentId });
     await createTask(
       tx,
@@ -560,7 +585,7 @@ export async function materialiseRoadmap(
   for (const sf of roadmap.surfaces) {
     await tx`insert into wos.target_surfaces (target_id, surface, status, reason, repo_full_name, path, roadmap_version)
              values (${targetId}, ${sf.surface}, ${sf.status}, ${sf.status === "excluded" ? sf.reason : null},
-                     ${sf.status === "in_scope" ? sf.repo : null}, ${sf.status === "in_scope" ? sf.path : null}, ${roadmap.version})`;
+                     ${sf.status === "in_scope" ? repoKey(sf.repo!) : null}, ${sf.status === "in_scope" ? sf.path : null}, ${roadmap.version})`;
   }
 
   // 3. new catalog features

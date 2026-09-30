@@ -8458,7 +8458,15 @@ const ProvenanceRecord = object({
 		conclusion: string(),
 		headSha: GitSha
 	})),
-	qualifiedAt: Timestamp
+	qualifiedAt: Timestamp,
+	humanReview: object({
+		reviewerLogin: string(),
+		verdict: _enum(["NO_MATERIAL_GAPS", "MATERIAL_GAPS"]),
+		headSha: GitSha,
+		roundNumber: number$1().int().positive(),
+		label: literal("single_lab_review"),
+		labelReason: string()
+	}).optional()
 });
 
 //#endregion
@@ -8540,6 +8548,104 @@ const RewardSchedule = object({
 		featureCompletionPercentOfImplementation: number$1().int().min(0).max(100),
 		applicationCompletionPool: number$1().int().nonnegative()
 	})
+});
+
+//#endregion
+//#region packages/contracts/dist/review-fallback.js
+const ReviewFallback = _enum(["none", "fable_unavailable"]);
+const SINGLE_LAB_REVIEW_LABEL = "single_lab_review";
+const SecondSeat = _enum(["fable", "human"]);
+const ReviewPolicyState = object({
+	fallback: ReviewFallback,
+	switchSeq: number$1().int().positive().nullable(),
+	since: Timestamp.nullable(),
+	reason: string().nullable()
+});
+const RoundSeats = object({
+	secondSeat: SecondSeat,
+	label: literal(SINGLE_LAB_REVIEW_LABEL).nullable(),
+	labelReason: string().nullable()
+});
+const SubjectKind = _enum([
+	"roadmap",
+	"feature_contract",
+	"implementation"
+]);
+const HumanSeatEligibility = object({
+	eligible: boolean(),
+	reasons: array(string())
+});
+const HumanReviewQueueItem = object({
+	roundId: Uuid,
+	roundNumber: number$1().int().positive(),
+	subjectKind: SubjectKind,
+	subjectId: Uuid,
+	target: TargetSlug.nullable(),
+	feature: FeatureKey.nullable(),
+	headSha: GitSha,
+	submissionSha256: Sha256,
+	openedAt: Timestamp,
+	agentVerdictSealed: boolean(),
+	label: literal(SINGLE_LAB_REVIEW_LABEL),
+	eligibility: HumanSeatEligibility
+});
+const HumanReviewFinding = object({
+	id: Uuid,
+	roundNumber: number$1().int().positive(),
+	source: _enum([
+		"astra",
+		"fable",
+		"human"
+	]),
+	severity: _enum(["material", "minor"]),
+	category: string(),
+	title: string(),
+	detail: string(),
+	state: _enum([
+		"open",
+		"resolved",
+		"disputed",
+		"upheld",
+		"overruled"
+	])
+});
+const HumanReviewSubject = object({
+	round: HumanReviewQueueItem,
+	subject: object({
+		repo: string(),
+		branch: string().nullable(),
+		title: string(),
+		prNumber: number$1().int().nullable(),
+		prUrl: url().nullable(),
+		files: array(object({
+			path: string(),
+			url: url()
+		})),
+		authorSummary: unknown().nullable()
+	}),
+	agentReview: object({
+		slot: literal("astra"),
+		reviewerHandle: string(),
+		model: string(),
+		reasoning: string(),
+		verdict: ReviewVerdict
+	}).nullable(),
+	priorFindings: array(HumanReviewFinding)
+});
+const SubmitHumanReviewBody = object({
+	verdict: ReviewVerdict,
+	headSha: GitSha,
+	submissionSha256: Sha256
+});
+const SubmitHumanReviewResponse = object({
+	sealed: literal(true),
+	humanReviewId: Uuid,
+	revealed: boolean(),
+	outcome: _enum(["consensus", "gaps"]).nullable()
+});
+const HumanRulingBody = object({
+	ruling: Ruling,
+	note: string().min(5).max(4e3)
 });
 
 //#endregion
@@ -8834,7 +8940,8 @@ const PlatformStatus = object({
 	bootstrapSince: Timestamp.nullable(),
 	contractsVersion: string(),
 	policyVersion: string(),
-	rewardScheduleVersion: string()
+	rewardScheduleVersion: string(),
+	reviewPolicy: ReviewPolicyState.optional()
 });
 
 //#endregion
@@ -8915,6 +9022,26 @@ const DomainEventBody = discriminatedUnion("type", [
 		outcome: _enum(["consensus", "gaps"]),
 		materialFindings: number$1().int(),
 		independence: ReviewIndependence
+	}),
+	e("review_policy.switched", "public", {
+		seq: number$1().int().positive(),
+		fallback: _enum(["none", "fable_unavailable"]),
+		reason: string()
+	}),
+	e("round.single_lab_review", "public", {
+		roundId: Uuid,
+		subjectKind: _enum([
+			"roadmap",
+			"feature_contract",
+			"implementation"
+		]),
+		subjectId: Uuid,
+		label: literal("single_lab_review"),
+		reason: string()
+	}),
+	e("round.human_review_sealed", "private", {
+		roundId: Uuid,
+		humanReviewId: Uuid
 	}),
 	e("finding.ruled", "public", {
 		findingId: Uuid,
@@ -10217,6 +10344,64 @@ const Routes = {
 		errors: ["LEASE_NOT_HELD", "VALIDATION_FAILED"],
 		summary: "Conflict resolver output; needs maintainer confirmation in V1."
 	}),
+	listHumanReviews: route({
+		method: "GET",
+		path: "/v1/human-reviews",
+		auth: "maintainer",
+		idempotent: false,
+		params: None,
+		query: None,
+		body: None,
+		response: object({ items: array(HumanReviewQueueItem) }),
+		errors: [],
+		summary: "Rounds awaiting their human review (fable_unavailable fallback), oldest first, with the caller's eligibility."
+	}),
+	getHumanReview: route({
+		method: "GET",
+		path: "/v1/rounds/:id/human-review",
+		auth: "maintainer",
+		idempotent: false,
+		params: IdParams,
+		query: None,
+		body: None,
+		response: HumanReviewSubject,
+		errors: ["NOT_FOUND", "CONFLICT"],
+		summary: "The round's subject, the sealed Astra verdict and prior findings, for the human seat (CONFLICT: no human seat or not open)."
+	}),
+	submitHumanReview: route({
+		method: "POST",
+		path: "/v1/rounds/:id/human-review",
+		auth: "maintainer",
+		idempotent: true,
+		params: IdParams,
+		query: None,
+		body: SubmitHumanReviewBody,
+		response: SubmitHumanReviewResponse,
+		errors: [
+			"NOT_FOUND",
+			"CONFLICT",
+			"NOT_ELIGIBLE",
+			"VALIDATION_FAILED"
+		],
+		summary: "Seals the human verdict bound to head sha + submission hash; reveals the round when the Astra verdict is in."
+	}),
+	submitHumanRuling: route({
+		method: "POST",
+		path: "/v1/admin/documents/:id/human-ruling",
+		auth: "maintainer",
+		idempotent: true,
+		params: IdParams,
+		query: None,
+		body: HumanRulingBody,
+		response: Ok,
+		errors: [
+			"NOT_FOUND",
+			"CONFLICT",
+			"NOT_ELIGIBLE",
+			"VALIDATION_FAILED"
+		],
+		summary: "Under the fable_unavailable fallback every conflict goes to the human: rules every disputed finding; final."
+	}),
 	getAttempt: route({
 		method: "GET",
 		path: "/v1/attempts/:id",
@@ -10358,6 +10543,11 @@ const Routes = {
 			}),
 			object({
 				action: literal("end_bootstrap"),
+				reason: string().min(5)
+			}),
+			object({
+				action: literal("switch_review_policy"),
+				fallback: ReviewFallback,
 				reason: string().min(5)
 			}),
 			object({

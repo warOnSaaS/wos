@@ -414,6 +414,20 @@ export const ProvenanceRecord = z.object({
   ),
   ci: z.array(z.object({ checkSuiteId: z.number().int(), conclusion: z.string(), headSha: GitSha })),
   qualifiedAt: Timestamp,
+  /**
+   * contracts 5.14.0 (D53): the required human review that held the second seat under the `fable_unavailable`
+   * fallback, and the round's `single_lab_review` label. Absent on rounds with two agent seats.
+   */
+  humanReview: z
+    .object({
+      reviewerLogin: z.string(),
+      verdict: z.enum(["NO_MATERIAL_GAPS", "MATERIAL_GAPS"]),
+      headSha: GitSha,
+      roundNumber: z.number().int().positive(),
+      label: z.literal("single_lab_review"),
+      labelReason: z.string(),
+    })
+    .optional(),
 });
 export type ProvenanceRecord = z.infer<typeof ProvenanceRecord>;
 

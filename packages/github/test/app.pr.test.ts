@@ -7,7 +7,9 @@ import {
   commitChangeset,
   createBranchAt,
   createIssue,
+  createPullRequestReview,
   enableAutoMerge,
+  markPullRequestReadyForReview,
   openPullRequest,
   renderProvenanceSection,
   renderPullRequestBody,
@@ -219,6 +221,34 @@ describe("statuses, auto-merge, issues, close", () => {
     fake.autoMergeError = "Something else";
     stored.auto_merge = false;
     await expect(enableAutoMerge(creds, REPO, pr.number)).rejects.toMatchObject({ code: "GITHUB_ERROR" });
+  });
+
+  it("first run: marks a draft document PR ready for review once, and posts one COMMENT review pinned to the head", async () => {
+    const pr = await openPullRequest(creds, REPO, {
+      head: officialBranch("contacts#04", ATTEMPT),
+      base: "main",
+      title: "OpenCRM Replacement Roadmap",
+      body: "b",
+      draft: true,
+      labels: ["wos:roadmap"],
+      provenance: null,
+    });
+    const stored = fake.pullsOf(REPO)[0]!;
+    expect(stored.draft).toBe(true);
+    expect(await markPullRequestReadyForReview(creds, REPO, pr.number)).toEqual({ changed: true });
+    expect(stored.draft).toBe(false);
+    const calls = fake.graphqlCalls.length;
+    expect(await markPullRequestReadyForReview(creds, REPO, pr.number)).toEqual({ changed: false });
+    expect(fake.graphqlCalls.length).toBe(calls);
+    const review = await createPullRequestReview(creds, REPO, pr.number, { body: "## wOS review round 1\n", commitId: head });
+    expect(review.id).toBeGreaterThan(0);
+    expect(stored.reviews).toEqual([{ id: review.id, event: "COMMENT", body: "## wOS review round 1\n", commit_id: head }]);
+    await expect(createPullRequestReview(creds, REPO, pr.number, { body: " ", commitId: head })).rejects.toMatchObject({
+      code: "INVALID_INPUT",
+    });
+    await expect(createPullRequestReview(creds, REPO, pr.number, { body: "x", commitId: "nope" })).rejects.toMatchObject({
+      code: "INVALID_INPUT",
+    });
   });
 
   it("gated-pull-requests R-001 closes, comments on and locks a PR (the S-18 fallback for non-App PRs)", async () => {

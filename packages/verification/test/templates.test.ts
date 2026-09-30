@@ -147,7 +147,17 @@ describe("templates/product: workflows (S-20)", () => {
 describe("templates/product: CODEOWNERS and rulesets", () => {
   it("CODEOWNERS owns the gate's files", () => {
     const owners = read("templates/product/.github/CODEOWNERS");
-    for (const p of ["/.github/", "/wos.json", "package.json", "tsconfig*.json", "/db/migrations/"])
+    // The planning lines the product seed added (FOUNDER-CHECKLIST 3.6), kept level so a re-seed loses nothing.
+    for (const p of [
+      "/.github/",
+      "/wos.json",
+      "package.json",
+      "tsconfig*.json",
+      "/db/migrations/",
+      "/roadmaps/",
+      "/catalog/",
+      "/features/*/CONTRACT.yaml",
+    ])
       expect(owners).toMatch(new RegExp(`^${p.replace(/[.*/]/g, "\\$&")}\\s+@`, "m"));
   });
 
