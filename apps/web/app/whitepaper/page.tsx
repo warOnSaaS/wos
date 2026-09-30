@@ -41,7 +41,13 @@ var b=document.getElementById("wp-copy"),t=document.getElementById("wp-prompt");
 if(b&&t&&navigator.clipboard){b.hidden=false;b.addEventListener("click",function(){
 navigator.clipboard.writeText(t.value).then(function(){b.textContent="COPIED";setTimeout(function(){b.textContent="COPY PROMPT"},2000)},function(){t.focus();t.select()})})}
 function openFor(){var h=location.hash.slice(1);if(!h)return;var e=document.getElementById(h),d=document.getElementById("full-text");if(e&&d&&d.contains(e)&&!d.open){d.open=true;e.scrollIntoView()}}
-window.addEventListener("hashchange",openFor);openFor();})();`;
+window.addEventListener("hashchange",openFor);openFor();
+var c=document.getElementById("wp-claude");
+if(c&&!/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)){c.addEventListener("click",function(e){
+var app=c.getAttribute("data-app");if(!app)return;e.preventDefault();var left=false;
+function gone(){left=true}window.addEventListener("blur",gone,{once:true});document.addEventListener("visibilitychange",gone,{once:true});
+window.location.href=app;setTimeout(function(){if(!left&&document.visibilityState==="visible"){window.open(c.href,"_blank","noopener")}},2000)})}
+})();`;
 
 export default function WhitepaperPage() {
   return (
@@ -67,14 +73,21 @@ export default function WhitepaperPage() {
           <a className="cmd cmd--big" href={AGENT_LINKS.chatgpt(HANDOFF_PROMPT)} target="_blank" rel="noopener noreferrer">
             OPEN IN CHATGPT
           </a>
-          <a className="cmd cmd--big" href={AGENT_LINKS.claude(HANDOFF_PROMPT)} target="_blank" rel="noopener noreferrer">
+          <a
+            className="cmd cmd--big"
+            id="wp-claude"
+            href={AGENT_LINKS.claude(HANDOFF_PROMPT)}
+            data-app={AGENT_LINKS.claudeApp(HANDOFF_PROMPT)}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
             OPEN IN CLAUDE
           </a>
         </div>
         <p className="fine">
           {FILE}: the core paper, one Markdown file your agent can read in full. For depth, also{" "}
           <a href={WHITEPAPER_PACK_PATH} download={PACK}>download the full pack</a> ({PACK}: the core plus five companion
-          files). OPEN IN CHATGPT and OPEN IN CLAUDE start a new chat with the prompt filled in; the agent opens
+          files). OPEN IN CHATGPT and OPEN IN CLAUDE start a new chat with the prompt filled in (OPEN IN CLAUDE opens the Claude desktop app if you have it, otherwise claude.ai); the agent opens
           the paper itself. GLM does not accept a pre-filled prompt, so{" "}
           <a href={AGENT_LINKS.glm} target="_blank" rel="noopener noreferrer">open GLM and paste the prompt</a>. On a phone,
           these links open the installed app where your phone supports it.

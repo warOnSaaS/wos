@@ -57,6 +57,9 @@ export const HANDOFF_PROMPT_SHORT = `Read ${WHITEPAPER_READ_URL} in full (plain 
 export const AGENT_LINKS = {
   chatgpt: (prompt: string) => `https://chatgpt.com/?q=${encodeURIComponent(prompt)}`,
   claude: (prompt: string) => `https://claude.ai/new?q=${encodeURIComponent(prompt)}`,
+  /** Claude desktop registers claude:// (verified by the founder on macOS: it opens the app with the prompt filled in).
+   *  The ChatGPT desktop app registers no scheme a web page can pass a prompt to, so ChatGPT stays on the web link. */
+  claudeApp: (prompt: string) => `claude://claude.ai/new?q=${encodeURIComponent(prompt)}`,
   glm: "https://chat.z.ai/",
 } as const;
 
