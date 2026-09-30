@@ -36,16 +36,20 @@ Every WOS therefore enters circulation because an epoch allocated it to a person
 
 - **Early vs late:** WOS per ACU falls with time (ceiling decay, budget decay) and with participation (pro rata). At 1,000 contributors a median contributor receives ~1,442 WOS/week in week 1 and ~258 in year 10 (S1); at 10,000, ~145 and ~26 (S2).
 - **Low participation:** the ceiling holds the rate at ≤ 100 WOS/ACU and returns ~99% of the budget (S6, S9). No windfall for early solitude.
-- **Timing games (Q3):** the realised rate is min(slice/weight, ceiling), so accepting work in a quiet epoch could pay more. The ceiling is therefore also at most 1.5× the trailing 4-epoch rate. That smooths the rate but does not cap the gain against the previous epoch (Astra-03 M14; TOKENOMICS-SIMULATION M: after a 1 WOS/ACU epoch a quiet epoch can still pay about 98.7 WOS/ACU); merges are not fully in a contributor's control, and a stronger rule is founder decision F19. Flooding one epoch only dilutes that epoch and is bounded by caps; completion accrual attributed to flooded work that is later clipped is corrected.
-- **Holdback (D40):** 50% of every allocation is released 13 epochs later. Honest contributors see this as a delay; it is the only collectable collateral against post-finalization findings (exit and churn make future offsets worthless).
+- **Timing games (dissolved by D49):** under v3 the realised rate was min(slice/weight, ceiling), so accepting work in a quiet epoch could pay more, and the trailing-rate damping only smoothed it (Astra-03 M14). Under D49 a task's price is fixed when it is issued, before work starts; when it is accepted cannot change what it pays. The residual is issuance timing, which the scheduler controls and publishes (queued demand sets the rate ex ante).
+- **Holdback (D40, re-sized by D49):** recommended 20% of every allocation released 6 epochs later (F15). It no longer collateralises usage claims (there are none); it covers defective work and misattribution found after acceptance, while exit and churn make future offsets worthless.
 - **Growth:** in extreme growth (S5, 10 → 1,000,000 in two years) the rate drops by three orders of magnitude within a year; early contributors are rewarded more per ACU, as Part B prefers, without a cliff.
-- **Inference cost decline:** if the oracle tracks falling prices, the same work yields fewer ACU and, once the ceiling binds, fewer WOS (S7: 95% of the year-10 budget returned). Re-basing the ceiling with each oracle version is required.
-- **Provider prices:** a cut in one provider's list price moves shares away from its users (S8). Damping (≤ 30% per oracle version) limits the jump; it does not remove it.
+- **Inference cost decline (D49):** the budget model recalibrates to falling prices, so the same unit gets fewer ACU and, once the ceiling binds, fewer WOS (S7: 96% of the year-10 budget stays in reserve). Re-basing the ceiling with each budget-model/oracle version is required; stale budgets overpay ~6% on average with 13-epoch recalibration (P).
+- **Provider prices (D49):** budgets price the unit, not the provider, so a provider's price cut moves nobody's share (S8: Codex users stay at 40% of accepted execution; under v3 usage pay they fell to 25%).
 - **Completion pools** reward finishing: every feature's pool pays implementers, authors, reviewers and the finder when the whole frozen definition is met on every surface.
 
 ## 5. Gaming (summary; full list in ABUSE-MODEL.md)
 
-The dominant economic attack on a usage-weighted reward is inflation up to the cap. With V1 caps, inflation pays +22% to +56% receipt by receipt (A). With real recovery (Astra-02 H4) — a 50% holdback over 13 epochs, confiscation and exclusion — the expected gain turns negative once detection exceeds ~0.5% per receipt, but stays positive at 0.1% (+29%), after early exit (+6%) or with cheap identity churn (+11%), and rises with contaminated baselines (A2). Detection is not measured yet, so the earlier claim that the expected gain is ≈ 0 is withdrawn. Mainnet stays fail-closed until F1; the structural fix remains weighting mainnet by accepted output (ADR 3.4).
+**D49 removed the dominant attack of v1–v3.** Under usage-weighted pay, inflation up to the cap paid +22% to +56% receipt by receipt, and with real recovery the expected gain stayed positive at low detection (+29% at 0.1% per receipt, +53% with contaminated baselines; A2). Because detection could not be measured on contributor-controlled machines, attested usage was mainnet-ineligible (F1). Budget-based pay makes every usage behaviour — fabrication, context inflation, expensive models, padded repairs — pay exactly 1.00× by construction, and rewards efficiency (A). The new surface is the budget itself:
+- **Budget inflation** by a proposer and a colluding builder: +5% to +26% extra pay per inflated unit over 13 epochs, depending on review quality and ring size, bounded by the 2× hard maximum and zero-sum inside an objective (N).
+- **Splitting / stacking:** +9% to +67% without the per-objective cap, 0% with it (O).
+- **Cherry-picking** overpriced tasks lasts until the next recalibrations (a +50% overpricing ~26 epochs); **stale budgets** overpay ~6% with 13-epoch recalibration, ~73% if never recalibrated (P).
+These are bounded and visible (budgets are public before work starts), unlike fabricated usage.
 
 ## 6. Governance locks on Solana (D34)
 
@@ -63,4 +67,4 @@ Governance counts WOS locked for ≥ 12 months (GOVERNANCE.md). Options:
 
 ## 7. Open numbers (founder decisions F2, F3, F4)
 
-Budget ppm, ceiling (100 WOS/ACU, decay), slices (60/10/5/5/15/5), Genesis cap (0.5%), unclaimed carry (52 epochs), completion splits (75/10/5/8/2), stakes and bounties. Each can be previewed with `tools/tokenomics-sim/preview.ts` before activation.
+Budget ppm, ceiling (100 WOS per ACU of budget, decay), budget-model multipliers and bounds (D49), holdback (F15), slices (60/10/5/5/15/5), Genesis cap (0.5%), unclaimed carry (52 epochs), completion splits (75/10/5/8/2), stakes and bounties. Each can be previewed with `tools/tokenomics-sim/preview.ts` before activation.

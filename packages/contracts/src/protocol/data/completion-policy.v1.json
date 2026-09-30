@@ -15,7 +15,7 @@
     "requireEverySurfaceInProfile": true,
     "requireAcceptanceSuite": true,
     "requireSecurityReview": true,
-    "requireSelfHostCheck": true
+    "requireExitRightsCheck": true
   },
   "definitionChange": "append_new_version",
   "sharedFeatureAccrual": "equal_split_across_referencing_targets",

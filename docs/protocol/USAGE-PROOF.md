@@ -1,4 +1,6 @@
-# USAGE-PROOF (DRAFT) — what we can and cannot know about agent usage
+# USAGE-PROOF (DRAFT v4) — agent usage is TELEMETRY (D49)
+
+> **D49 (2026-09-30) changed this document's role.** Execution rewards are budget-based: a task's budget is fixed before work starts and acceptance pays it whatever tokens were used (REWARD-PROTOCOL §4). Usage is therefore **telemetry**, used for four things only: (1) enforcing the per-task execution cap, (2) calibrating future budgets from the usage of ACCEPTED tasks, (3) abuse and anomaly signals, (4) model and provider comparisons. It never sets a payout. Everything below about verification levels, adapters and plausibility still holds, but a failed check now marks the telemetry (and may raise a signal), it no longer zeroes a payout; run logs are optional evidence a contributor may attach to answer a dispute. The fabrication analysis that drove A2's safeguards (TOKENOMICS-SIMULATION A2) now shows 0% gain by construction. One residual matters: fabricated telemetry could skew the budget model's calibration (GAPS G-91) — hence calibration only from accepted tasks, robust statistics, a minimum sample and at most 20% movement per step.
 
 Contracts: `UsageReceipt`, `RunLog`, `ProviderUsage` (`protocol/entities.ts`), adapters (`protocol/usage.ts`), `UsageProofPolicy` (`usage-proof-policy.v1.json`). Decisions: D1, D24, D27; Astra-01 items 1 and 6.
 
@@ -9,7 +11,7 @@ wOS launches the contributor's own `claude` and `codex` CLIs on the contributor'
 - **Usage is ATTESTED at best.** A modified client can report any numbers and can fabricate a consistent transcript and run log. Signing with the device key makes the claim attributable to an account; it does not make it true.
 - **No check inside the client is proof.** Asking the agent "was this tampered with?" is answered by whatever runs; a fake `claude` script says "no". Binary hashes and integrity checks are speed bumps, not evidence.
 - **No provider issues signed usage for subscriptions** to our knowledge. Provider response ids (`msg_…`, `req_…`, `resp_…`) are real server identifiers, but wOS cannot query them without the contributor's credentials, which it never touches.
-- **What protects the protocol** is not measurement but economics and review: tight caps (the most a lie can gain), exact-total run logs, deterministic anomaly ranking, disputes with bounties, sampled audits, payout canaries, the pattern lookback, offsets, and — at mainnet — the fail-closed eligibility decision (F1).
+- **What protects the protocol** is not measurement: since D49 a lie about usage earns nothing, because pay is the budget fixed before work. (Before D49: tight caps, exact-total run logs, anomaly ranking, disputes, audits, canaries, the lookback, offsets and the fail-closed F1 decision.)
 
 Future evidence source (listed so it is not forgotten): ask Anthropic and OpenAI for signed usage or response attestations usable by third parties with the user's consent. If they ever exist, they become `VERIFIED` and the policy can prefer them.
 
@@ -59,7 +61,7 @@ The adapters (`protocol/usage.ts`) return `errors[]` and `ok`. Malformed JSON li
 
 ## 5. Run logs (D27)
 
-Every AgentRun whose usage carries weight submits a `RunLog`:
+Since D49 a `RunLog` is OPTIONAL evidence (usage no longer carries weight); when a contributor attaches one — typically to answer an attribution or quality dispute — it has this shape:
 
 - per turn: index, start/end timestamps, hashed provider response id, the four usage numbers, tool calls (tool name, repo-relative path or null, sha256 of the arguments, exit code), sha256 of the transcript chunk; repair loops with reason and turn range;
 - **scrubbed by construction:** no prompt or response text, no tool arguments, no environment values, no paths outside the worktree, secret patterns (SECURITY.md) removed from anything textual; the scrubber version is recorded;
@@ -67,7 +69,7 @@ Every AgentRun whose usage carries weight submits a `RunLog`:
 - **retention (M17):** the commitment (`run_log_commitments`: log hash, turns, repairs, tool calls, totals match, expiry) is kept forever; the body (`run_log_bodies`) is deleted after 365 days — the DB refuses deletion before expiry and any edit; raw transcripts stay on the contributor's machine and may be requested by an audit by chunk hash (5% of receipts, 60-day retention obligation on the contributor);
 - **privacy:** logs are private until the run's epoch finalizes, then public (RLS `published_or_own`).
 
-**Mismatch means:** no log at all → bare numbers, weighted 50%; a log present but with per-turn totals ≠ usage receipt → the run is UNVERIFIED (fail closed, 0); impossible timings (output faster than 400 tokens/s sustained, or total throughput above 200,000 tokens/s) → `impossible_throughput` (high); log vs diff implausible (many turns and tokens, tiny diff) → shown to auditors, not automatic. Log-consistent ATTESTED usage ranks above bare numbers: a run with no consistent log is weighted at 50%.
+**Mismatch means (telemetry since D49):** no log → the telemetry is marked bare numbers (no haircut: nothing is paid on it); a log present but with per-turn totals ≠ usage receipt → the telemetry is UNVERIFIED and excluded from calibration; impossible timings (output faster than 400 tokens/s sustained, or total throughput above 200,000 tokens/s) → `impossible_throughput` (high); log vs diff implausible (many turns and tokens, tiny diff) → shown to auditors, not automatic. Log-consistent ATTESTED usage ranks above bare numbers: a run with no consistent log is weighted at 50%.
 
 ## 6. Plausibility checks at receipt time
 
@@ -80,7 +82,7 @@ Every AgentRun whose usage carries weight submits a `RunLog`:
 | throughput | above the policy limits | `impossible_throughput` (high) |
 | duplicate ids | any hashed response id seen before | receipt refused + `duplicate_provider_ids` (high) |
 | sub-agents | any sub-agent event | UNVERIFIED |
-| cap | weight above cap | clipped (not a signal) |
+| cap | usage above the execution cap | the run is stopped; overshoot is the contributor's cost (never a payout change) |
 
 ## 7. Detection after the fact
 

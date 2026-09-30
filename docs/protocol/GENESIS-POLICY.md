@@ -20,7 +20,7 @@ A6 option 2: a one-time, transparent, **capped** credit for work done before the
 genesisWeight            = Σ retro size points × referenceAcuPerSizePoint
 referenceAcuPerSizePoint = median eligible ACU per size point of the FROZEN reference population
                            (merged IMPLEMENTATION receipts of live epochs 1–12, >= 30 receipts)
-genesisWOS               = min(cap, genesisWeight × mean realised execution rate over live epochs 1–12)
+genesisWOS               = min(cap, genesisWeight × mean issuance rate (WOS per ACU of budget) over live epochs 1–12)   (D49)
 fallback                 = min(cap, retro size points × 400 WOS)   if the population is insufficient
 cap                      = 5,000,000 WOS (0.5% of max supply)
 ```

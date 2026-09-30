@@ -1104,7 +1104,8 @@ export const CompletionDefinition = z.object({
   requiredSurfaces: z.array(z.string()),
   acceptanceChecks: z.array(z.string()),
   requireSecurityReview: z.boolean(),
-  requireSelfHostCheck: z.boolean(),
+  /** D50: exit-rights check, not a first-class self-host check. */
+  requireExitRightsCheck: z.boolean(),
   frozenAt: Timestamp,
 });
 export type CompletionDefinition = z.infer<typeof CompletionDefinition>;

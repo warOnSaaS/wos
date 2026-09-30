@@ -1,6 +1,6 @@
 # ADR-001: Proof of Contribution — implement as written, or modified?
 
-Status: **PROPOSED (DRAFT v3)** — Astra reviews 02 and 03 returned DO NOT IMPLEMENT (yet); v2 resolved review 02 (section 7), v3 addresses review 03 (section 8) and awaits Astra review 04 (`REVIEW-PACKET.md` §3c). Not wired into authoritative reward accounting; devnet-first; mainnet prohibited. Dates: 2026-09-29, v3 2026-09-30. Author: Protocol Architect (Claude Opus 5.5), on `ws/protocol`.
+Status: **PROPOSED (DRAFT v4 — budget-based rewards, D49)** — Astra reviews 02 and 03 returned DO NOT IMPLEMENT (yet); v2 resolved review 02 (section 7), v3 addresses review 03 (section 8); v4 adopts the founder's D49 (section 9) and awaits Astra review 05 (`REVIEW-PACKET.md` §3c, §3d); review 04 was never run. Not wired into authoritative reward accounting; devnet-first; mainnet prohibited. Dates: 2026-09-29, v3 2026-09-30. Author: Protocol Architect (Claude Opus 5.5), on `ws/protocol`.
 Inputs: Amendment 02 (Part A binding, Part B proposal, Part C draft), Astra review 01 (`reviews/ASTRA-REVIEW-01-amendment-02.md`), and the founder decisions received during this design pass, recorded as D18–D38 in `docs/DECISIONS.md`.
 
 ## 1. Decision in one paragraph
@@ -34,7 +34,7 @@ The first engine accrued the completion (15%) and security (5%) slices in full w
 ### 3.3 Human-review weight decoupled from builder compute (Astra-01 item 5)
 Part C paid human reviewers ~10% of the unit's ACU, giving them an interest in inflated builder usage. Human reviews now carry a fixed ACU-equivalent by risk class (0.5 low-risk, 1.0 standard, 2.0 security/accounting/protocol) plus a bonus per upheld finding, paid from their own capped `human_review` slice (5%).
 
-### 3.4 Usage rewards kept (A2), with honest limits and fail-closed mainnet
+### 3.4 Usage rewards kept (A2), with honest limits and fail-closed mainnet — SUPERSEDED by D49 (section 9); kept for the record
 Subscription CLIs report usage client-side. Signing preserves a claim; it does not prove it (USAGE-PROOF.md). Marginal cost of usage on a flat subscription is near zero, and a modified client can fabricate consistent logs. The simulation shows cap saturation with fabricated, consistent run logs earns about +56% receipt by receipt; only the 13-epoch pattern lookback removes the expected gain (A). So:
 - caps are tight (peer P75 × 1.25), repairs count inside the cap, run logs are required and bare numbers get a 50% haircut;
 - evidence class and verification level are stored on every receipt and never upgraded in UI;
@@ -96,6 +96,16 @@ Every finding was accepted; three were accepted in a modified form, none rejecte
 
 Every finding was reproduced on the pre-fix code before any change (`reviews/ASTRA-REVIEW-03-repros-prefix.txt`: 21 SQL sequences, 4 two-session races, 12 TypeScript probes), then fixed and turned into a regression test. Statuses: resolved H2, H3, H8, M10, M11, M12, L16 and the two review-02 residuals; resolved in the database with chain behaviour unexercised H9; resolved for the cited sequences with residuals H1; partially resolved H4, H5, H6, H7, M13, M15; M14 resolved as documentation with the rule left to the founder. The common fix is structural, as Astra recommended: **one source-balance ledger** (0007 §10d) that every consumer of an asset uses under the same per-source lock, **one effective final adjudication** per allocation (`allocation_adjudication`) from which all money is derived, **evidence as relationships** (qualification results, audit assignments) rather than asserted flags, and **one approved operation per admin action**, consumed once. The engine now tracks who owns the claimable part of issuance, pins each tranche's maturity and policy, requires replay state, caps confiscation at the proven excess, converts late completion corrections into offsets and aggregates sponsored splits exactly. Governance applies eligibility before caps and refuses unvalidated weights. Where the architect chose differently from Astra's suggested fix is listed in REVIEW-PACKET §3c with reasons.
 
+## 9. D49 — budget-based execution rewards (founder decision, supersedes A2)
+
+**What changed.** Every commissioned task — build unit, agent or human review, audit, resolution, planning — carries a budget in ACU fixed before work starts, from a versioned budget model (expected compute × difficulty × importance/shared dependency), reviewed in consensus (an unjustified budget is a material finding) and compared with peer budgets. Issuing a task reserves `budget × issuance rate` from the epoch's pooled task capacity; a task that does not fit is not issued; acceptance pays the reservation, split by declared shares; unaccepted tasks expire and are re-priced. Usage is telemetry (cap enforcement, calibration, signals, model comparisons).
+
+**Why.** Usage on contributor-controlled machines cannot be verified (Astra reviews 02 H4 and 03 M13): fabricated but consistent usage gained +29–30% at 0.1% detection per receipt even with a 50% holdback, and every safeguard (caps, mandatory logs, haircuts, a large holdback, F1) was a patch on an unverifiable input. Usage pay also penalised efficient contributors. The white paper already argued for paying accepted output. Budget-based pay removes the usage-fraud surface by construction and pays efficiency.
+
+**What was removed or simplified.** The bare-log haircut; mandatory run logs (now optional evidence); attested-ACU sums, cap clipping of pay and verification-level eligibility in the receipt rules; the Q3 trailing-rate damping and its residual (F19); usage-based dispute reasons and canary perturbations; the "usage plausibility" focus of payout audits (now attribution, splits, budgets, acceptance); F1 and F16 largely dissolve; the holdback shrinks from 50%/13 to a recommended 20%/6.
+
+**What is new and must be designed against.** Budget inflation (bounded multipliers, human approval above 1.25×, hard maximum 2×, peer ranking, proposer may not build), task splitting / reward stacking (per-objective budget cap), cherry-picking easy budgets and stale budgets (recalibration from telemetry of accepted tasks, expiry and re-pricing), low-effort acceptance (full qualification chain, audits, holdback), calibration poisoning by fabricated telemetry (G-91). Simulation tables N, O, P quantify them.
+
 ## 5. Open questions
 
 1. Is ATTESTED usage acceptable as the basis of value-bearing WOS at all (3.4)? The contracts say no until decided.
@@ -110,7 +120,7 @@ Every finding was reproduced on the pre-fix code before any change (`reviews/AST
 
 | # | Decision | Default in the draft |
 |---|---|---|
-| F1 | Mainnet eligibility of ATTESTED usage (3.4) | fail closed (nothing counts) |
+| F1 | ~~Mainnet eligibility of ATTESTED usage (3.4)~~ — **largely dissolved by D49**: usage no longer pays, so there is nothing to make eligible. What remains is the mainnet readiness gate itself and the calibration-poisoning residual (G-91) | mainnet closed |
 | F2 | Emission curve and ceiling (budget 3,327 ppm of remaining per week ≈ 4-year half-life; ceiling 100 WOS/ACU decaying) | as drafted, provisional |
 | F3 | Epoch split (3.12) | 60/10/5/5/15/5 |
 | F4 | Genesis cap and the retro size-point mapping of V1 | 0.5%; mapping to be proposed as a TGT-00 roadmap PR |
@@ -124,8 +134,8 @@ Every finding was reproduced on the pre-fix code before any change (`reviews/AST
 | F12 | Unclaimed/unbound carry period (52 epochs) | as drafted |
 | F13 | The token name casing (G-31: "WOS" vs "wOS") now that WOS is a token ticker | keep "WOS" as the ticker |
 | F14 | Name the responsible legal entity for publication and retention (D47) | the founder until named |
-| F15 | Holdback share and lookback (D40: 50%, 13 epochs) once devnet measures detection | as drafted |
-| F16 | Minimum measured detection rate that makes F1 acceptable (A2 suggests > 0.5% per receipt) | none set |
+| F15 | Holdback size now that it protects against defective work and misattribution, not usage fraud (D49) | **recommendation: 20% for 6 epochs** (covers the 14-day revert window, review audits and one dispute cycle; the v3 50%/13 existed only to collateralise unverifiable usage) |
+| F16 | ~~Minimum measured detection rate that makes F1 acceptable~~ — dissolved by D49 | — |
 
 ### Founder decisions raised by Astra review 03 (not chosen by the architect; the draft's default is the safe one)
 
@@ -133,10 +143,19 @@ Every finding was reproduced on the pre-fix code before any change (`reviews/AST
 |---|---|---|
 | F17 | The boundary between COMPENSATORY recovery of proven excess and PUNITIVE forfeiture on exclusion (D39/D40 wording vs the 0007 cap): reservation at notice, maximum hold duration, appeal effects, beneficiary liability including sponsorship changes. Simulation A2 compares both | compensatory only (holds ≤ proven excess); punitive not executable; holds lapse 14 days after the appeal window unless executed |
 | F18 | Who bears a dispute stake when the disputer's allocations go (partly) to a sponsoring organization | reserved against all of the accountable contributor's lines in the epoch, whatever the beneficiary |
-| F19 | Accept the residual quiet-epoch timing gain of the trailing-average ceiling (TOKENOMICS-SIMULATION M), or adopt stronger smoothing / acceptance-time pricing despite its starvation risk | keep the Q3 rule, documented as smoothing, not as a bound |
+| F19 | ~~Residual quiet-epoch timing gain~~ — dissolved by D49 (the price is fixed at issuance) | — |
 | F20 | The bounded fallback when owner/organization caps are infeasible or ownership cannot be established | the tally refuses to pass anything; founder mode stays until the activation criteria are actually met |
 | F21 | The finalized Genesis reference population and its independent approvers (GENESIS-POLICY says ≥ 2 non-founder humans; the DB checks two maintainers over the manifest hash) | no manifest approved; Genesis stays mainnet-only |
-| F1 (restated) | Keep ATTESTED usage mainnet-ineligible until decided on measured evidence; choose usage or accepted output for value-bearing rewards — a simulation cannot settle this | fail closed |
+| F1 (restated) | Answered by D49: value-bearing rewards follow accepted budgets, not usage | — |
+
+### Founder decisions raised by D49 (the architect recommends; the founder decides)
+
+| # | Decision | Recommendation (draft default) |
+|---|---|---|
+| F22 | Quality factor q in R_ij = B_i × a_i × q_i × s_ij, or acceptance only | **acceptance only in V1** (binary a_i; no q): a quality score is a new judgement surface to game and dispute; defects are handled by the holdback and review audits |
+| F23 | The epoch contract: reservation at issuance (a task that does not fit is not issued) vs proportional scaling of accepted budgets | **reservation at issuance**, with the issuance rate set ex ante from queued demand (implemented; never mix the two) |
+| F24 | Budget-model bounds: difficulty 0.5–2.0, importance/shared-dependency 1.0–1.5, human approval above 1.25× the model, hard maximum 2×, per-objective caps, expiry 4 epochs, recalibration every 13 epochs ≤ 20% per step | as drafted; tighten after devnet data |
+| F25 | Who may propose budgets (the decomposer/contract author, excluded from building the unit) and whether a budget proposal is itself a paid planning contribution | proposer = the decomposition/contract author; proposing is part of the planning task, not separately paid |
 | F6/F7 (restated) | Mainnet escrow/program selection, cryptographic wallet verification and off-ramp drills stay separate gates; nothing here authorizes a mainnet launch or an ICO | closed |
 
 Decided in this pass (no longer open): Astra-02's eight missing decisions → D39–D48 (confiscation, holdback, unrecoverable losses, audit capacity, dispute burden, cap promise, organization obligations, multisig custody and resumption, publication and retention, Genesis calibration).

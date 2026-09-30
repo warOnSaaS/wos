@@ -14,8 +14,8 @@ Astra-01 asked for a table so an implementation never has to guess. "Kept" rules
 | Rewards belong to the account | **modified** (D38) | the beneficiary may be an organization; the contributor stays accountable |
 | Not transferable, no redemption | replaced | transferability decided at the legal checkpoint (F8) |
 | Ledger kinds award/release/void/clawback/debit/adjustment | replaced | allocations, settlement records, offsets, clips, admin actions |
-| Fixed amounts (20 per size point, 4 per review size point, 40/20 per document review, pools 1000/200, ruling 30) | **removed** | usage-weighted and ACU-equivalent weights inside epoch slices |
-| Upheld finding bonus 5 (max 5) | replaced | +10% of the reviewer's own capped ACU per upheld finding (max 5) |
+| Fixed amounts (20 per size point, 4 per review size point, 40/20 per document review, pools 1000/200, ruling 30) | **replaced** (D49) | a per-task BUDGET in ACU fixed before work (budget model: size points × ACU per point × bounded multipliers), reserved at issuance at the epoch's issuance rate — closer to v1's per-size-point amounts than v2's usage weights, but priced per epoch |
+| Upheld finding bonus 5 (max 5) | replaced | +10% of the review task's budget per upheld finding (max 5) |
 | Security ladder 25/100/300/1000 credits | **removed** as fixed amounts (Astra-01 item 4) | the same numbers as ACU-equivalent weights, paid from the security reserve, ≤ 25% per payout |
 | Feature completion pool = 10% of implementation tokens | replaced | 15% completion accrual per epoch, utilisation-scaled, per-(target, feature) pools |
 | Application completion pool 10,000 | replaced | application pools (1/3 of completion accrual) |
@@ -57,6 +57,21 @@ New wording (proposal): devnet — "WOS on devnet is a test token with no moneta
 - "Stake forfeited only if nothing is clipped" → stake forfeited **per rejected item** (D43).
 - "One confirmed row makes settlement exactly once" → persisted signed transactions, one active attempt, historical resolution, finalized confirmation (H3).
 - "Expected gain ≈ 0 with the pattern lookback" → withdrawn; see TOKENOMICS-SIMULATION A2.
+
+## 3c. Superseded by D49 (budget-based rewards, 2026-09-30)
+
+| Rule (Amendment 02 / earlier drafts) | Status | Replacement |
+|---|---|---|
+| A2 "execution work is rewarded by token usage" (and D19's execution part) | **replaced** (D49) | the task's budget, fixed before work, paid on acceptance, split by declared shares |
+| Receipt weight = min(Σ attested ACU, cap) | replaced | receipt weight = the task budget (DB-enforced) |
+| Run logs required; bare numbers weighted 50% | replaced | run logs optional evidence; no haircut (nothing is paid on usage) |
+| Evidence classes `attested_usage`, `accepted_output`; verification levels gate pay | replaced | `accepted_budget`, `outcome`; verification levels mark telemetry |
+| F1 (ATTESTED usage on mainnet) and F16 (detection threshold) | dissolved | mainnet readiness gate unchanged |
+| Q3 trailing-rate damping (≤ 1.5× trailing rate) | removed | the price is fixed at issuance: min(ceiling, capacity / queued demand) |
+| Execution emitted pro rata to weight in the slice | replaced | reservation at issuance from the pooled task capacity; unfunded tasks are not issued |
+| Payout audits judge usage plausibility; canaries perturb usage | replaced | audits judge attribution, splits, budgets, acceptance; canaries perturb budgets, splits, attribution |
+| Holdback 50% for 13 epochs as usage collateral (D40) | re-sized | recommended 20% for 6 epochs against defective work and misattribution (F15) |
+| Oracle price changes move provider shares (S8) | removed | budgets are provider-neutral; the oracle prices telemetry and the budget model |
 
 ## 4. REVIEW-PROTOCOL, AGENT-POLICY, SECURITY
 

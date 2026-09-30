@@ -315,10 +315,10 @@ Sources: `docs/V1-SPEC.md` (the spec), `docs/DECISIONS.md` (D1–D12 and the nam
 
 ## L. Found in Astra review 02 (protocol DRAFT v2)
 
-### G-78 Detection is unmeasured — FOUNDER DECISION with F1/F16
+### G-78 Detection is unmeasured — FOUNDER DECISION with F1/F16 — largely DISSOLVED by D49 (usage no longer pays; detection still matters for misattribution and budget inflation)
 - Fabrication economics depend on the per-receipt detection rate (TOKENOMICS-SIMULATION A2): at 0.1% cheating pays (+29% with holdback), above ~0.5% it loses. Measure it on devnet with an adaptive red-team client before F1.
 
-### G-79 Contaminated baselines raise caps
+### G-79 Contaminated baselines raise caps — under D49 the analogue is calibration poisoning (G-91)
 - If many contributors inflate, peer P75 caps drift up (A2: +20% cap raises gains markedly). Mitigation to design with data: caps from a trusted, audited reference subset rather than all peers.
 
 ### G-80 Team-membership removal evades relatedness
@@ -357,4 +357,24 @@ Founder decisions raised by review 03 are listed separately in ADR-001 §6 (F17�
 
 ### G-90 Finalization completeness is not enforced
 - The database refuses over-issuance, duplication and early release per source, but does not yet check that every final allocation of an epoch was entitled (Σ entitlements = Σ final − holds − reserved stakes − recovered offsets) before DISTRIBUTABLE. Add that check to the DISTRIBUTABLE transition.
+
+## N. Found with D49 (budget-based rewards) and D50 (hosted-first)
+
+### G-91 Calibration poisoning by fabricated telemetry
+- Usage no longer pays, but the budget model recalibrates from the telemetry of accepted tasks; a ring could report low usage to drag budgets down for others, or high usage to raise its own next budgets. Mitigation to validate on devnet: calibrate only from accepted tasks, use robust statistics (trimmed medians per key), require ≥ 20 samples, move ≤ 20% per step, weight by independent accounts, exclude telemetry flagged anomalous.
+
+### G-92 The budget model is bounds and data, not yet code
+- Policy bounds, DB checks and the engine exist; the budget-model function (size points → ACU with multipliers), the peer-comparison view shown to consensus reviewers and the recalibration job are not implemented. Build them before any task is issued with a budget.
+
+### G-93 Issuance priority and demand spikes
+- The engine issues in the scheduler's priority order and leaves tasks that do not fit unfunded; the rate is set ex ante from queued demand. The scheduler's priority rule (age, dependency, shared value) and what an unfunded contributor sees are not specified; a spike above the forecast defers tasks to the next epoch.
+
+### G-94 Human-review budgets have no task row
+- `task_budgets` of kind `human_review` name a commissioned review id that is not a `wos.tasks` row; bind them to the review assignment when human reviews are commissioned through the control plane.
+
+### G-95 Budget expiry is exercised in the engine only
+- The DB refuses acceptance after `expires_epoch` but the db assertions do not reach an epoch past expiry; add a fixture when epoch fixtures can be advanced cheaply.
+
+### G-96 Integrations and connections: Amendment 03 (D50) after the protocol rework
+- Integrations/connections will be designed Cloud-first (wOS-registered OAuth apps; credentials read from settings so self-hosters can supply their own) as Amendment 03, after the current rework. Nothing in the protocol may assume first-class self-hosting; completion definitions now require an exit-rights check (standard Postgres, settings/env configuration, data export), not a self-host check. Stage 2/3 self-host work (Docker Compose, SSO, BYO OAuth, relays, LTS, environment switcher) is deferred per D50.
 

@@ -509,7 +509,8 @@ export const CompletionRewardPolicy = z.object({
     requireEverySurfaceInProfile: z.literal(true),
     requireAcceptanceSuite: z.literal(true),
     requireSecurityReview: z.boolean(),
-    requireSelfHostCheck: z.boolean(),
+    /** D50: exit rights (standard Postgres, settings/env configuration, full data export, no platform-only dependency), not a first-class self-host check. */
+    requireExitRightsCheck: z.boolean(),
   }),
   /** Frozen definition per pool; a scope change (new merged roadmap/contract version) appends definitionVersion + 1. */
   definitionChange: z.literal("append_new_version"),

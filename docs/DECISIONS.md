@@ -139,7 +139,7 @@ These override `docs/V1-SPEC.md` where they differ. Date: 2026-09-29.
 - A5: WOS is a Solana token; V1 runs on devnet (no monetary value, and the UI says so); it may become tradeable. wOS never sells WOS, runs no presale/ICO, provides no liquidity and never promotes a price; the company is funded by wOS Cloud. Mainnet is a deliberate milestone behind MAINNET-READINESS with one legal checkpoint (A8).
 - **D3 is superseded**: "WOS tokens are in-app credits with no cash value", "not cryptocurrency, not transferable" no longer hold. D3's one-append-only-record and derived-balances principles survive. Every statement that must change is listed in `docs/protocol/SUPERSESSION.md` §3.
 
-## D19. Proof of Contribution; execution rewarded by normalised usage (A1, A2)
+## D19. Proof of Contribution; execution rewarded by normalised usage (A1, A2) — execution part SUPERSEDED by D49
 - Language: contribution, receipt, allocation. Builders, agent reviewers, resolvers (and auditors) are weighted by provider usage normalised to ACU through a versioned ModelRateOracle, only when merged/accepted, clipped at the authorised cap; repairs count inside the cap; failed work earns nothing.
 
 ## D20. Planning and ideas by outcome (A3)
@@ -163,7 +163,7 @@ These override `docs/V1-SPEC.md` where they differ. Date: 2026-09-29.
 ## D26. Canaries
 - Decoy review tasks with known defects, generated without a model. Re-aimed by D27 at payouts; code-defect canaries are not used in V1 (ADR-001 §3.6).
 
-## D27. Payout audits, not code review; run logs; payout canaries
+## D27. Payout audits, not code review; run logs; payout canaries — audit focus and mandatory run logs SUPERSEDED by D49
 - Duty/audit reviews judge the plausibility of payouts (usage vs diff/contract/complexity, repairs, context, model choice, attribution, peer outliers); arithmetic is the engine's. Builders and agent reviewers submit scrubbed structured run logs. Upheld inflation findings clip or revoke receipts (append-only) and pay the auditor a bonus; quorums need outside-feature auditors. Payout canaries are model-free perturbations of real lines.
 
 ## D28. Optimistic verification with a challenge window (default payout path)
@@ -206,7 +206,7 @@ These override `docs/V1-SPEC.md` where they differ. Date: 2026-09-29.
 - Never on-chain seizure of released tokens: no permanent-delegate or freeze authority (a master key over every holder is an attack target and contradicts a neutral proof of contribution). More reach, if wanted, comes from a longer or larger holdback by policy.
 - Due process: recorded evidence, notice, a reply window, one appeal, an action-bound two-person AdminAction for confiscation, a governance vote (structural tier) for permanent exclusion (founder AdminAction in founder mode), a full public record on the permalinks. Confiscated amounts return to the epoch pool and fund recovered-only bounties — never wOS.
 
-## D40. Holdback
+## D40. Holdback — rationale and size SUPERSEDED by D49 (holdback now protects against defective work and misattribution)
 - Usage-based rewards stay (A2). Each finalized allocation releases a share now and holds the rest (default 50%, policy data) for the 13-epoch lookback. Findings recover from the holdback first. Exclusion after proven cheating forfeits unreleased holdback (RiskPolicy); an ordinary pause in contributing never does. Attested usage stays mainnet-ineligible until F1 is decided with the fabrication results (TOKENOMICS-SIMULATION A2).
 
 ## D41. Unrecoverable losses
@@ -232,3 +232,23 @@ These override `docs/V1-SPEC.md` where they differ. Date: 2026-09-29.
 
 ## D48. Genesis calibration
 - A frozen, independently reviewed reference population excluding the founder and related parties; the stated twelve-epoch statistic computed exactly; a published fallback rate if evidence is insufficient; a canonical work mapping (each commit to exactly one retro unit) so keys cannot overlap.
+
+## Budget-based rewards and hosted-first (founder decisions, 2026-09-30)
+
+## D49. Execution rewards are BUDGET-BASED, not usage-based (supersedes Amendment 02 A2, the execution part of D19, the usage focus of D27, the rationale of D40)
+- Every build unit, and every commissioned review, audit, resolution and planning task, carries a **reward budget fixed before work starts**, set during decomposition / contract consensus: sized from expected compute (denominated in ACU, so it stays "agentic compute"), difficulty, importance and shared-dependency value; reviewed in consensus (for Astra and Fable an unjustified budget is a material finding) and compared with peer units.
+- Acceptance and merge earn the unit's budget, **independent of actual token usage**. Collaborators split by declared shares (sum = 1; integer rounding at beneficiary level). V1 form: R_ij = B_i x a_i x s_ij with binary acceptance a_i; **no quality factor q in V1** (recommended; founder confirms as F22).
+- Token usage is **telemetry**: it enforces the per-unit execution cap, calibrates future budgets (the budget model learns from observed usage of accepted units), feeds abuse signals and model comparisons. It never sets a payout. Run logs become optional evidence.
+- **Epoch contract: reservation at issuance.** Each epoch has a task capacity (its execution, planning and human-review slices); a task's budget x the epoch's issuance rate is reserved when the task is issued; a task that does not fit is not issued. Accepted budgets are never scaled afterwards. The issuance rate (WOS per ACU) is announced before issuance: min(the decaying ceiling, capacity / queued demand).
+- New risks designed against: budget inflation (model bounds, human approval above 1.25x, hard maximum 2x, peer ranking, proposer may not build), task splitting / reward stacking (per-objective budget cap), cherry-picking easy budgets and stale budgets (recalibration from telemetry of accepted units, re-pricing on expiry). Payout audits refocus on attribution, splits, acceptance and budgets.
+- Holdback re-sized: it now protects against defective work and misattribution, not usage fraud. Recommended 20% for 6 epochs (founder decision F15).
+- Consequence: the question "is ATTESTED usage good enough to pay on mainnet" (F1) largely dissolves; the mainnet readiness gate itself stays.
+
+## D50. wOS is hosted-first; self-hosting is staged (narrows Amendment 01; not a protocol change)
+- Customers in priority order: wOS Cloud organizations (the business), contributors, self-hosters (open-source users, not customers).
+- Stage 1 (now, binding): exit rights — open licence; no licence or payment checks in code; standard Postgres; configuration via settings/env; full data export; no hard dependency on Vercel/Neon-only features in product code (portable scheduler, storage and queue interfaces).
+- Stage 2 (after V1): a single-server Docker Compose install for evaluation.
+- Stage 3 (only when a paying enterprise self-host customer funds it): SSO (OIDC/SAML), bring-your-own OAuth apps with per-provider guides, webhook relay, mobile push relay (APNs/FCM keys belong to the publisher), LTS channel, self-host test matrix, per-version security patches, client environment switcher.
+- Deferred from Amendment 01: the client environment switcher, self-host sign-in flows, first-class self-host UX. Integrations and connections will be designed Cloud-first (wOS-registered OAuth apps; credentials read from settings so self-hosters can supply their own) as Amendment 03, after the protocol rework.
+- Protocol impact: "entitlements never gate self-hosted code" stays (it is simply "no licence checks"); nothing in the protocol assumes first-class self-hosting.
+

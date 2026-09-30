@@ -1,4 +1,4 @@
-# ABUSE-MODEL (DRAFT v2) — threats, signals, flags, confiscation, admin actions
+# ABUSE-MODEL (DRAFT v4, D49 budget-based rewards) — threats, signals, flags, confiscation, admin actions
 
 Contracts: `AbuseSignal`, `ContributionRiskFlag`, `AdminAction`, `RiskPolicy` (`risk-policy.v1.json`), anomaly metrics (`engine.ts`). DB: `abuse_signals`, `risk_flags` (private), `admin_actions` (public, hash-chained). Numbers referenced as (A)…(L) are tables in TOKENOMICS-SIMULATION.md.
 
@@ -6,38 +6,42 @@ Contracts: `AbuseSignal`, `ContributionRiskFlag`, `AdminAction`, `RiskPolicy` (`
 
 SECURITY S-24 said Sybil incentives are small because tokens have no cash value. A5 makes WOS a real Solana token that may become tradeable, so **every incentive below is real money at mainnet**. The design assumes contributors run modified clients, own several accounts, collude, and read every public record.
 
-No perfect fraud algorithm exists here. What exists: (1) bounds on what any lie can gain (caps, the rate ceiling, clipping, a 50% holdback, confiscation, exclusion); (2) many independent chances to be caught (random gates, human review, anomaly ranking, disputes with bounties, sampled audits, canaries, the pattern lookback); (3) auditable, immutable responses (AdminActions, no silent confiscation).
+No perfect fraud algorithm exists here. What exists: (1) bounds on what any lie can gain (since D49 the pay of a task is its budget, fixed before work, so usage lies gain nothing; the issuance-rate ceiling; model-bounded budgets with a hard maximum; per-objective caps; a holdback against defective work and misattribution; confiscation; exclusion); (2) many independent chances to be caught (random gates, human review, anomaly ranking, disputes with bounties, sampled audits, canaries, the pattern lookback); (3) auditable, immutable responses (AdminActions, no silent confiscation).
 
 ## 2. Threats (Part B's list plus ours)
 
 | # | Threat | Bound / control | Signals | Residual |
 |---|---|---|---|---|
-| T1 | Suspicious token consumption | cap P75×1.25; clipping; run logs; bare-number haircut; holdback + confiscation + exclusion | `usage_outlier_vs_peers`, `cap_saturation_pattern` | fabricated consistent logs at the cap: +56% receipt by receipt (A); with real recovery the expected gain is +29% at 0.1% detection per receipt, -54% at 0.5%, +11% with cheap identity churn (A2). Detection is unmeasured — hence F1 |
-| T2 | Repeated cap saturation | anomaly `capSaturationBp`; decomposition when units always need more | `cap_saturation_pattern` | honest hard units look the same; human judgement in the gate |
-| T3 | Abnormal usage vs comparable ABUs | peer baselines per key | `usage_outlier_vs_peers` | needs ≥ 30 peers per key |
+| T1 | Suspicious token consumption | **dissolved by D49**: usage is telemetry; pay is the budget fixed before work; the execution cap stops the run | `usage_outlier_vs_peers` (telemetry, calibration hygiene) | none economic: fabricated usage gains 0% by construction (A, A2); it could skew budget calibration (G-91) |
+| T2 | Repeated cap saturation | telemetry signal only; decomposition when units always need more (feeds recalibration) | `cap_saturation_pattern` | none economic |
+| T3 | Abnormal usage vs comparable ABUs | telemetry; excluded from calibration when anomalous | `usage_outlier_vs_peers` | calibration poisoning (G-91) |
 | T4 | Repeated failures | `maxFailedAttemptsPerAbu`, nothing paid for failure | `repeated_failures` | quota burn only (theirs) |
 | T5 | Collusive reviews | random assignment, distinct seats, related accounts, 5/7-day author cap, review audits 10–50% | `collusive_review_pattern` | small pools (D): 3-account ring in a pool of 10 captures both agent slots 2.8% of the time; the human is the gate |
 | T6 | Sybil behaviour | GitHub age ≥ 90 d, one GitHub per account, related accounts, human gate, KYC at mainnet (F9) | `sybil_cluster` (maintainer-only linkage) | a person with several aged GitHub accounts; real until KYC |
-| T7 | Model spoofing | capability class check, reported model vs policy, effort observed | `model_mismatch` | a modified client reports anything; audits judge plausibility |
-| T8 | Fabricated usage | exact-total logs, response-id dedup, throughput limits | `run_log_inconsistent`, `duplicate_provider_ids`, `impossible_throughput` | fabrication consistent with a plausible log; bounded by cap |
-| T9 | Manipulated telemetry | the client is untrusted (USAGE-PROOF §1) | as T8 | same |
+| T7 | Model spoofing | capability class check, reported model vs policy, effort observed | `model_mismatch` | quality risk only (acceptance review decides); no pay effect since D49 |
+| T8 | Fabricated usage | **dissolved by D49** (pay does not depend on usage); response-id dedup and exact-total logs keep telemetry clean | `run_log_inconsistent`, `duplicate_provider_ids`, `impossible_throughput` | calibration poisoning (G-91) |
+| T9 | Manipulated telemetry | the client is untrusted (USAGE-PROOF §1); calibration only from accepted tasks, robust statistics, ≤ 20% change per step | as T8 | G-91 |
 | T10 | Duplicate attempts | one live attempt per ABU; dedup keys; receipts once per mode | `duplicate_attempt` | none |
 | T11 | Coordinated farming | ceiling, related accounts, per-org cap, anomaly clusters | `sybil_cluster`, `consistent_skim_pattern` | see T6 |
-| T12 | Intentional looping | repairs inside the cap; wOS controls loops | `intentional_looping` (log repairs without failing checks) | capped |
-| T13 | Context inflation | wOS builds the manifest; extra reads visible in the log | `context_inflation` | capped |
+| T12 | Intentional looping | costs the looper's own subscription; pays nothing since D49 | `intentional_looping` | none economic |
+| T13 | Context inflation | costs the contributor; pays nothing since D49 | `context_inflation` | none economic |
 | T14 | Compromised reviewer accounts | device revocation, suspension, review audits | `compromised_account_suspected` | window until detected |
-| T15 | **Skim** (inflate every receipt a little) | full transparency, sign-test ranking over the rolling window, total-excess bounty, pattern disputes with 13-epoch lookback | `consistent_skim_pattern` | slow: 10% skim, 10 receipts/epoch → 50% ranked after ~39 epochs (B); gain ≤ skim % of own allocation |
+| T15 | **Skim** (v3: inflate every receipt a little) | D49: becomes BUDGET skim — budgets a little above the model on every task (T27) | `consistent_skim_pattern` (now on budgets vs peers) | see T27 |
 | T16 | **Rubber-stamp / scripted auditors** | evidence-citing verdict schema, sealed seats, payout canaries, contradiction loses credit | `payout_canary_passed`, `rubber_stamp_pattern` | a client that cross-checks public data (§5) |
 | T17 | **Dispute spam / griefing** | stake (2%/item, cap 10%), 3 disputes and 25 items per epoch, `rejected_disputes` halves the limit | `rejected_disputes` | max loss 36 WOS/epoch at the S2 rate for a griefer; each false dispute costs others ≤ 2 audit runs per item (G) |
 | T18 | **Retaliation** (dispute whoever disputed you) | disputes are judged by random outside auditors, not the parties; the accused's dispute on the disputer is flagged as possible retaliation in the gate context | `rejected_disputes` | social cost only |
-| T19 | Model choice gaming (expensive model for easy units) | capability class per ABU size; ACU cap is model-independent | outlier vs same-key peers | up to cap headroom (A: +54% receipt by receipt) |
-| T20 | Task splitting | ABUs are defined by reviewed contracts; split gaming is a material finding for contract reviewers and a dispute reason | — | +10% at most (A) |
-| T21 | Builder + friendly reviewer | human weight fixed, not builder ACU (Astra-01 item 5) | `collusive_review_pattern` | none economic |
+| T19 | Model choice gaming (expensive model for easy units) | pays nothing since D49 (the budget is model-independent) | outlier vs same-key peers (telemetry) | none economic |
+| T20 | Task splitting / reward stacking | **per-objective budget cap** (DB): all tasks under one acceptance objective share its consensus budget; split gaming is a material finding and a dispute reason | `split_stacking` perturbation in canaries | without the cap a split adds review bases: +9% to +67% (O); with it 0% |
+| T21 | Builder + friendly reviewer | review budgets fixed by risk class, independent of the builder's budget | `collusive_review_pattern` | none economic |
 | T22 | Wallet takeover redirecting allocations | re-binding needs e-mail confirmation + signature from the new wallet, 7-day cooldown, rebind after a signal is itself a signal | `wallet_rebind_after_signal` | the cooldown window |
 | T23 | Organization farms (D38) | related accounts across every gate, per-org 10% governance cap, per-org concentration in the anomaly view | `sybil_cluster` | an org using employees as cheap auditors of outsiders: allowed, but they never confirm each other |
 | T24 | Founder capture | provisional receipts, rate ceiling, Genesis cap, two-person admin actions, founder mode ends at the activation threshold | public admin log | early concentration (K) |
 | T25 | Policy capture | forward-only, previews, tiered dual supermajority, per-change limits | — | concentrated early weight (J, K) |
 | T26 | Chain/program failure, legal order | off-ramp: pause (auto-expiring), adapter switch, migration from snapshot | — | OFF-RAMP.md |
+| T27 | **Budget inflation** (D49): a proposer lobbies or colludes for bigger budgets on units a friend builds | budget model + bounded multipliers; consensus review (an unjustified budget is a material finding); written justification and a two-person `approve_budget` above 1.25× the model; hard maximum 2×; peer ranking of budgets (sign test); the proposer and related accounts may not take the lease; per-objective cap | `consistent_skim_pattern` on budgets, `budget_outlier_vs_peers` | +5% to +26% extra pay per inflated unit over 13 epochs depending on review quality and ring size (N); zero-sum inside an objective |
+| T28 | **Cherry-picking easy budgets** (D49): take only tasks the model overprices | difficulty multiplier; recalibration from telemetry of accepted tasks every 13 epochs (≤ 20% per step); leases per account; review audits | `easy_task_concentration` | a +50% overpricing lasts ~2 recalibrations, 26 epochs (P) |
+| T29 | **Stale budgets** (D49): models get cheaper, budgets in ACU overpay | the oracle and the budget model recalibrate; unaccepted tasks expire after 4 epochs and are re-priced | — | ~6% average overpay with 13-epoch recalibration vs ~73% never (P) |
+| T30 | **Low-effort acceptance** (D49): accept work that barely meets the objective | binary acceptance with the full qualification chain (CI, both agent reviews, human per policy); review audits; defects after acceptance recovered from the holdback | `post_merge_defect` | quality factor q deliberately absent in V1 (F22) |
 
 ## 3. Signals and flags
 

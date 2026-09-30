@@ -387,7 +387,7 @@ end $$;
 reset role;
 
 -- ============================================================================================
--- 0007 (DRAFT v3) Proof of Contribution — Astra review 02 repros A–G and review 03 repros A3-*, which must be REJECTED.
+-- 0007 (DRAFT v4, D49 budgets) Proof of Contribution — Astra review 02 repros A–G, review 03 repros A3-* and D49 budget rules, which must be REJECTED.
 -- Every A3-* case below was ACCEPTED by the pre-fix migration (docs/protocol/reviews/ASTRA-REVIEW-03-repros-prefix.txt).
 -- Base-table fixtures (tasks, leases, changesets, rounds, reviews: 0001 tables, not under test here) are inserted with
 -- triggers off (session_replication_role = replica); every 0007 row under test is inserted with triggers ON.

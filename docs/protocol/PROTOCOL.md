@@ -1,4 +1,4 @@
-# PROTOCOL — Proof of Contribution, end to end (DRAFT v2, after Astra review 02)
+# PROTOCOL — Proof of Contribution, end to end (DRAFT v4: budget-based rewards D49; after Astra review 03)
 
 Status: DRAFT pending the Astra review. Contracts: `packages/contracts/src/protocol/` (`@waronsaas/contracts/protocol`, not wired). Schema: `packages/db/migrations/0007_proof_of_contribution.sql` (DRAFT, never applied to production). Decisions: D18–D48 in `docs/DECISIONS.md`. Astra review 02 resolutions: `REVIEW-PACKET.md` §3b. Rationale and deviations: `ADR-001-proof-of-contribution.md`.
 
@@ -7,7 +7,8 @@ The protocol records verified contribution and allocates WOS by published rules 
 ## 1. The shape in one diagram
 
 ```
-lease (fenced) -> agent run (own subscription) -> UsageReceipt + RunLog -> verification -> Astra + Fable (+ human per ReviewPolicy)
+decomposition / contract consensus -> task BUDGET (ACU, reviewed) -> issuance: budget x issuance rate RESERVED from the epoch's task capacity (D49)
+lease (fenced) -> agent run (own subscription) -> UsageReceipt (telemetry) [+ optional RunLog] -> verification -> Astra + Fable (+ human per ReviewPolicy)
    -> qualified -> PR -> merge -> ContributionReceipt (ACTIVE, or PROVISIONAL for founder bootstrap work)
    -> epoch OPEN .. close -> CALCULATING (sampled audits, canaries, bounded risk review) -> engine
    -> PROPOSED (every allocation public with explanation + anomaly metrics; 48 h challenge window; silence accepts)
@@ -63,21 +64,23 @@ All schemas are zod in `entities.ts`, `policies.ts`, `governance.ts`; tables in 
 
 The acceptance event is data (`reward-policy.v1.json` `acceptance`). "Who accepts a review" ends at the subject's outcome; there is no review of reviews (audits sample instead).
 
-| Type | Accepted when | Slice | Weight | Lease + usage receipt |
+D49: every commissioned type is paid its **task budget** (fixed before work, reserved at issuance, split by declared shares); usage receipts are telemetry.
+
+| Type | Accepted when | Slice | Paid | Lease + usage telemetry |
 |---|---|---|---|---|
-| IMPLEMENTATION | the qualified PR merges | execution | attested usage, capped | yes |
-| AGENT_REVIEW | the subject merges, or its material finding is resolved/upheld | execution | attested usage, capped (+10% of own ACU per upheld finding, max 5) | yes |
-| ARCHITECTURE_RESOLUTION | a maintainer confirms the ruling | execution | attested usage, capped | yes |
-| APPLICATION_ROADMAP / FEATURE_SPECIFICATION | the document version containing the revision merges | planning | attested usage, capped | yes |
-| HUMAN_REVIEW | the subject merges (PASS) or a material finding is upheld (FAIL) | human_review | fixed ACU-eq by risk class | no |
+| IMPLEMENTATION | the qualified PR merges | execution | the unit's task budget | yes |
+| AGENT_REVIEW | the subject merges, or its material finding is resolved/upheld | execution | the review task's budget (+10% of it per upheld finding, max 5) | yes |
+| ARCHITECTURE_RESOLUTION | a maintainer confirms the ruling | execution | the resolution task's budget | yes |
+| APPLICATION_ROADMAP / FEATURE_SPECIFICATION | the document version containing the revision merges | planning | the authoring/review task's budget | yes |
+| HUMAN_REVIEW | the subject merges (PASS) or a material finding is upheld (FAIL) | human_review | the review's budget by risk class | no |
 | PROPOSAL | incorporated into a merged roadmap/contract version | outcomes | 10 ACU-eq (+ 2% finder share of the feature pool at completion) | no |
 | BUG_REPORT | the fix merges; a maintainer confirms severity | outcomes | 2 / 6 / 20 / 50 ACU-eq | no |
-| SECURITY | a security-qualified human (not the reporter) confirms and the fix merges | security payout | 25 / 100 / 300 / 1000 ACU-eq × execution rate, ≤ 25% of the reserve | no |
-| AUDIT_RERUN | a schema-valid audit on the assigned lease, whatever it concludes | execution | attested usage, capped | yes |
+| SECURITY | a security-qualified human (not the reporter) confirms and the fix merges | security payout | 25 / 100 / 300 / 1000 ACU-eq × issuance rate, ≤ 25% of the reserve | no |
+| AUDIT_RERUN | a schema-valid audit on the assigned lease, whatever it concludes | execution | the audit task's budget | yes |
 | GENESIS | protocol-class review by ≥ 2 independent humans, never the founder | none (mainnet vesting) | reference ACU of retro output | no |
 | INTEGRATION, DOCUMENTATION, OTHER_PROTOCOL_APPROVED | as IMPLEMENTATION when leased; else rejected until a policy version defines them | execution | — | — |
 
-Eligibility for a receipt: valid lease generation at submission acceptance (not through review), authorized capability class, accepted manifest, usage at an accepted verification level for the cluster, weight ≤ cap and ≤ attested, deterministic verification PASS, ReviewPolicy satisfied, merged/accepted, no open `exclude_pending_review` flag.
+Eligibility for a receipt: valid lease generation at submission acceptance (not through review), authorized capability class, accepted manifest, an issued, unreleased and unexpired task budget whose amount the receipt carries (D49), declared shares summing to 10,000 bp, deterministic verification PASS, ReviewPolicy satisfied, merged/accepted, no open `exclude_pending_review` flag. Usage verification levels no longer affect eligibility (telemetry).
 
 ## 4. State machines
 
@@ -108,7 +111,7 @@ PROPOSED → CHALLENGE_OPEN → FINALIZED → FINAL, or CHALLENGE_OPEN → DISPU
 
 1. **Standing:** any account with an allocation in the same epoch (the pool is shared). Not one's own allocation.
 2. **Scope:** any set of allocations of the epoch, up to 25 per dispute, 3 disputes per account per epoch: one allocation, several receipts of one person (a pattern), or a suspected cluster.
-3. **Form:** per allocation a reason (inflated usage, padded repairs, context inflation, misreported model, misattribution, duplicate work, split gaming, other), evidence (run-log turns, diff, peer baseline, anomaly metric, cluster), optional proposed amount; shared evidence; a free-text note (untrusted).
+3. **Form:** per allocation a reason (D49: budget mismatch with the frozen budget record, unmet acceptance, defective work, misattribution, duplicate work, split gaming, other), evidence (run-log turns, diff, peer baseline, anomaly metric, cluster), optional proposed amount; shared evidence; a free-text note (untrusted).
 4. **Stake (D43):** per item, max(1 WOS floor, min(2% of the disputer's pending allocation, 10% of pending / items)); the total may never exceed the pending allocation. Each REJECTED item forfeits its own stake to the reserve; valid items refund theirs. The bundle is frozen at submission (the header's trigger inserts the items); quotas are serialized per (epoch, disputer).
 5. **Gate:** the first UNRELATED dispute on an allocation opens its gate with bounty priority; related parties of the accused may add evidence but never hold priority. Everyone involved is notified; finality never depends on notifications (the list is public from the PROPOSED timestamp, server-stamped). The accused has 24 h to reply. Then a payout-audit quorum per allocation with a **focus** section built from the concerns (section 6).
 6. **Outcome per allocation:** UPHELD, CLIPPED (a ReceiptClip; amount recomputed at the epoch rate) or REVOKED, with the amount actually recovered. One appeal by the accused or the priority disputer within 72 h, decided by an action-bound AdminAction. The settlement is DERIVED: excess and recovered amounts from the gates the dispute holds priority on, bounty ≤ 20% of what was RECOVERED (D41), forfeited stakes of rejected items. The excess leaves issuance; the rest of the recovered amount returns to the reserve. Deadlock after 120 h: a maintainer decides. An allocation found wrong but upheld late is released with the delay recorded (`withheld_release`, D43).
@@ -142,7 +145,7 @@ A new role `payout_auditor` (task kind `payout_audit`, migration 0007 adds both 
 | 3 | Lease | claim → lease with generation, run-policy snapshot | `leases`, `run_policy_snapshots` |
 | 4 | Authorised Opus run | orchestrator argv from AgentPolicy; `max` = pinned maximum | `agent_runs` |
 | 5 | Context | manifest checked against plan | `context_manifests` |
-| 6 | Usage measured | adapter parses stream + transcript; dedup by response id | `usage_receipts`, `usage_event_ids`, `run_logs` |
+| 6 | Usage measured (telemetry, D49) | adapter parses stream + transcript; dedup by response id; cap enforcement and budget calibration only | `usage_receipts`, `usage_event_ids`, optional `run_logs` |
 | 7 | Cap enforced | client stops at the reserved cap; server clips weight | receipt `weight_micro ≤ cap` |
 | 8 | Implementation | changeset → App candidate commit | `changesets`, `candidate_commits` |
 | 9 | Verification | CI `wos-verify` | `verification_runs` |
