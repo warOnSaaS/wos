@@ -5,7 +5,7 @@
 --     package. 0006 refused that for every app. Now it is allowed for `build` only; every other app still needs a
 --     signed package exactly when it lists desktop.
 --  2. The registry publishes sha256Of(the downloaded ModuleBundle bytes). It is written once at publish, in
---     `desktop_bundle_sha256`, immutable like the rest of the release.
+--     `desktop_bundle_sha256` (allowed only with a package), immutable like the rest of the release.
 --
 -- Numbered 0008 so it cannot collide with ws/protocol's 0007_proof_of_contribution.sql. The two touch disjoint
 -- objects (this one only wos.app_releases), so they commute: production may apply 0008 before 0007 exists.
@@ -29,7 +29,9 @@ alter table wos.app_releases
     (('desktop' = any (surfaces)) = (desktop_package is not null))
     or (app_id = 'build' and 'desktop' = any (surfaces) and desktop_package is null and desktop_package_url is null)
   ),
-  add constraint app_releases_desktop_bundle_sha256 check ((desktop_package is null) = (desktop_bundle_sha256 is null));
+  -- Only with a package. Not yet required with one, so the control plane keeps working until it writes the hash at
+  -- publish (B-0007-control-plane); it is immutable once written.
+  add constraint app_releases_desktop_bundle_sha256 check (desktop_bundle_sha256 is null or desktop_package is not null);
 
 -- Immutability now covers the bundle hash too (same function as 0006, one more column).
 create or replace function wos.app_releases_rules() returns trigger

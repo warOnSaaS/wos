@@ -221,7 +221,7 @@ MINOR, additive, plus migration 0008. Rulings and who implements them: WORKSTREA
 - `artifacts.ts` (B-0003): optional `RepoManifest.appMigrationsDir`. Planning's `validateBuildGraph` requires `db:migrations:<id>` exclusive for writes under an app's migrations (MIGRATION_WITHOUT_RESOURCE). The product template's `wos.json` now has `migrationsDir: null` and `appMigrationsDir: "applications/*/migrations"`.
 - Migration `0008_build_release.sql` (B-0007):
   - Build's release may list desktop with no package;
-  - new column `desktop_bundle_sha256`, present exactly with a package and immutable;
+  - new column `desktop_bundle_sha256`, allowed only with a package and immutable (not required, so the current control plane keeps working; it writes the hash at publish);
   - db assertions added;
   - numbered after ws/protocol's 0007 and commutes with it. It relaxes a check and adds a nullable column, recorded as MINOR by architect decision since it breaks no reader or writer.
   - Production: yes, by the coordinator through the runner (`--check` first).

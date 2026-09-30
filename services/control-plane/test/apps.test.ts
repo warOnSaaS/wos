@@ -392,7 +392,7 @@ describe.skipIf(!HAS_DB)("AppRoutes", () => {
     expect(ev!.n).toBe(1);
   });
 
-  it("Build's release: no package, source waronsaas/wos (the database refuses it until B-0007-control-plane is ruled)", async () => {
+  it("Build's release: no package, source waronsaas/wos (migration 0008, B-0007-control-plane)", async () => {
     const { readFile } = await import("node:fs/promises");
     const build = JSON.parse(await readFile(new URL("../../../apps/desktop/src/apps/build/wos-app.json", import.meta.url), "utf8"));
     const wrongRepo = await h.call("POST", "/v1/admin/app-releases", {
@@ -416,9 +416,9 @@ describe.skipIf(!HAS_DB)("AppRoutes", () => {
         source: { repo: "waronsaas/wos", tag: "build@0.1.0", commit: COMMIT },
       },
     });
-    // Migration 0006 requires a desktop package whenever `desktop` is among a release's surfaces; Build has none (D16).
-    expect(res.status, JSON.stringify(res.body)).toBe(400);
-    expect(res.body.error.message).toBe("the registry refused this release");
+    // Migration 0008 (B-0007-control-plane): Build lists desktop with no package (bundled in Desktop, D16).
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body.surfaces.desktop).toMatchObject({ available: true, package: null });
     expect(h.violations).toEqual([]);
   });
 

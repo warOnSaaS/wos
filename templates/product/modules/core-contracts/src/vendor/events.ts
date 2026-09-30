@@ -121,6 +121,27 @@ export const DomainEventBody = z.discriminatedUnion("type", [
   // One product (Amendment 01, contracts 5.0.0). Organization data is private; the registry is public.
   e("organization.created", "private", { organizationId: Uuid, kind: OrganizationKind, ownerAccountId: Uuid }),
   e("organization.member_changed", "private", { organizationId: Uuid, accountId: Uuid, role: OrgRole.nullable() }),
+  // D60 (contracts 5.5.0): architecture records. The impact is computed by computeArchitectureImpact, never an agent.
+  e("architecture.impact_computed", "public", {
+    documentId: Uuid,
+    recordId: z.string().regex(/^ADR-\d{3}$/),
+    version: z.number().int().positive(),
+    /** opened: advisory, published on the PR; merged: the holds below are applied. */
+    phase: z.enum(["opened", "merged"]),
+    elements: z.array(z.string()),
+    contracts: z.array(z.object({ feature: FeatureKey, version: z.number().int().positive() })),
+    held: z.array(AbuKey),
+    blockedByHold: z.array(AbuKey),
+    finishing: z.array(AbuKey),
+    liveAttempts: z.array(Uuid),
+    heldTasks: z.array(Uuid),
+    merged: z.array(AbuKey),
+  }),
+  e("architecture.hold_changed", "public", {
+    recordId: z.string().regex(/^ADR-\d{3}$/),
+    abu: AbuKey,
+    state: z.enum(["held", "released", "superseded"]),
+  }),
   e("entitlement.changed", "private", {
     organizationId: Uuid,
     app: AppId,
