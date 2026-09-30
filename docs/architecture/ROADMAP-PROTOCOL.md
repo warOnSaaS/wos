@@ -54,6 +54,7 @@ One roadmap per application (Sniper Target). It answers three questions, and rev
 | `excluded[]` | items deliberately not replaced, each with a reason of at least 10 characters a vendor customer would accept |
 | `newCatalogFeatures[]` | catalog keys this PR creates; each must have a `catalog/<key>.yaml` in the same PR |
 | `proposals[]` | ids of `wos propose` proposals this version incorporates |
+| `migration` | D59: how customers get their data off the target, per data class (required for every target except TGT-00; section "Migration") |
 
 ### Validation (deterministic, before any round opens)
 
@@ -68,7 +69,8 @@ A revision is valid only if all of these pass. Failure moves the document `valid
    - mapped capabilities: feature refs cover the capability's items exactly;
    - every referenced feature exists in the catalog at the PR head, or is listed in `newCatalogFeatures` with its catalog file;
    - no reference to an `aliased` catalog feature;
-   - `version = previousMergedVersion + 1` (1 when none).
+   - `version = previousMergedVersion + 1` (1 when none);
+   - D59: a target roadmap has a migration section accounting for every data class (section "Migration" below).
 4. The changeset touched only document paths: `roadmaps/<target>/**` and `catalog/<key>.yaml` for keys in `newCatalogFeatures` (see BUILD-PROTOCOL.md "Submissions"; error `OUT_OF_SCOPE`).
 
 ### One suite, many profiles (D14, contracts 4.0.0)
@@ -90,6 +92,51 @@ Parity means features AND experience, on every surface the rented product ships.
 
 - **Surfaces in scope.** In `waronsaas/product` only wOS's own shells can be in scope: `web` (`apps/web`), `desktop` (`apps/desktop`, renderer bundles for the one wOS Desktop), `ios` and `android` (`apps/mobile`), and `api` (`apps/api`). A vendor surface wOS does not ship (browser extension, e-mail add-in, vendor CLI) is `excluded` with a reason; the schema refuses it in scope. A vendor desktop app maps to `desktop`, and a vendor public API maps to `api`.
 - **`apps`.** The roadmap names the wOS applications that replace the target (`Roadmap.apps`, `wos.target_apps`): Salesforce → `crm`. The Sniper List tracks the target; the application is the product. The roadmap still plans no target-specific shell, login or store listing (D14).
+
+### Migration: getting customers off the target (D59, contracts 5.4.0)
+
+Parity is not enough if a customer cannot leave. Every target roadmap has a `migration` section (`RoadmapMigration` in `artifacts.ts`) that plans how the target's customers bring their data into wOS. The input facts are `docs/scans/<target>.md`, section "Getting data out". Those scans are on branch `ws/scans` and not merged yet.
+
+- **`engine`** is always `import-engine`, the shared catalog feature every importer is built on (below).
+- **`classes[]`** has exactly one entry per data class (`MIGRATION_DATA_CLASSES`):
+
+  | Data class | Covers |
+  |---|---|
+  | `records` | the target's standard objects (Salesforce: Account, Contact, Opportunity...) |
+  | `custom_objects_fields` | customer-defined objects and fields, and their metadata |
+  | `files_attachments` | files, attachments, documents |
+  | `history_activity` | field history, activities, emails, notes, audit trails |
+  | `users_permissions` | users, roles and permissions mapped onto wOS Core roles, where the target exposes them |
+
+- **What each class must say.** Either:
+  - `connector` names the catalog feature that imports it, with `objects`, `extraction` (method and public source) and `deltaSync` (`supported` or `not_available`, with the source that shows the target's incremental API or its absence); or
+  - `connector` is null and `notExtractable` lists what cannot leave the target, each item with a reason and a public source.
+
+  A class that is partly extractable uses both. Nothing is dropped silently.
+- **Validation** (`planning.validateRoadmap`). It fails on:
+  - `MIGRATION_MISSING`: the section is absent;
+  - `MIGRATION_CLASS_MISSING` and `MIGRATION_CLASS_DUPLICATE`: a data class is missing or listed twice;
+  - `MIGRATION_CLASS_UNACCOUNTED`: a class has no connector and no sourced not-extractable list;
+  - `MIGRATION_EXTRACTION_MISSING`: an imported class lacks its objects, its extraction or its delta-sync source;
+  - `MIGRATION_FEATURE_NOT_IN_CATALOG`: the engine or a connector is neither in the catalog nor proposed in `newCatalogFeatures`.
+
+  TGT-00 warOnSaaS is exempt: it has no customers to move off.
+- **Reviews.** Roadmap reviewers treat an unaccounted class, an unsourced extractable or not-extractable claim, and a documented incremental API that was missed as material findings (policy data, D59).
+
+**Importer guarantees** (Feature Contracts of `import-engine` and every connector; reviewers treat a gap as material):
+- **Mapping:** from the target's objects and fields (including custom ones) onto wOS modules' entities, reviewed before a run.
+- **Dry run:** the full run without writing, producing the same report.
+- **Verification report:** per object, the counts read, written, skipped and failed, with checksums of the source and imported data. Every skipped or failed record has a reason. Nothing is silently dropped.
+- **Idempotent re-runs:** re-running converges and never duplicates, keyed on the target's record ids.
+- **Delta sync during cutover:** wherever the target exposes an incremental API, so a customer can keep working in the target until the switch.
+
+**`import-engine` is shared infrastructure stewarded by TGT-00 warOnSaaS.**
+- It is built once and reused by every target's connectors.
+- Its catalog entry lives in the product repo (`catalog/import-engine.yaml`), because it runs on customer data inside wOS Core and catalogs are per repository (G-54). The entry is created in the first product roadmap PR that references it.
+- Per-target connectors (`salesforce-import`, ...) are small catalog features whose contracts depend on it.
+- The first proof is importing Salesforce contacts and accounts in the first CRM catalog build.
+
+**Credentials.** An importer signs in to the customer's own account of the target with the customer's own OAuth tokens. The tokens are held encrypted and scoped to one organization. wOS never uses its own credentials to read a customer's data. The detailed design (connections, token storage, refresh, revocation) is Amendment 03 and is not specified here.
 
 ## 3. Lifecycle
 
@@ -198,3 +245,5 @@ Target progress (above) is unchanged, and it never reads entitlements or install
 ## 8. TGT-00 warOnSaaS
 
 warOnSaaS is its own first target (rank 0). Its V1 roadmap is `docs/roadmap/waronsaas.roadmap.json`, a `RoadmapBundle` with status `PROPOSED`: 41 inventory items drawn from V1-SPEC.md and DECISIONS.md, 7 capabilities, 28 catalog features, weights with rationale, and proposed requirements per feature. A test validates it against the schema and the coverage rules. It has not been through Astra/Fable review; the V1 build is tracked against it exactly like a target (WORKSTREAMS.md).
+
+TGT-00 is exempt from the migration section (D59). It stewards the shared `import-engine` feature, which is catalogued in the product repo because it runs on customer data (section 2, "Migration").

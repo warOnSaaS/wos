@@ -169,6 +169,36 @@ const CASES: Record<RoadmapErrorCode, { why: string; mut: Parameters<typeof run>
     mut: { r: (r) => (contacts(r).surfaces[2]!.weightBp = 1999) },
     req: "roadmap-consensus R-003",
   },
+  MIGRATION_MISSING: {
+    req: "D59",
+    why: "a target roadmap with no plan for getting customers off the target",
+    mut: { r: (r) => delete r.migration },
+  },
+  MIGRATION_CLASS_MISSING: {
+    req: "D59",
+    why: "files and attachments are not accounted for",
+    mut: { r: (r) => (r.migration!.classes = r.migration!.classes.filter((c) => c.dataClass !== "files_attachments")) },
+  },
+  MIGRATION_CLASS_DUPLICATE: {
+    req: "D59",
+    why: "records are planned twice",
+    mut: { r: (r) => r.migration!.classes.push(clone(r.migration!.classes[0]!)) },
+  },
+  MIGRATION_CLASS_UNACCOUNTED: {
+    req: "D59",
+    why: "history has no connector and no sourced not-extractable list: silently dropped",
+    mut: { r: (r) => (r.migration!.classes[3]!.notExtractable = []) },
+  },
+  MIGRATION_EXTRACTION_MISSING: {
+    req: "D59",
+    why: "an imported class does not say how its data is read",
+    mut: { r: (r) => (r.migration!.classes[0]!.extraction = null) },
+  },
+  MIGRATION_FEATURE_NOT_IN_CATALOG: {
+    req: "D59",
+    why: "the connector is neither in the catalog nor proposed",
+    mut: { c: (c) => c.delete("acme-import") },
+  },
 };
 
 describe("validateRoadmap", () => {
@@ -190,6 +220,11 @@ describe("validateRoadmap", () => {
       for (const i of issues) expect(i.message.length).toBeGreaterThan(10);
     });
   }
+
+  it("TGT-00 warOnSaaS has no customers to move and is exempt from the migration section (D59)", () => {
+    const tgt00 = (x: { target: string }) => (x.target = "waronsaas");
+    expect(run({ r: (r) => (tgt00(r), delete r.migration), i: tgt00 })).toEqual([]);
+  });
 
   it("version 1 is required when nothing has merged, previous + 1 afterwards", () => {
     expect(run({ prev: null })).toEqual([]);

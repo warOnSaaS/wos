@@ -7461,6 +7461,38 @@ const RoadmapCapability = ReasonedWeight.extend({
 	inventoryItems: array(InventoryItemKey).min(1),
 	features: array(RoadmapFeatureRef).default([])
 });
+const MIGRATION_DATA_CLASSES = [
+	"records",
+	"custom_objects_fields",
+	"files_attachments",
+	"history_activity",
+	"users_permissions"
+];
+const MigrationDataClass = _enum(MIGRATION_DATA_CLASSES);
+const IMPORT_ENGINE_FEATURE = "import-engine";
+const NotExtractable = object({
+	item: string().min(1),
+	reason: string().min(10),
+	source: url()
+});
+const MigrationClassPlan = object({
+	dataClass: MigrationDataClass,
+	connector: FeatureKey.nullable(),
+	objects: array(string().min(1)).default([]),
+	extraction: object({
+		method: string().min(10),
+		source: url()
+	}).nullable(),
+	deltaSync: object({
+		status: _enum(["supported", "not_available"]),
+		source: url()
+	}).nullable(),
+	notExtractable: array(NotExtractable).default([])
+});
+const RoadmapMigration = object({
+	engine: literal(IMPORT_ENGINE_FEATURE),
+	classes: array(MigrationClassPlan).min(1)
+});
 const sum = (xs) => xs.reduce((n, x) => n + x.weightBp, 0);
 const Roadmap = object({
 	schema: literal("wos-roadmap.v1"),
@@ -7489,7 +7521,8 @@ const Roadmap = object({
 		reason: string().min(10)
 	})).default([]),
 	newCatalogFeatures: array(FeatureKey).default([]),
-	proposals: array(Uuid).default([])
+	proposals: array(Uuid).default([]),
+	migration: RoadmapMigration.optional()
 }).superRefine((r, ctx) => {
 	for (const [k, s] of r.surfaces.entries()) {
 		if (s.status === "excluded" && !s.reason) ctx.addIssue({
@@ -10223,7 +10256,8 @@ var agent_policy_v1_default = {
 				"EXPERIENCE (D13): for every feature describe the key user journeys on each of its surfaces: the steps, entry points, navigation, and offline, notification, background and responsive behaviour; name native capabilities (push, background audio/video, CallKit, share sheet, offline storage) a mobile journey needs.",
 				"SURFACE WEIGHTS (D12 + D13): give every feature a weightBp per surface it exists on, summing to 10000, each with a weightRationale comparing the surfaces on how customers actually use the feature there. Reviewers treat an unjustified surface split as mis-weighting.",
 				"Parity is functional and experiential, never visual: do not copy the vendor's trade dress, logos, icons, colours, layouts or wording; our look is the warOnSaaS monochrome design system.",
-				"SUITE (D14): the replacement is not a separate app. Map this target's capabilities onto modules of the ONE suite (one account, one navigation, one data model); reuse existing modules and the app-shell features (workspace modules, navigation, tenancy) instead of proposing target-specific shells."
+				"SUITE (D14): the replacement is not a separate app. Map this target's capabilities onto modules of the ONE suite (one account, one navigation, one data model); reuse existing modules and the app-shell features (workspace modules, navigation, tenancy) instead of proposing target-specific shells.",
+				"MIGRATION (D59): add a migration section to ROADMAP.yaml for getting customers OFF the target. Use docs/scans/<target>.md \"Getting data out\" as the input facts. For each data class (records, custom objects and fields, files and attachments, history and activity, users and permissions mapping where exposed), either name the connector catalog feature that imports it, or list what is not extractable, each item with a public source. For every imported class give the objects, how they are read and whether an incremental API allows delta sync during cutover, each with a source. Every connector is built on the shared import-engine feature. Never plan an importer that signs in with anything but the customer's own OAuth grant."
 			],
 			"materialFindingRules": [],
 			"budgetOverrides": [{
@@ -10282,7 +10316,8 @@ var agent_policy_v1_default = {
 				"A feature on a surface without a journey, or a journey that does not describe the steps, entry points and platform behaviour a user of that surface relies on (offline, notifications, responsive layout).",
 				"SURFACE MIS-WEIGHTING: a feature's surface weights not justified by how customers use it on each surface.",
 				"Any instruction or description that copies the vendor's trade dress, logos, visual design or wording instead of describing the job the user does.",
-				"A roadmap that plans a target-specific app, shell, login, data store or store listing instead of modules of the one suite (D14)."
+				"A roadmap that plans a target-specific app, shell, login, data store or store listing instead of modules of the one suite (D14).",
+				"A target roadmap whose migration section leaves a data class unaccounted for, claims data is extractable or not extractable without a public source, or misses an incremental API the target documents for delta sync (D59)."
 			],
 			"budgetOverrides": [{
 				"model": "astra",
@@ -10344,7 +10379,8 @@ var agent_policy_v1_default = {
 				"A feature on a surface without a journey, or a journey that does not describe the steps, entry points and platform behaviour a user of that surface relies on (offline, notifications, responsive layout).",
 				"SURFACE MIS-WEIGHTING: a feature's surface weights not justified by how customers use it on each surface.",
 				"Any instruction or description that copies the vendor's trade dress, logos, visual design or wording instead of describing the job the user does.",
-				"A roadmap that plans a target-specific app, shell, login, data store or store listing instead of modules of the one suite (D14)."
+				"A roadmap that plans a target-specific app, shell, login, data store or store listing instead of modules of the one suite (D14).",
+				"A target roadmap whose migration section leaves a data class unaccounted for, claims data is extractable or not extractable without a public source, or misses an incremental API the target documents for delta sync (D59)."
 			],
 			"budgetOverrides": []
 		},
@@ -10397,7 +10433,8 @@ var agent_policy_v1_default = {
 				"Write journeys per surface (from the apps' roadmap refs) linked to the requirements that implement them; name every native capability a journey needs and include the ABUs that add the native modules.",
 				"Give each profile one acceptance suite per surface: web runs the whole browser matrix (Chrome, Edge, Safari macOS, Firefox, iPhone and Android phone viewports) with Playwright; iOS and Android run Maestro flows; only native iOS builds and end-to-end runs use runner macos.",
 				"Every ABU names exactly one repository; keep JS/TS-only mobile work separate from ABUs that touch native code or config (ios/, android/, config plugins, native modules), which need the macOS/Xcode or Android SDK toolchain.",
-				"Parity is functional and experiential, never visual: do not copy the vendor's trade dress, logos, icons, colours, layouts or wording; our look is the warOnSaaS monochrome design system."
+				"Parity is functional and experiential, never visual: do not copy the vendor's trade dress, logos, icons, colours, layouts or wording; our look is the warOnSaaS monochrome design system.",
+				"IMPORTERS (D59): a connector feature's contract depends on import-engine and requires, for every object it imports, a dry run, idempotent re-runs, a verification report with per-object counts and checksums in which nothing is silently dropped, and delta sync when the target exposes an incremental API. It signs in only with the customer's own OAuth tokens, encrypted and scoped to one organization (connections are Amendment 03)."
 			],
 			"materialFindingRules": [],
 			"budgetOverrides": [{
@@ -10454,7 +10491,8 @@ var agent_policy_v1_default = {
 				"A requirement without surface tags, a surface of an app's roadmap ref that no requirement covers, or a multi-surface contract without a sharedApi.",
 				"A journey no acceptance suite exercises, a web suite missing a browser of the matrix, or iOS and Android sharing one acceptance result.",
 				"A native capability a journey needs with no ABU that adds it, or an ABU that mixes JS-only and native changes and so needs a macOS machine for work that does not.",
-				"Anything that copies the vendor's trade dress, logos or visual design."
+				"Anything that copies the vendor's trade dress, logos or visual design.",
+				"An importer without a dry run, idempotent re-runs, or a verification report of per-object counts and checksums, or one that drops or skips data without reporting it, or signs in with credentials other than the customer's own organization-scoped grant (D59)."
 			],
 			"budgetOverrides": [{
 				"model": "astra",
@@ -10514,7 +10552,8 @@ var agent_policy_v1_default = {
 				"A requirement without surface tags, a surface of an app's roadmap ref that no requirement covers, or a multi-surface contract without a sharedApi.",
 				"A journey no acceptance suite exercises, a web suite missing a browser of the matrix, or iOS and Android sharing one acceptance result.",
 				"A native capability a journey needs with no ABU that adds it, or an ABU that mixes JS-only and native changes and so needs a macOS machine for work that does not.",
-				"Anything that copies the vendor's trade dress, logos or visual design."
+				"Anything that copies the vendor's trade dress, logos or visual design.",
+				"An importer without a dry run, idempotent re-runs, or a verification report of per-object counts and checksums, or one that drops or skips data without reporting it, or signs in with credentials other than the customer's own organization-scoped grant (D59)."
 			],
 			"budgetOverrides": []
 		},

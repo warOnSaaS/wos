@@ -108,9 +108,30 @@ const roadmap = (crmWeight: number) => ({
     },
   ],
   excluded: [{ item: "INV-0003", reason: "Retired by the vendor itself." }],
-  newCatalogFeatures: ["contacts"],
+  newCatalogFeatures: ["contacts", "import-engine"],
   proposals: [],
+  // D59 (contracts 5.4.0): every target roadmap accounts for each data class; this fixture plans no connector yet.
+  migration: {
+    engine: "import-engine",
+    classes: ["records", "custom_objects_fields", "files_attachments", "history_activity", "users_permissions"].map((dataClass) => ({
+      dataClass,
+      connector: null,
+      objects: [],
+      extraction: null,
+      deltaSync: null,
+      notExtractable: [
+        { item: `all ${dataClass}`, reason: "Test fixture: no connector is planned yet.", source: "https://example.com/export" },
+      ],
+    })),
+  },
 });
+const importEngineEntry = {
+  schema: "wos-catalog-entry.v1",
+  key: "import-engine",
+  title: "Import engine",
+  summary: "Mapping, dry run, verification report, idempotent re-runs and delta sync for importers.",
+  aliasOf: null,
+};
 const catalogEntry = {
   schema: "wos-catalog-entry.v1",
   key: "contacts",
@@ -271,6 +292,7 @@ describe.skipIf(!HAS_DB)("roadmap and feature contract workflows", () => {
       { path: "roadmaps/salesforce/ROADMAP.yaml", content: JSON.stringify(roadmap(crmWeight)) },
       { path: "roadmaps/salesforce/INVENTORY.yaml", content: JSON.stringify(inventory) },
       { path: "catalog/contacts.yaml", content: JSON.stringify(catalogEntry) },
+      { path: "catalog/import-engine.yaml", content: JSON.stringify(importEngineEntry) },
     ];
 
     // A path outside the document's allowed paths is refused before anything is committed (422, lease kept).
