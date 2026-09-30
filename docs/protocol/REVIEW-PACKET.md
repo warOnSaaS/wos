@@ -1,4 +1,4 @@
-# REVIEW-PACKET — Proof of Contribution design, for Astra (review 08: a narrow confirmation)
+# REVIEW-PACKET — Proof of Contribution design (FROZEN protocol v1 for devnet/shadow, D62; next: review 09 of the D61 addition)
 
 Hand the bundle made by `tools/make-review-bundle.sh 08` to Astra (it contains this file, every file listed in §2 and the test output). Everything it references is on branch `ws/protocol` in `/Users/adventurini/waronsaas-protocol` (worktree of `waronsaas/wos`). The protocol is still NOT wired into authoritative reward accounting; scope stays devnet-first and mainnet stays prohibited.
 
@@ -245,6 +245,18 @@ Astra's probes (`reviews/ASTRA-REVIEW-07-probes.mjs`) were re-run first on 4dddf
 | Stale phrases | **Done** | packet §1 (F17), ABUSE-MODEL, G-99 (F32), G-98 (active challenge path now covers both paths) | — |
 
 **Where the architect disagrees:** none. One note on R07-3's "Q/P/S/I from source records": Q (budget part), I, claimable, pending, delivered, tranche and held are now derived from source records; completion pools and the security reserve have no independent source in the database (their rows are written from engine output), so the trace states that it does not verify them instead of pretending to.
+
+## 3k. Astra review 08: FREEZE AFTER THE LISTED CHANGES — closed
+
+Probes re-run first (`reviews/ASTRA-REVIEW-08-repros-prefix.txt`: R08-1 reproduced for RATIFIED and FINAL_BY_SILENCE; R08-2 executed in SQL — a changeset 400 days late was ACCEPTED as submitted in the issue epoch when the expiry epoch had no calendar row).
+
+| Finding | Status | Changed paths | Regression |
+|---|---|---|---|
+| **R08-1** (HIGH) allocations of RATIFIED / FINAL_BY_SILENCE receipts could not be challenged | **Resolved** | `rules.ts` `allocationChallengeRefusals` uses `receiptCountsIn("live", …)`; 0007 `check_allocation_challenge` admits ACTIVE, RATIFIED, FINAL_BY_SILENCE; the window, frozen revision and root binding are unchanged | rules "R07-2 repro …" (RATIFIED and FINAL_BY_SILENCE pass; PROVISIONAL and REVOKED refused); db "R08-1 repro: D54 silence -> live allocation -> timely challenge admitted; the same for a RATIFIED receipt", "R08-1: payment of a challenged FINAL_BY_SILENCE / RATIFIED allocation before its decision", "R08-1: … still-PROVISIONAL …", "R08-1: … REVOKED …"; the late, wrong-root and wrong-revision tests kept |
+| **R08-2** (MEDIUM) a missing expiry-calendar row disabled the lateness check | **Resolved** | 0007: `task_budgets.expires_at` pinned at issuance (issuing epoch start + expiry epochs × epoch length); `check_task_submission` refuses at or after it, derives the submission epoch arithmetically so it contains the evidence timestamp, refuses evidence before the issuing epoch, no fallback | db "R08-2 repro: a late changeset when the expiry epoch has no calendar row …", "R08-2: evidence dated before its issuing epoch …", "R08-2 the derived submission epoch contains the evidence timestamp …", "R07-4 repro: new work after the expiry …" (late with the calendar complete), "R07-4 a genuine earlier changeset …"; races "R07-4 forward/reverse" kept |
+| Race harness (non-blocking) | **Done** | `race_exact` bounds BOTH sessions with the 20-second alarm | all exact races |
+
+**Protocol v1 is FROZEN for devnet/shadow implementation (D62).**
 
 ## 4. Questions for review 08 (narrow)
 

@@ -1152,9 +1152,7 @@ end $$;
 insert into wos.task_submissions (task_id, changeset_id)
 values ('00000000-0000-0000-0007-000000000fb2', wos_test.changeset(gen_random_uuid(), '00000000-0000-0000-0007-000000000fb2', clock_timestamp()));
 do $$ begin
-  -- (the fixture calendar overlaps: the latest epoch between issue and expiry that had started when the changeset was made)
-  if (select submitted_epoch <> (select max(epoch_number) from wos.epochs where epoch_number between 2 and 5 and starts_at <= s.submitted_at)
-             or submission_sha256 <> 'sha256:' || repeat('5', 64) from wos.task_submissions s where task_id = '00000000-0000-0000-0007-000000000fb2') then
+  if (select submitted_epoch <> 2 or submission_sha256 <> 'sha256:' || repeat('5', 64) from wos.task_submissions s where task_id = '00000000-0000-0000-0007-000000000fb2') then
     raise exception 'R07-4: the submission epoch and hash are derived from the changeset';
   end if;
   raise notice 'ok: R07-4 the submission epoch and hash are derived from its changeset (server evidence), not asserted';
@@ -1168,10 +1166,9 @@ begin
   insert into wos.task_budgets (task_id, objective_id, kind, budget_acu_micro, model_acu_micro, basis, budget_model_version, proposer_account_id, issued_epoch)
   values (t, '00000000-0000-0000-0007-0000000000b1', 'execution', 1000000, 1000000, '{}', 'budget-model.v1', '00000000-0000-0000-0000-00000000000c', 2);
   early := clock_timestamp();
-  insert into wos.epochs (epoch_number, mode, cluster, starts_at, ends_at, risk_review_hours, challenge_hours, policy_versions)
-  values (6, 'test', 'devnet', clock_timestamp(), clock_timestamp() + interval '7 days', 48, 48, '{}');
   begin
-    insert into wos.task_submissions (task_id, changeset_id) values (t, wos_test.changeset(gen_random_uuid(), t, clock_timestamp() + interval '1 second'));
+    -- epoch 2 runs 7 days from now() - 1 day: the pinned expiry instant (4 epochs) is 27 days from now
+    insert into wos.task_submissions (task_id, changeset_id) values (t, wos_test.changeset(gen_random_uuid(), t, clock_timestamp() + interval '28 days'));
     raise exception 'EXPECTED FAILURE did not happen: R07-4 late submission';
   exception when check_violation then
     if sqlerrm !~ 'while its budget is live' then raise; end if;
@@ -1179,6 +1176,44 @@ begin
   end;
   insert into wos.task_submissions (task_id, changeset_id) values (t, wos_test.changeset(gen_random_uuid(), t, early));
   raise notice 'ok: R07-4 a genuine earlier changeset is recorded as on time after the fact';
+end $$;
+-- R08-2: submission admission fails closed; the expiry instant is pinned at issuance; the derived epoch contains the evidence.
+do $$
+declare
+  t uuid := '00000000-0000-0000-0008-0000000000a1';
+  u uuid := '00000000-0000-0000-0008-0000000000a2';
+  v uuid := '00000000-0000-0000-0008-0000000000a3';
+begin
+  -- issued in epoch 8, whose expiry epoch (12) has no calendar row: a changeset 400 days later is refused all the same
+  insert into wos.task_budgets (task_id, objective_id, kind, budget_acu_micro, model_acu_micro, basis, budget_model_version, proposer_account_id, issued_epoch)
+  values (t, '00000000-0000-0000-0007-0000000000b1', 'execution', 1000000, 1000000, '{}', 'budget-model.v1', '00000000-0000-0000-0000-00000000000c', 8),
+         (u, '00000000-0000-0000-0007-0000000000b1', 'execution', 1000000, 1000000, '{}', 'budget-model.v1', '00000000-0000-0000-0000-00000000000c', 2),
+         (v, '00000000-0000-0000-0007-0000000000b1', 'execution', 1000000, 1000000, '{}', 'budget-model.v1', '00000000-0000-0000-0000-00000000000c', 2);
+  if exists (select 1 from wos.epochs where epoch_number = 12) then raise exception 'fixture: epoch 12 must not exist'; end if;
+  begin
+    insert into wos.task_submissions (task_id, changeset_id) values (t, wos_test.changeset(gen_random_uuid(), t, clock_timestamp() + interval '400 days'));
+    raise exception 'EXPECTED FAILURE did not happen: R08-2 absent expiry row';
+  exception when check_violation then
+    if sqlerrm !~ 'while its budget is live' then raise; end if;
+    raise notice 'ok (rejected): R08-2 repro: a late changeset when the expiry epoch has no calendar row (fails closed; the instant is pinned)';
+  end;
+  -- evidence from before the issuing epoch began cannot be placed in any epoch
+  begin
+    insert into wos.task_submissions (task_id, changeset_id) values (u, wos_test.changeset(gen_random_uuid(), u, now() - interval '30 days'));
+    raise exception 'EXPECTED FAILURE did not happen: R08-2 evidence before the issuing epoch';
+  exception when check_violation then
+    if sqlerrm !~ 'cannot be established|while its budget is live' then raise; end if;
+    raise notice 'ok (rejected): R08-2: evidence dated before its issuing epoch (no fallback to the issue epoch)';
+  end;
+  -- a changeset 8 days into a 7-day epoch 2 belongs to epoch 3, and epoch 3's interval contains it
+  insert into wos.task_submissions (task_id, changeset_id) values (v, wos_test.changeset(gen_random_uuid(), v, (select starts_at from wos.epochs where epoch_number = 2) + interval '8 days'));
+  if (select s.submitted_epoch <> 3
+             or not (s.submitted_at >= e.starts_at + (e.ends_at - e.starts_at) * (s.submitted_epoch - 2)
+                     and s.submitted_at < e.starts_at + (e.ends_at - e.starts_at) * (s.submitted_epoch - 1))
+        from wos.task_submissions s, wos.epochs e where s.task_id = v and e.epoch_number = 2) then
+    raise exception 'R08-2: the derived submission epoch must contain the evidence timestamp';
+  end if;
+  raise notice 'ok: R08-2 the derived submission epoch contains the evidence timestamp (8 days into epoch 2 -> epoch 3)';
 end $$;
 select wos_test.expect_error($$insert into wos.task_budget_releases (task_id, reason) values ('00000000-0000-0000-0007-0000000007a4', 'abandoned')$$,
   'R06-4 / R07-4: submitted work released as abandoned without its final rejection or an authorized cancellation', 'final rejection');
@@ -1268,6 +1303,40 @@ select wos_test.expect_error($$insert into wos.entitlements (epoch_number, benef
 insert into wos.entitlements (epoch_number, beneficiary_kind, beneficiary_id, kind, source_kind, source_id, amount_base)
 values (40, 'person', '00000000-0000-0000-0000-00000000000e', 'release_now', 'allocation', '00000000-0000-0000-0007-0000000007a1', 60);
 do $$ begin raise notice 'ok: R07-2 one decision lowered the allocation to 60 and payment followed it'; end $$;
+-- R08-1: allocations of every LIVE-COUNTABLE receipt can be challenged (FINAL_BY_SILENCE, RATIFIED); PROVISIONAL and
+-- REVOKED receipts gain nothing. d502 is FINAL_BY_SILENCE (restored above); a RATIFIED receipt is made here.
+insert into wos.work_dedup_keys (dedup_key, source) values ('work:r08-1', 'receipt');
+insert into wos.contribution_receipts (id, account_id, contribution_type, slice, evidence_class, acceptance_event, independence, initial_status,
+  weight_micro, subject_kind, subject_id, dedup_key, admitted_epoch, body, receipt_sha256, qualified_at)
+values ('00000000-0000-0000-0008-0000000000c1', '00000000-0000-0000-0000-00000000000c', 'PROPOSAL', 'outcomes', 'outcome', 'proposal_incorporated', 'founder_bootstrap', 'PROVISIONAL',
+        1000000, 'proposal', gen_random_uuid(), 'work:r08-1', 2, '{}', 'sha256:' || repeat('8', 63) || '1', now());
+insert into wos.receipt_status_events (receipt_id, seq, from_status, to_status, kind) values
+  ('00000000-0000-0000-0008-0000000000c1', 1, null, 'PROVISIONAL', 'issued'), ('00000000-0000-0000-0008-0000000000c1', 2, 'PROVISIONAL', 'RATIFIED', 'human_signoff');
+set session_replication_role = replica;
+insert into wos.epochs (epoch_number, mode, cluster, starts_at, ends_at, risk_review_hours, challenge_hours, policy_versions)
+values (42, 'test', 'devnet', now() - interval '9 days', now() - interval '2 days', 48, 48, '{}');
+insert into wos.epoch_transitions (epoch_number, seq, from_state, to_state, actor, receipts_root, allocations_root, result_sha256, at) values
+  (42, 1, null, 'OPEN', 'system', null, null, null, now() - interval '9 days'), (42, 2, 'OPEN', 'CALCULATING', 'system', null, null, null, now() - interval '3 days'),
+  (42, 3, 'CALCULATING', 'PROPOSED', 'system', 'sha256:' || repeat('1', 64), 'sha256:' || repeat('4', 64), 'sha256:' || repeat('3', 64), now() - interval '1 hour');
+insert into wos.allocations (id, epoch_number, mode, account_id, beneficiary_kind, beneficiary_id, receipt_id, slice, weight_micro, amount_base, explanation, explanation_sha256)
+select ('00000000-0000-0000-0008-0000000000' || k)::uuid, 42, 'test', '00000000-0000-0000-0000-00000000000c', 'person', '00000000-0000-0000-0000-00000000000c', r::uuid,
+       'outcomes', 1, 100, '{}', 'sha256:' || repeat('1', 64)
+  from (values ('d2', '00000000-0000-0000-0006-00000000d502'), ('d3', '00000000-0000-0000-0006-00000000d503'), ('d1', '00000000-0000-0000-0006-00000000d501'),
+               ('e1', '00000000-0000-0000-0008-0000000000c1')) x(k, r);
+set session_replication_role = origin;
+select wos_test.chal('00000000-0000-0000-0008-0000000000d2', 'sha256:' || repeat('2', 64), 'sha256:' || repeat('4', 64));
+select wos_test.chal('00000000-0000-0000-0008-0000000000e1', 'sha256:' || repeat('8', 63) || '1', 'sha256:' || repeat('4', 64));
+do $$ begin raise notice 'ok: R08-1 repro: D54 silence -> live allocation -> timely challenge admitted; the same for a RATIFIED receipt'; end $$;
+select wos_test.expect_error($$insert into wos.entitlements (epoch_number, beneficiary_kind, beneficiary_id, kind, source_kind, source_id, amount_base)
+  values (42, 'person', '00000000-0000-0000-0000-00000000000c', 'release_now', 'allocation', '00000000-0000-0000-0008-0000000000d2', 1)$$,
+  'R08-1: payment of a challenged FINAL_BY_SILENCE allocation before its decision', 'undecided challenge');
+select wos_test.expect_error($$insert into wos.entitlements (epoch_number, beneficiary_kind, beneficiary_id, kind, source_kind, source_id, amount_base)
+  values (42, 'person', '00000000-0000-0000-0000-00000000000c', 'release_now', 'allocation', '00000000-0000-0000-0008-0000000000e1', 1)$$,
+  'R08-1: payment of a challenged RATIFIED allocation before its decision', 'undecided challenge');
+select wos_test.expect_error($$select wos_test.chal('00000000-0000-0000-0008-0000000000d3', 'sha256:' || repeat('3', 64), 'sha256:' || repeat('4', 64))$$,
+  'R08-1: an allocation challenge of a still-PROVISIONAL receipt (it is not live-countable)', 'live-countable');
+select wos_test.expect_error($$select wos_test.chal('00000000-0000-0000-0008-0000000000d1', 'sha256:' || repeat('1', 64), 'sha256:' || repeat('4', 64))$$,
+  'R08-1: an allocation challenge of a REVOKED receipt', 'live-countable');
 
 -- RLS: canary classification, abuse signals, assignments and the wallet registry are private; approvals are own-session.
 insert into wos.abuse_signals (kind, severity, subject_kind, subject_id, detector, detector_version, evidence)

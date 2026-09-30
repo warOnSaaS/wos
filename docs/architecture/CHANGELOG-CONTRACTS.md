@@ -1,5 +1,9 @@
 # Contracts changelog
 
+## 5.5.0 — Proof of Contribution protocol v1 FROZEN for devnet/shadow (D62, `ws/protocol`)
+
+MINOR: the `@waronsaas/contracts/protocol` subpath export leaves draft as frozen protocol v1 (additive; no existing contract changes). Review-08 fixes: `allocationChallengeRefusals` admits every live-countable receipt (R08-1); migration 0007 pins `task_budgets.expires_at` and fails closed on submission lateness (R08-2). Migration 0007 is not applied to production. The 6.0.0 MAJOR (TaskKind/AgentRole additions, api.ts routes, TOKEN_DISCLAIMER) remains the P0 wiring step.
+
 ## Unreleased — DRAFT v8 (Astra review 07 fix pass, `ws/protocol`)
 
 Still unreleased and unwired. **Rules:** `acceptanceRequirement` fails closed (`refusals`, `humanCount`, `seatQualified` tuples, `capabilityPolicyVersion`); `CapabilityInput.policyVersion`; verdicts carry `provider`; `allocationChallengeRefusals`, `allocationChallengeDecisionRefusals`, `challengedAllocationPaymentRefusals`; `rulingLabRecordsFromConfirmedRuling`; `routeDisputedFindings` throws on an unknown raising lab. **Engine:** in-epoch hold fold order; one re-issue successor (`reissue:<prev>` consumed). **Machines:** `FINAL_BY_SILENCE` declared; history-proven restore. **Migration 0007 v8:** `allocation_challenges`, `allocation_challenge_replies`, `allocation_challenge_decisions`, `entitlements_challenged`; `task_submissions.changeset_id` with derived `submitted_at`/`submitted_epoch`/`submission_sha256`; `lock_task`; `task_budget_releases.final_rejection_ref`/`admin_action_id`; every receipt status event under the subject lock; `ruling_lab_records` derived from confirmed rulings. **Tests:** `packages/db/test/accounting-trace.mjs` (renamed from lifecycle-trace; source-derived, settlement-aware), `race_exact` races in both orderings.

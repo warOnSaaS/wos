@@ -12,4 +12,4 @@
 {"name":"R08-1_old_D54_window_already_closed","result":["the receipt is already final"]}
 {"name":"R07-7_confirmed_ruling_records","result":[{"rulingId":"r","findingId":"f","raisedByLab":"openai","resolvedByLab":"human","outcome":"upheld"}]}
 {"name":"R07-7_unconfirmed_ruling_refused","error":"ruling r is awaiting_maintainer, not confirmed"}
-{"name":"R08-2_missing_expiry_row_sql","result":"ERROR:  current transaction is aborted, commands ignored until end of transaction block"}
+{"name":"R08-2_missing_expiry_row_sql","result":"ACCEPTED: expiry epoch 12 has no calendar row; a changeset 400 days later is recorded as submitted in epoch 8"}

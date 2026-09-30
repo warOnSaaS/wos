@@ -1813,7 +1813,11 @@ describe("Astra review 07: rule regressions (docs/protocol/reviews/ASTRA-REVIEW-
     refused(allocationChallengeRefusals({ ...c, citedAllocationsRoot: "sha256:other" }), /allocations root/);
     refused(allocationChallengeRefusals({ ...c, currentReceiptSha256: "sha256:changed" }), /frozen receipt revision/);
     refused(allocationChallengeRefusals({ ...c, challengerIsAccusedOrRelated: true }), /own/);
-    refused(allocationChallengeRefusals({ ...c, receiptStatus: "PROVISIONAL" }), /D54 publication/);
+    // Review 08 R08-1: every live-countable receipt, not only ACTIVE.
+    expect(allocationChallengeRefusals({ ...c, receiptStatus: "RATIFIED" })).toEqual([]);
+    expect(allocationChallengeRefusals({ ...c, receiptStatus: "FINAL_BY_SILENCE" })).toEqual([]);
+    refused(allocationChallengeRefusals({ ...c, receiptStatus: "PROVISIONAL" }), /live-countable/);
+    refused(allocationChallengeRefusals({ ...c, receiptStatus: "REVOKED" }), /live-countable/);
     refused(
       challengedAllocationPaymentRefusals({ challenged: true, decision: null, entitledSoFar: 0n, amount: 1n }),
       /undecided challenge/,

@@ -315,6 +315,9 @@ create table wos.task_budgets (
   issuance_rate_base_per_acu  bigint not null default 0,    -- server-set from the epoch
   reserved_base               bigint not null default 0,    -- server-set: budget x rate / 1e6
   expires_epoch               integer not null default 0,   -- server-set: issued epoch + the epoch's budget expiry
+  -- Review 08 R08-2: the expiry INSTANT, pinned at issuance from the issuing epoch's start and fixed length (epochs are
+  -- consecutive and of equal length); a submission is late at or after it, whatever calendar rows exist later.
+  expires_at                  timestamptz not null default 'epoch',
   -- Review 06 R06-5: the review grace and reward-policy version PINNED at issuance (never re-read from a later policy).
   review_grace_epochs         integer not null default 0,   -- server-set from the epoch
   policy_version              text not null default '',     -- server-set from the epoch's pinned reward policy
@@ -1424,6 +1427,7 @@ begin
     raise exception 'wos: the budget reserves nothing at the epoch''s rate: the task is not issued (as the engine)' using errcode = 'check_violation';
   end if;
   new.expires_epoch := new.issued_epoch + ep.budget_expiry_epochs;
+  new.expires_at := ep.starts_at + (ep.ends_at - ep.starts_at) * ep.budget_expiry_epochs;
   new.review_grace_epochs := ep.review_grace_epochs;
   if new.reissue_of is not null then perform wos.lock_task(new.reissue_of); end if;
   new.policy_version := coalesce(ep.policy_versions ->> 'reward', '');
@@ -1702,6 +1706,7 @@ declare
   b wos.task_budgets%rowtype;
   cs wos.changesets%rowtype;
   deadline timestamptz;
+  span interval;
 begin
   perform wos.lock_task(new.task_id);
   new.created_at := clock_timestamp();
@@ -1712,10 +1717,14 @@ begin
   end if;
   new.submitted_at := cs.created_at;
   new.submission_sha256 := cs.submission_sha256;
-  new.submitted_epoch := coalesce((select max(e.epoch_number) from wos.epochs e where e.epoch_number between b.issued_epoch and b.expires_epoch - 1
-                                    and e.starts_at <= cs.created_at), b.issued_epoch);
-  deadline := (select starts_at from wos.epochs where epoch_number = b.expires_epoch);
-  if (deadline is not null and cs.created_at >= deadline) or cs.created_at < b.created_at
+  -- Review 08 R08-2: FAIL CLOSED. The deadline is the budget's pinned expiry instant; the submission epoch is DERIVED from
+  -- the issuing epoch's start and length so that it contains the evidence timestamp (no fallback to the issue epoch).
+  select e.starts_at, e.ends_at - e.starts_at into deadline, span from wos.epochs e where e.epoch_number = b.issued_epoch;
+  if deadline is null or span is null or cs.created_at < deadline then
+    raise exception 'wos: the submission''s epoch cannot be established from the issuing epoch''s calendar' using errcode = 'check_violation';
+  end if;
+  new.submitted_epoch := b.issued_epoch + floor(extract(epoch from cs.created_at - deadline) / extract(epoch from span))::integer;
+  if cs.created_at >= b.expires_at or new.submitted_epoch >= b.expires_epoch or cs.created_at < b.created_at
      or exists (select 1 from wos.task_budget_releases r where r.task_id = new.task_id) then
     raise exception 'wos: work is submitted only while its budget is live (before its expiry, unreleased)' using errcode = 'check_violation';
   end if;
@@ -1839,8 +1848,9 @@ begin
      or new.allocations_root is distinct from (select t.allocations_root from wos.epoch_transitions t where t.epoch_number = a.epoch_number and t.to_state = 'PROPOSED') then
     raise exception 'wos: a challenge cites the frozen receipt revision and the epoch''s published allocations root' using errcode = 'check_violation';
   end if;
-  if (wos.receipt_status(new.receipt_id) = 'ACTIVE') is not true then
-    raise exception 'wos: the free allocation challenge is for ACTIVE receipts' using errcode = 'check_violation';
+  -- Review 08 R08-1: every live-countable receipt (ACTIVE, RATIFIED, FINAL_BY_SILENCE) can have its allocation challenged.
+  if (wos.receipt_status(new.receipt_id) in ('ACTIVE', 'RATIFIED', 'FINAL_BY_SILENCE')) is not true then
+    raise exception 'wos: the free allocation challenge is for live-countable receipts' using errcode = 'check_violation';
   end if;
   if exists (select 1 from wos.allocation_challenges c where c.allocation_id = new.allocation_id
               and not exists (select 1 from wos.allocation_challenge_decisions d where d.challenge_id = c.id)) then

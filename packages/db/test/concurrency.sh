@@ -140,10 +140,10 @@ race "B2 (review 05): one task's reservation allocated in two epochs concurrentl
 race_exact() { # label, first (held 2 s), second, expect_first ("committed" | regex), expect_second, final query printing ok
   local out1 out2 s1 s2 verdict
   out1=$(mktemp)
-  printf 'BEGIN;\n%s\nselect pg_sleep(2);\nCOMMIT;\n' "$2" | "${PSQL[@]}" >"$out1" 2>&1 &
+  # Both sessions are bounded (killed after 20 s); a killed or hung session can never count as a success.
+  printf 'BEGIN;\n%s\nselect pg_sleep(2);\nCOMMIT;\n' "$2" | perl -e 'alarm 20; exec @ARGV' "${PSQL[@]}" >"$out1" 2>&1 &
   local first=$!
   sleep 0.7
-  # a hung session is killed after 20 s and can never count as a success
   out2=$(printf 'BEGIN;\n%s\nCOMMIT;\n' "$3" | perl -e 'alarm 20; exec @ARGV' "${PSQL[@]}" 2>&1; echo "exit:$?")
   local e1=0
   wait "$first" || e1=$?

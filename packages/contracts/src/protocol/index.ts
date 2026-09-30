@@ -1,7 +1,8 @@
 /**
- * @waronsaas/contracts/protocol — DRAFT Proof of Contribution contracts (Amendment 02; docs/protocol/). Pending the
- * Astra review in docs/protocol/REVIEW-PACKET.md. Not wired into any service. Node-only entry point (receipt hashing
- * uses node:crypto through ../canonical.js).
+ * @waronsaas/contracts/protocol — Proof of Contribution contracts, FROZEN protocol v1 for devnet/shadow implementation
+ * (D62, after Astra review 08; docs/protocol/). Not wired into authoritative accounting; no mainnet. Later changes are
+ * versioned additions with their own review. Node-only entry point (receipt hashing uses node:crypto through
+ * ../canonical.js).
  */
 export * from "./entities.js";
 export * from "./policies.js";

@@ -1,5 +1,7 @@
 # PROTOCOL — Proof of Contribution, end to end (DRAFT v4: budget-based rewards D49; after Astra review 03)
 
+> **Status: FROZEN — protocol v1 for devnet/shadow implementation (D62, after Astra review 08, 2026-09-30).** The V1-ACTIVE modules (§13) are frozen; later changes are versioned additions with their own review. Not wired to authoritative accounting; no mainnet; migration 0007 is never applied to production by this freeze.
+
 Status: DRAFT pending the Astra review. Contracts: `packages/contracts/src/protocol/` (`@waronsaas/contracts/protocol`, not wired). Schema: `packages/db/migrations/0007_proof_of_contribution.sql` (DRAFT, never applied to production). Decisions: D18–D48 in `docs/DECISIONS.md`. Astra review 02 resolutions: `REVIEW-PACKET.md` §3b. Rationale and deviations: `ADR-001-proof-of-contribution.md`.
 
 The protocol records verified contribution and allocates WOS by published rules (A1). The words are **contribution**, **receipt** and **allocation**; never payment, earnings or investment.

@@ -15,7 +15,7 @@
 
 import { canonicalSha256 } from "../canonical.js";
 import { splitTaskReservation } from "./engine.js";
-import { RunPolicySnapshot } from "./entities.js";
+import { type ReceiptStatus, RunPolicySnapshot, receiptCountsIn } from "./entities.js";
 import { runPolicySnapshotSha256 } from "./receipts.js";
 
 const H = 3_600_000;
@@ -1763,8 +1763,10 @@ export function allocationChallengeRefusals(x: {
 }): string[] {
   const r: string[] = [];
   if (x.epochState !== "PROPOSED" || x.nowMs >= x.windowClosesAtMs) r.push("the epoch's challenge window is not open");
-  if (x.receiptStatus !== "ACTIVE")
-    r.push("the free allocation challenge is for ACTIVE receipts (provisional ones use their D54 publication)");
+  // Review 08 R08-1: every LIVE-COUNTABLE receipt (ACTIVE, RATIFIED, FINAL_BY_SILENCE) can have its later allocation
+  // challenged; D54 is the pre-admission window of a provisional contribution, not of its allocations.
+  if (!receiptCountsIn("live", x.receiptStatus as ReceiptStatus))
+    r.push("the free allocation challenge is for live-countable receipts (ACTIVE, RATIFIED, FINAL_BY_SILENCE)");
   if (x.frozenReceiptSha256 !== x.currentReceiptSha256) r.push("the challenge must cite the frozen receipt revision");
   if (x.publishedAllocationsRoot === null || x.publishedAllocationsRoot !== x.citedAllocationsRoot)
     r.push("the challenge must cite the epoch's published allocations root");
