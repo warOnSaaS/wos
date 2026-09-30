@@ -1,6 +1,8 @@
 /**
- * DRAFT Proof of Contribution contracts: policy data parses, the engine conserves the funding equation, receipt
- * hashes and the allocation Merkle tree are deterministic, and the usage adapters dedupe by provider response id.
+ * DRAFT Proof of Contribution contracts: policy data parses, the engine conserves the funding equation with
+ * non-negative balances, receipt hashes and the allocation Merkle tree are deterministic, the usage adapters dedupe by
+ * provider response id and report malformed evidence, and Astra review 02's executed counterexamples (H1 returns and
+ * replay, H5 organization cap, H13 application pool, L18 rounding split) now fail closed.
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -9,10 +11,12 @@ import {
   anomalyMetrics,
   acuMicroFromUsage,
   disputeBounty,
-  disputeStake,
+  disputeItemStakes,
+  stakeForfeited,
   allocationTree,
   assertConserved,
   applyWeightCaps,
+  capGroupShares,
   CAPABILITY_POLICY_V1,
   contributionWeight,
   GOVERNANCE_POLICY_V1,
@@ -27,12 +31,15 @@ import {
   computeEpoch,
   type ContributionReceipt,
   contributionReceiptSha256,
+  dutyOutstanding,
   EngineError,
   type EngineReceipt,
+  type EngineState,
   EpochMachine,
   engineParamsFrom,
   GENESIS_POLICY_V1,
   HumanReview,
+  initialState,
   largestRemainder,
   MODEL_RATE_ORACLE_V1,
   merkleProof,
@@ -68,17 +75,22 @@ function receipt(i: number, account: number, weightAcu: number, slice: EngineRec
   };
 }
 
-const fresh = () => ({
-  epochNumber: 1,
-  remainingReserve: RESERVE,
-  poolBalances: new Map<string, bigint>(),
+const fresh = (state: EngineState = initialState(RESERVE), epochNumber = 1) => ({ epochNumber, state, receipts: [] as EngineReceipt[] });
+const net = (r: ReturnType<typeof computeEpoch>, b: string) => {
+  const e = r.entitlements.get(b)!;
+  return e.releasedNow + e.heldBack;
+};
+/** A synthetic small state: reserve 900, issued 100 of which 100 held back by "a" (params with a tiny reserve). */
+const small = { ...params, emissionReserve: 1000n };
+const smallState = (over: Partial<EngineState> = {}): EngineState => ({
+  remainingReserve: 900n,
+  poolBalances: new Map(),
   securityReserve: 0n,
-  cumulativeIssued: 0n,
-  returnsToReserve: 0n,
-  receipts: [] as EngineReceipt[],
-  poolPayouts: [],
-  securityPayouts: [],
-  offsets: new Map<string, bigint>(),
+  cumulativeIssued: 100n,
+  holdback: [{ beneficiaryId: "a", epochNumber: 1, amount: 100n }],
+  offsets: new Map(),
+  lossCarry: 0n,
+  ...over,
 });
 
 describe("policy data (V1 drafts)", () => {
@@ -90,6 +102,7 @@ describe("policy data (V1 drafts)", () => {
     expect(BigInt(REWARD_POLICY_V1.emission.emissionReserveBase) + BigInt(GENESIS_POLICY_V1.capBase)).toBe(
       BigInt(REWARD_POLICY_V1.emission.maxSupplyBase),
     );
+    expect(REWARD_POLICY_V1.holdback.shareBp).toBe(5000);
   });
   it("fails closed on mainnet: no evidence class or verification level qualifies until the founder decides", () => {
     expect(REWARD_POLICY_V1.eligibility.acceptedVerificationLevels.mainnet).toEqual([]);
@@ -129,7 +142,6 @@ describe("engine math", () => {
   });
   it("prices usage in mutually exclusive categories (Opus 5.5 draft rates)", () => {
     const opus = MODEL_RATE_ORACLE_V1.rates.find((r) => r.modelId === "claude-opus-5-5")!;
-    // 1M uncached in ($4) + 1M cache read ($0.20) + 0 write + 100k out ($2) = 6.2 ACU
     expect(
       acuMicroFromUsage({ inputTokens: 1_000_000, cachedInputTokens: 1_000_000, cacheWriteInputTokens: 0, outputTokens: 100_000 }, opus),
     ).toBe(6_200_000n);
@@ -145,24 +157,31 @@ describe("engine math", () => {
 describe("computeEpoch", () => {
   it("an empty epoch emits nothing and returns the whole budget", () => {
     const r = computeEpoch(fresh(), params);
-    expect(r.cumulativeIssued).toBe(0n);
-    expect(r.remainingReserve).toBe(RESERVE);
+    expect(r.state.cumulativeIssued).toBe(0n);
+    expect(r.state.remainingReserve).toBe(RESERVE);
     expect(r.returnedToReserve).toBe(r.budget);
-    assertConserved(RESERVE, r);
   });
   it("low participation: the rate ceiling binds and the unused slice returns (no windfall for contributor zero)", () => {
     const r = computeEpoch({ ...fresh(), receipts: [receipt(1, 1, 50)] }, params);
-    expect(r.netByAccount.get(u(1))).toBe(50n * 100_000_000n); // 50 ACU x 100 WOS
+    expect(net(r, u(1))).toBe(50n * 100_000_000n);
     expect(r.emittedBySlice.execution).toBeLessThan(r.slices.execution!);
-    assertConserved(RESERVE, r);
+  });
+  it("holds back 50% of each net allocation and releases a tranche after 13 epochs (D40)", () => {
+    const r1 = computeEpoch({ ...fresh(), receipts: [receipt(1, 1, 10)] }, params);
+    const e = r1.entitlements.get(u(1))!;
+    expect(e.heldBack).toBe(e.releasedNow);
+    let st = r1.state;
+    for (let ep = 2; ep <= 14; ep++) {
+      const r = computeEpoch({ ...fresh(st, ep) }, params);
+      if (ep === 14) expect(r.entitlements.get(u(1))!.maturedHoldback).toBe(e.heldBack);
+      st = r.state;
+    }
+    expect(st.holdback).toEqual([]);
   });
   it("low participation: pools accrue only in proportion to what was actually emitted", () => {
     const r = computeEpoch({ ...fresh(), receipts: [receipt(1, 1, 50)] }, params);
-    const dist = r.emittedBySlice.execution;
     const accrued = [...r.accruals.values()].reduce((s, v) => s + v, 0n);
-    // 1500 bp completion vs 8000 bp distributing: accrual <= 15/80 of what the distributing slices emitted.
-    expect(accrued).toBeLessThanOrEqual((dist * 1500n) / 8000n + 1n);
-    assertConserved(RESERVE, r);
+    expect(accrued).toBeLessThanOrEqual((r.emittedBySlice.execution * 1500n) / 8000n + 1n);
   });
   it("high participation: the slice binds and is split pro rata, exactly", () => {
     const receipts = Array.from({ length: 200 }, (_, i) => receipt(i, 1 + (i % 50), 1000 + i));
@@ -170,37 +189,174 @@ describe("computeEpoch", () => {
     expect(r.emittedBySlice.execution).toBe(r.slices.execution);
     const sum = r.allocations.filter((a) => a.slice === "execution").reduce((s, a) => s + a.amountBase, 0n);
     expect(sum).toBe(r.slices.execution);
-    assertConserved(RESERVE, r);
   });
-  it("accrues completion pools per key and pays them by component; a missing finder returns to the reserve", () => {
+  it("feature pools pay by component; a missing finder returns to the reserve", () => {
     const e1 = computeEpoch({ ...fresh(), receipts: [receipt(1, 1, 100)] }, params);
-    const bal = e1.poolBalances.get("salesforce/contacts")!;
-    expect(bal).toBeGreaterThan(0n);
+    const bal = e1.state.poolBalances.get("salesforce/contacts")!;
     const e2 = computeEpoch(
       {
-        ...fresh(),
-        epochNumber: 2,
-        remainingReserve: e1.remainingReserve,
-        poolBalances: e1.poolBalances,
-        securityReserve: e1.securityReserve,
-        cumulativeIssued: e1.cumulativeIssued,
-        poolPayouts: [{ poolKey: "salesforce/contacts", beneficiaries: [{ accountId: u(1), component: "implementers", weight: 1n }] }],
+        ...fresh(e1.state, 2),
+        poolPayouts: [
+          {
+            id: "pay-1",
+            poolKey: "salesforce/contacts",
+            kind: "feature",
+            beneficiaries: [{ beneficiaryId: u(1), component: "implementers", weight: 1n }],
+          },
+        ],
       },
       params,
     );
-    expect(e2.poolBalances.get("salesforce/contacts")).toBe(0n);
-    expect(e2.allocations.find((a) => a.slice === "completion_payout")!.amountBase).toBe((bal * 7500n) / 10_000n + 0n);
-    assertConserved(RESERVE, e2);
+    expect(e2.state.poolBalances.get("salesforce/contacts")).toBeUndefined();
+    expect(e2.allocations.find((a) => a.slice === "completion_payout")!.amountBase).toBe((bal * 7500n) / 10_000n);
   });
-  it("recovers offsets from gross allocations (capped) and returns them to the reserve", () => {
-    const r = computeEpoch({ ...fresh(), receipts: [receipt(1, 1, 10)], offsets: new Map([[u(1), 10n ** 12n]]) }, params);
-    const gross = r.allocations.filter((a) => a.accountId === u(1)).reduce((s, a) => s + a.amountBase, 0n);
-    expect(r.offsetsRecovered.get(u(1))).toBe(gross / 2n);
-    expect(r.netByAccount.get(u(1))).toBe(gross - gross / 2n);
-    assertConserved(RESERVE, r);
+  it("H13: an application pool pays 100% by lifetime weight (was 75, returning 25)", () => {
+    const st = smallState({ remainingReserve: 800n, poolBalances: new Map([["app", 100n]]) });
+    const r = computeEpoch(
+      {
+        ...fresh(st),
+        poolPayouts: [
+          { id: "app-1", poolKey: "app", kind: "application", beneficiaries: [{ beneficiaryId: "x", component: "lifetime", weight: 1n }] },
+        ],
+      },
+      small,
+    );
+    expect(r.allocations.find((a) => a.slice === "completion_payout")!.amountBase).toBe(100n);
+    expect(() =>
+      computeEpoch(
+        {
+          ...fresh(st),
+          poolPayouts: [
+            {
+              id: "app-2",
+              poolKey: "app",
+              kind: "application",
+              beneficiaries: [{ beneficiaryId: "x", component: "implementers", weight: 1n }],
+            },
+          ],
+        },
+        small,
+      ),
+    ).toThrow(/does not fit/);
+  });
+  it("H1: a return must name its source; returning without debiting issuance can no longer create funds", () => {
+    // Conserved start: R=900, I=100. The old engine turned a bare 100-unit return into a total of 1,100.
+    const ok = computeEpoch(
+      { ...fresh(smallState({ holdback: [] })), returns: [{ id: "ret-1", kind: "unbound_expiry", beneficiaryId: "a", amount: 100n }] },
+      small,
+    );
+    expect(ok.state.remainingReserve + ok.state.cumulativeIssued).toBe(1000n);
+    expect(() =>
+      computeEpoch(
+        { ...fresh(smallState({ holdback: [] })), returns: [{ id: "ret-2", kind: "unbound_expiry", beneficiaryId: "a", amount: 101n }] },
+        small,
+      ),
+    ).toThrow(/exceeds issuance/);
+    expect(() => assertConserved(1000n, { ...smallState(), remainingReserve: 1000n })).toThrow(/funding equation/);
+  });
+  it("H1: the same dispute settlement cannot be consumed twice (old result: I = -60 and conservation passed)", () => {
+    const d = { id: "dispute-1", excessBase: 100n, bounties: [{ beneficiaryId: "b", amountBase: 20n }] };
+    expect(() => computeEpoch({ ...fresh(smallState({ holdback: [] })), disputeSettlements: [d, { ...d }] }, small)).toThrow(
+      /consumed twice/,
+    );
+    const first = computeEpoch({ ...fresh(smallState({ holdback: [] })), disputeSettlements: [d] }, small);
+    expect(() =>
+      computeEpoch({ ...fresh(first.state, 2), consumedIds: new Set(first.consumedIds), disputeSettlements: [d] }, small),
+    ).toThrow(/consumed twice/);
+    expect(() => assertConserved(1000n, { ...smallState({ holdback: [] }), remainingReserve: 1060n, cumulativeIssued: -60n })).toThrow(
+      /negative issuance/,
+    );
+  });
+  it("H1: a security receipt pays once (old result: four payouts of one receipt)", () => {
+    const sp = { id: "sec-1", receiptId: "r1", beneficiaryId: "b", weightMicro: 1_000_000n };
+    expect(() => computeEpoch({ ...fresh(smallState({ holdback: [] })), securityPayouts: [sp, { ...sp, id: "sec-2" }] }, small)).toThrow(
+      /consumed twice/,
+    );
+  });
+  it("D41: bounties come only from recovered amounts", () => {
+    expect(() =>
+      computeEpoch(
+        {
+          ...fresh(smallState({ holdback: [] })),
+          disputeSettlements: [{ id: "d9", excessBase: 100n, bounties: [{ beneficiaryId: "b", amountBase: 21n }] }],
+        },
+        small,
+      ),
+    ).toThrow(/more bounty/);
+  });
+  it("D39: confiscation consumes holdback exactly once, pays a recovered-only bounty and offsets the rest", () => {
+    const r = computeEpoch(
+      {
+        ...fresh(smallState()),
+        confiscations: [
+          {
+            id: "conf-1",
+            beneficiaryId: "a",
+            holdbackBase: 100n,
+            unclaimedBase: 0n,
+            provenExcessBase: 150n,
+            bounties: [{ beneficiaryId: "b", amountBase: 20n }],
+          },
+        ],
+      },
+      small,
+    );
+    expect(r.state.holdback).toEqual([]);
+    expect(r.state.offsets.get("a")).toBe(50n);
+    expect(() =>
+      computeEpoch(
+        {
+          ...fresh(smallState()),
+          confiscations: [
+            { id: "conf-2", beneficiaryId: "a", holdbackBase: 101n, unclaimedBase: 0n, provenExcessBase: 101n, bounties: [] },
+          ],
+        },
+        small,
+      ),
+    ).toThrow(/less holdback/);
+  });
+  it("D41: written-off losses reduce later budgets, at most 10% per epoch", () => {
+    const st = { ...initialState(RESERVE), offsets: new Map([["x", 10n ** 15n]]) };
+    const r = computeEpoch({ ...fresh(st), writeOffs: [{ id: "w1", beneficiaryId: "x", amount: 10n ** 12n }] }, params);
+    expect(r.absorbedLoss).toBe(r.budget / 9n); // budget = full - 10% of full
+  });
+  it("L18: rounding happens per beneficiary, so splitting receipts cannot win extra base units", () => {
+    // Old: A got 1 unit with one receipt of weight 2, and 2 units after splitting into A1 + A2.
+    const p2 = {
+      ...small,
+      budgetPpm: 2223n, // floor(900 x 2223 / 1e6) = 2 base units to split
+      rateCeilingInitialBasePerAcu: 10n ** 12n,
+      holdbackBp: 0n,
+      slicesBp: { execution: 10_000n, planning: 0n, human_review: 0n, outcomes: 0n, completion_accrual: 0n, security_reserve: 0n },
+    };
+    const line = (receiptId: string, accountId: string, weightMicro: bigint): EngineReceipt => ({
+      receiptId,
+      accountId,
+      slice: "execution",
+      weightMicro,
+      featurePoolKeys: [],
+      applicationPoolKeys: [],
+    });
+    const rs = (split: boolean): EngineReceipt[] => [
+      ...(split ? [line("A1", "A", 1n), line("A2", "A", 1n)] : [line("A", "A", 2n)]),
+      line("B", "B", 1n),
+      line("C", "C", 1n),
+    ];
+    const a = computeEpoch({ ...fresh(smallState({ holdback: [] })), receipts: rs(false) }, p2);
+    const b = computeEpoch({ ...fresh(smallState({ holdback: [] })), receipts: rs(true) }, p2);
+    expect(net(a, "A")).toBe(1n);
+    expect(net(b, "A")).toBe(1n);
+  });
+  it("splits a receipt between a person and an organization beneficiary (D38)", () => {
+    const r = computeEpoch(
+      { ...fresh(), receipts: [{ ...receipt(1, 1, 10), beneficiaries: [{ beneficiaryId: "org:acme", shareBp: 10_000 }] }] },
+      params,
+    );
+    expect(r.entitlements.has("org:acme")).toBe(true);
+    expect(r.entitlements.has(u(1))).toBe(false);
   });
   it("refuses a receipt admitted twice (exactly-once allocation)", () => {
-    expect(() => computeEpoch({ ...fresh(), receipts: [receipt(1, 1, 1), receipt(1, 2, 1)] }, params)).toThrow(/admitted twice/);
+    expect(() => computeEpoch({ ...fresh(), receipts: [receipt(1, 1, 1), receipt(1, 2, 1)] }, params)).toThrow(/consumed twice/);
   });
   it("is deterministic regardless of receipt order", () => {
     const rs = Array.from({ length: 30 }, (_, i) => receipt(i, 1 + (i % 7), 3 + i));
@@ -208,39 +364,32 @@ describe("computeEpoch", () => {
     const b = computeEpoch({ ...fresh(), receipts: [...rs].reverse() }, params);
     expect(a.allocations).toEqual(b.allocations);
   });
+  it("Q3: the ceiling is damped to 1.5x the trailing realised rate", () => {
+    const r = computeEpoch({ ...fresh(), trailingRateBasePerAcu: 10_000_000n, receipts: [receipt(1, 1, 10)] }, params);
+    expect(r.rateCeilingBasePerAcu).toBe(15_000_000n);
+  });
 });
 
-describe("optimistic payouts, disputes, anomalies, activation (D28–D33)", () => {
+describe("optimistic payouts, disputes, anomalies, activation (D28–D33, D43)", () => {
   it("allocates per receipt so any single allocation can be disputed", () => {
     const r = computeEpoch({ ...fresh(), receipts: [receipt(1, 1, 5), receipt(2, 1, 7)] }, params);
     const lines = r.allocations.filter((a) => a.slice === "execution");
     expect(lines.map((l) => l.receiptId)).toEqual([u(1001), u(1002)]);
-    expect(lines[0]!.amountBase + lines[1]!.amountBase).toBe(r.netByAccount.get(u(1)));
+    expect(lines[0]!.amountBase + lines[1]!.amountBase).toBe(net(r, u(1)));
   });
-  it("settles a dispute conservatively: excess leaves issuance, bounty is paid from it, the rest returns", () => {
-    const e1 = computeEpoch({ ...fresh(), receipts: [receipt(1, 1, 50), receipt(2, 2, 50)] }, params);
-    const excess = 1_000_000_000n;
-    const bounty = disputeBounty(excess, REWARD_POLICY_V1.challenge.bountyBpOfExcess);
-    const e2 = computeEpoch(
-      {
-        ...fresh(),
-        epochNumber: 2,
-        remainingReserve: e1.remainingReserve,
-        poolBalances: e1.poolBalances,
-        securityReserve: e1.securityReserve,
-        cumulativeIssued: e1.cumulativeIssued,
-        disputeSettlements: [{ disputeId: u(77), excessBase: excess, bounties: [{ accountId: u(2), amountBase: bounty }] }],
-      },
-      params,
-    );
-    expect(e2.allocations.find((a) => a.slice === "dispute_bounty")!.amountBase).toBe(200_000_000n);
-    assertConserved(RESERVE, e2);
-  });
-  it("prices stakes low, scales them by items and caps them", () => {
+  it("prices stakes per item with a floor, forfeits only rejected items", () => {
     const p = REWARD_POLICY_V1.challenge;
-    expect(disputeStake(1_000_000_000n, 1, p)).toBe(20_000_000n);
-    expect(disputeStake(1_000_000_000n, 25, p)).toBe(100_000_000n);
-    expect(disputeStake(0n, 1, p)).toBe(0n);
+    expect(disputeItemStakes(1_000_000_000n, 1, p)).toEqual([20_000_000n]);
+    expect(disputeItemStakes(1_000_000_000n, 25, p)).toEqual(Array(25).fill(4_000_000n));
+    expect(disputeItemStakes(5_000_000n, 2, p)).toEqual([1_000_000n, 1_000_000n]);
+    expect(() => disputeItemStakes(1_500_000n, 2, p)).toThrow(/exceed/);
+    expect(
+      stakeForfeited([
+        { stakeBase: 5n, outcome: "UPHELD" },
+        { stakeBase: 5n, outcome: "CLIPPED" },
+      ]),
+    ).toBe(5n);
+    expect(disputeBounty(1000n, REWARD_POLICY_V1.losses.bountyBpOfRecovered)).toBe(200n);
   });
   it("ranks a consistent 10% skim above an honest spread even though no receipt stands out", () => {
     const peer = 10_000_000n;
@@ -273,6 +422,20 @@ describe("optimistic payouts, disputes, anomalies, activation (D28–D33)", () =
     const em = { ...ok, effectiveEpoch: 4, emergency: true };
     expect(activationRefusals(em, { openEpoch: 4, openEpochState: "CALCULATING", epochStartsAtMs: start })).toEqual([]);
     expect(activationRefusals(em, { openEpoch: 4, openEpochState: "PROPOSED", epochStartsAtMs: start })).toHaveLength(1);
+  });
+  it("M14: duty is derived from append-only offer/completion events and never gates an expired offer", () => {
+    const at = (h: number) => new Date(Date.UTC(2026, 9, 1, h)).toISOString();
+    const ev = (offerId: string, kind: "offered" | "completed", h: number) => ({
+      offerId,
+      accountId: u(1),
+      epochNumber: 1,
+      kind,
+      quorumId: null,
+      deadlineAt: at(10),
+      at: at(h),
+    });
+    expect(dutyOutstanding([ev("o1", "offered", 1), ev("o2", "offered", 1), ev("o1", "completed", 2)], Date.UTC(2026, 9, 1, 3))).toBe(1);
+    expect(dutyOutstanding([ev("o2", "offered", 1)], Date.UTC(2026, 9, 1, 11))).toBe(0);
   });
 });
 
@@ -321,15 +484,41 @@ describe("governance and off-ramp (D34, D35)", () => {
       proposalTier("ratify_emergency", null, { emissionOrSupply: false, genesisCap: false, newCategory: false, withinLimits: true }),
     ).toBe("emergency_ratification");
   });
-  it("caps an organization's share of each weight at 10% (D38)", () => {
+  it("H5: an organization holding 90% ends at <= 10% FINAL share and cannot pass anything alone (old: 50%, passed governance)", () => {
     const ws = [
-      { accountId: u(1), organizationId: u(900), locked: 300n, contribution: 300n },
-      { accountId: u(2), organizationId: u(900), locked: 300n, contribution: 300n },
-      { accountId: u(3), organizationId: null, locked: 400n, contribution: 400n },
+      ...Array.from({ length: 5 }, (_, i) => ({ accountId: `o${i}`, organizationId: "org", locked: 180n, contribution: 180n })),
+      ...Array.from({ length: 50 }, (_, i) => ({ accountId: `p${i}`, organizationId: null, locked: 2n, contribution: 2n })),
     ];
-    const capped = applyWeightCaps(ws, { perWalletCapBp: 10_000, orgCapBp: GOVERNANCE_POLICY_V1.orgCapBp });
-    expect(capped[0]!.contribution + capped[1]!.contribution).toBe(100n);
-    expect(capped[2]!.contribution).toBe(400n);
+    const capped = applyWeightCaps(ws, { perWalletCapBp: 500, orgCapBp: GOVERNANCE_POLICY_V1.orgCapBp });
+    const org = capped.slice(0, 5).reduce((t, w) => t + w.contribution, 0n);
+    const all = capped.reduce((t, w) => t + w.contribution, 0n);
+    expect(org * 10_000n).toBeLessThanOrEqual(1000n * all);
+    const t = tallyDualMajority(
+      ws.slice(0, 5).map((w) => ({ accountId: w.accountId, choice: "yes" as const })),
+      capped,
+      GOVERNANCE_POLICY_V1,
+      "governance",
+    );
+    expect(t.passes).toBe(false);
+    // Two 10%-capped groups can never both be under 10%: the tally refuses rather than breaking the promise.
+    const two = applyWeightCaps(
+      [
+        { accountId: "a", organizationId: "A", locked: 90n, contribution: 90n },
+        { accountId: "b", organizationId: "B", locked: 10n, contribution: 10n },
+      ],
+      { perWalletCapBp: 500, orgCapBp: 1000 },
+    );
+    expect(two.feasible).toBe(false);
+    const both = [
+      { accountId: "a", choice: "yes" as const },
+      { accountId: "b", choice: "yes" as const },
+    ];
+    expect(tallyDualMajority(both, two, GOVERNANCE_POLICY_V1, "routine").passes).toBe(false);
+    const many = [
+      { groupId: "a", weight: 90n, capBp: 1000 },
+      ...Array.from({ length: 20 }, (_, i) => ({ groupId: `g${i}`, weight: 1n, capBp: 1000 })),
+    ];
+    expect(capGroupShares(many).feasible).toBe(true);
   });
   it("ignores locked weight of voters with no recent contribution (recommended rule)", () => {
     const weights = [w(1, 1000n, 0n), w(2, 10n, 100n)];
@@ -362,6 +551,10 @@ describe("governance and off-ramp (D34, D35)", () => {
     expect(contributionWeight(2600n, 10, 36, 26)).toBe(0n);
     expect(lockedWeight(5n, 400 * 86_400_000, 0, 365)).toBe(5n);
     expect(lockedWeight(5n, 300 * 86_400_000, 0, 365)).toBe(0n);
+    // Q9: a lock created less than one epoch before the snapshot is not seasoned and counts zero.
+    const week = 7 * 86_400_000;
+    expect(lockedWeight(5n, 400 * 86_400_000, 0, 365, -week + 1, week)).toBe(0n);
+    expect(lockedWeight(5n, 400 * 86_400_000, 0, 365, -week, week)).toBe(5n);
     expect(OFFRAMP_DISCLOSURE).toMatch(/may become worthless/);
   });
 });
@@ -444,7 +637,7 @@ describe("hashing and Merkle (P-1..P-4)", () => {
       mint: "So11111111111111111111111111111111111111112",
       epochNumber: 1,
       index: i,
-      accountId: u(10 + i),
+      beneficiary: { kind: "person" as const, id: u(10 + i) },
       wallet: "So11111111111111111111111111111111111111112",
       amountBase: String(1000 + i),
     }));
@@ -490,12 +683,14 @@ describe("hashing and Merkle (P-1..P-4)", () => {
     const line = (judgment: "plausible" | "inflated" | "misattributed") => ({
       ref: "L2",
       judgment,
-      reason: null,
+      reason: null as null | "padded_repairs" | "context_inflation",
       plausibleAcuMicro: null,
       evidence: [],
       rationale: "",
     });
-    expect(payoutCanaryCaught(c, { lines: [line("inflated")] })).toBe(true);
+    expect(payoutCanaryCaught(c, { lines: [{ ...line("inflated"), reason: "padded_repairs" }] })).toBe(true);
+    // H11: the right judgment with the wrong reason is not a catch.
+    expect(payoutCanaryCaught(c, { lines: [{ ...line("inflated"), reason: "context_inflation" }] })).toBe(false);
     expect(payoutCanaryCaught(c, { lines: [line("misattributed")] })).toBe(false);
     expect(payoutCanaryCaught(c, { lines: [line("plausible")] })).toBe(false);
     expect(payoutCanaryCaught(c, { lines: [] })).toBe(false);
@@ -600,6 +795,21 @@ describe("usage adapters (fixtures shaped like OBSERVED local session files)", (
       JSON.stringify({ type: "assistant", parent_tool_use_id: "toolu_1", message: { id: "msg_9", usage: { output_tokens: 1 } } }),
     ]);
     expect(r.subagentEvents).toBe(1);
+  });
+  it("M15: malformed or impossible evidence is reported, never silently zeroed", () => {
+    const r = parseCodexExecStream([
+      "{not json",
+      JSON.stringify({
+        type: "turn.completed",
+        usage: { input_tokens: 10, cached_input_tokens: 20, output_tokens: -5, reasoning_output_tokens: 100 },
+      }),
+    ]);
+    expect(r.ok).toBe(false);
+    expect(r.errors.join(" ")).toMatch(/malformed JSON/);
+    expect(r.errors.join(" ")).toMatch(/cached_input_tokens exceeds/);
+    expect(r.errors.join(" ")).toMatch(/invalid counter output_tokens/);
+    expect(r.errors.join(" ")).toMatch(/reasoning tokens exceed/);
+    expect(parseClaudeStream([JSON.stringify({ type: "assistant", message: { usage: { output_tokens: 1 } } })]).ok).toBe(false);
   });
   it("codex: input_tokens includes cached tokens; canonical input is uncached", () => {
     expect(codexUsage({ input_tokens: 15024, cached_input_tokens: 12032, output_tokens: 133, reasoning_output_tokens: 0 })).toEqual({

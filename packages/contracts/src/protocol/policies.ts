@@ -74,7 +74,12 @@ export const RewardPolicy = z.object({
     /** Budget(e) = floor(remainingReserve x decayPpm / 1e6). */
     budgetPpmOfRemaining: Ppm,
     /** Rate ceiling: at most this many base units per ACU of weight in a distributing slice, decaying per epoch. */
-    rateCeiling: z.object({ initialBasePerAcu: U64String, decayPpmPerEpoch: Ppm }),
+    rateCeiling: z.object({
+      initialBasePerAcu: U64String,
+      decayPpmPerEpoch: Ppm,
+      /** Q3 timing damping: an epoch's ceiling is at most this share of the trailing (4-epoch) realised rate. */
+      maxVsTrailingBp: z.number().int().nonnegative(),
+    }),
   }),
   /** Epoch budget split; must sum to 10000. */
   slicesBp: z.object({
@@ -114,6 +119,29 @@ export const RewardPolicy = z.object({
     maxOffsetRecoveryBp: Bp,
   }),
   /**
+   * D40 holdback: each finalized allocation releases (1 - shareBp) now and holds shareBp for `epochs` epochs (the
+   * pattern-lookback window). Findings recover from the holdback first. Leaving or abandoning forfeits unreleased
+   * holdback only as RiskPolicy says (exclusion after proven cheating), never for an ordinary pause in contributing.
+   */
+  holdback: z.object({ shareBp: Bp, epochs: z.number().int().positive(), forfeitOnExclusion: z.literal(true) }),
+  /** D41: bounties are paid only from amounts actually recovered; unrecovered losses reduce later budgets, bounded. */
+  losses: z.object({ bountyBpOfRecovered: Bp, absorptionMaxBp: Bp, publish: z.literal(true) }),
+  /**
+   * D39 confiscation after PROVEN cheating: unreleased holdback, pending allocations, unclaimed entitlements and
+   * unreleased Genesis vesting; then offsets on future earnings until the proven excess is repaid; revocation of the
+   * receipts; zero governance weight; exclusion. Never on-chain seizure of released tokens (no freeze, no delegate).
+   * Due process: evidence, notice, reply, one appeal, action-bound two-person AdminAction; permanent exclusion by a
+   * structural governance vote (founder AdminAction in founder mode). Confiscated amounts return to the reserve.
+   */
+  confiscation: z.object({
+    replyHours: z.number().int().positive(),
+    appealHours: z.number().int().positive(),
+    maxTimeBoxedExclusionEpochs: z.number().int().positive(),
+    permanentExclusionTier: z.literal("structural"),
+  }),
+  /** D42: when no eligible auditor exists by the deadline, the claim releases on schedule, flagged "unaudited". */
+  auditCapacity: z.object({ unauditedRelease: z.literal(true), penalizeContributor: z.literal(false) }),
+  /**
    * D28–D31 optimistic payouts: every allocation is published with an explanation and anomaly metrics; silence
    * accepts; disputes (any set of allocations, by any epoch participant) go to an audit gate.
    */
@@ -124,15 +152,19 @@ export const RewardPolicy = z.object({
     /** After this long without a gate outcome, a maintainer must decide (AdminAction) — deadlock escalation. */
     gateEscalateAfterHours: z.number().int().positive(),
     standing: z.literal("epoch_participants"),
+    /** Stake per ITEM = max(minStakeBase, stakePerItemBp x pending); forfeited per rejected item (D43). */
     stakePerItemBp: Bp,
+    /** Cap on the bp part only (large earners); the floor always applies. Total stake <= the disputer's pending. */
     maxStakeBp: Bp,
     minStakeBase: U64String,
+    /** One appeal per resolved item, by either party, within this window (D43). */
+    appealHours: z.number().int().positive(),
     /** Joining an existing gate on the same allocation costs only the minimum stake; bounty priority stays with the first disputer. */
     joinerStake: z.literal("min"),
     maxItemsPerDispute: z.number().int().positive(),
     maxDisputesPerAccountPerEpoch: z.number().int().positive(),
-    /** Bounty = this share of the TOTAL upheld excess across the dispute's items. */
-    bountyBpOfExcess: Bp,
+    /** Related parties of the accused never hold bounty priority (D43). */
+    relatedPartyBountyPriority: z.literal(false),
     /** Mandatory sampled payout audits run every epoch whether or not anyone disputes. */
     sampledAuditRateBp: Bp,
     /** Rejected disputes in 30 days before rejected_disputes is raised and the account's dispute rate limit halves. */
@@ -465,8 +497,15 @@ export const GenesisAllocationPolicy = z.object({
      */
     method: z.literal("accepted_output_reference"),
     referenceEpochs: z.object({ from: z.number().int().positive(), to: z.number().int().positive() }),
-    /** Minimum merged IMPLEMENTATION receipts in the reference window before a valuation may be computed. */
+    /** Minimum merged IMPLEMENTATION receipts in the reference population before a valuation may be computed. */
     minReferenceReceipts: z.number().int().positive(),
+    /**
+     * M16 / D48: the reference population is a FROZEN list of receipts, reviewed independently, that excludes every
+     * Genesis beneficiary and their related parties; the statistic is computed over exactly the stated epochs.
+     */
+    referencePopulation: z.literal("frozen_list_reviewed_independently_excluding_genesis_beneficiaries_and_related_parties"),
+    /** Published fallback when the population is insufficient: base units per retro size point (400 WOS, provisional). */
+    fallbackBasePerSizePoint: U64String,
   }),
   vesting: z.object({
     startsAt: z.literal("mainnet_launch"),

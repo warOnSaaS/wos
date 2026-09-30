@@ -471,33 +471,86 @@ export const DisputeItemResolution = z.object({
 });
 export type DisputeItemResolution = z.infer<typeof DisputeItemResolution>;
 
-/** Settlement of a whole dispute: bounty on the TOTAL excess of its items; stake forfeited only if nothing was clipped. */
+/**
+ * Settlement of a whole dispute, DERIVED from the gate resolutions it holds bounty priority on (H10): the recovered
+ * excess of those items, the bounty (bountyBp of recovered only, D41), and the stakes of its REJECTED items (per item,
+ * D43). The database recomputes all three and refuses anything else.
+ */
 export const DisputeSettlement = z.object({
   disputeId: Uuid,
   totalExcessBase: U64String,
+  recoveredBase: U64String,
   bountyBase: U64String,
   stakeForfeitedBase: U64String,
   settledAt: Timestamp,
 });
 export type DisputeSettlement = z.infer<typeof DisputeSettlement>;
 
-/** Bounty = bountyBp of the total excess, with bounty priority per allocation to its FIRST disputer (D30). */
-export function disputeBounty(totalExcessBase: bigint, bountyBp: number): bigint {
-  return (totalExcessBase * BigInt(bountyBp)) / 10_000n;
+/** Bounty = bountyBp of what was actually RECOVERED (D41); never of an uncollected excess. */
+export function disputeBounty(recoveredBase: bigint, bountyBp: number): bigint {
+  return (recoveredBase * BigInt(bountyBp)) / 10_000n;
 }
 
-/** Stake = stakePerItemBp of the disputer's pending allocation x items, capped at maxStakeBp, at least minStakeBase. */
-export function disputeStake(
+/**
+ * Per-item stakes (D43): each item costs max(minStakeBase, stakePerItemBp x pending), where the bp part across the
+ * bundle is capped at maxStakeBp x pending (large earners); the floor always applies (small earners pay a real,
+ * small amount). The total can never exceed the disputer's pending allocation: too many items is refused.
+ */
+export function disputeItemStakes(
   pendingBase: bigint,
   items: number,
   p: { stakePerItemBp: number; maxStakeBp: number; minStakeBase: string },
-): bigint {
-  const raw = (pendingBase * BigInt(p.stakePerItemBp) * BigInt(items)) / 10_000n;
-  const cap = (pendingBase * BigInt(p.maxStakeBp)) / 10_000n;
-  const min = BigInt(p.minStakeBase);
-  const stake = raw < cap ? raw : cap;
-  return stake > min ? stake : min < pendingBase ? min : pendingBase;
+): bigint[] {
+  if (!Number.isInteger(items) || items < 1) throw new Error("a dispute has at least one item");
+  const perItemBp = (pendingBase * BigInt(p.stakePerItemBp)) / 10_000n;
+  const capPerItem = (pendingBase * BigInt(p.maxStakeBp)) / 10_000n / BigInt(items);
+  const floor = BigInt(p.minStakeBase);
+  const bpPart = perItemBp < capPerItem ? perItemBp : capPerItem;
+  const each = bpPart > floor ? bpPart : floor;
+  if (each * BigInt(items) > pendingBase) throw new Error("the stakes of this many items exceed your pending allocation");
+  return Array.from({ length: items }, () => each);
 }
+
+/** Forfeited stake = the stakes of the items the gate rejected (UPHELD); valid items refund their own stake. */
+export function stakeForfeited(items: ReadonlyArray<{ stakeBase: bigint; outcome: "UPHELD" | "CLIPPED" | "REVOKED" }>): bigint {
+  return items.reduce((t, i) => t + (i.outcome === "UPHELD" ? i.stakeBase : 0n), 0n);
+}
+
+// ------------------------------------------------------------------------------------------------ Confiscation (D39)
+
+/**
+ * After PROVEN cheating (an upheld finding with recorded evidence, notice, the reply window and the appeal window
+ * elapsed or decided), confiscation consumes identified protocol-held sources exactly once, in this order: pending
+ * allocations of open windows, unreleased holdback (all tranches), unclaimed entitlements, unreleased Genesis vesting.
+ * Any proven excess still unrecovered becomes an offset on future earnings. Never on-chain seizure of released tokens.
+ */
+export const ConfiscationSource = z.enum(["pending_allocation", "holdback", "unclaimed_entitlement", "genesis_unvested"]);
+export type ConfiscationSource = z.infer<typeof ConfiscationSource>;
+
+export const Confiscation = z.object({
+  id: Uuid,
+  beneficiaryId: z.string().min(1),
+  provenExcessBase: U64String,
+  findingRef: z.string().min(1),
+  sources: z.array(z.object({ kind: ConfiscationSource, sourceId: z.string().min(1), amountBase: U64String })).min(1),
+  /** Two-person AdminAction bound to this confiscation's id (H12). */
+  adminActionId: Uuid,
+  noticeAt: Timestamp,
+  replyClosesAt: Timestamp,
+  appealClosesAt: Timestamp,
+});
+export type Confiscation = z.infer<typeof Confiscation>;
+
+export const Exclusion = z.object({
+  id: Uuid,
+  accountId: Uuid,
+  scope: z.array(z.enum(["rewards", "voting", "review", "duty"])).min(1),
+  /** null = permanent (needs a structural governance vote; founder AdminAction in founder mode). */
+  untilEpoch: z.number().int().positive().nullable(),
+  governanceProposalId: Uuid.nullable(),
+  adminActionId: Uuid,
+});
+export type Exclusion = z.infer<typeof Exclusion>;
 
 /** Allocation lifecycle per (epoch, account): derived from the epoch state and disputes (PROTOCOL.md section 4.4). */
 export const AllocationState = z.enum([
@@ -595,7 +648,6 @@ export function runLogTotals(log: RunLog): {
 export const PayoutAuditPacket = z.object({
   schema: z.literal("wos-payout-audit-packet.v1"),
   packetId: Uuid,
-  feature: FeatureKey.nullable(),
   lines: z
     .array(
       z.object({
@@ -637,7 +689,8 @@ export const PayoutAuditPacket = z.object({
    */
   focus: z
     .object({
-      disputeId: Uuid,
+      /** Opaque per-packet reference, never the public dispute id (H11). */
+      focusRef: Uuid,
       concerns: z
         .array(
           z.object({
@@ -748,10 +801,13 @@ const PERTURBATION_JUDGMENT: Record<PerturbationClass, PayoutJudgment> = {
   wrong_split: "misattributed",
 };
 
-/** Caught iff the canary line is judged inflated/misattributed (matching its class) — "plausible" or silence is a miss. */
+/**
+ * Caught iff the canary line is judged with the matching judgment AND names the planted perturbation as its reason
+ * (H11). Canaries are BEHAVIOURAL checks of an auditor client; they never attest that a model ran.
+ */
 export function payoutCanaryCaught(c: Pick<PayoutCanary, "lineRef" | "perturbation">, v: Pick<PayoutAuditVerdict, "lines">): boolean {
   const line = v.lines.find((l) => l.ref === c.lineRef);
-  return line !== undefined && line.judgment === PERTURBATION_JUDGMENT[c.perturbation];
+  return line !== undefined && line.judgment === PERTURBATION_JUDGMENT[c.perturbation] && line.reason === c.perturbation;
 }
 
 /**
@@ -787,18 +843,33 @@ export const ReceiptClip = z.object({
 });
 export type ReceiptClip = z.infer<typeof ReceiptClip>;
 
-/** Audit duty per account per epoch: owed from the account's own execution/planning receipts being claimed. */
-export const DutyStatement = z.object({
+/**
+ * Duty (M14) is derived from append-only events, never a mutable statement: an offer, then a completion or an
+ * expiry. Owed = offered and not yet completed/expired; a claim is gated only by outstanding offers that are still
+ * within their deadline. When no eligible audit could be offered, nothing is owed and the claim releases on schedule,
+ * flagged "unaudited" (D42).
+ */
+export const DutyEvent = z.object({
+  offerId: Uuid,
   accountId: Uuid,
   epochNumber: z.number().int().positive(),
-  owed: z.number().int().nonnegative(),
-  /** Duty tasks actually offered to this account (duty is never owed beyond what was offered). */
-  offered: z.number().int().nonnegative(),
-  done: z.number().int().nonnegative(),
-  /** Allocation withheld until duty is met, carried at most unmetDutyCarryEpochs. */
-  claimGated: z.boolean(),
+  kind: z.enum(["offered", "completed", "expired_no_fault", "declined"]),
+  quorumId: Uuid.nullable(),
+  deadlineAt: Timestamp.nullable(),
+  at: Timestamp,
 });
-export type DutyStatement = z.infer<typeof DutyStatement>;
+export type DutyEvent = z.infer<typeof DutyEvent>;
+
+export function dutyOutstanding(events: readonly DutyEvent[], nowMs: number): number {
+  const last = new Map<string, DutyEvent>();
+  for (const e of events) {
+    const prev = last.get(e.offerId);
+    if (!prev || Date.parse(e.at) >= Date.parse(prev.at)) last.set(e.offerId, e);
+  }
+  let n = 0;
+  for (const e of last.values()) if (e.kind === "offered" && e.deadlineAt && Date.parse(e.deadlineAt) > nowMs) n++;
+  return n;
+}
 
 /** Receipts whose status lets them into an epoch of the given mode. */
 export function receiptCountsIn(mode: "live" | "test", status: ReceiptStatus): boolean {
@@ -896,6 +967,61 @@ export const Allocation = z.object({
 });
 export type Allocation = z.infer<typeof Allocation>;
 
+/**
+ * M17/D45: before the first contribution or wallet binding, a contributor accepts the publication disclosure (what
+ * becomes public, when, for how long, who is responsible). Receipts cannot be issued without it.
+ */
+export const PublicationConsent = z.object({
+  accountId: Uuid,
+  disclosureVersion: z.string().min(1),
+  disclosureSha256: Sha256,
+  at: Timestamp,
+});
+export type PublicationConsent = z.infer<typeof PublicationConsent>;
+
+/** M17: the immutable commitment kept forever; the log BODY is stored separately and deleted after retention. */
+export const RunLogCommitment = z.object({
+  agentRunId: Uuid,
+  logSha256: Sha256,
+  turns: z.number().int().nonnegative(),
+  repairLoops: z.number().int().nonnegative(),
+  toolCalls: z.number().int().nonnegative(),
+  totalsMatch: z.boolean(),
+  bodyExpiresAt: Timestamp,
+});
+export type RunLogCommitment = z.infer<typeof RunLogCommitment>;
+
+/**
+ * H2: final entitlements are separate from proposed allocations. They are written at FINALIZED (undisputed) or when
+ * a gate resolves (disputed), per BENEFICIARY, and a claim later turns released amounts into settlement leaves.
+ */
+export const BeneficiaryRef = z.object({ kind: z.enum(["person", "organization"]), id: Uuid });
+export type BeneficiaryRef = z.infer<typeof BeneficiaryRef>;
+
+export const EntitlementRecord = z.object({
+  id: Uuid,
+  epochNumber: z.number().int().positive(),
+  beneficiary: BeneficiaryRef,
+  kind: z.enum(["release_now", "holdback_tranche", "holdback_matured", "bounty", "genesis_vesting"]),
+  amountBase: U64String,
+  /** Withheld epochs recorded when a disputed amount is released late (D43: released with the delay recorded). */
+  withheldEpochs: z.number().int().nonnegative(),
+  flags: z.array(z.enum(["unaudited", "released_after_dispute"])),
+});
+export type EntitlementRecord = z.infer<typeof EntitlementRecord>;
+
+/** H3: one immutable signed transaction per attempt, persisted BEFORE broadcast; one active attempt per leaf. */
+export const SettlementAttempt = z.object({
+  leafId: Uuid,
+  attempt: z.number().int().positive(),
+  adapterGeneration: z.number().int().positive(),
+  signedTxSha256: Sha256,
+  signature: z.string().min(32).max(100),
+  lastValidBlockHeight: z.number().int().nonnegative(),
+  persistedAt: Timestamp,
+});
+export type SettlementAttempt = z.infer<typeof SettlementAttempt>;
+
 /** One claim leaf per (epoch, wallet): the sum of that account's non-negative allocations after offsets. */
 export const ClaimLeaf = z.object({
   schema: z.literal("wos-claim-leaf.v1"),
@@ -903,7 +1029,8 @@ export const ClaimLeaf = z.object({
   mint: SolanaAddress,
   epochNumber: z.number().int().positive(),
   index: z.number().int().nonnegative(),
-  accountId: Uuid,
+  /** H9: the beneficiary (person or organization), not merely an account. */
+  beneficiary: BeneficiaryRef,
   wallet: SolanaAddress,
   amountBase: U64String,
 });
@@ -1215,6 +1342,8 @@ export const DEFAULT_ORGANIZATION_SHARE_BP = 10_000 as const;
 /** The exact message a wallet signs to bind itself to an account (SOLANA-ARCHITECTURE.md section 7). */
 export function walletBindingMessage(input: {
   accountId: string;
+  /** Present when binding an organization's beneficiary wallet (H9). */
+  organizationId?: string | null;
   wallet: string;
   cluster: SolanaCluster;
   nonce: string;
@@ -1223,6 +1352,7 @@ export function walletBindingMessage(input: {
   return [
     "wOS wallet binding",
     `account: ${input.accountId}`,
+    ...(input.organizationId ? [`organization: ${input.organizationId}`] : []),
     `wallet: ${input.wallet}`,
     `cluster: ${input.cluster}`,
     `nonce: ${input.nonce}`,
@@ -1237,10 +1367,15 @@ export const WalletBinding = z.object({
   organizationId: Uuid.nullable(),
   cluster: SolanaCluster,
   wallet: SolanaAddress,
-  kind: z.enum(["external", "cli_keypair"]),
+  /** multisig_pda: a Squads vault (a PDA has no private key) proves control by executing an approved on-chain
+   * multisig transaction that posts the binding message as a Memo; `multisigTxSignature` names it (H9). */
+  kind: z.enum(["external", "cli_keypair", "multisig_pda"]),
   message: z.string().min(1),
-  /** base58 or base64 ed25519 signature over the UTF-8 message; verified server-side before insert. */
-  signature: z.string().min(64).max(128),
+  /** ed25519 signature over the UTF-8 message (external, cli_keypair); null for multisig_pda. */
+  signature: z.string().min(64).max(128).nullable(),
+  multisigTxSignature: z.string().min(32).max(100).nullable(),
+  /** Authorized controllers recorded for organization wallets (D45). */
+  controllers: z.array(Uuid),
   action: z.enum(["bind", "unbind"]),
   at: Timestamp,
 });

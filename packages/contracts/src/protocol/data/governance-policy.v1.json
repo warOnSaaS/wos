@@ -10,7 +10,8 @@
   "lock": {
     "minRemainingDays": 365,
     "weightRule": "full_while_remaining_at_least_min",
-    "perWalletCapBp": 500
+    "perWalletCapBp": 500,
+    "seasoningEpochs": 1
   },
   "contribution": {
     "windowEpochs": 26,
@@ -49,5 +50,6 @@
       "turnoutContributionBp": 1000
     }
   },
-  "orgCapBp": 1000
+  "orgCapBp": 1000,
+  "beneficialOwner": "organization_or_person_with_all_controlled_accounts_and_wallets"
 }

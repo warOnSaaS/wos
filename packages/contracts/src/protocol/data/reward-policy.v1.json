@@ -18,7 +18,8 @@
     "budgetPpmOfRemaining": 3327,
     "rateCeiling": {
       "initialBasePerAcu": "100000000",
-      "decayPpmPerEpoch": 3327
+      "decayPpmPerEpoch": 3327,
+      "maxVsTrailingBp": 15000
     }
   },
   "slicesBp": {
@@ -202,9 +203,30 @@
     "joinerStake": "min",
     "maxItemsPerDispute": 25,
     "maxDisputesPerAccountPerEpoch": 3,
-    "bountyBpOfExcess": 2000,
     "sampledAuditRateBp": 500,
     "rejectedDisputesSignalAfter": 3,
-    "publicAllocations": true
+    "publicAllocations": true,
+    "appealHours": 72,
+    "relatedPartyBountyPriority": false
+  },
+  "holdback": {
+    "shareBp": 5000,
+    "epochs": 13,
+    "forfeitOnExclusion": true
+  },
+  "losses": {
+    "bountyBpOfRecovered": 2000,
+    "absorptionMaxBp": 1000,
+    "publish": true
+  },
+  "confiscation": {
+    "replyHours": 72,
+    "appealHours": 168,
+    "maxTimeBoxedExclusionEpochs": 52,
+    "permanentExclusionTier": "structural"
+  },
+  "auditCapacity": {
+    "unauditedRelease": true,
+    "penalizeContributor": false
   }
 }

@@ -12,7 +12,9 @@
       "from": 1,
       "to": 12
     },
-    "minReferenceReceipts": 30
+    "minReferenceReceipts": 30,
+    "referencePopulation": "frozen_list_reviewed_independently_excluding_genesis_beneficiaries_and_related_parties",
+    "fallbackBasePerSizePoint": "400000000"
   },
   "vesting": {
     "startsAt": "mainnet_launch",
@@ -28,5 +30,6 @@
   "excludes": {
     "provisionalReceipts": true,
     "testEpochs": true
-  }
+  },
+  "canonicalMapping": "each_commit_maps_to_exactly_one_retro_unit"
 }

@@ -7,11 +7,15 @@
  * real contributors (there are none yet) and not the founder's figures.
  */
 import {
+  applyWeightCaps,
   COMPLETION_POLICY_V1,
   computeEpoch,
+  tallyDualMajority,
   type EngineParams,
   type EngineReceipt,
+  type EngineState,
   engineParamsFrom,
+  initialState,
   GENESIS_POLICY_V1,
   GOVERNANCE_POLICY_V1,
   USAGE_PROOF_POLICY_V1,
@@ -147,10 +151,8 @@ export interface ScenarioRow {
 }
 
 export function runScenario(s: Scenario, params: EngineParams, rng: () => number, checkpoints: number[]): ScenarioRow[] {
-  let R = BigInt(REWARD_POLICY_V1.emission.emissionReserveBase);
-  let pools = new Map<string, bigint>();
-  let S = 0n;
-  let I = 0n;
+  let state: EngineState = initialState(BigInt(REWARD_POLICY_V1.emission.emissionReserveBase));
+  const trailing: bigint[] = [];
   const out: ScenarioRow[] = [];
   const p = s.noCeiling ? { ...params, rateCeilingInitialBasePerAcu: 10n ** 15n, rateCeilingDecayPpm: 0n } : params;
   for (let e = 1; e <= ASSUMPTIONS.epochs; e++) {
@@ -219,50 +221,57 @@ export function runScenario(s: Scenario, params: EngineParams, rng: () => number
     const payouts: PoolPayout[] = [];
     if (e % ASSUMPTIONS.featureEpochs === 0) {
       payouts.push({
+        id: `pool-${featureKey}`,
         poolKey: featureKey,
+        kind: "feature",
         beneficiaries: [
           ...receipts
             .filter((r) => r.slice === "execution")
-            .map((r) => ({ accountId: r.accountId, component: "implementers" as const, weight: r.weightMicro })),
-          { accountId: acct("planners"), component: "contractAuthors" as const, weight: 1n },
-          { accountId: acct("planners"), component: "roadmapAuthors" as const, weight: 1n },
-          { accountId: acct("humans"), component: "reviewers" as const, weight: 1n },
-          { accountId: acct("proposers"), component: "finder" as const, weight: 1n },
+            .map((r) => ({ beneficiaryId: r.accountId, component: "implementers" as const, weight: r.weightMicro })),
+          { beneficiaryId: acct("planners"), component: "contractAuthors" as const, weight: 1n },
+          { beneficiaryId: acct("planners"), component: "roadmapAuthors" as const, weight: 1n },
+          { beneficiaryId: acct("humans"), component: "reviewers" as const, weight: 1n },
+          { beneficiaryId: acct("proposers"), component: "finder" as const, weight: 1n },
         ],
       });
     }
     if (e === ASSUMPTIONS.applicationCompletesAtEpoch) {
       payouts.push({
+        id: "pool-tgt",
         poolKey: "tgt",
+        kind: "application",
         beneficiaries: receipts
           .filter((r) => r.slice === "execution")
-          .map((r) => ({ accountId: r.accountId, component: "implementers" as const, weight: r.weightMicro })),
+          .map((r) => ({ beneficiaryId: r.accountId, component: "lifetime" as const, weight: r.weightMicro })),
       });
     }
+    const trailingRate = trailing.length === 0 ? undefined : trailing.reduce((t, v) => t + v, 0n) / BigInt(trailing.length);
     const res = computeEpoch(
       {
         epochNumber: e,
-        remainingReserve: R,
-        poolBalances: pools,
-        securityReserve: S,
-        cumulativeIssued: I,
-        returnsToReserve: 0n,
+        state,
+        trailingRateBasePerAcu: trailingRate,
         receipts,
         poolPayouts: payouts,
         securityPayouts:
-          e % 13 === 0 && active > 0 ? [{ receiptId: `sec-${e}`, accountId: acct("security"), weightMicro: 100n * MICRO }] : [],
-        offsets: new Map(),
+          e % 13 === 0 && active > 0
+            ? [{ id: `sec-${e}`, receiptId: `sec-${e}`, beneficiaryId: acct("security"), weightMicro: 100n * MICRO }]
+            : [],
       },
       p,
     );
-    R = res.remainingReserve;
-    pools = res.poolBalances;
-    S = res.securityReserve;
-    I = res.cumulativeIssued;
+    state = res.state;
+    if (res.weightBySlice.execution > 0n) {
+      trailing.push((res.emittedBySlice.execution * MICRO) / res.weightBySlice.execution);
+      if (trailing.length > 4) trailing.shift();
+    }
+    const I = state.cumulativeIssued;
+    const pools = state.poolBalances;
+    const S = state.securityReserve;
     if (checkpoints.includes(e)) {
       const rate =
         res.weightBySlice.execution === 0n ? 0 : Number((res.emittedBySlice.execution * MICRO) / res.weightBySlice.execution) / 1e6;
-      const founderLine = res.allocations.find((a) => a.receiptId === "x-founder");
+      const founderE = res.entitlements.get(acct("founder"));
       const codexEmitted = execW === 0n ? 0n : (res.emittedBySlice.execution * codexW) / execW;
       out.push({
         epoch: e,
@@ -271,7 +280,7 @@ export function runScenario(s: Scenario, params: EngineParams, rng: () => number
         execEmittedWos: wos(res.emittedBySlice.execution),
         ratePerAcu: rate,
         medianWeeklyWos: rate * MEDIAN_ACU,
-        founderWeeklyWos: founderLine ? wos(founderLine.amountBase) : 0,
+        founderWeeklyWos: founderE ? wos(founderE.releasedNow + founderE.heldBack) : 0,
         returnedPct: pct(res.returnedToReserve, res.budget, 1),
         issuedPctOfMax: pct(I, MAX_SUPPLY, 2),
         poolsWos: wos([...pools.values()].reduce((t, v) => t + v, 0n) + S),
@@ -337,7 +346,6 @@ export function wasteTable(): string {
     },
   ];
   const bare = USAGE_PROOF_POLICY_V1.logs.bareAttestedWeightBp / 10_000;
-  const k = 10 * 13; // receipts in the 13-epoch pattern lookback at 10 receipts/epoch
   for (const st of strategies) {
     const clipped = Math.min(st.multiple, capMultiple);
     const naive = clipped * (st.logBacked ? 1 : bare);
@@ -347,30 +355,10 @@ export function wasteTable(): string {
     const gateCatches = 1 - (1 - st.judgeAccuracy) ** q;
     const pDetect = (sampled + (1 - sampled) * flagged) * gateCatches;
     const expected = (1 - pDetect) * naive + pDetect * 1; // caught: that receipt clipped to plausible
-    // With the pattern lookback: one upheld finding opens a pattern review of the last 13 epochs; excess found there
-    // is clipped (unfinalized) or offset (finalized). P(caught at least once in k receipts) then recovers all excess.
-    const pEver = 1 - (1 - pDetect) ** k;
-    const withLookback = (1 - pEver) * naive + pEver * 1;
-    rows.push([
-      st.name,
-      fmt(clipped, 2),
-      fmt(naive, 2),
-      `${fmt(pDetect * 100, 1)}%`,
-      `${fmt((expected - 1) * 100, 0)}%`,
-      `${fmt(pEver * 100, 1)}%`,
-      `${fmt((withLookback - 1) * 100, 1)}%`,
-    ]);
+    rows.push([st.name, fmt(clipped, 2), fmt(naive, 2), `${fmt(pDetect * 100, 1)}%`, `${fmt((expected - 1) * 100, 0)}%`]);
   }
   return table(
-    [
-      "strategy",
-      "claimed / honest",
-      "paid if never caught",
-      "P(caught per receipt)",
-      "expected gain, receipt by receipt",
-      "P(caught once in 13 epochs, 10 receipts/epoch)",
-      "expected gain with the 13-epoch pattern lookback",
-    ],
+    ["strategy", "claimed / honest", "paid if never caught", "P(caught per receipt)", "expected gain, receipt by receipt"],
     rows,
   );
 }
@@ -415,17 +403,19 @@ An honest account with 130 receipts in the window is ranked at Z >= 3 with proba
 
 export function skimBountyTable(ratePerAcu: number): string {
   const rows: (string | number)[][] = [];
-  const bountyBp = REWARD_POLICY_V1.challenge.bountyBpOfExcess / 10_000;
+  const bountyBp = REWARD_POLICY_V1.losses.bountyBpOfRecovered / 10_000;
   const stakeBp = REWARD_POLICY_V1.challenge.stakePerItemBp / 10_000;
+  const floor = Number(BigInt(REWARD_POLICY_V1.challenge.minStakeBase) / WOS);
   for (const pool of [100, 1_000, 10_000]) {
     for (const s of [0.1, 0.2]) {
       const n = 40;
       const skimmerAcu = n * 3; // 40 receipts of 3 ACU
       const excessWos = skimmerAcu * (s / (1 + s)) * ratePerAcu;
       const victimLoss = excessWos / pool; // dilution spread over the pool
+      // Recovered from the holdback first (D40): half of the skimmer's last 13 epochs is held, more than the excess.
       const bounty = excessWos * bountyBp;
       const disputerPending = MEDIAN_ACU * ratePerAcu;
-      const stake = Math.min(disputerPending * stakeBp * 1, disputerPending * 0.1);
+      const stake = Math.max(floor, disputerPending * stakeBp);
       const pUphold = 0.6;
       const ev = pUphold * bounty - (1 - pUphold) * stake;
       rows.push([pool, `${s * 100}%`, fmt(excessWos, 0), fmt(victimLoss, 2), fmt(bounty, 0), fmt(stake, 0), fmt(ev, 0)]);
@@ -541,17 +531,19 @@ export function griefingTable(ratePerAcu: number): string {
   const pending = MEDIAN_ACU * ratePerAcu;
   const p = REWARD_POLICY_V1.challenge;
   for (const items of [1, 5, 25]) {
-    const stake = Math.max(
-      Math.min((pending * p.stakePerItemBp * items) / 10_000, (pending * p.maxStakeBp) / 10_000),
+    // D43: per-item stake = max(floor, min(2% of pending, 10% of pending / items)); forfeited only for rejected items.
+    const each = Math.max(
       Number(BigInt(p.minStakeBase) / WOS),
+      Math.min((pending * p.stakePerItemBp) / 10_000, (pending * p.maxStakeBp) / 10_000 / items),
     );
+    const stake = each * items;
     const perEpochMaxLoss = stake * p.maxDisputesPerAccountPerEpoch;
     const auditorCost = items * REVIEW_POLICY_V1.payoutAudit.quorum;
     rows.push([items, fmt(stake, 0), fmt((stake / pending) * 100, 1) + "%", fmt(perEpochMaxLoss, 0), auditorCost]);
   }
   return table(
     [
-      "allocations in one false dispute",
+      "allocations in one false dispute (all rejected)",
       "stake forfeited (WOS)",
       "share of disputer's pending",
       "max loss per epoch at the rate limit (WOS)",
@@ -565,13 +557,28 @@ export function griefingTable(ratePerAcu: number): string {
 export function genesisTable(earlyRatePerAcu: number): string {
   const rows: (string | number)[][] = [];
   const cap = Number(BigInt(GENESIS_CAP()) / WOS);
+  const fallback = Number(BigInt(GENESIS_POLICY_V1.valuation.fallbackBasePerSizePoint) / WOS);
   for (const retroSizePoints of [100, 300, 600, 2000]) {
-    const genesisAcu = retroSizePoints * 4; // reference 4 ACU per size point (capability-policy v1 default)
+    const genesisAcu = retroSizePoints * 4; // reference 4 ACU per size point (capability-policy v1 default; the real value is the frozen population's median)
     const value = Math.min(genesisAcu * earlyRatePerAcu, cap);
-    rows.push([retroSizePoints, fmt(genesisAcu, 0), fmt(genesisAcu * earlyRatePerAcu, 0), fmt(value, 0), value >= cap ? "yes" : "no"]);
+    rows.push([
+      retroSizePoints,
+      fmt(genesisAcu, 0),
+      fmt(genesisAcu * earlyRatePerAcu, 0),
+      fmt(value, 0),
+      fmt(Math.min(retroSizePoints * fallback, cap), 0),
+      value >= cap ? "yes" : "no",
+    ]);
   }
   const t1 = table(
-    ["retro size points (illustrative)", "reference ACU", "value at the early rate (WOS)", "Genesis credit after cap (WOS)", "cap binds"],
+    [
+      "retro size points (illustrative)",
+      "reference ACU",
+      "value at the reference rate (WOS)",
+      "Genesis credit after cap (WOS)",
+      "published fallback if evidence is insufficient (WOS)",
+      "cap binds",
+    ],
     rows,
   );
   const rows2: (string | number)[][] = [];
@@ -619,6 +626,88 @@ export function dutyTable(): string {
   );
 }
 
+/**
+ * H4 / D39 / D40: fabrication economics with REAL recovery. A cheater claims `k` x honest weight on every receipt
+ * (n receipts/epoch) for a planned X epochs and then exits. Each epoch it is caught with probability
+ * 1 - (1 - pd)^n, where pd = (sampled audit + dispute propensity) x the gate's chance to catch it with a fraction f of
+ * colluding auditors. On detection: that epoch's pending allocation and ALL unreleased holdback are confiscated and the
+ * account is excluded (no future earnings, so offsets collect nothing); without holdback only future offsets exist,
+ * which exclusion and exit make worthless. Identity churn restarts the cheater after D epochs. Contaminated baselines
+ * raise the cap, so k rises. Payout is compared with honest work over the same X epochs. Monte Carlo, seeded.
+ */
+export function fabricationTable(): string {
+  const rng = mulberry32(SEED + 7);
+  const rows: (string | number)[][] = [];
+  const hold = REWARD_POLICY_V1.holdback.shareBp / 10_000;
+  const L = REWARD_POLICY_V1.holdback.epochs;
+  const n = 10;
+  const trials = 4000;
+  // Detection per receipt is the unmeasured quantity (Astra-02 H4), so it is an explicit sensitivity axis. Collusion
+  // among auditors and weak judges only LOWER it; the model rate from table A (25%) is far above these values.
+  const cases: { name: string; k: number; pd: number; X: number; churn: number }[] = [];
+  for (const [name, k] of [
+    ["cap saturation, fabricated consistent logs", 1.75],
+    ["same, baselines contaminated (cap drifts +20%)", 2.1],
+    ["10% skim on every receipt", 1.1],
+  ] as const) {
+    for (const pd of [0.001, 0.005, 0.02]) cases.push({ name, k, pd, X: 52, churn: 0 });
+    cases.push({ name, k, pd: 0.005, X: 13, churn: 0 });
+    cases.push({ name, k, pd: 0.005, X: 52, churn: 4 });
+  }
+  for (const c of cases) {
+    const pEpoch = 1 - (1 - c.pd) ** n;
+    const run = (h: number) => {
+      let total = 0;
+      let caughtAny = 0;
+      for (let t = 0; t < trials; t++) {
+        let paid = 0;
+        let tranches: number[] = [];
+        let caught = false;
+        for (let e = 0; e < c.X; e++) {
+          const alloc = c.k * n;
+          if (rng() < pEpoch) {
+            caught = true;
+            tranches = []; // pending allocation and all unreleased holdback confiscated; excluded
+            if (c.churn === 0) break;
+            e += c.churn; // a fresh identity after `churn` epochs
+            continue;
+          }
+          paid += alloc * (1 - h);
+          tranches.push(alloc * h);
+          if (tranches.length > L) paid += tranches.shift()!;
+        }
+        paid += tranches.reduce((x, y) => x + y, 0); // undetected holdback matures after exit
+        total += paid;
+        if (caught) caughtAny++;
+      }
+      return { gain: total / trials / (c.X * n) - 1, caught: caughtAny / trials };
+    };
+    const without = run(0);
+    const withHold = run(hold);
+    rows.push([
+      c.name,
+      `${fmt(c.pd * 100, 1)}%`,
+      c.X,
+      c.churn === 0 ? "no" : `after ${c.churn} epochs`,
+      `${fmt(withHold.caught * 100, 0)}%`,
+      `${fmt(without.gain * 100, 0)}%`,
+      `${fmt(withHold.gain * 100, 0)}%`,
+    ]);
+  }
+  return table(
+    [
+      "strategy",
+      "P(caught per receipt)",
+      "planned epochs before exit",
+      "identity churn",
+      "P(caught before exit)",
+      "expected gain vs honest: exclusion only, no holdback",
+      `expected gain vs honest: ${hold * 100}% holdback + confiscation + exclusion`,
+    ],
+    rows,
+  );
+}
+
 // ------------------------------------------------------------------------------------------------ governance (D34, D36, D37)
 
 /** Minimum coalition share (of a weight) that passes a tier against opponents voting at turnout tau. */
@@ -656,10 +745,7 @@ export function concentrationTable(params: EngineParams): string {
   const genesisTotal = 8000 * 42; // illustrative: 2000 retro size points x 4 ACU at ~42 WOS/ACU (table H), far under the cap
   for (const sc of [SCENARIOS[5]!, SCENARIOS[0]!, SCENARIOS[4]!]) {
     const rng = mulberry32(SEED + 1);
-    let R = BigInt(REWARD_POLICY_V1.emission.emissionReserveBase);
-    let pools = new Map<string, bigint>();
-    let S = 0n;
-    let I = 0n;
+    let state: EngineState = initialState(BigInt(REWARD_POLICY_V1.emission.emissionReserveBase));
     const window: { founder: number; all: number }[] = [];
     let founderLocked = 0;
     let othersLocked = 0;
@@ -688,27 +774,14 @@ export function concentrationTable(params: EngineParams): string {
         featurePoolKeys: [],
         applicationPoolKeys: [],
       });
-      const res = computeEpoch(
-        {
-          epochNumber: e,
-          remainingReserve: R,
-          poolBalances: pools,
-          securityReserve: S,
-          cumulativeIssued: I,
-          returnsToReserve: 0n,
-          receipts,
-          poolPayouts: [],
-          securityPayouts: [],
-          offsets: new Map(),
-        },
-        params,
-      );
-      R = res.remainingReserve;
-      pools = res.poolBalances;
-      S = res.securityReserve;
-      I = res.cumulativeIssued;
-      const founderNet = wos(res.netByAccount.get(acct("founder")) ?? 0n);
-      const allNet = [...res.netByAccount.values()].reduce((t, v) => t + wos(v), 0);
+      const res = computeEpoch({ epochNumber: e, state, receipts }, params);
+      state = res.state;
+      const netOf = (b: string) => {
+        const x = res.entitlements.get(b);
+        return x ? wos(x.releasedNow + x.heldBack) : 0;
+      };
+      const founderNet = netOf(acct("founder"));
+      const allNet = [...res.entitlements.keys()].reduce((t, b) => t + netOf(b), 0);
       founderLocked += founderNet + (e <= 104 ? genesisTotal / 104 : 0);
       othersLocked += (allNet - founderNet) * 0.25;
       const totalW = receipts.reduce((t, r) => t + Number(r.weightMicro), 0);
@@ -766,23 +839,59 @@ export function concentrationTable(params: EngineParams): string {
 
 /** D38: an organization's share of each governance weight, with and without the per-organization cap. */
 export function orgConcentrationTable(): string {
-  const cap = GOVERNANCE_POLICY_V1.orgCapBp / 10_000;
   const rows: (string | number)[][] = [];
-  for (const orgShare of [0.05, 0.1, 0.25, 0.5]) {
-    const capped = Math.min(orgShare, cap);
-    // Capped weight is removed from the denominator too, so the org's effective share is capped / (capped + rest).
-    const effective = capped / (capped + (1 - orgShare));
-    const T = GOVERNANCE_POLICY_V1.tiers.routine.thresholdBp / 10_000;
+  const T = GOVERNANCE_POLICY_V1.tiers.routine.thresholdBp / 10_000;
+  for (const [orgShare, others] of [
+    [0.05, 50],
+    [0.25, 50],
+    [0.5, 50],
+    [0.9, 50],
+    [0.9, 5],
+  ] as const) {
+    // One organization of 5 accounts holds `orgShare`; `others` independent people share the rest equally.
+    const orgEach = BigInt(Math.round((orgShare * 1e6) / 5));
+    const otherEach = BigInt(Math.round(((1 - orgShare) * 1e6) / others));
+    const ws = [
+      ...Array.from({ length: 5 }, (_, i) => ({ accountId: `o${i}`, organizationId: "org", locked: orgEach, contribution: orgEach })),
+      ...Array.from({ length: others }, (_, i) => ({
+        accountId: `p${i}`,
+        organizationId: null,
+        locked: otherEach,
+        contribution: otherEach,
+      })),
+    ];
+    const capped = applyWeightCaps(ws, {
+      perWalletCapBp: GOVERNANCE_POLICY_V1.lock.perWalletCapBp,
+      orgCapBp: GOVERNANCE_POLICY_V1.orgCapBp,
+    });
+    const org = capped.slice(0, 5).reduce((t, w) => t + w.contribution, 0n);
+    const all = capped.reduce((t, w) => t + w.contribution, 0n);
+    const share = all === 0n ? 0 : Number((org * 1_000_000n) / all) / 1e6;
+    const alone = tallyDualMajority(
+      ws.slice(0, 5).map((w) => ({ accountId: w.accountId, choice: "yes" as const })),
+      capped,
+      GOVERNANCE_POLICY_V1,
+      "routine",
+    );
     rows.push([
       `${orgShare * 100}%`,
-      `${fmt(effective * 100, 1)}%`,
-      effective >= T ? "yes" : "no",
-      `${fmt(Math.min(1, (effective / T) * 100), 1)}`,
+      others,
+      `${fmt(share * 100, 1)}%`,
+      capped.feasible ? "yes" : "no (tally refuses)",
+      alone.passes ? "yes" : "no",
+      share >= T ? "yes" : "no",
     ]);
   }
   return table(
-    ["organization's raw share of a weight", "effective share after the 10% cap", "can pass a routine change alone", "note"],
-    rows.map((r) => [r[0]!, r[1]!, r[2]!, ""]),
+    [
+      "organization's raw share",
+      "independent voters",
+      "FINAL effective share (water-filling, H5)",
+      "caps feasible",
+      "org alone passes routine",
+      "share >= routine threshold",
+    ],
+    rows,
   );
 }
 
@@ -805,7 +914,16 @@ export function report(policy: RewardPolicy = REWARD_POLICY_V1): string {
   for (const s of SCENARIOS) {
     const rows = runScenario(s, params, rng, checkpoints);
     if (s.id === "S2") rate52 = rows.find((r) => r.epoch === 52)!.ratePerAcu;
-    if (s.id === "S5") earlyRate = rows.slice(0, 3).reduce((t, r) => t + r.ratePerAcu, 0) / 3;
+    if (s.id === "S1") {
+      // M16: the stated statistic — mean realised execution rate over live epochs 1–12 (here S1, 1,000 contributors).
+      const first12 = runScenario(
+        s,
+        params,
+        mulberry32(SEED + 3),
+        Array.from({ length: 12 }, (_, i) => i + 1),
+      );
+      earlyRate = first12.reduce((t, r) => t + r.ratePerAcu, 0) / first12.length;
+    }
     parts.push(
       `### ${s.id}. ${s.title}\n\n${table(
         [
@@ -837,7 +955,10 @@ export function report(policy: RewardPolicy = REWARD_POLICY_V1): string {
       )}`,
     );
   }
-  parts.push(`### A. Waste behaviours (Astra-01 item 5)\n\n${wasteTable()}`);
+  parts.push(`### A. Waste behaviours, receipt by receipt (Astra-01 item 5)\n\n${wasteTable()}`);
+  parts.push(
+    `### A2. Fabrication with real recovery: holdback, confiscation, exclusion, exit, churn, collusion, contaminated baselines (H4, D39, D40)\n\n${fabricationTable()}`,
+  );
   parts.push(`### B. Skim attack: detection (D29)\n\n${skimTable()}`);
   parts.push(
     `### C. Skim attack: pattern-dispute economics at the S2 epoch-52 rate (${fmt(rate52, 2)} WOS/ACU)\n\n${skimBountyTable(rate52)}`,
@@ -847,7 +968,7 @@ export function report(policy: RewardPolicy = REWARD_POLICY_V1): string {
   parts.push(`### F. Optimistic verification: detection vs cost (D28)\n\n${optimisticTable()}`);
   parts.push(`### G. Griefing economics at the S2 epoch-52 rate (D28, D31)\n\n${griefingTable(rate52)}`);
   parts.push(
-    `### H. Genesis and provisional founder work at the S5 early rate (${fmt(earlyRate, 2)} WOS/ACU)\n\n${genesisTable(earlyRate)}`,
+    `### H. Genesis (reference: mean S1 rate over epochs 1–12) and provisional founder work (${fmt(earlyRate, 2)} WOS/ACU)\n\n${genesisTable(earlyRate)}`,
   );
   parts.push(`### I. Audit duty supply vs demand (D25, D28)\n\n${dutyTable()}`);
   parts.push(`### J. Governance capture vs threshold (D36)\n\n${captureTable()}`);

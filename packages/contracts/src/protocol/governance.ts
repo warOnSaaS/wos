@@ -25,6 +25,8 @@ export const GovernancePolicy = z.object({
     minRemainingDays: z.number().int().positive(),
     /** Weight = amount while the remaining lock is >= minRemainingDays; 0 otherwise (re-locking restores it). */
     weightRule: z.literal("full_while_remaining_at_least_min"),
+    /** Q9: a lock counts only if it existed at least this many full epochs before the snapshot. */
+    seasoningEpochs: z.number().int().positive(),
     perWalletCapBp: z.number().int().min(0).max(10_000),
   }),
   contribution: z.object({
@@ -34,7 +36,9 @@ export const GovernancePolicy = z.object({
   }),
   /** Recommended (ADR-001): locked-token votes count only for voters with contribution weight > 0 in the window. */
   lockedVoterMustHaveContributed: z.boolean(),
-  /** D38: an organization's share of EACH weight is capped at the snapshot (applied after per-wallet caps). */
+  /** D44: groups are beneficial owners — an organization, or a person with every account and wallet they control. */
+  beneficialOwner: z.literal("organization_or_person_with_all_controlled_accounts_and_wallets"),
+  /** D38/D44: no organization's FINAL effective share of EITHER weight exceeds this (water-filling, capGroupShares). */
   orgCapBp: z.number().int().min(0).max(10_000),
   /**
    * Tiered supermajorities (D36), required in BOTH weights, each with its own turnout. Threshold = yes / (yes + no) of
@@ -118,8 +122,20 @@ export function contributionWeight(weightMicro: bigint, receiptEpoch: number, sn
   return (weightMicro * BigInt(windowEpochs - age)) / BigInt(windowEpochs);
 }
 
-/** Locked weight of one lock at the snapshot: full while the remaining lock is at least `minRemainingDays`. */
-export function lockedWeight(amountBase: bigint, lockEndsAtMs: number, snapshotAtMs: number, minRemainingDays: number): bigint {
+/**
+ * Locked weight of one lock at the snapshot: full while the remaining lock is at least `minRemainingDays` AND the lock
+ * is SEASONED — it existed at least `seasoningMs` (one full epoch) before the snapshot (Q9: a lock created just before
+ * a predictable snapshot proves future illiquidity, not past commitment).
+ */
+export function lockedWeight(
+  amountBase: bigint,
+  lockEndsAtMs: number,
+  snapshotAtMs: number,
+  minRemainingDays: number,
+  lockCreatedAtMs = Number.NEGATIVE_INFINITY,
+  seasoningMs = 0,
+): bigint {
+  if (snapshotAtMs - lockCreatedAtMs < seasoningMs) return 0n;
   return lockEndsAtMs - snapshotAtMs >= minRemainingDays * 86_400_000 ? amountBase : 0n;
 }
 
@@ -166,6 +182,7 @@ export function tallyDualMajority(
   p: Pick<GovernancePolicy, "tiers" | "lockedVoterMustHaveContributed" | "mode">,
   tier: GovernanceTier = "routine",
 ): TallyResult {
+  const capsFeasible = (weights as { feasible?: boolean }).feasible !== false;
   const t = p.tiers[tier];
   const w = new Map(weights.map((x) => [x.accountId, x]));
   const seen = new Set<string>();
@@ -192,6 +209,7 @@ export function tallyDualMajority(
   const bp = (a: bigint, b: bigint) => (b === 0n ? 0 : Number((a * 10_000n) / b));
   const meets = (yes: bigint, no: bigint) => yes + no > 0n && yes * 10_000n >= BigInt(t.thresholdBp) * (yes + no);
   const reasons: string[] = [];
+  if (!capsFeasible) reasons.push("caps infeasible: too few independent groups for every group to stay under its cap");
   const lockedLeg = p.mode !== "contribution_only";
   if (lockedLeg && !meets(ly, ln)) reasons.push(`locked weight below the ${tier} threshold`);
   if (!meets(cy, cn)) reasons.push(`contribution weight below the ${tier} threshold`);
@@ -277,29 +295,70 @@ export const OFFRAMP_DISCLOSURE =
   "WOS may become worthless or be replaced. Your verified contribution records are permanent, and they are what any future settlement is based on." as const;
 
 /**
- * Applies the per-wallet cap, then the per-organization cap (D38), to each weight at the snapshot. Caps are shares of
- * the UNCAPPED eligible total of that weight; the capped excess simply does not vote (it is not redistributed).
+ * H5 / D44: caps on FINAL effective share. Each beneficial-owner group (an organization, or a person with every wallet
+ * and account they control) may hold at most its cap of the FINAL capped total of a weight — enforced mathematically by
+ * water-filling: capped groups are scaled to exactly cap x T where T = rest / (1 - Σ caps of capped groups), iterated
+ * until no uncapped group exceeds its cap. If the caps of all groups sum to <= 1 with nothing else, groups keep
+ * proportional-to-cap weight. Turnout and thresholds then use the SAME capped total (consistent denominator). Integer
+ * arithmetic: weights are scaled so shares hold to the unit.
+ */
+export function capGroupShares(
+  groups: ReadonlyArray<{ groupId: string; weight: bigint; capBp: number }>,
+): Map<string, bigint> & { feasible: boolean } {
+  const out = new Map<string, bigint>() as Map<string, bigint> & { feasible: boolean };
+  out.feasible = true;
+  let capped = new Set<string>();
+  for (let iter = 0; iter <= groups.length; iter++) {
+    const rest = groups.filter((g) => !capped.has(g.groupId)).reduce((t, g) => t + g.weight, 0n);
+    const capSum = groups.filter((g) => capped.has(g.groupId)).reduce((t, g) => t + BigInt(g.capBp), 0n);
+    if (capSum >= 10_000n || (rest === 0n && capped.size > 0)) {
+      // Infeasible: too few independent groups for every cap to hold (e.g. two groups with 10% caps). Shares fall back
+      // to proportional-to-cap and the tally refuses to pass anything (H5: the promise is never silently broken).
+      out.feasible = false;
+      for (const g of groups) out.set(g.groupId, capped.has(g.groupId) ? BigInt(g.capBp) * 1_000_000n : 0n);
+      return out;
+    }
+    // T = rest / (1 - capSum); a capped group gets cap x T. Scale by 1e6 to keep precision in integers.
+    const T = (rest * 10_000n * 1_000_000n) / (10_000n - capSum);
+    const next = new Set(capped);
+    for (const g of groups) {
+      if (!capped.has(g.groupId) && g.weight * 1_000_000n * 10_000n > BigInt(g.capBp) * T) next.add(g.groupId);
+    }
+    if (next.size === capped.size) {
+      for (const g of groups) out.set(g.groupId, capped.has(g.groupId) ? (BigInt(g.capBp) * T) / 10_000n : g.weight * 1_000_000n);
+      return out;
+    }
+    capped = next;
+  }
+  throw new Error("capGroupShares did not converge");
+}
+
+/**
+ * Applies the per-owner cap (people, 5%) and the per-organization cap (10%) to each weight so that no group's FINAL
+ * share exceeds its cap (H5). Voters in a group share its capped weight in proportion to their raw weight. Returned
+ * weights are in a common scaled unit (x1e6); only ratios matter for the tally.
  */
 export function applyWeightCaps(
-  weights: readonly (VoterWeights & { organizationId: string | null })[],
+  weights: readonly (VoterWeights & { organizationId: string | null; ownerId?: string })[],
   p: { perWalletCapBp: number; orgCapBp: number },
-): VoterWeights[] {
-  const totalL = weights.reduce((t, w) => t + w.locked, 0n);
-  const totalC = weights.reduce((t, w) => t + w.contribution, 0n);
-  const walletCapL = (totalL * BigInt(p.perWalletCapBp)) / 10_000n;
-  const capped = weights.map((w) => ({ ...w, locked: w.locked < walletCapL ? w.locked : walletCapL }));
-  const orgCapL = (totalL * BigInt(p.orgCapBp)) / 10_000n;
-  const orgCapC = (totalC * BigInt(p.orgCapBp)) / 10_000n;
-  const byOrg = new Map<string, { l: bigint; c: bigint }>();
-  for (const w of capped) {
-    if (!w.organizationId) continue;
-    const o = byOrg.get(w.organizationId) ?? { l: 0n, c: 0n };
-    byOrg.set(w.organizationId, { l: o.l + w.locked, c: o.c + w.contribution });
-  }
-  return capped.map((w) => {
-    if (!w.organizationId) return { accountId: w.accountId, locked: w.locked, contribution: w.contribution };
-    const o = byOrg.get(w.organizationId)!;
-    const scale = (x: bigint, total: bigint, cap: bigint) => (total <= cap || total === 0n ? x : (x * cap) / total);
-    return { accountId: w.accountId, locked: scale(w.locked, o.l, orgCapL), contribution: scale(w.contribution, o.c, orgCapC) };
-  });
+): VoterWeights[] & { feasible: boolean } {
+  let feasible = true;
+  const groupOf = (w: (typeof weights)[number]) => (w.organizationId ? `org:${w.organizationId}` : `owner:${w.ownerId ?? w.accountId}`);
+  const capOf = (g: string) => (g.startsWith("org:") ? p.orgCapBp : p.perWalletCapBp);
+  const leg = (pick: (w: VoterWeights) => bigint) => {
+    const raw = new Map<string, bigint>();
+    for (const w of weights) raw.set(groupOf(w), (raw.get(groupOf(w)) ?? 0n) + pick(w));
+    const cappedG = capGroupShares([...raw].map(([groupId, weight]) => ({ groupId, weight, capBp: capOf(groupId) })));
+    if (!cappedG.feasible) feasible = false;
+    return (w: (typeof weights)[number]) => {
+      const g = groupOf(w);
+      const total = raw.get(g) ?? 0n;
+      return total === 0n ? 0n : ((cappedG.get(g) ?? 0n) * pick(w)) / total;
+    };
+  };
+  const L = leg((w) => w.locked);
+  const C = leg((w) => w.contribution);
+  const out = weights.map((w) => ({ accountId: w.accountId, locked: L(w), contribution: C(w) })) as VoterWeights[] & { feasible: boolean };
+  out.feasible = feasible;
+  return out;
 }

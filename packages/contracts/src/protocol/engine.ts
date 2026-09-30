@@ -1,19 +1,23 @@
 /**
- * DRAFT — the deterministic reward engine reference (docs/protocol/REWARD-PROTOCOL.md sections 5–8).
+ * DRAFT v2 (after Astra review 02) — the deterministic reward engine (docs/protocol/REWARD-PROTOCOL.md §5–§9).
  *
- * Pure, integer-only (bigint), no clock, no I/O. Given the same inputs it returns byte-identical outputs, so anyone
- * can reproduce an epoch from the published receipts, pools and policy. The rewards package will call this code
- * (it must not carry its own copy of the math), and tools/tokenomics-sim uses it for every simulated epoch.
+ * Pure, integer-only (bigint), no clock, no I/O. Same inputs, byte-identical outputs. The rewards package calls this
+ * code; tools/tokenomics-sim uses it for every simulated epoch.
  *
- * The conserved funding equation (Astra-01 item 4). With R = remaining emission reserve, P = sum of completion pool
- * balances, S = security reserve balance, I = cumulative net issuance to accounts:
+ * Conserved funding equation (Astra-01 item 4, Astra-02 H1), with every balance non-negative:
  *
- *     R + P + S + I = emissionReserve              (holds after every epoch; checked by `assertConserved`)
+ *     R + ΣP + S + I = emissionReserve,   R, P_k, S, I >= 0,   Σ holdback tranches <= I
  *
- * Each epoch: B = floor(R x budgetPpm / 1e6) is split into slices by basis points (largest remainder). Distributing
- * slices emit min(slice, rateCeiling x weight) and RETURN the rest to R. Accrual slices move into P and S (or return
- * to R when there is nothing to accrue to). Pool and security payouts debit P and S. Offsets recovered from an
- * account's gross allocation return to R. Returned unclaimed or cancelled amounts are credited to R by the caller.
+ * R remaining reserve, P completion pools, S security reserve, I issued to beneficiaries (released, held back, or
+ * final-but-unclaimed). `computeEpoch` asserts it on its input and on its output. Every movement names its source:
+ *   returns          identified transfers back to R: an expired unbound entitlement (from I), a cancelled pool (from P),
+ *                    a forfeited holdback on exit (from I and its tranches)
+ *   corrections      completion accrual attributed to work later clipped or revoked (from P)
+ *   disputes         escrowed excess of a clipped/revoked allocation (from I); bounty <= bountyBp x recovered
+ *   confiscations    proven cheating (D39): unreleased holdback and unclaimed entitlements (from I); bounty from the
+ *                    recovered amount only; any unrecovered proven excess becomes an offset
+ *   write-offs       an uncollectable offset becomes a loss absorbed by later budgets (bounded per epoch, D-H4b)
+ * Every event id may be consumed once: duplicates inside an input, or ids in `consumedIds`, are refused.
  */
 import type { DistributingSlice } from "./entities.js";
 
@@ -35,7 +39,6 @@ function cmp(a: string, b: string): number {
 /**
  * Largest-remainder split of `total` over integer weights: floor shares, then one unit each to the largest
  * remainders, ties by key ascending (UTF-16 code units). Always sums to `total` when the weight sum is positive.
- * Same semantics as @waronsaas/rewards allocatePool, in bigint.
  */
 export function largestRemainder(total: bigint, weights: ReadonlyArray<{ key: string; weight: bigint }>): Map<string, bigint> {
   if (total < 0n) throw new EngineError("negative total");
@@ -92,71 +95,134 @@ export function epochBudget(remainingReserve: bigint, budgetPpm: bigint): bigint
   return (remainingReserve * budgetPpm) / MICRO;
 }
 
-// ------------------------------------------------------------------------------------------------ epoch
+// ------------------------------------------------------------------------------------------------ types
+
+export type CompletionComponent = "implementers" | "contractAuthors" | "roadmapAuthors" | "reviewers" | "finder";
 
 export interface EngineParams {
+  emissionReserve: bigint;
   budgetPpm: bigint;
   rateCeilingInitialBasePerAcu: bigint;
   rateCeilingDecayPpm: bigint;
+  /** Q3 timing damping: the epoch's ceiling is at most this share of the trailing realised rate (0 = off). */
+  maxRateVsTrailingBp: bigint;
   slicesBp: Record<DistributingSlice | "completion_accrual" | "security_reserve", bigint>;
   featurePoolsBp: bigint;
   applicationPoolsBp: bigint;
-  completionComponentsBp: Record<"implementers" | "contractAuthors" | "roadmapAuthors" | "reviewers" | "finder", bigint>;
+  completionComponentsBp: Record<CompletionComponent, bigint>;
   securityMaxShareOfReserveBp: bigint;
   maxOffsetRecoveryBp: bigint;
+  /** D40 holdback: this share of each net allocation is held for `holdbackEpochs` epochs. */
+  holdbackBp: bigint;
+  holdbackEpochs: number;
+  /** Bounties are this share of amounts actually RECOVERED (D41). */
+  bountyBpOfRecovered: bigint;
+  /** At most this share of an epoch's budget absorbs unrecovered losses (D41); the rest carries forward. */
+  lossAbsorptionMaxBp: bigint;
+}
+
+export interface HoldbackTranche {
+  beneficiaryId: string;
+  epochNumber: number;
+  amount: bigint;
+}
+
+export interface EngineState {
+  remainingReserve: bigint;
+  poolBalances: ReadonlyMap<string, bigint>;
+  securityReserve: bigint;
+  cumulativeIssued: bigint;
+  holdback: readonly HoldbackTranche[];
+  /** Outstanding offsets per beneficiary (proven excess not yet recovered). */
+  offsets: ReadonlyMap<string, bigint>;
+  /** Unrecovered losses (written-off offsets) not yet absorbed by a budget. Bookkeeping, not a balance. */
+  lossCarry: bigint;
 }
 
 export interface EngineReceipt {
   receiptId: string;
+  /** The contributor (the accountable person). */
   accountId: string;
+  /** D38: who receives it. Shares in bp summing to 10000; default [{ beneficiaryId: accountId, shareBp: 10000 }]. */
+  beneficiaries?: ReadonlyArray<{ beneficiaryId: string; shareBp: number }>;
   slice: DistributingSlice;
   weightMicro: bigint;
-  /** Completion accrual keys (execution receipts only): per-(target, feature) pools and per-target pools. */
   featurePoolKeys: readonly string[];
   applicationPoolKeys: readonly string[];
 }
 
 export interface PoolPayout {
+  id: string;
   poolKey: string;
-  beneficiaries: ReadonlyArray<{ accountId: string; component: keyof EngineParams["completionComponentsBp"]; weight: bigint }>;
+  /** H13: feature pools split by components; application pools pay 100% by lifetime weight. */
+  kind: "feature" | "application";
+  beneficiaries: ReadonlyArray<{ beneficiaryId: string; component: CompletionComponent | "lifetime"; weight: bigint }>;
+}
+
+export type EngineReturn =
+  | { id: string; kind: "unbound_expiry"; beneficiaryId: string; amount: bigint }
+  | { id: string; kind: "pool_cancel"; poolKey: string; amount: bigint }
+  | { id: string; kind: "holdback_forfeit"; beneficiaryId: string; amount: bigint };
+
+export interface Bounty {
+  beneficiaryId: string;
+  amountBase: bigint;
 }
 
 export interface EpochInput {
   epochNumber: number;
-  remainingReserve: bigint;
-  poolBalances: ReadonlyMap<string, bigint>;
-  securityReserve: bigint;
-  cumulativeIssued: bigint;
-  /** Unclaimed (unbound-wallet expiry) and cancelled-pool amounts returned to R at the start of this epoch. */
-  returnsToReserve: bigint;
+  state: EngineState;
+  /** Ids consumed by earlier epochs (replay protection); the database enforces the same with unique keys. */
+  consumedIds?: ReadonlySet<string>;
+  /** Published trailing realised execution rate (base units per ACU), for the Q3 damping. */
+  trailingRateBasePerAcu?: bigint;
   receipts: readonly EngineReceipt[];
-  poolPayouts: readonly PoolPayout[];
-  securityPayouts: ReadonlyArray<{ receiptId: string; accountId: string; weightMicro: bigint }>;
-  /** Outstanding offsets (post-finalization reversals) per account, recovered from gross allocations. */
-  offsets: ReadonlyMap<string, bigint>;
-  /**
-   * Dispute settlements resolved since the last epoch (D28–D30). `excessBase` was escrowed (counted in I but never
-   * paid): it leaves I; the bounty goes to the disputer as a `dispute_bounty` line; the rest returns to R.
-   */
-  disputeSettlements?: ReadonlyArray<{
-    disputeId: string;
-    excessBase: bigint;
-    bounties: ReadonlyArray<{ accountId: string; amountBase: bigint }>;
+  returns?: readonly EngineReturn[];
+  accrualCorrections?: ReadonlyArray<{ id: string; poolKey: string; amount: bigint }>;
+  poolPayouts?: readonly PoolPayout[];
+  securityPayouts?: ReadonlyArray<{ id: string; receiptId: string; beneficiaryId: string; weightMicro: bigint }>;
+  /** Clipped/revoked allocations whose excess was escrowed (never released): recovered in full. */
+  disputeSettlements?: ReadonlyArray<{ id: string; excessBase: bigint; bounties: readonly Bounty[] }>;
+  /** D39 confiscation after proven cheating: holdback first, then unclaimed entitlements; the rest becomes an offset. */
+  confiscations?: ReadonlyArray<{
+    id: string;
+    beneficiaryId: string;
+    holdbackBase: bigint;
+    unclaimedBase: bigint;
+    provenExcessBase: bigint;
+    bounties: readonly Bounty[];
   }>;
+  /** Offsets that can no longer be collected (excluded or exited beneficiary): become absorbed losses. */
+  writeOffs?: ReadonlyArray<{ id: string; beneficiaryId: string; amount: bigint }>;
 }
 
 export interface AllocationLine {
-  accountId: string;
-  /** Distributing-slice lines are per receipt (disputable one by one); payout lines have none. */
+  beneficiaryId: string;
+  /** The contributor of the receipt (null for bounties). */
+  accountId: string | null;
   receiptId: string | null;
-  slice: DistributingSlice | "completion_payout" | "security_payout" | "dispute_bounty";
+  slice: DistributingSlice | "completion_payout" | "security_payout" | "dispute_bounty" | "recovery_bounty";
+  poolKey: string | null;
+  component: string | null;
   weightMicro: bigint;
   amountBase: bigint;
+}
+
+export interface Entitlement {
+  beneficiaryId: string;
+  /** Gross allocated this epoch (lines), offsets recovered from it, and the split into now / held. */
+  gross: bigint;
+  offsetRecovered: bigint;
+  releasedNow: bigint;
+  heldBack: bigint;
+  /** Holdback tranches that matured this epoch (released now as well). */
+  maturedHoldback: bigint;
 }
 
 export interface EpochResult {
   epochNumber: number;
   budget: bigint;
+  absorbedLoss: bigint;
   rateCeilingBasePerAcu: bigint;
   slices: Record<string, bigint>;
   emittedBySlice: Record<DistributingSlice, bigint>;
@@ -165,14 +231,9 @@ export interface EpochResult {
   accruals: Map<string, bigint>;
   securityAccrual: bigint;
   allocations: AllocationLine[];
-  /** Net amount per account after offset recovery (what the settlement pays). */
-  netByAccount: Map<string, bigint>;
-  offsetsRecovered: Map<string, bigint>;
-  offsetsOutstanding: Map<string, bigint>;
-  remainingReserve: bigint;
-  poolBalances: Map<string, bigint>;
-  securityReserve: bigint;
-  cumulativeIssued: bigint;
+  entitlements: Map<string, Entitlement>;
+  consumedIds: string[];
+  state: EngineState;
 }
 
 const DIST: readonly DistributingSlice[] = ["execution", "planning", "human_review", "outcomes"];
@@ -183,12 +244,55 @@ function sumMap(m: ReadonlyMap<string, bigint>): bigint {
   return s;
 }
 
-export function assertConserved(
-  emissionReserve: bigint,
-  s: { remainingReserve: bigint; poolBalances: ReadonlyMap<string, bigint>; securityReserve: bigint; cumulativeIssued: bigint },
-): void {
+/** H1: equality AND non-negative balances AND holdback within issuance. Throws on any violation. */
+export function assertConserved(emissionReserve: bigint, s: EngineState): void {
+  if (s.remainingReserve < 0n) throw new EngineError(`negative reserve ${s.remainingReserve}`);
+  if (s.securityReserve < 0n) throw new EngineError(`negative security reserve ${s.securityReserve}`);
+  if (s.cumulativeIssued < 0n) throw new EngineError(`negative issuance ${s.cumulativeIssued}`);
+  if (s.lossCarry < 0n) throw new EngineError("negative loss carry");
+  for (const [k, v] of s.poolBalances) if (v < 0n) throw new EngineError(`negative pool ${k}`);
+  for (const [k, v] of s.offsets) if (v < 0n) throw new EngineError(`negative offset ${k}`);
+  let held = 0n;
+  for (const t of s.holdback) {
+    if (t.amount < 0n) throw new EngineError(`negative holdback for ${t.beneficiaryId}`);
+    held += t.amount;
+  }
+  if (held > s.cumulativeIssued) throw new EngineError("holdback exceeds issuance");
   const total = s.remainingReserve + sumMap(s.poolBalances) + s.securityReserve + s.cumulativeIssued;
   if (total !== emissionReserve) throw new EngineError(`funding equation broken: ${total} != ${emissionReserve}`);
+}
+
+/** An empty starting state holding the whole emission reserve. */
+export function initialState(emissionReserve: bigint): EngineState {
+  return {
+    remainingReserve: emissionReserve,
+    poolBalances: new Map(),
+    securityReserve: 0n,
+    cumulativeIssued: 0n,
+    holdback: [],
+    offsets: new Map(),
+    lossCarry: 0n,
+  };
+}
+
+// ------------------------------------------------------------------------------------------------ epoch
+
+function beneficiariesOf(r: EngineReceipt): ReadonlyArray<{ beneficiaryId: string; shareBp: number }> {
+  const b = r.beneficiaries ?? [{ beneficiaryId: r.accountId, shareBp: 10_000 }];
+  const sum = b.reduce((t, x) => t + x.shareBp, 0);
+  if (sum !== 10_000 || b.some((x) => !Number.isInteger(x.shareBp) || x.shareBp < 0))
+    throw new EngineError(`beneficiary shares of ${r.receiptId} must sum to 10000`);
+  return b;
+}
+
+/** Splits a receipt's weight across its beneficiaries exactly (largest remainder, so nothing is lost). */
+function splitWeight(r: EngineReceipt): Map<string, bigint> {
+  const b = beneficiariesOf(r);
+  if (b.length === 1) return new Map([[b[0]!.beneficiaryId, r.weightMicro]]);
+  return largestRemainder(
+    r.weightMicro,
+    b.map((x) => ({ key: x.beneficiaryId, weight: BigInt(x.shareBp) })),
+  );
 }
 
 export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
@@ -197,36 +301,154 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
   if (p.featurePoolsBp + p.applicationPoolsBp !== BP) throw new EngineError("completion split must sum to 10000 bp");
   const compSum = Object.values(p.completionComponentsBp).reduce((s, v) => s + v, 0n);
   if (compSum !== BP) throw new EngineError("completion components must sum to 10000 bp");
-  const ids = new Set<string>();
+  assertConserved(p.emissionReserve, input.state);
+
+  // Every event id is consumed at most once (H1 replay).
+  const consumed: string[] = [];
+  const seen = new Set<string>();
+  const consume = (id: string, what: string) => {
+    if (seen.has(id) || input.consumedIds?.has(id)) throw new EngineError(`${what} ${id} consumed twice`);
+    seen.add(id);
+    consumed.push(id);
+  };
   for (const r of input.receipts) {
-    if (ids.has(r.receiptId)) throw new EngineError(`receipt ${r.receiptId} admitted twice (exactly-once allocation)`);
-    ids.add(r.receiptId);
+    consume(`receipt:${r.receiptId}`, "receipt");
     if (r.weightMicro < 0n) throw new EngineError(`negative weight on ${r.receiptId}`);
   }
 
-  let R = input.remainingReserve + input.returnsToReserve;
-  const pools = new Map(input.poolBalances);
-  let S = input.securityReserve;
-  let I = input.cumulativeIssued;
-  let returned = input.returnsToReserve;
+  let R = input.state.remainingReserve;
+  const pools = new Map(input.state.poolBalances);
+  let S = input.state.securityReserve;
+  let I = input.state.cumulativeIssued;
+  let tranches = input.state.holdback.map((t) => ({ ...t }));
+  const offsets = new Map(input.state.offsets);
+  let lossCarry = input.state.lossCarry;
+  let returned = 0n;
+  const gross = new Map<string, bigint>();
+  const bountyGross = new Map<string, bigint>();
+  const allocations: AllocationLine[] = [];
+  const addGross = (m: Map<string, bigint>, b: string, a: bigint) => m.set(b, (m.get(b) ?? 0n) + a);
 
-  const budget = epochBudget(R, p.budgetPpm);
-  const ceiling = rateCeiling(p.rateCeilingInitialBasePerAcu, p.rateCeilingDecayPpm, input.epochNumber);
-  const sliceMap = largestRemainder(
-    budget,
-    Object.entries(p.slicesBp).map(([key, weight]) => ({ key, weight })),
-  );
-  const slices = Object.fromEntries(sliceMap) as Record<string, bigint>;
+  const takeHoldback = (beneficiaryId: string, amount: bigint, why: string) => {
+    let need = amount;
+    const mine = tranches.filter((t) => t.beneficiaryId === beneficiaryId).sort((a, b) => a.epochNumber - b.epochNumber);
+    for (const t of mine) {
+      const take = t.amount < need ? t.amount : need;
+      t.amount -= take;
+      need -= take;
+      if (need === 0n) break;
+    }
+    if (need > 0n) throw new EngineError(`${why}: ${beneficiaryId} has less holdback than ${amount}`);
+    tranches = tranches.filter((t) => t.amount > 0n);
+  };
+  const payBounties = (id: string, bounties: readonly Bounty[], recovered: bigint, slice: "dispute_bounty" | "recovery_bounty") => {
+    const paid = bounties.reduce((t, b) => t + b.amountBase, 0n);
+    if (bounties.some((b) => b.amountBase < 0n)) throw new EngineError(`negative bounty in ${id}`);
+    if (paid * BP > recovered * p.bountyBpOfRecovered)
+      throw new EngineError(`${id} pays more bounty than ${p.bountyBpOfRecovered} bp of what it recovered`);
+    for (const b of bounties) {
+      if (b.amountBase === 0n) continue;
+      allocations.push({
+        beneficiaryId: b.beneficiaryId,
+        accountId: null,
+        receiptId: null,
+        slice,
+        poolKey: null,
+        component: null,
+        weightMicro: 0n,
+        amountBase: b.amountBase,
+      });
+      addGross(bountyGross, b.beneficiaryId, b.amountBase);
+    }
+    return paid;
+  };
+
+  // 1. Identified returns and accrual corrections.
+  for (const r of input.returns ?? []) {
+    consume(r.id, "return");
+    if (r.amount <= 0n) throw new EngineError(`return ${r.id} must be positive`);
+    if (r.kind === "pool_cancel") {
+      const bal = pools.get(r.poolKey) ?? 0n;
+      if (r.amount > bal) throw new EngineError(`return ${r.id} exceeds pool ${r.poolKey}`);
+      pools.set(r.poolKey, bal - r.amount);
+    } else {
+      if (r.kind === "holdback_forfeit") takeHoldback(r.beneficiaryId, r.amount, `return ${r.id}`);
+      if (r.amount > I) throw new EngineError(`return ${r.id} exceeds issuance`);
+      I -= r.amount;
+    }
+    R += r.amount;
+    returned += r.amount;
+  }
+  for (const c of input.accrualCorrections ?? []) {
+    consume(c.id, "accrual correction");
+    const bal = pools.get(c.poolKey) ?? 0n;
+    if (c.amount <= 0n || c.amount > bal) throw new EngineError(`correction ${c.id} must be within pool ${c.poolKey}`);
+    pools.set(c.poolKey, bal - c.amount);
+    R += c.amount;
+    returned += c.amount;
+  }
+
+  // 2. Confiscations (D39): consume identified holdback and unclaimed amounts exactly once; bounty from recovered only.
+  for (const c of [...(input.confiscations ?? [])].sort((a, b) => cmp(a.id, b.id))) {
+    consume(c.id, "confiscation");
+    if (c.holdbackBase < 0n || c.unclaimedBase < 0n || c.provenExcessBase < 0n) throw new EngineError(`negative amounts in ${c.id}`);
+    if (c.holdbackBase > 0n) takeHoldback(c.beneficiaryId, c.holdbackBase, `confiscation ${c.id}`);
+    const recovered = c.holdbackBase + c.unclaimedBase;
+    if (recovered > I) throw new EngineError(`confiscation ${c.id} exceeds issuance`);
+    I -= recovered;
+    const paid = payBounties(c.id, c.bounties, recovered, "recovery_bounty");
+    R += recovered - paid;
+    returned += recovered - paid;
+    I += paid;
+    if (c.provenExcessBase > recovered)
+      offsets.set(c.beneficiaryId, (offsets.get(c.beneficiaryId) ?? 0n) + (c.provenExcessBase - recovered));
+  }
+
+  // 3. Dispute settlements: escrowed excess leaves I; bounty from it; the rest returns to R.
+  for (const d of [...(input.disputeSettlements ?? [])].sort((a, b) => cmp(a.id, b.id))) {
+    consume(d.id, "dispute settlement");
+    if (d.excessBase < 0n || d.excessBase > I) throw new EngineError(`dispute ${d.id} excess out of range`);
+    I -= d.excessBase;
+    const paid = payBounties(d.id, d.bounties, d.excessBase, "dispute_bounty");
+    R += d.excessBase - paid;
+    returned += d.excessBase - paid;
+    I += paid;
+  }
+
+  // 4. Write-offs: uncollectable offsets become losses absorbed by budgets.
+  for (const w of input.writeOffs ?? []) {
+    consume(w.id, "write-off");
+    const owed = offsets.get(w.beneficiaryId) ?? 0n;
+    if (w.amount <= 0n || w.amount > owed) throw new EngineError(`write-off ${w.id} exceeds the outstanding offset`);
+    offsets.set(w.beneficiaryId, owed - w.amount);
+    lossCarry += w.amount;
+  }
+
+  // 5. Budget, minus the bounded loss absorption (D41: unrecovered fraud reduces this epoch's pool).
+  const fullBudget = epochBudget(R, p.budgetPpm);
+  const absorbCap = (fullBudget * p.lossAbsorptionMaxBp) / BP;
+  const absorbedLoss = lossCarry < absorbCap ? lossCarry : absorbCap;
+  lossCarry -= absorbedLoss;
+  const budget = fullBudget - absorbedLoss;
   R -= budget;
+  let ceiling = rateCeiling(p.rateCeilingInitialBasePerAcu, p.rateCeilingDecayPpm, input.epochNumber);
+  if (p.maxRateVsTrailingBp > 0n && input.trailingRateBasePerAcu && input.trailingRateBasePerAcu > 0n) {
+    const damped = (input.trailingRateBasePerAcu * p.maxRateVsTrailingBp) / BP;
+    if (damped < ceiling) ceiling = damped;
+  }
+  const slices = Object.fromEntries(
+    largestRemainder(
+      budget,
+      Object.entries(p.slicesBp).map(([key, weight]) => ({ key, weight })),
+    ),
+  ) as Record<string, bigint>;
 
   const weightBySlice = Object.fromEntries(DIST.map((s) => [s, 0n])) as Record<DistributingSlice, bigint>;
   for (const r of input.receipts) weightBySlice[r.slice] += r.weightMicro;
   const totalWeight = DIST.reduce((s, k) => s + weightBySlice[k], 0n);
 
-  // 1. Distributing slices: emit min(slice, ceiling x weight), pro rata by account weight; the rest returns to R.
+  // 6. Distributing slices, rounded at BENEFICIARY level first (L18), then apportioned across that beneficiary's lines.
   const emittedBySlice = Object.fromEntries(DIST.map((s) => [s, 0n])) as Record<DistributingSlice, bigint>;
-  const gross = new Map<string, bigint>();
-  const allocations: AllocationLine[] = [];
   for (const slice of DIST) {
     const slice$ = slices[slice] ?? 0n;
     const w = weightBySlice[slice];
@@ -236,38 +458,54 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
     R += slice$ - emit;
     returned += slice$ - emit;
     if (emit === 0n) continue;
-    const inSlice = input.receipts.filter((r) => r.slice === slice);
-    const split = largestRemainder(
+    const lines = new Map<string, { beneficiaryId: string; receipt: EngineReceipt; weight: bigint }[]>();
+    for (const r of input.receipts) {
+      if (r.slice !== slice) continue;
+      for (const [b, bw] of splitWeight(r)) lines.set(b, [...(lines.get(b) ?? []), { beneficiaryId: b, receipt: r, weight: bw }]);
+    }
+    const byBeneficiary = largestRemainder(
       emit,
-      inSlice.map((r) => ({ key: r.receiptId, weight: r.weightMicro })),
+      [...lines].map(([key, ls]) => ({ key, weight: ls.reduce((t, l) => t + l.weight, 0n) })),
     );
-    for (const r of inSlice) {
-      const amount = split.get(r.receiptId) ?? 0n;
-      allocations.push({ accountId: r.accountId, receiptId: r.receiptId, slice, weightMicro: r.weightMicro, amountBase: amount });
-      gross.set(r.accountId, (gross.get(r.accountId) ?? 0n) + amount);
+    for (const [b, amount] of byBeneficiary) {
+      const ls = lines.get(b)!;
+      const perLine =
+        ls.reduce((t, l) => t + l.weight, 0n) === 0n
+          ? new Map(ls.map((l) => [l.receipt.receiptId, 0n]))
+          : largestRemainder(
+              amount,
+              ls.map((l) => ({ key: l.receipt.receiptId, weight: l.weight })),
+            );
+      for (const l of ls) {
+        allocations.push({
+          beneficiaryId: b,
+          accountId: l.receipt.accountId,
+          receiptId: l.receipt.receiptId,
+          slice,
+          poolKey: null,
+          component: null,
+          weightMicro: l.weight,
+          amountBase: perLine.get(l.receipt.receiptId) ?? 0n,
+        });
+      }
+      addGross(gross, b, amount);
     }
   }
 
-  // 2. Accrual slices scale with utilisation: they accrue the same fraction of their slice that the distributing
-  //    slices actually emitted (so a quiet epoch cannot pile the budget into pools that a few people later collect).
-  //    An empty epoch accrues nothing. The unaccrued part returns to R.
+  // 7. Accrual slices scale with utilisation; an empty epoch accrues nothing.
   const accruals = new Map<string, bigint>();
   const distSlices = DIST.reduce((t, k) => t + (slices[k] ?? 0n), 0n);
   const distEmitted = DIST.reduce((t, k) => t + emittedBySlice[k], 0n);
   const scale = (x: bigint) => (distSlices === 0n ? 0n : (x * distEmitted) / distSlices);
   const completionSlice = slices.completion_accrual ?? 0n;
   const securitySlice = slices.security_reserve ?? 0n;
-  const completion$ = scale(completionSlice);
-  const security$ = scale(securitySlice);
+  const completion$ = totalWeight === 0n ? 0n : scale(completionSlice);
+  const security$ = totalWeight === 0n ? 0n : scale(securitySlice);
   R += completionSlice - completion$ + (securitySlice - security$);
   returned += completionSlice - completion$ + (securitySlice - security$);
   let securityAccrual = 0n;
-  if (totalWeight === 0n) {
-    R += completion$ + security$;
-    returned += completion$ + security$;
-  } else {
+  if (totalWeight > 0n) {
     const feature$ = (completion$ * p.featurePoolsBp) / BP;
-    const appPart = completion$ - feature$;
     const accrue = (amount: bigint, keysOf: (r: EngineReceipt) => readonly string[]) => {
       const kw = new Map<string, bigint>();
       for (const r of input.receipts) {
@@ -291,96 +529,144 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
       }
     };
     accrue(feature$, (r) => r.featurePoolKeys);
-    accrue(appPart, (r) => r.applicationPoolKeys);
+    accrue(completion$ - feature$, (r) => r.applicationPoolKeys);
     S += security$;
     securityAccrual = security$;
   }
 
-  // 3. Completion pool payouts (pools completed this epoch): whole balance, by component, then by weight.
-  for (const payout of [...input.poolPayouts].sort((a, b) => cmp(a.poolKey, b.poolKey))) {
+  // 8. Completion pool payouts (H13: application pools pay 100% by lifetime weight).
+  for (const payout of [...(input.poolPayouts ?? [])].sort((a, b) => cmp(a.poolKey, b.poolKey))) {
+    consume(payout.id, "pool payout");
     const bal = pools.get(payout.poolKey) ?? 0n;
     if (bal === 0n) continue;
     pools.set(payout.poolKey, 0n);
-    const comps = largestRemainder(
-      bal,
-      Object.entries(p.completionComponentsBp).map(([key, weight]) => ({ key, weight })),
-    );
-    for (const [component, amount] of comps) {
+    const components: [string, bigint][] =
+      payout.kind === "application"
+        ? [["lifetime", bal]]
+        : [
+            ...largestRemainder(
+              bal,
+              Object.entries(p.completionComponentsBp).map(([key, weight]) => ({ key, weight })),
+            ),
+          ];
+    for (const b of payout.beneficiaries) {
+      if ((payout.kind === "application") !== (b.component === "lifetime"))
+        throw new EngineError(`pool ${payout.poolKey}: component ${b.component} does not fit a ${payout.kind} pool`);
+    }
+    for (const [component, amount] of components) {
       if (amount === 0n) continue;
       const bw = new Map<string, bigint>();
-      for (const b of payout.beneficiaries) if (b.component === component) bw.set(b.accountId, (bw.get(b.accountId) ?? 0n) + b.weight);
+      for (const b of payout.beneficiaries)
+        if (b.component === component) bw.set(b.beneficiaryId, (bw.get(b.beneficiaryId) ?? 0n) + b.weight);
       if (bw.size === 0 || sumMap(bw) === 0n) {
-        R += amount; // a component with nobody to pay (e.g. no finder) returns to the reserve
+        R += amount;
         returned += amount;
         continue;
       }
-      for (const [accountId, a] of largestRemainder(
+      for (const [b, a] of largestRemainder(
         amount,
         [...bw].map(([key, weight]) => ({ key, weight })),
       )) {
         if (a === 0n) continue;
-        allocations.push({ accountId, receiptId: null, slice: "completion_payout", weightMicro: bw.get(accountId)!, amountBase: a });
-        gross.set(accountId, (gross.get(accountId) ?? 0n) + a);
+        allocations.push({
+          beneficiaryId: b,
+          accountId: null,
+          receiptId: null,
+          slice: "completion_payout",
+          poolKey: payout.poolKey,
+          component,
+          weightMicro: bw.get(b)!,
+          amountBase: a,
+        });
+        addGross(gross, b, a);
       }
     }
   }
 
-  // 4. Security payouts: weight x realised execution rate, each capped at a share of the remaining reserve balance.
+  // 9. Security payouts: weight x realised execution rate, each capped at a share of the remaining reserve balance.
   const execW = weightBySlice.execution;
   const rate = execW > 0n ? (emittedBySlice.execution * MICRO) / execW : ceiling;
-  for (const sp of [...input.securityPayouts].sort((a, b) => cmp(a.receiptId, b.receiptId))) {
+  for (const sp of [...(input.securityPayouts ?? [])].sort((a, b) => cmp(a.id, b.id))) {
+    consume(sp.id, "security payout");
+    consume(`security-receipt:${sp.receiptId}`, "security receipt");
     const want = (sp.weightMicro * rate) / MICRO;
     const maxNow = (S * p.securityMaxShareOfReserveBp) / BP;
     const pay = want < maxNow ? want : maxNow;
     if (pay === 0n) continue;
     S -= pay;
     allocations.push({
-      accountId: sp.accountId,
+      beneficiaryId: sp.beneficiaryId,
+      accountId: null,
       receiptId: sp.receiptId,
       slice: "security_payout",
+      poolKey: null,
+      component: null,
       weightMicro: sp.weightMicro,
       amountBase: pay,
     });
-    gross.set(sp.accountId, (gross.get(sp.accountId) ?? 0n) + pay);
+    addGross(gross, sp.beneficiaryId, pay);
   }
 
-  // 5. Dispute settlements: escrowed excess leaves I; bounties are paid from it; the rest returns to R.
-  for (const d of [...(input.disputeSettlements ?? [])].sort((a, b) => cmp(a.disputeId, b.disputeId))) {
-    const paid = d.bounties.reduce((t, b) => t + b.amountBase, 0n);
-    if (paid > d.excessBase) throw new EngineError(`dispute ${d.disputeId} pays more bounty than its excess`);
-    I -= d.excessBase;
-    R += d.excessBase - paid;
-    returned += d.excessBase - paid;
-    for (const b of d.bounties) {
-      if (b.amountBase === 0n) continue;
-      allocations.push({ accountId: b.accountId, receiptId: null, slice: "dispute_bounty", weightMicro: 0n, amountBase: b.amountBase });
-      gross.set(b.accountId, (gross.get(b.accountId) ?? 0n) + b.amountBase);
+  // 10. Offsets recovered from this epoch's gross (<= maxOffsetRecoveryBp); recovered amounts return to R.
+  //     11. Holdback: the net is split into released-now and a new tranche; mature tranches are released.
+  const entitlements = new Map<string, Entitlement>();
+  const keys = [...new Set([...gross.keys(), ...bountyGross.keys(), ...tranches.map((t) => t.beneficiaryId)])].sort(cmp);
+  const matured = new Map<string, bigint>();
+  tranches = tranches.filter((t) => {
+    if (t.epochNumber + p.holdbackEpochs <= input.epochNumber) {
+      addGross(matured, t.beneficiaryId, t.amount);
+      return false;
     }
-  }
-
-  // 6. Offsets: recover up to maxOffsetRecoveryBp of each account's gross; recovered amounts return to R.
-  const netByAccount = new Map<string, bigint>();
-  const offsetsRecovered = new Map<string, bigint>();
-  const offsetsOutstanding = new Map(input.offsets);
-  for (const [accountId, g] of [...gross].sort((a, b) => cmp(a[0], b[0]))) {
-    const owed = offsetsOutstanding.get(accountId) ?? 0n;
+    return true;
+  });
+  for (const b of keys) {
+    const g = gross.get(b) ?? 0n;
+    const owed = offsets.get(b) ?? 0n;
     const limit = (g * p.maxOffsetRecoveryBp) / BP;
     const rec = owed < limit ? owed : limit;
     if (rec > 0n) {
-      offsetsRecovered.set(accountId, rec);
-      offsetsOutstanding.set(accountId, owed - rec);
+      offsets.set(b, owed - rec);
       R += rec;
       returned += rec;
     }
-    netByAccount.set(accountId, g - rec);
-    I += g - rec;
+    const net = g - rec;
+    const held = (net * p.holdbackBp) / BP;
+    if (held > 0n) tranches.push({ beneficiaryId: b, epochNumber: input.epochNumber, amount: held });
+    I += net;
+    const bounty = bountyGross.get(b) ?? 0n;
+    entitlements.set(b, {
+      beneficiaryId: b,
+      gross: g + bounty,
+      offsetRecovered: rec,
+      releasedNow: net - held + bounty,
+      heldBack: held,
+      maturedHoldback: matured.get(b) ?? 0n,
+    });
   }
-  for (const [k, v] of [...offsetsOutstanding]) if (v === 0n) offsetsOutstanding.delete(k);
+  for (const [k, v] of [...offsets]) if (v === 0n) offsets.delete(k);
+  for (const [k, v] of [...pools]) if (v === 0n) pools.delete(k);
 
-  allocations.sort((a, b) => cmp(a.accountId, b.accountId) || cmp(a.slice, b.slice) || cmp(a.receiptId ?? "", b.receiptId ?? ""));
+  allocations.sort(
+    (a, b) =>
+      cmp(a.beneficiaryId, b.beneficiaryId) ||
+      cmp(a.slice, b.slice) ||
+      cmp(a.receiptId ?? "", b.receiptId ?? "") ||
+      cmp(a.poolKey ?? "", b.poolKey ?? ""),
+  );
+  const state: EngineState = {
+    remainingReserve: R,
+    poolBalances: pools,
+    securityReserve: S,
+    cumulativeIssued: I,
+    holdback: tranches,
+    offsets,
+    lossCarry,
+  };
+  assertConserved(p.emissionReserve, state);
   return {
     epochNumber: input.epochNumber,
     budget,
+    absorbedLoss,
     rateCeilingBasePerAcu: ceiling,
     slices,
     emittedBySlice,
@@ -389,31 +675,35 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
     accruals,
     securityAccrual,
     allocations,
-    netByAccount,
-    offsetsRecovered,
-    offsetsOutstanding,
-    remainingReserve: R,
-    poolBalances: pools,
-    securityReserve: S,
-    cumulativeIssued: I,
+    entitlements,
+    consumedIds: consumed,
+    state,
   };
 }
 
 /** Builds engine parameters from the V1 policy documents' numbers. */
 export function engineParamsFrom(
   reward: {
-    emission: { budgetPpmOfRemaining: number; rateCeiling: { initialBasePerAcu: string; decayPpmPerEpoch: number } };
+    emission: {
+      emissionReserveBase: string;
+      budgetPpmOfRemaining: number;
+      rateCeiling: { initialBasePerAcu: string; decayPpmPerEpoch: number; maxVsTrailingBp: number };
+    };
     slicesBp: Record<DistributingSlice | "completion_accrual" | "security_reserve", number>;
     completion: { featurePoolsBp: number; applicationPoolsBp: number };
     security: { maxShareOfReserveBp: number };
     settlement: { maxOffsetRecoveryBp: number };
+    holdback: { shareBp: number; epochs: number };
+    losses: { bountyBpOfRecovered: number; absorptionMaxBp: number };
   },
   completion: { feature: Record<"implementersBp" | "contractAuthorsBp" | "roadmapAuthorsBp" | "reviewersBp" | "finderBp", number> },
 ): EngineParams {
   return {
+    emissionReserve: BigInt(reward.emission.emissionReserveBase),
     budgetPpm: BigInt(reward.emission.budgetPpmOfRemaining),
     rateCeilingInitialBasePerAcu: BigInt(reward.emission.rateCeiling.initialBasePerAcu),
     rateCeilingDecayPpm: BigInt(reward.emission.rateCeiling.decayPpmPerEpoch),
+    maxRateVsTrailingBp: BigInt(reward.emission.rateCeiling.maxVsTrailingBp),
     slicesBp: {
       execution: BigInt(reward.slicesBp.execution),
       planning: BigInt(reward.slicesBp.planning),
@@ -433,6 +723,10 @@ export function engineParamsFrom(
     },
     securityMaxShareOfReserveBp: BigInt(reward.security.maxShareOfReserveBp),
     maxOffsetRecoveryBp: BigInt(reward.settlement.maxOffsetRecoveryBp),
+    holdbackBp: BigInt(reward.holdback.shareBp),
+    holdbackEpochs: reward.holdback.epochs,
+    bountyBpOfRecovered: BigInt(reward.losses.bountyBpOfRecovered),
+    lossAbsorptionMaxBp: BigInt(reward.losses.absorptionMaxBp),
   };
 }
 
