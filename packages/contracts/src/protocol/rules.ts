@@ -773,3 +773,28 @@ export function genesisDedupRefusals(x: { dedupSource: "receipt" | "genesis" | n
   if (x.dedupSource !== "genesis") r.push("a Genesis contribution uses a genesis dedup key");
   return r;
 }
+
+// ------------------------------------------------------------------------------------------------ model eligibility at claim (D52)
+
+/**
+ * A lease is offered only to a model qualified for the task's capability class. A CANDIDATE model (D52, e.g. GLM via
+ * Z.ai) is refused for every role until its qualification suite passed for that class and it was added to the class's
+ * `qualified` list; reviewer and resolver roles need a separate qualification.
+ */
+export function modelClaimRefusals(
+  policy: {
+    classes: ReadonlyArray<{ id: string; qualified: ReadonlyArray<{ provider: string; modelId: string }> }>;
+    candidates: ReadonlyArray<{ key: string; provider: string; modelIdPattern: string; allowedRoles: readonly string[] }>;
+  },
+  claim: { provider: string; modelId: string; requiredClass: string; role: string },
+): string[] {
+  const glob = (p: string) => new RegExp(`^${p.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*")}$`);
+  const candidate = policy.candidates.find((c) => c.provider === claim.provider || glob(c.modelIdPattern).test(claim.modelId));
+  const cls = policy.classes.find((c) => c.id === claim.requiredClass);
+  const qualified = cls?.qualified.some((q) => q.provider === claim.provider && q.modelId === claim.modelId) ?? false;
+  const r: string[] = [];
+  if (candidate && !candidate.allowedRoles.includes(claim.role) && !qualified)
+    r.push(`${candidate.key} is a candidate model: not eligible for any role until it passes qualification (D52)`);
+  else if (!qualified) r.push(`model ${claim.modelId} is not qualified for ${claim.requiredClass}`);
+  return r;
+}

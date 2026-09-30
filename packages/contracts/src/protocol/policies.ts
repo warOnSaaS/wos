@@ -394,6 +394,52 @@ export const AgentCapabilityPolicy = z.object({
    * Execution caps per task, in micro-ACU: the point where a run is STOPPED (telemetry), not what it is paid (D49).
    * Also the default budget-model inputs: budget = base + perSizePoint x size before multipliers.
    */
+  /**
+   * D52: CANDIDATE models — listed so they can be tested, eligible for NOTHING until the qualification suite passes for
+   * a class (and then only via an entry in `classes[].qualified` with `qualifiedBy: "eval_suite"`). Reviewer and
+   * resolver roles need their own, separate qualification.
+   */
+  candidates: z.array(
+    z.object({
+      key: z.string().min(1),
+      provider: z.enum(["zai"]),
+      modelIdPattern: z.string().min(1),
+      status: z.literal("candidate"),
+      allowedRoles: z.array(z.string()).max(0),
+      targetClasses: z.array(CapabilityClass).min(1),
+      reviewerOrResolverRequiresSeparateQualification: z.literal(true),
+      launchPaths: z.array(
+        z.object({
+          kind: z.enum(["claude_cli_anthropic_compatible", "zcode_cli"]),
+          status: z.enum(["documented", "later"]),
+          /** Variables the orchestrator sets or detects; values are the contributor's (wOS never reads credentials). */
+          env: z.record(z.string(), z.string()),
+          /** A CLI pointed at another endpoint only self-reports its model: attestation records base URL and provider as DECLARED. */
+          identity: z.literal("self_reported"),
+          notes: z.string(),
+        }),
+      ),
+      qualificationSuite: z.string().min(1),
+    }),
+  ),
+  /** D52: ModelQualificationSuite — fixed units with known acceptance outcomes, run in devnet shadow mode. */
+  qualificationSuites: z.array(
+    z.object({
+      suiteVersion: z.string().min(1),
+      targetClass: CapabilityClass,
+      mode: z.literal("devnet_shadow"),
+      /** The frozen list of historical/benchmark units and their known outcomes; null until frozen (never invented). */
+      unitsManifestSha256: z.string().nullable(),
+      passThresholds: z.object({
+        minUnits: z.number().int().positive(),
+        minAcceptedOfAcceptableBp: z.number().int().min(0).max(10_000),
+        maxAcceptedOfRejectedBp: z.number().int().min(0).max(10_000),
+      }),
+      recordedPer: z.literal("model_version"),
+      /** Budget-based pay (D49): qualification never changes budgets; shadow runs earn nothing. */
+      affectsBudgets: z.literal(false),
+    }),
+  ),
   budgets: z.array(
     z.object({
       taskKind: TaskKind,

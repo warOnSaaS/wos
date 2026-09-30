@@ -87,3 +87,6 @@ Since D49 a `RunLog` is OPTIONAL evidence (usage no longer carries weight); when
 ## 7. Detection after the fact
 
 Peer baselines per comparable key (task kind, capability class, model, size points) feed the anomaly metrics (REWARD-PROTOCOL §9). Random third-contributor audits and payout canaries (REVIEW-PROTOCOL changes in HUMAN-REVIEW.md §7; ABUSE-MODEL §5) and disputes (PROTOCOL §4.4) act on the published explanations. A re-run of a build from the same manifest can judge output and plausibility; it cannot prove what an earlier run consumed (Astra-01 item 5), so V1 does no build re-runs (`randomRerunBp: 0`).
+
+## Model identity through a redirected CLI (D52)
+A `claude` CLI run with `ANTHROPIC_BASE_URL` pointed at another provider (for example Z.ai for GLM) reports whatever model name that endpoint returns: identity is self-reported. The orchestrator records the base URL (from env or claude settings) and the provider as declared; a non-Anthropic base URL is never recorded or qualified as an Anthropic model. Candidate models earn nothing until qualified (POLICIES §4, `modelClaimRefusals`).

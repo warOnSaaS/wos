@@ -7,6 +7,8 @@ import { describe, expect, it } from "vitest";
 import {
   ACTIVATION_RULES,
   activationRefusals,
+  CAPABILITY_POLICY_V1,
+  modelClaimRefusals,
   adapterEventRefusals,
   allocationLineRefusals,
   auditOutcomePublishRefusals,
@@ -759,5 +761,34 @@ describe("further write rules moved from 0007 v4 (no guarantee silently dropped)
       /governance decision/,
     );
     refused(genesisDedupRefusals({ dedupSource: "receipt", authorizationRefusals: [] }), /genesis dedup key/);
+  });
+});
+
+describe("candidate models (D52: GLM via Z.ai)", () => {
+  it("a candidate model is refused at claim until qualified; qualified models pass; GLM has no role and targets BUILD_L1-L2", () => {
+    const glm = CAPABILITY_POLICY_V1.candidates.find((c) => c.key === "glm")!;
+    expect(glm).toMatchObject({ provider: "zai", status: "candidate", allowedRoles: [] });
+    expect(glm.targetClasses).toEqual(["BUILD_L1", "BUILD_L2"]);
+    expect(glm.launchPaths.every((l) => l.identity === "self_reported")).toBe(true);
+    refused(
+      modelClaimRefusals(CAPABILITY_POLICY_V1, { provider: "claude_cli", modelId: "glm-5.1", requiredClass: "BUILD_L3", role: "builder" }),
+      /candidate model/,
+    );
+    refused(
+      modelClaimRefusals(CAPABILITY_POLICY_V1, {
+        provider: "zai",
+        modelId: "glm-5.1",
+        requiredClass: "REVIEW_A",
+        role: "implementation_reviewer_astra",
+      }),
+      /candidate model/,
+    );
+    expect(
+      modelClaimRefusals(CAPABILITY_POLICY_V1, { provider: "codex_cli", modelId: "gpt-6-sol", requiredClass: "BUILD_L3", role: "builder" }),
+    ).toEqual([]);
+    const suite = CAPABILITY_POLICY_V1.qualificationSuites.find(
+      (s) => s.suiteVersion === glm.qualificationSuite && s.targetClass === "BUILD_L1",
+    )!;
+    expect(suite).toMatchObject({ mode: "devnet_shadow", recordedPer: "model_version", affectsBudgets: false, unitsManifestSha256: null });
   });
 });
