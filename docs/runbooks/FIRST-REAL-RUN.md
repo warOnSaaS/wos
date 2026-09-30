@@ -6,6 +6,8 @@ Written 2026-09-30 by the readiness agent against `main` at c0db5ff (contracts 5
 
 **Read section 2 before starting.** As deployed today, the run can open, author and review, but it cannot reach consensus under the D53 plan, and it cannot record the merge. Both need a decision or a small control-plane change first.
 
+**Update, contracts 5.15.0 (branch `ws/firstrun`, 2026-09-30).** B1–B4 are fixed in code (section 2a). They take effect only after production migration `0013_review_fallback_and_first_run.sql` is applied (runner, `--check` first) and `waronsaas-api` is deployed from the same commit. What remains is a founder decision about who holds the human seat of a roadmap the founder authors (section 2a, "The human seat and the founder").
+
 ## 1. What is ready (verified 2026-09-30)
 
 ### Product repository (github.com/warOnSaaS/product)
@@ -96,6 +98,49 @@ Smaller items, none blocking:
 - With `delete_branch_on_merge`, GitHub deletes the head branch as the merging user. The `wos-branches` ruleset refuses that for `wos/roadmap/salesforce/v1`, so the branch stays after merge. Harmless; the App may delete it.
 - The seed has no root `.gitignore` (the template has none). Only the App commits, so nothing depends on it.
 
+## 2a. Fixed in contracts 5.15.0 (migration 0013), and what is left
+
+| # | Status | How it works now |
+|---|---|---|
+| B1 | **Fixed in code; activation is the coordinator's step.** | The ReviewPolicy fallback `fable_unavailable` is wired (REVIEW-PROTOCOL "D53 in the V1 control plane"). A round opened while it is active has one Astra task and the human seat, is labelled `single_lab_review`, refuses a Fable verdict as a seat and any reviewer of the author's model (Opus author: Astra allowed, Opus refused). Consensus is Astra and the human both `NO_MATERIAL_GAPS` on the same head and submission hash. On escalation no Fable resolver task opens: a third maintainer rules (`wos human-ruling`). |
+| B2 | **Fixed.** | Webhook repository names are lowercased before any lookup; every stored name is checked lowercase by the database; a roadmap surface naming an unregistered repository is a validation error (`SURFACE_REPO_UNKNOWN`) instead of a merge that cannot materialise. Production rows were already lowercase (read-only check, 2026-09-30): no data migration. |
+| B3 | **Fixed; the ruleset change stays a founder step.** | At consensus the App sets `wos/consensus` and `wos/qualified` on the head, marks the draft PR ready for review, and posts one review with event COMMENT for every revealed document round (both verdicts, findings, models, labels). The App answers `merge_group.checks_requested` with `wos/qualified` (and `wos/consensus` for documents) on the merge-group commit. The product ruleset can move to the template (merge queue plus `wos/qualified`) once this is deployed; until then keep ruleset 24267950 as it is. |
+| B4 | **Fixed; skip step 4.2.** | Roadmap authors and both reviewers get the target's scan as the required server document `wos:scan/<target>`, labelled `SCAN — unreviewed`, bundled from `docs/scans/<target>.md` and pinned by its git blob oid and sha256 (the plan and the context manifest pin the rendered sha256). Filing the scan as proposals is no longer needed. |
+| B5 | Unchanged. | `wos apps enable build` (step 4.1). |
+| B6 | **Changed by the ruling below.** | The 24-hour bootstrap wait applies to the agent seats only. |
+| — | **Fixed.** | After an abandon the next opening is version 1 again (last merged + 1) on branch `wos/roadmap/<target>/v1-2`, so validation and the branch agree (section 7). |
+| — | **Fixed.** | The template CODEOWNERS has the three planning lines the seed added. |
+
+### Activating the fallback (coordinator, when the founder says go)
+
+Only a maintainer can switch, and only while no round is awaiting reviews. It is public and forward-only (switching back is another switch, `"fallback": "none"`). Use the keychain snippet of step 4.3 with its own Idempotency-Key, posting to `/v1/admin/actions`:
+
+```
+POST https://api.waronsaas.com/v1/admin/actions
+Authorization: Bearer <maintainer access token>
+Idempotency-Key: <uuid>
+Content-Type: application/json
+
+{"action": "switch_review_policy", "fallback": "fable_unavailable", "reason": "D53: Fable unavailable; Astra plus the required human review (single_lab_review)"}
+```
+
+Then `curl -s https://api.waronsaas.com/v1/public/status` shows `"reviewPolicy": {"fallback": "fable_unavailable", "switchSeq": 1, …}`. Switch BEFORE step 4.4: a round pins its seats when it opens.
+
+### The human seat and the founder (a ruling, not a choice made here)
+
+The rules forbid the founder from holding the human seat of a round whose author task he claimed:
+- `review-policy.v1` `independence.humanMayBeSubjectAuthor = false` and `humanMayHoldAgentSlotOfSameRound = false`;
+- `bootstrap.selfReviewSatisfiesRules = false`, and D23 keeps the founder's own work PROVISIONAL (merge authority is separate from qualification);
+- the protocol's own `human_reviews` backstop (migration 0007) refuses "a human reviewer may not review their own work" too.
+
+The 24-hour self-review rule (REVIEW-PROTOCOL section 9, agent-policy `bootstrap.selfReviewAfterHours`) is for the agent seats; nothing extends it to the human seat, so no waiting period helps. The code implements exactly this: the founder may hold the Astra seat of his own roadmap after 24 h (labelled `bootstrap_self`), but never its human seat, and he may not hold both seats of one round.
+
+The honest consequence: **a roadmap the founder authors cannot reach consensus under the fallback unless another authorized human (a maintainer in V1) takes the human seat.** The founder's options:
+1. **Another human.** Grant a trusted person the maintainer role; they run `wos review --human` after the Astra verdict is sealed. They must not also run the Astra review of that round.
+2. **Someone else authors.** If another eligible contributor claims the author task, the founder can hold the human seat.
+3. **Fable in the Fable seat.** Leave the fallback off (or switch it back to `none` between rounds) and run `wos review --slot fable` when there is Fable usage (the old B1 option b). The founder's CODEOWNERS approval still gates the merge.
+4. **A D23 `bootstrap_merge`.** D23 lets the founder merge his own work under a public label with a PROVISIONAL receipt. The V1 control plane does not implement it, and the `main` ruleset has no bypass actor, so it would need a founder decision, an AdminAction that sets `wos/consensus` with a public label, and a contracts version.
+
 ## 3. D64 (shadow accounting first): can the run go before P1?
 
 **Mechanically, yes.** The deployed control plane does not depend on protocol P1. A run today records, append-only:
@@ -131,8 +176,9 @@ Use Node 22 in every shell: `nvm use 22`. `wos` below means `node ~/waronsaas/ap
 
 ### 4.0 Preconditions (all must hold)
 
-- [ ] B1 decided (P1 exists, or the founder said yes to Fable in the Fable slot).
-- [ ] B2 fixed and deployed to `waronsaas-api`.
+- [ ] Migration 0013 applied to production (`--check` first) and `waronsaas-api` deployed from the same commit (contracts 5.15.0).
+- [ ] B1 decided: the fallback switched on (section 2a) and a human other than the author named for the human seat; or the founder said yes to Fable in the Fable slot.
+- [ ] B2 fixed and deployed to `waronsaas-api` (5.15.0).
 - [ ] `wos status` shows claude and codex signed in, and the account GitHub-linked.
 - [ ] No Salesforce roadmap document is open or merged. `/v1/public/targets/salesforce` shows `"roadmap": null` (merged ones only), and `select state from wos.documents where kind = 'roadmap'` is empty. Otherwise 4.3 returns 409.
 
@@ -144,6 +190,8 @@ wos apps          # build must read "enabled"
 ```
 
 ### 4.2 File the scan as three proposals (before the author claims)
+
+**Skip this step once 5.15.0 is deployed:** the author and both reviewers then get the scan as `wos:scan/salesforce` (section 2a, B4). Filing it as proposals as well would put it into the context twice. The steps below are for a control plane older than 5.15.0.
 
 The author's context is built at claim time from open proposals, so file them first. Each body is verbatim scan text under a one-paragraph header, and the snippet refuses a part over 20000 characters.
 
@@ -221,7 +269,7 @@ Check the result against D59 before reviews start:
 - every class has a connector, or a sourced `notExtractable` list;
 - `proposals[]` lists the three outline proposals.
 
-### 4.5 Reviews (after the 24 h wait, B6)
+### 4.5 Reviews (Astra after the 24 h wait if the founder reviews, B6; the human seat never the author)
 
 The founder authored, so his review claims are refused (`BOOTSTRAP_SELF_REVIEW_TOO_EARLY`) until each review task has been open 24 h.
 
@@ -231,22 +279,30 @@ caffeinate -i node ~/waronsaas/apps/cli/dist/wos.mjs review --slot astra --kind 
 ```
 It runs `gpt-6-astra` at `max`, never `ultra` (G-36), read-only with no network. Budget: context 150000 tokens and working reserve 100000 (Astra override), hard deadline 180 minutes.
 
-**The second seat, by the B1 decision:**
+**The second seat, with the fallback active (contracts 5.15.0):** after the Astra verdict is sealed, an authorized human who is neither the author nor the Astra reviewer of this round runs:
+```sh
+node ~/waronsaas/apps/cli/dist/wos.mjs review --human                     # shows the round, the subject files, the Astra verdict, prior findings
+node ~/waronsaas/apps/cli/dist/wos.mjs review --human --round <roundId>   # on a terminal: prompts for prior findings, new findings, summary, then seals
+node ~/waronsaas/apps/cli/dist/wos.mjs review --human --round <roundId> --verdict-file verdict.json   # or a review-verdict.v1 file
+```
+The verdict is bound to the round's head sha and submission hash. See section 2a for why the founder cannot hold this seat on his own roadmap.
+
+**Before 5.15.0 the second seat depended on the B1 decision:**
 - **(a) P1 exists:** the founder does the human review through the P1 `protocol-review` route. Its command is not built yet; take it from the P1 handoff. Every conflict goes to the human (D53, D58).
 - **(b) Fable allowed:** `caffeinate -i node ~/waronsaas/apps/cli/dist/wos.mjs review --slot fable --kind roadmap_review`. The founder still does the human review on GitHub, and his CODEOWNERS approval is required to merge (step 4.7).
 
-Both verdicts are sealed until the second arrives, then revealed together. REVIEW-PROTOCOL says the App posts one PR comment with both verdicts. **NOT IMPLEMENTED** in the deployed control plane (no comment call exists), so read the verdicts through `wos events`, `/v1/public/activity` or the database (`wos.reviews`, `wos.findings`).
+Both verdicts are sealed until the second arrives, then revealed together. Since 5.15.0 the App posts one PR review (event COMMENT) per revealed round with both verdicts, the findings, models and labels. Before that deploy, read the verdicts through `wos events`, `/v1/public/activity` or the database (`wos.reviews`, `wos.findings`, `wos.round_human_reviews`).
 
 ### 4.6 The round loop
 
 After reveal:
 - **Material findings, round < 6** (`round_gaps`): the document goes to `revising` and a new `roadmap_author` task opens with the findings in its context. Repeat 4.4 (the same `wos roadmap ... --model opus`), then 4.5 (another 24 h wait).
-- **Both `NO_MATERIAL_GAPS` on the same head and submission hash** (`round_consensus`): the App sets `wos/consensus = success` on the head. ROADMAP-PROTOCOL says it also marks the PR ready for review. **NOT IMPLEMENTED** (the consensus consumer only sets the status), so the PR stays a draft.
-- **Round 6 with open findings, or a finding disputed in 2 consecutive rounds** (`escalated`): a `conflict_resolution` task opens. Deployed, that is Fable-only (B1); under D53 the human rules. A maintainer confirms rulings through `POST /v1/admin/rulings/:id/confirm`.
+- **Both `NO_MATERIAL_GAPS` on the same head and submission hash** (`round_consensus`): the App sets `wos/consensus = success` and `wos/qualified = success` on the head and marks the PR ready for review (5.15.0).
+- **Round 6 with open findings, or a finding disputed in 2 consecutive rounds** (`escalated`): without the fallback a `conflict_resolution` task opens and a maintainer confirms its ruling through `POST /v1/admin/rulings/:id/confirm`. Under the fallback (5.15.0) no task opens: a maintainer who is neither an author nor a reviewer of the roadmap rules on every open material finding with `wos human-ruling <documentId> --ruling-file ruling.json --note "…"` (ruling.v1), and that ruling is final.
 
 ### 4.7 Human approval and merge
 
-1. The founder marks the draft PR **Ready for review** on GitHub. The App does not (4.6), and a draft cannot merge.
+1. The App marks the PR **Ready for review** at consensus (5.15.0). Before that deploy the founder does it on GitHub; a draft cannot merge.
 2. The founder reads the PR files and approves the PR as code owner. `/roadmaps/` and `/catalog/` are owned by `@waronsaas/maintainers`. Any later push dismisses the approval.
 3. Required before GitHub allows the merge: `wos-verify` success (GitHub Actions) and `wos/consensus` success (the App) on the head, plus the Code Owner approval.
 4. The founder clicks **Squash and merge**. The queue is not enabled (B3). Nobody can bypass the ruleset, including admins.
@@ -302,7 +358,7 @@ The protocol budgets in POLICIES.md (roadmap author 60 ACU, roadmap review 15 AC
 - **Stop the whole roadmap** (maintainer): `POST https://api.waronsaas.com/v1/admin/actions` with body `{"action": "abandon_document", "documentId": "<documentId>", "reason": "<public reason>"}`. Use the same keychain snippet as 4.3, with its own Idempotency-Key.
   - The document becomes `abandoned` with the public reason, open tasks are cancelled and leases revoked.
   - The draft PR stays open; close it on GitHub.
-  - A new roadmap can be opened afterwards, but that path is untested. `openDocument` numbers the new document row 2, because it counts every roadmap row, abandoned ones included, and names its branch `wos/roadmap/salesforce/v2`. Validation, however, expects `version: 1` in the file, because it counts only merged versions (`documents.ts`). Check how materialisation treats that mismatch before relying on it; abandon only when the run cannot continue.
+  - A new roadmap can be opened afterwards. Since 5.15.0 it is version 1 again (last merged + 1, as validation expects) on the branch `wos/roadmap/salesforce/v1-2`, because the abandoned `v1` branch stays App-owned. Close the old draft PR on GitHub.
 - **Before merge**, withholding the Code Owner approval is enough to stop anything reaching `main`.
 - **After a wrong merge:** no revert path exists in the protocol. A maintainer opens roadmap version 2 (4.3) and it goes through the same loop. Do not push to `main`; the ruleset refuses it anyway.
 

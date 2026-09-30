@@ -3,6 +3,7 @@
  * then processed; processing is idempotent because every effect is a guarded transition.
  */
 import { profileAcceptanceCheckName, Surface } from "@waronsaas/contracts";
+import { CONSENSUS_STATUS_CONTEXT, QUALIFIED_STATUS_CONTEXT } from "@waronsaas/github";
 import { inTransaction, type Tx } from "@waronsaas/db";
 import type { Deps } from "../deps.js";
 import { ApiFailure } from "../errors.js";
@@ -13,6 +14,7 @@ import { runDispatch, unlockDependents } from "./consumers.js";
 import { ingestContract, loadDocument, materialiseRoadmap, readMergedContract, readMergedRoadmap } from "./documents.js";
 import { createDocumentWorkContributions, settleContributions } from "./ledger.js";
 import { openRound } from "./review.js";
+import { repoKey } from "./repo-name.js";
 import { abuTransition, attemptTransition, type ActorRef, endAttempt, releaseLocks, requestChanges } from "./work.js";
 
 const GH_TX = { kind: "github" as const, accountId: null };
@@ -32,6 +34,7 @@ interface Payload {
   };
   check_run?: { id?: number; name?: string; head_sha?: string; conclusion?: string | null; check_suite?: { id?: number } };
   pull_request?: { number?: number; merged?: boolean; merge_commit_sha?: string | null; user?: { login?: string; type?: string } };
+  merge_group?: { head_sha?: string; head_ref?: string; base_sha?: string; base_ref?: string };
 }
 
 const CONCLUSIONS = new Set(["success", "failure", "cancelled", "timed_out", "action_required", "neutral", "skipped", "stale"]);
@@ -55,6 +58,12 @@ export async function storeDelivery(
   return rows.length > 0;
 }
 
+/**
+ * The repository of a delivery in stored form (first-run fix B2): GitHub sends `warOnSaaS/product`, wOS stores
+ * `waronsaas/product`. Every lookup below uses this, never `repository.full_name` as sent.
+ */
+const repoOf = (p: Payload): string | null => (p.repository?.full_name ? repoKey(p.repository.full_name) : null);
+
 /** Processes one stored delivery; records the outcome on the row. */
 export async function processDelivery(deps: Deps, deliveryId: string): Promise<void> {
   const [row] = await inTransaction(
@@ -70,6 +79,7 @@ export async function processDelivery(deps: Deps, deliveryId: string): Promise<v
     if (row.event === "check_suite") await onCheckSuite(deps, row.payload);
     else if (row.event === "check_run") await onCheckRun(deps, row.payload);
     else if (row.event === "pull_request") await onPullRequest(deps, row.payload);
+    else if (row.event === "merge_group") await onMergeGroup(deps, row.payload);
     await inTransaction(
       deps.sql,
       GH_TX,
@@ -95,7 +105,7 @@ async function onCheckSuite(deps: Deps, p: Payload): Promise<void> {
   await inTransaction(deps.sql, GH_TX, async (tx) => {
     const [a] = await tx<{ id: string }[]>`
       select at.id from wos.attempts at join wos.abus ab on ab.id = at.abu_id
-       where at.head_sha = ${cs.head_sha!} and ab.repo_full_name = ${p.repository?.full_name ?? ""}
+       where at.head_sha = ${cs.head_sha!} and ab.repo_full_name = ${repoOf(p) ?? ""}
          and at.state not in ('merged', 'expired', 'abandoned', 'failed', 'closed_unmerged', 'superseded')
        order by at.updated_at desc limit 1`;
     if (!a) return;
@@ -150,7 +160,7 @@ async function verificationRecorded(
  */
 async function onCheckRun(deps: Deps, p: Payload): Promise<void> {
   const run = p.check_run;
-  const repo = p.repository?.full_name;
+  const repo = repoOf(p);
   if (p.action !== "completed" || !run?.name || !run.head_sha || !repo) return;
   // contracts 4.0.0 (D13): one check per surface, wos-acceptance/<feature>/<target>/<surface>.
   const m = /^wos-acceptance\/([a-z][a-z0-9-]*)\/([a-z][a-z0-9-]*)\/([a-z_]+)$/.exec(run.name);
@@ -176,7 +186,7 @@ async function onCheckRun(deps: Deps, p: Payload): Promise<void> {
 
 async function onPullRequest(deps: Deps, p: Payload): Promise<void> {
   const pr = p.pull_request;
-  const repo = p.repository?.full_name;
+  const repo = repoOf(p);
   if (!pr?.number || !repo) return;
   // S-18 fallback: any PR not opened by the App is closed and locked.
   if ((p.action === "opened" || p.action === "reopened") && pr.user?.login !== deps.config.appBotLogin) {
@@ -264,6 +274,62 @@ async function onPullRequest(deps: Deps, p: Payload): Promise<void> {
       await settleContributions(tx, { documentId: doc.id }, "accept", "github", "document merged");
     });
   }
+}
+
+/**
+ * Merge queue support (first-run fix B3). GitHub re-tests the merge-group commit (`gh-readonly-queue/<base>/pr-<n>-<sha>`)
+ * and every required check must report on THAT commit, so the App answers `merge_group.checks_requested` by setting
+ * `wos/qualified` (and, for documents, `wos/consensus`) on the group head: success when the group's PR is an open wOS PR
+ * whose recorded head is qualified (implementation) or at consensus (document), failure otherwise. With the queue the
+ * product ruleset then requires `wos/qualified` alone. The group ref names its own PR; PRs ahead of it in the queue
+ * have their own groups, each answered the same way.
+ */
+const MERGE_GROUP_REF = /^(?:refs\/heads\/)?gh-readonly-queue\/.+\/pr-(\d+)-[0-9a-f]{40}$/;
+
+async function onMergeGroup(deps: Deps, p: Payload): Promise<void> {
+  const g = p.merge_group;
+  const repo = repoOf(p);
+  if (p.action !== "checks_requested" || !g?.head_sha || !g.head_ref || !repo || !/^[0-9a-f]{40}$/.test(g.head_sha)) return;
+  const m = MERGE_GROUP_REF.exec(g.head_ref);
+  const prNumber = m ? Number(m[1]) : null;
+  const verdict = await inTransaction(deps.sql, GH_TX, async (tx): Promise<{ ok: boolean; document: boolean; why: string }> => {
+    if (prNumber === null) return { ok: false, document: false, why: `unrecognised merge group ref ${g.head_ref}` };
+    const [pr] = await tx<{ kind: string; attempt_id: string | null; document_id: string | null; state: string; head_sha: string }[]>`
+      select kind, attempt_id, document_id, state, head_sha from wos.pull_requests where repo_full_name = ${repo} and number = ${prNumber}`;
+    if (pr?.state !== "open") return { ok: false, document: false, why: `PR #${prNumber} is not an open wOS pull request` };
+    if (pr.kind === "implementation") {
+      const attempt = await loadAttempt(tx, pr.attempt_id!);
+      if (attempt?.state !== "pr_open" || attempt.head_sha !== pr.head_sha)
+        return { ok: false, document: false, why: `attempt of PR #${prNumber} is ${attempt?.state ?? "missing"}` };
+      const [round] = await tx`
+        select 1 as x from wos.rounds where attempt_id = ${attempt.id} and state = 'revealed' and outcome = 'consensus' and head_sha = ${attempt.head_sha}`;
+      return round
+        ? { ok: true, document: false, why: `PR #${prNumber} is qualified at ${attempt.head_sha.slice(0, 12)}` }
+        : { ok: false, document: false, why: `PR #${prNumber} has no consensus round at its head` };
+    }
+    const doc = await loadDocument(tx, pr.document_id!);
+    if (doc?.state !== "consensus" || !doc.head_sha)
+      return { ok: false, document: true, why: `document of PR #${prNumber} is ${doc?.state ?? "missing"}` };
+    const [round] = await tx`
+      select 1 as x from wos.rounds where document_id = ${doc.id} and state = 'revealed' and outcome = 'consensus' and head_sha = ${doc.head_sha}`;
+    return round
+      ? { ok: true, document: true, why: `PR #${prNumber} reached consensus at ${doc.head_sha.slice(0, 12)}` }
+      : { ok: false, document: true, why: `PR #${prNumber} has no consensus round at its head` };
+  });
+  const state = verdict.ok ? "success" : "failure";
+  await deps.github.setCommitStatus(repo, g.head_sha, {
+    context: QUALIFIED_STATUS_CONTEXT,
+    state,
+    description: `Merge group: ${verdict.why}`,
+    targetUrl: null,
+  });
+  if (verdict.document)
+    await deps.github.setCommitStatus(repo, g.head_sha, {
+      context: CONSENSUS_STATUS_CONTEXT,
+      state,
+      description: `Merge group: ${verdict.why}`,
+      targetUrl: null,
+    });
 }
 
 /** Retries stored deliveries that failed, then runs the consumers. */

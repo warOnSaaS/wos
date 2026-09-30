@@ -6,12 +6,13 @@ import { configFromEnv, consoleLogger, DEFAULT_LOGIC, type Deps, defaultPolicyAn
 import { accountHandlers } from "./handlers/account.js";
 import { adminHandlers } from "./handlers/admin.js";
 import { appHandlers } from "./handlers/apps.js";
+import { humanReviewHandlers } from "./handlers/human-review.js";
 import { publicHandlers } from "./handlers/public.js";
 import { workHandlers } from "./handlers/work.js";
 import { createApp, type Handlers } from "./http/router.js";
 
 export function createHandlers(): Handlers {
-  return { ...publicHandlers, ...accountHandlers, ...workHandlers, ...adminHandlers, ...appHandlers };
+  return { ...publicHandlers, ...accountHandlers, ...workHandlers, ...adminHandlers, ...appHandlers, ...humanReviewHandlers };
 }
 
 export function createControlPlane(deps: Deps): Hono {

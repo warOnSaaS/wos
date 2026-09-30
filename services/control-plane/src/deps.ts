@@ -101,6 +101,10 @@ export interface GithubPort {
   compareDiff(repo: string, base: string, head: string): Promise<string>;
   /** contracts 3.1.0 (B-0005-control-plane): request review from an org team, e.g. "maintainers". */
   requestTeamReview(repo: string, prNumber: number, teamSlug: string): Promise<void>;
+  /** contracts 5.15.0 (first run): a document PR leaves draft at consensus (ROADMAP-PROTOCOL section 3). */
+  markPullRequestReadyForReview(repo: string, prNumber: number): Promise<void>;
+  /** contracts 5.15.0 (first run): one PR review with event COMMENT per revealed round (REVIEW-PROTOCOL section 6 step 5). */
+  createPullRequestReview(repo: string, prNumber: number, input: { body: string; commitId: string }): Promise<void>;
 }
 
 export interface OutboundMail {
@@ -227,7 +231,8 @@ export function configFromEnv(env: Readonly<Record<string, string | undefined>>)
     cronSecret: need("CRON_SECRET"),
     tokenPepper: need("SESSION_TOKEN_PEPPER"),
     ipHashSecret: need("IP_HASH_SECRET"),
-    productRepo: env.PRODUCT_REPO ?? PRODUCT_REPO,
+    // Stored and compared lowercase (first-run fix B2); GitHub itself ignores case.
+    productRepo: (env.PRODUCT_REPO ?? PRODUCT_REPO).trim().toLowerCase(),
     platformRepo: PLATFORM_REPO,
     githubRetries: 2,
     appBotLogin: `${env.GITHUB_APP_SLUG ?? "waronsaas-wos"}[bot]`,
@@ -284,6 +289,9 @@ export function githubFromEnv(env: Readonly<Record<string, string | undefined>>)
     closePullRequest: (repo, n, options) => upstream(() => githubApp.closePullRequest(creds, repo, n, options)),
     compareDiff: (repo, base, head) => upstream(() => githubApp.compareDiff(creds, repo, base, head)),
     requestTeamReview: (repo, n, team) => upstream(() => githubApp.requestTeamReview(creds, repo, n, team)),
+    markPullRequestReadyForReview: (repo, n) => upstream(async () => void (await githubApp.markPullRequestReadyForReview(creds, repo, n))),
+    createPullRequestReview: (repo, n, input) =>
+      upstream(async () => void (await githubApp.createPullRequestReview(creds, repo, n, input))),
   };
 }
 

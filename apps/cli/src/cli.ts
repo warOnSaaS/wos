@@ -13,6 +13,7 @@ import {
   type ModelRef,
   type Orchestrator,
   type ReviewerSlot,
+  Ruling,
   type RunResult,
   TaskKind,
   type TaskView,
@@ -20,6 +21,7 @@ import {
 import { Command, CommanderError, Option } from "commander";
 import { type AppsApi, AppsCallError } from "./apps.js";
 import { describeResult, EventPrinter, renderStatus, type Style, styleFor, table, type Writer } from "./render.js";
+import { parseVerdictFile, promptVerdict, renderHumanReview } from "./human-review.js";
 
 export const EXIT = { ok: 0, failure: 1, usage: 2, auth: 3 } as const;
 
@@ -263,10 +265,24 @@ export async function runCli(argv: string[], io: CliIo, deps: CliDeps): Promise<
     .addOption(
       new Option("--kind <kind...>", "only these review kinds").choices(["roadmap_review", "feature_review", "implementation_review"]),
     )
-    .description("Claim the review assigned to you and run it read-only (astra: codex, fable: claude)")
+    .option("--human", "the required human review (D53 fallback fable_unavailable): show a round, then record your verdict")
+    .option("--round <id>", "with --human: the round (default: the only one waiting for you)")
+    .option("--verdict-file <path>", "with --human: your verdict as review-verdict.v1 JSON (default: prompted on a terminal)")
+    .description("Claim the review assigned to you and run it read-only (astra: codex, fable: claude); --human for the human seat")
     .action(
-      async (opts: { slot?: ReviewerSlot; kind?: Array<"roadmap_review" | "feature_review" | "implementation_review"> }, cmd: Command) => {
+      async (
+        opts: {
+          slot?: ReviewerSlot;
+          kind?: Array<"roadmap_review" | "feature_review" | "implementation_review">;
+          human?: boolean;
+          round?: string;
+          verdictFile?: string;
+        },
+        cmd: Command,
+      ) => {
         const c = ctx(cmd);
+        if (opts.human) return humanReview(c, opts);
+        if (opts.round || opts.verdictFile) throw new UsageError("--round and --verdict-file go with --human");
         let slot = opts.slot;
         if (!slot) {
           const roles = (await o().status()).eligibleRoles;
@@ -286,6 +302,100 @@ export async function runCli(argv: string[], io: CliIo, deps: CliDeps): Promise<
         finish(await o().review({ slot, kinds: opts.kind, signal: deps.signal }, c.printer.observe), c);
       },
     );
+
+  /** D53: the human seat. Show the round; record a verdict from a file or the prompts; never an agent run. */
+  const humanReview = async (c: ReturnType<typeof ctx>, opts: { slot?: string; round?: string; verdictFile?: string }) => {
+    if (opts.slot) throw new UsageError("--human holds the human seat; it takes no --slot");
+    let roundId = opts.round;
+    if (!roundId) {
+      const queue = await explainApps(() => a().listHumanReviews());
+      const mine = queue.filter((q) => q.eligibility.eligible);
+      if (mine.length !== 1) {
+        if (c.json) return void printJson({ type: "result", humanReviews: queue });
+        if (queue.length === 0) return void io.stdout.write("no round is waiting for a human review\n");
+        io.stdout.write(
+          table(
+            ["ROUND", "N", "SUBJECT", "ASTRA", "YOU"],
+            queue.map((q) => [
+              q.roundId,
+              String(q.roundNumber),
+              `${q.subjectKind} ${q.target ?? q.feature ?? q.subjectId}`,
+              q.agentVerdictSealed ? "sealed" : "pending",
+              q.eligibility.eligible ? "eligible" : q.eligibility.reasons.join("; "),
+            ]),
+            c.style,
+          ),
+        );
+        if (mine.length > 1) io.stdout.write("pick one: wos review --human --round <id>\n");
+        return;
+      }
+      roundId = mine[0]!.roundId;
+    }
+    const subject = await explainApps(() => a().getHumanReview(roundId));
+    if (!opts.verdictFile && (c.json || !io.isTTY || !subject.round.eligibility.eligible)) {
+      if (c.json) return void printJson({ type: "result", humanReview: subject });
+      io.stdout.write(renderHumanReview(subject));
+      if (subject.round.eligibility.eligible)
+        io.stdout.write(`record it: wos review --human --round ${roundId} --verdict-file <review-verdict.v1 JSON>\n`);
+      else throw new ExplainedError("NOT_ELIGIBLE", "you may not hold the human seat of this round", subject.round.eligibility.reasons);
+      return;
+    }
+    if (!c.json) io.stdout.write(renderHumanReview(subject));
+    if (!subject.round.eligibility.eligible)
+      throw new ExplainedError("NOT_ELIGIBLE", "you may not hold the human seat of this round", subject.round.eligibility.reasons);
+    let verdict: import("@waronsaas/contracts").ReviewVerdict | null;
+    if (opts.verdictFile) {
+      const parsed = parseVerdictFile(await readFile(opts.verdictFile, "utf8"), subject);
+      if (!parsed.ok) throw new ExplainedError("VALIDATION_FAILED", `${opts.verdictFile} is not a verdict for this round`, parsed.problems);
+      verdict = parsed.verdict;
+    } else {
+      verdict = await promptVerdict(io.prompt, subject);
+      if (verdict === null) throw new ExplainedError("ABORTED", "no verdict recorded");
+      const sure = await io.prompt(
+        `seal ${verdict.verdict} with ${verdict.findings.length} finding(s) on ${subject.round.headSha.slice(0, 12)}? [y/N] `,
+      );
+      if (!sure || !/^y(es)?$/i.test(sure.trim())) throw new ExplainedError("ABORTED", "no verdict recorded");
+    }
+    const r = await explainApps(() =>
+      a().submitHumanReview(roundId, {
+        verdict: verdict!,
+        headSha: subject.round.headSha,
+        submissionSha256: subject.round.submissionSha256,
+      }),
+    );
+    if (c.json) return void printJson({ type: "result", ...r });
+    io.stdout.write(
+      `${tagOf("sealed")}human review ${r.humanReviewId} (${verdict!.verdict}) on round ${roundId}${
+        r.revealed ? `; the round is revealed: ${r.outcome}` : "; waiting for the Astra verdict"
+      }\n`,
+    );
+  };
+
+  program
+    .command("human-ruling")
+    .argument("<document>", "the escalated document id")
+    .requiredOption("--ruling-file <path>", "your ruling as ruling.v1 JSON: every open material finding upheld or overruled")
+    .requiredOption("--note <text>", "public note")
+    .description("Rule on an escalated document yourself (D53: under fable_unavailable every conflict goes to the human)")
+    .action(async (documentId: string, opts: { rulingFile: string; note: string }, cmd: Command) => {
+      const c = ctx(cmd);
+      let ruling: unknown;
+      try {
+        ruling = JSON.parse(await readFile(opts.rulingFile, "utf8"));
+      } catch {
+        throw new ExplainedError("VALIDATION_FAILED", `${opts.rulingFile} is not JSON`);
+      }
+      const parsed = Ruling.safeParse(ruling);
+      if (!parsed.success)
+        throw new ExplainedError(
+          "VALIDATION_FAILED",
+          `${opts.rulingFile} is not a ruling.v1`,
+          parsed.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`),
+        );
+      await explainApps(() => a().submitHumanRuling(documentId, { ruling: parsed.data, note: opts.note }));
+      if (c.json) return void printJson({ type: "result", ok: true });
+      io.stdout.write(`${tagOf("ruled")}document ${documentId}: ${parsed.data.rulings.length} finding(s)\n`);
+    });
 
   const authorCommand = (name: "roadmap" | "resolve", kinds: TaskKind[], models: ModelRef[], description: string) =>
     program

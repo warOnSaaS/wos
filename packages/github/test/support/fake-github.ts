@@ -42,6 +42,7 @@ export interface FakePull {
   auto_merge: boolean;
   enqueued: boolean;
   maintainer_can_modify: boolean;
+  reviews: Array<{ id: number; event: string; body: string; commit_id: string }>;
 }
 
 class HttpError extends Error {
@@ -409,6 +410,10 @@ export class FakeGithub {
         pr.auto_merge = true;
         return { status: 200, data: { data: { enablePullRequestAutoMerge: { clientMutationId: null } } } };
       }
+      if (q.includes("markPullRequestReadyForReview")) {
+        pr.draft = false;
+        return { status: 200, data: { data: { markPullRequestReadyForReview: { clientMutationId: null } } } };
+      }
       if (q.includes("enqueuePullRequest")) {
         pr.enqueued = true;
         return { status: 200, data: { data: { enqueuePullRequest: { clientMutationId: null } } } };
@@ -557,6 +562,7 @@ export class FakeGithub {
         auto_merge: false,
         enqueued: false,
         maintainer_can_modify: Boolean(b.maintainer_can_modify),
+        reviews: [],
       };
       pulls.push(pr);
       return { status: 201, data: this.pullJson(full, pr) };
@@ -572,6 +578,15 @@ export class FakeGithub {
       if (!pr) throw new HttpError(404, "Not Found");
       this.teamReviewRequests.push({ repo: full, number: pr.number, teams: (b.team_reviewers as string[]) ?? [] });
       return { status: 201, data: this.pullJson(full, pr) };
+    }
+    m = method === "POST" ? /^\/pulls\/(\d+)\/reviews$/.exec(rest) : null;
+    if (m) {
+      const pr = this.pullsOf(full).find((p) => p.number === Number(m![1]));
+      if (!pr) throw new HttpError(404, "Not Found");
+      if (!["COMMENT", "APPROVE", "REQUEST_CHANGES"].includes(String(b.event))) throw new HttpError(422, "invalid event");
+      const review = { id: 9000 + pr.reviews.length, event: String(b.event), body: String(b.body ?? ""), commit_id: String(b.commit_id) };
+      pr.reviews.push(review);
+      return { status: 200, data: { id: review.id, state: "COMMENTED", body: review.body, commit_id: review.commit_id } };
     }
     m = /^\/pulls\/(\d+)$/.exec(rest);
     if (m) {

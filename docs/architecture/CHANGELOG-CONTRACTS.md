@@ -410,3 +410,28 @@ MINOR, additive to the pending v2 additions (frozen v1 unchanged). Pending Astra
 - Tests: work-next "Astra review 09" block; `bugs-assertions.sql` R09 regressions; `packages/db/test/accounting-trace-v2.mjs` (run by `db:test`); `tools/astra-09/` probes.
 - `tools/make-review-bundle.sh` honours `WOS_REVIEW_OUT`.
 - Regenerated: goldens, the context-engine snapshot, the vendored contracts.
+
+## 5.15.0 — 2026-09-30 (first real run: the Salesforce roadmap v1 blockers)
+
+MINOR, additive, plus production migration 0013. The fixes for `docs/runbooks/FIRST-REAL-RUN.md` section 2 (B1–B4), by the control-plane workstream holding the architect role for exactly these changes. 5.13.0 (D66) and 5.14.0 (protocol review-09 fix pass) came first, so this is the next free version.
+- D53 in the V1 control plane (B1). New module `review-fallback.ts`:
+  - `ReviewFallback`, `ReviewPolicyState`, `SecondSeat`, `RoundSeats`, `SINGLE_LAB_REVIEW_LABEL` / `_REASON`;
+  - the human seat: `HumanReviewQueueItem`, `HumanReviewSubject`, `HumanSeatEligibility`, `HumanReviewFinding`, `SubmitHumanReviewBody` / `Response`;
+  - `HumanRulingBody` (every conflict goes to the human under the fallback).
+- Routes (maintainer; GitHub required): `listHumanReviews`, `getHumanReview`, `submitHumanReview`, `submitHumanRuling`. `maintainerAction` gains `switch_review_policy` (forward-only, public, refused while a round is awaiting reviews).
+- `PlatformStatus.reviewPolicy` (optional). `ProvenanceRecord.humanReview` (optional; absent on two-agent rounds, so earlier hashes are unchanged).
+- Events: `review_policy.switched` (public), `round.single_lab_review` (public), `round.human_review_sealed` (private).
+- Migration `0013_review_fallback_and_first_run.sql` (**production**):
+  - repository names are stored lowercase (checks on every `repo_full_name`), B2;
+  - `review_policy_switches` (append-only, forward-only, maintainer-only, public) and `wos.active_review_fallback()`;
+  - `rounds.second_seat`, `review_label`, `review_label_reason`, `review_policy_seq`, pinned by trigger when the round opens and immutable after;
+  - `round_human_reviews` (sealed like reviews; bound to head sha and submission hash; maintainers only; never an author of the subject, no bootstrap exception; never the account holding the agent seat of the same round);
+  - a Fable review on a human-seat round is refused (`reviews_0_seat`);
+  - `findings.human_review_id` (a finding comes from exactly one review); human rulings (`rulings.resolver = 'human'`, no task or lease);
+  - document versions are unique among non-abandoned rows.
+- Control plane (no contract change): webhook repository names are lowercased before matching (B2); an in-scope surface must name a registered repository (`SURFACE_REPO_UNKNOWN`) and is stored lowercase; the build-graph registry lookup ignores case; at consensus the App sets `wos/consensus` and `wos/qualified`, marks the draft PR ready for review and posts one review with event COMMENT per revealed document round (B3); `merge_group.checks_requested` gets `wos/qualified` (and `wos/consensus` for documents) on the group head (B3); the target's scan is a required server document `wos:scan/<target>` for roadmap authors and reviewers, bundled from `docs/scans/<target>.md` and pinned by blob oid and sha256 (B4); a roadmap or contract opens at the last MERGED version + 1, and a re-opening of an abandoned version gets the branch `…/v<n>-<k>`.
+- `@waronsaas/github/app`: `markPullRequestReadyForReview`, `createPullRequestReview` (event COMMENT only).
+- CLI: `wos review --human [--round <id>] [--verdict-file <path>]`, `wos human-ruling <document> --ruling-file <path> --note <text>`.
+- Template: `templates/product/.github/CODEOWNERS` gains the seed's planning lines (`/roadmaps/`, `/catalog/`, `/features/*/CONTRACT.yaml`).
+
+Affected workstreams: control-plane, cli, github-build, verification (template), web (optional `reviewPolicy` on the status).

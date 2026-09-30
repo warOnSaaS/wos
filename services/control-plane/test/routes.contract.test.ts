@@ -9,6 +9,7 @@ import { AllRoutes, type AnyRouteName as RouteName, createApp, type Handler, typ
 import { manifest, publish } from "./support/apps.js";
 import { createHandlers } from "../src/app.js";
 import { buildAndSubmit, reviewAs } from "./support/flow.js";
+import { authorRevision, roadmapFiles } from "./support/roadmap-fixture.js";
 import {
   type Account,
   CRON_SECRET,
@@ -359,13 +360,54 @@ describe.skipIf(!HAS_DB)("every route: existence, auth mode, input validation, r
       idem: true,
       body: { accept: true, note: "Agreed, add it." },
     });
-    await call("POST", "/v1/admin/targets/slack/roadmaps", { token: maint.token, idem: true, body: { reason: "Start the Slack roadmap" } });
+    const slack = await call("POST", "/v1/admin/targets/slack/roadmaps", {
+      token: maint.token,
+      idem: true,
+      body: { reason: "Start the Slack roadmap" },
+    });
     await call("POST", "/v1/admin/actions", {
       token: maint.token,
       idem: true,
       body: { action: "set_hosting", target: "slack", hostedUrl: null, selfHostable: false },
     });
     await call("GET", "/v1/cron/sweep", { headers: cron });
+
+    // D53 human seat (contracts 5.15.0): the fallback, a round with Astra + the human, then the human's own ruling.
+    await call("POST", "/v1/admin/actions", {
+      token: maint.token,
+      idem: true,
+      body: { action: "switch_review_policy", fallback: "fable_unavailable", reason: "D53: Fable is unavailable" },
+    });
+    const authored = await authorRevision(h, builder, slack.body.taskId, roadmapFiles({ target: "slack", feature: "chat" }), {
+      model: "opus",
+    });
+    expect(authored.res.status, JSON.stringify(authored.res.body)).toBe(200);
+    await reviewAs(h, astra, "astra", "roadmap_review", verdict("MATERIAL_GAPS"));
+    const queue = await call("GET", "/v1/human-reviews", { token: maint.token });
+    const roundId = queue.body.items[0].roundId as string;
+    const hr = await call("GET", `/v1/rounds/${roundId}/human-review`, { token: maint.token });
+    await call("POST", `/v1/rounds/${roundId}/human-review`, {
+      token: maint.token,
+      idem: true,
+      body: { verdict: verdict("NO_MATERIAL_GAPS"), headSha: hr.body.round.headSha, submissionSha256: hr.body.round.submissionSha256 },
+    });
+    // The route shape only: an escalation needs six rounds or repeated disputes (first-run.test.ts drives a real one).
+    await h.owner`update wos.documents set state = 'escalated' where id = ${slack.body.documentId}`;
+    const judge = await h.contributor("scenario-judge", { maintainer: true });
+    const openFindings = await h.owner<{ id: string }[]>`
+      select id from wos.findings where document_id = ${slack.body.documentId} and severity = 'material' and state in ('open', 'disputed')`;
+    await call("POST", `/v1/admin/documents/${slack.body.documentId}/human-ruling`, {
+      token: judge.token,
+      idem: true,
+      body: {
+        ruling: {
+          schema: "ruling.v1",
+          rulings: openFindings.map((f) => ({ findingId: f.id, decision: "upheld", rationale: "The gap is real and must be fixed." })),
+          proposedChange: null,
+        },
+        note: "Upheld by the human under D53.",
+      },
+    });
 
     // one product (AppRoutes): registry, organizations, entitlements, environment tokens, application progress
     await call("GET", "/v1/public/environment-keys");

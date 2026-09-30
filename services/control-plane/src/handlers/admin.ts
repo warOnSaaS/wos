@@ -17,6 +17,7 @@ import { documentTransition, loadDocument, openRoadmap } from "../domain/documen
 import { contributionTransition, createContribution, insertLedgerEntry, settleKeyedContribution } from "../domain/ledger.js";
 import { openRound } from "../domain/review.js";
 import { endBootstrap, runSweep } from "../domain/sweep.js";
+import { reviewPolicyState } from "../domain/human-review.js";
 import { processDelivery, retryDeliveries, storeDelivery } from "../domain/webhooks.js";
 import {
   abuTransition,
@@ -60,6 +61,98 @@ async function cancelSubjectWork(tx: Tx, where: { documentId?: string; attemptId
       aggregateKind: "round",
       emit: { type: "round.cancelled", v: 1, visibility: "public", payload: { roundId: r.id, reason } },
     });
+  }
+}
+
+/**
+ * The effect of a final ruling (REVIEW-PROTOCOL section 8 step 4): findings take the ruled states, and an escalated
+ * document goes back to revising (something upheld or still open) or to a fresh round on the same head (all overruled).
+ * Used by a maintainer's confirmation of a resolver ruling and by the human's own ruling under the D53 fallback.
+ */
+export async function applyConfirmedRuling(
+  tx: Tx,
+  caller: Caller,
+  rulings: Array<{ findingId: string; decision: "upheld" | "overruled" }>,
+  note: string,
+  documentId: string | null,
+  rulingId: string,
+): Promise<void> {
+  for (const f of rulings) {
+    await tx`update wos.findings set state = ${f.decision}, row_version = row_version + 1 where id = ${f.findingId} and state in ('open', 'disputed')`;
+    await settleKeyedContribution(
+      tx,
+      `review_finding:${f.findingId}`,
+      f.decision === "upheld" ? "accept" : "reject",
+      "system",
+      caller.accountId,
+      `finding ${f.decision} by a confirmed ruling`,
+    );
+    await tx`insert into wos.finding_responses (id, finding_id, account_id, source, action, note)
+             values (${uuidv7()}, ${f.findingId}, ${caller.accountId}, 'maintainer', ${f.decision}, ${note})`;
+    await insertEvent(
+      tx,
+      {
+        type: "finding.ruled",
+        v: 1,
+        visibility: "public",
+        payload: { findingId: f.findingId, decision: f.decision, confirmedBy: caller.accountId },
+      },
+      { aggregateKind: "finding", aggregateId: f.findingId, actor: "maintainer", actorAccountId: caller.accountId },
+    );
+  }
+  if (documentId) {
+    const doc = await loadDocument(tx, documentId);
+    if (doc?.state === "escalated") {
+      const [open] = await tx<{ n: number }[]>`
+        select count(*)::int as n from wos.findings where document_id = ${doc.id} and state in ('open', 'disputed')`;
+      const upheld = rulings.some((x) => x.decision === "upheld");
+      if (upheld || (open?.n ?? 0) > 0) {
+        await documentTransition(tx, doc, "ruling_upheld", maintainer(caller), null);
+        await newTask(
+          tx,
+          doc.kind === "roadmap"
+            ? { kind: "roadmap_author", state: "open", targetId: doc.target_id, documentId: doc.id, carry: { ruling: rulingId } }
+            : {
+                kind: "feature_author",
+                state: "open",
+                catalogFeatureId: doc.catalog_feature_id,
+                documentId: doc.id,
+                carry: { ruling: rulingId },
+              },
+          maintainer(caller),
+        );
+      } else {
+        // All overruled: a fresh round on the unchanged head with the overruled findings closed.
+        await documentTransition(tx, doc, "ruling_all_overruled", maintainer(caller), null);
+        const [last] = await tx<{ submission_sha256: string }[]>`
+          select submission_sha256 from wos.rounds where document_id = ${doc.id} order by round_number desc limit 1`;
+        const authors = await tx<{ account_id: string }[]>`
+          select distinct c.account_id from wos.changesets c join wos.tasks t on t.id = c.task_id where t.document_id = ${doc.id} and c.ok`;
+        const round = await openRound(
+          tx,
+          doc.kind === "roadmap"
+            ? { kind: "roadmap", documentId: doc.id, targetId: doc.target_id! }
+            : { kind: "feature_contract", documentId: doc.id, catalogFeatureId: doc.catalog_feature_id! },
+          doc.head_sha!,
+          last!.submission_sha256,
+          authors.map((a) => a.account_id),
+          { actor: "system", accountId: null },
+        );
+        await documentTransition(
+          tx,
+          { id: doc.id, state: "validating" as DocumentState },
+          "validation_passed",
+          { actor: "system", accountId: null },
+          {
+            type: "document.round_opened",
+            v: 1,
+            visibility: "public",
+            payload: { documentId: doc.id, roundId: round.roundId, roundNumber: round.roundNumber, headSha: doc.head_sha! },
+          },
+          { round_number: round.roundNumber },
+        );
+      }
+    }
   }
 }
 
@@ -130,83 +223,7 @@ export const adminHandlers: Pick<
         );
         return;
       }
-      for (const f of r.body.rulings) {
-        await tx`update wos.findings set state = ${f.decision}, row_version = row_version + 1 where id = ${f.findingId} and state in ('open', 'disputed')`;
-        await settleKeyedContribution(
-          tx,
-          `review_finding:${f.findingId}`,
-          f.decision === "upheld" ? "accept" : "reject",
-          "system",
-          caller.accountId,
-          `finding ${f.decision} by a confirmed ruling`,
-        );
-        await tx`insert into wos.finding_responses (id, finding_id, account_id, source, action, note)
-                 values (${uuidv7()}, ${f.findingId}, ${caller.accountId}, 'maintainer', ${f.decision}, ${ctx.body.note})`;
-        await insertEvent(
-          tx,
-          {
-            type: "finding.ruled",
-            v: 1,
-            visibility: "public",
-            payload: { findingId: f.findingId, decision: f.decision, confirmedBy: caller.accountId },
-          },
-          { aggregateKind: "finding", aggregateId: f.findingId, actor: "maintainer", actorAccountId: caller.accountId },
-        );
-      }
-      if (task?.document_id) {
-        const doc = await loadDocument(tx, task.document_id);
-        if (doc?.state === "escalated") {
-          const [open] = await tx<{ n: number }[]>`
-            select count(*)::int as n from wos.findings where document_id = ${doc.id} and state in ('open', 'disputed')`;
-          const upheld = r.body.rulings.some((x) => x.decision === "upheld");
-          if (upheld || (open?.n ?? 0) > 0) {
-            await documentTransition(tx, doc, "ruling_upheld", maintainer(caller), null);
-            await newTask(
-              tx,
-              doc.kind === "roadmap"
-                ? { kind: "roadmap_author", state: "open", targetId: doc.target_id, documentId: doc.id, carry: { ruling: r.id } }
-                : {
-                    kind: "feature_author",
-                    state: "open",
-                    catalogFeatureId: doc.catalog_feature_id,
-                    documentId: doc.id,
-                    carry: { ruling: r.id },
-                  },
-              maintainer(caller),
-            );
-          } else {
-            // All overruled: a fresh round on the unchanged head with the overruled findings closed.
-            await documentTransition(tx, doc, "ruling_all_overruled", maintainer(caller), null);
-            const [last] = await tx<{ submission_sha256: string }[]>`
-              select submission_sha256 from wos.rounds where document_id = ${doc.id} order by round_number desc limit 1`;
-            const authors = await tx<{ account_id: string }[]>`
-              select distinct c.account_id from wos.changesets c join wos.tasks t on t.id = c.task_id where t.document_id = ${doc.id} and c.ok`;
-            const round = await openRound(
-              tx,
-              doc.kind === "roadmap"
-                ? { kind: "roadmap", documentId: doc.id, targetId: doc.target_id! }
-                : { kind: "feature_contract", documentId: doc.id, catalogFeatureId: doc.catalog_feature_id! },
-              doc.head_sha!,
-              last!.submission_sha256,
-              authors.map((a) => a.account_id),
-              { actor: "system", accountId: null },
-            );
-            await documentTransition(
-              tx,
-              { id: doc.id, state: "validating" as DocumentState },
-              "validation_passed",
-              { actor: "system", accountId: null },
-              {
-                type: "document.round_opened",
-                v: 1,
-                visibility: "public",
-                payload: { documentId: doc.id, roundId: round.roundId, roundNumber: round.roundNumber, headSha: doc.head_sha! },
-              },
-              { round_number: round.roundNumber },
-            );
-          }
-        }
-      }
+      await applyConfirmedRuling(tx, caller, r.body.rulings, ctx.body.note, task?.document_id ?? null, r.id);
     });
     return { ok: true as const };
   },
@@ -338,6 +355,22 @@ export const adminHandlers: Pick<
               payload: { target: a.target, hosted: a.hostedUrl !== null, selfHostable: a.selfHostable },
             },
             { aggregateKind: "target", aggregateId: a.target, actor: "maintainer", actorAccountId: caller.accountId },
+          );
+          return;
+        }
+        case "switch_review_policy": {
+          // D53: forward-only (a new sequence number every time, history never rewritten), public, and refused while a
+          // round is awaiting reviews (rounds pin their seats when they open; migration 0013 re-checks all of it).
+          const [open] = await tx`select 1 as x from wos.rounds where state = 'awaiting_reviews' limit 1`;
+          if (open) throw new ApiFailure("CONFLICT", "a review round is awaiting reviews; switch the review policy when none is open");
+          const current = await reviewPolicyState(tx);
+          if (current.fallback === a.fallback) throw new ApiFailure("CONFLICT", `the review policy fallback is already ${a.fallback}`);
+          const seq = (current.switchSeq ?? 0) + 1;
+          await tx`insert into wos.review_policy_switches (seq, fallback, reason, switched_by) values (${seq}, ${a.fallback}, ${a.reason}, ${caller.accountId})`;
+          await insertEvent(
+            tx,
+            { type: "review_policy.switched", v: 1, visibility: "public", payload: { seq, fallback: a.fallback, reason: a.reason } },
+            { aggregateKind: "review_policy", aggregateId: String(seq), actor: "maintainer", actorAccountId: caller.accountId },
           );
           return;
         }

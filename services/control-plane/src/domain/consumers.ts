@@ -25,6 +25,7 @@ import { createContribution } from "./ledger.js";
 import { applyRewards } from "./rewards.js";
 import { recomputeTarget } from "./progress.js";
 import { qualify } from "./review.js";
+import { roundCommentFor } from "./round-comment.js";
 import { abuTransition, attemptTransition, SYSTEM, taskTransition } from "./work.js";
 
 type EventRow = Parameters<typeof eventWire>[0];
@@ -91,10 +92,31 @@ async function openOrUpdatePr(deps: Deps, e: EventRow, attemptId: string): Promi
     >`
       select v.slot, coalesce(a.github_login, a.handle) as login, v.model_id, v.reasoning, v.verdict, v.independence
         from wos.reviews v join wos.accounts a on a.id = v.account_id where v.round_id = ${round!.id} order by v.slot`;
+    const [human] = await tx<
+      {
+        login: string;
+        verdict: "NO_MATERIAL_GAPS" | "MATERIAL_GAPS";
+        head_sha: string;
+        review_label: "single_lab_review";
+        review_label_reason: string;
+      }[]
+    >`
+      select coalesce(a.github_login, a.handle) as login, h.verdict, h.head_sha, h.review_label, h.review_label_reason
+        from wos.round_human_reviews h join wos.accounts a on a.id = h.account_id where h.round_id = ${round!.id}`;
     const ci = await tx<{ github_check_suite_id: string; conclusion: string }[]>`
       select github_check_suite_id, conclusion from wos.verification_runs where attempt_id = ${attempt.id} and source = 'ci' and head_sha = ${attempt.head_sha}
        order by created_at`;
-    return { round: round!, q, spec: spec!, builderLogin: builder?.github_login ?? attempt.builder_handle, runs, reviews, ci, toolchain };
+    return {
+      round: round!,
+      q,
+      spec: spec!,
+      builderLogin: builder?.github_login ?? attempt.builder_handle,
+      runs,
+      reviews,
+      human: human ?? null,
+      ci,
+      toolchain,
+    };
   });
   if (!facts.q.ok) {
     deps.log("warn", "qualified attempt no longer qualifies; not opening a PR", { attemptId, failed: facts.q.failed });
@@ -120,6 +142,13 @@ async function openOrUpdatePr(deps: Deps, e: EventRow, attemptId: string): Promi
     ...facts.reviews.map(
       (r) => `- ${r.slot === "astra" ? "Astra" : "Fable"} ${r.reasoning.toUpperCase()} (attested) by @${r.login}: ${r.verdict}`,
     ),
+    ...(facts.human
+      ? [
+          `- Human review (required seat under fable_unavailable) by @${facts.human.login}: ${facts.human.verdict}`,
+          "",
+          `Label: ${facts.human.review_label} (${facts.human.review_label_reason}). Devnet/shadow accounting only (D53).`,
+        ]
+      : []),
     ...(facts.toolchain.length > 0
       ? [
           "",
@@ -149,7 +178,9 @@ async function openOrUpdatePr(deps: Deps, e: EventRow, attemptId: string): Promi
   await deps.github.setCommitStatus(repo, attempt.head_sha, {
     context: QUALIFIED_STATUS_CONTEXT,
     state: "success",
-    description: "Qualified by wOS: two independent reviews, CI green, scope verified",
+    description: facts.human
+      ? "Qualified by wOS: Astra and the human review (single_lab_review), CI green, scope verified"
+      : "Qualified by wOS: two independent reviews, CI green, scope verified",
     targetUrl: `${deps.config.webOrigin}/abus/${attempt.abu_id}`,
   });
   const record: ProvenanceRecord = {
@@ -181,6 +212,18 @@ async function openOrUpdatePr(deps: Deps, e: EventRow, attemptId: string): Promi
     })),
     ci: facts.ci.map((c) => ({ checkSuiteId: Number(c.github_check_suite_id), conclusion: c.conclusion, headSha: attempt.head_sha! })),
     qualifiedAt: new Date().toISOString(),
+    ...(facts.human
+      ? {
+          humanReview: {
+            reviewerLogin: facts.human.login,
+            verdict: facts.human.verdict,
+            headSha: facts.human.head_sha,
+            roundNumber: facts.round.round_number,
+            label: facts.human.review_label,
+            labelReason: facts.human.review_label_reason,
+          },
+        }
+      : {}),
   };
   await inTransaction(deps.sql, SYS, async (tx) => {
     const a = await loadAttempt(tx, attempt.id);
@@ -237,7 +280,7 @@ async function openOrUpdatePr(deps: Deps, e: EventRow, attemptId: string): Promi
 
 const githubSync: Consumer = {
   name: "github_sync",
-  types: ["attempt.state_changed", "document.round_opened", "document.consensus_reached"],
+  types: ["attempt.state_changed", "document.round_opened", "document.consensus_reached", "round.revealed"],
   async handle(deps, e) {
     if (e.type === "attempt.state_changed") {
       const p = payload<{ attemptId: string; to: string; from: string }>(e);
@@ -294,22 +337,47 @@ const githubSync: Consumer = {
       }
       return inTransaction(deps.sql, SYS, (tx) => markConsumed(tx, e.id, "github_sync"));
     }
+    if (e.type === "round.revealed") {
+      // REVIEW-PROTOCOL section 6 step 5: one COMMENT review per revealed document round (implementation rounds go into
+      // the PR body when the App opens the PR). The document PR exists: document.round_opened was consumed first.
+      const p = payload<{ roundId: string; subjectKind: string }>(e);
+      if (p.subjectKind !== "implementation") {
+        const c = await inTransaction(deps.sql, SYS, (tx) => roundCommentFor(tx, p.roundId));
+        if (c) await deps.github.createPullRequestReview(c.repo, c.prNumber, { body: c.body, commitId: c.headSha });
+      }
+      return inTransaction(deps.sql, SYS, (tx) => markConsumed(tx, e.id, "github_sync"));
+    }
     if (e.type === "document.consensus_reached") {
-      const p = payload<{ documentId: string; headSha: string }>(e);
+      const p = payload<{ documentId: string; roundId: string; headSha: string }>(e);
       const [doc] = await inTransaction(
         deps.sql,
         SYS,
         (tx) =>
-          tx<{ repo: string }[]>`select d.repo_full_name as repo from wos.documents d
-                                left join wos.targets t on t.id = d.target_id where d.id = ${p.documentId}`,
+          tx<{ repo: string; pr_number: number | null; second_seat: string | null }[]>`
+            select d.repo_full_name as repo, d.pr_number, r.second_seat from wos.documents d
+              left join wos.rounds r on r.id = ${p.roundId} where d.id = ${p.documentId}`,
       );
       if (doc) {
+        const description =
+          doc.second_seat === "human"
+            ? "Astra and the human review found no material gaps (single_lab_review)"
+            : "Astra and Fable found no material gaps";
         await deps.github.setCommitStatus(doc.repo, p.headSha, {
           context: CONSENSUS_STATUS_CONTEXT,
           state: "success",
-          description: "Astra and Fable found no material gaps",
+          description,
           targetUrl: null,
         });
+        // First-run fix B3: one context for every mergeable PR, so the ruleset can require wos/qualified alone (with the
+        // merge queue, set again on the merge group by onMergeGroup).
+        await deps.github.setCommitStatus(doc.repo, p.headSha, {
+          context: QUALIFIED_STATUS_CONTEXT,
+          state: "success",
+          description: `Document consensus: ${description}`,
+          targetUrl: null,
+        });
+        // ROADMAP-PROTOCOL section 3: at consensus the App marks the draft PR ready for review.
+        if (doc.pr_number !== null) await deps.github.markPullRequestReadyForReview(doc.repo, doc.pr_number);
       }
       return inTransaction(deps.sql, SYS, (tx) => markConsumed(tx, e.id, "github_sync"));
     }

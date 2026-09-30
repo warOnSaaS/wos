@@ -3,6 +3,7 @@
  * `computeAppProgress` snapshot, zeros when none exists. Run as the anonymous actor, so RLS hides every
  * private row (sealed reviews, emails, leases).
  */
+import { reviewPolicyState } from "../domain/human-review.js";
 import {
   type AbuSummary,
   type AppFeatureDetail,
@@ -318,6 +319,7 @@ export const publicHandlers: Pick<
         contractsVersion: CONTRACTS_VERSION,
         policyVersion: String(s.get("active_policy") ?? ctx.deps.policy.policyVersion),
         rewardScheduleVersion: String(s.get("active_reward_schedule") ?? ctx.deps.schedule.scheduleVersion),
+        reviewPolicy: await reviewPolicyState(tx),
       };
     });
   },

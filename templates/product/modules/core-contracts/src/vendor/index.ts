@@ -18,6 +18,7 @@ export * from "./progress.js";
 export * from "./architecture.js";
 export * from "./bugs.js";
 export * from "./identity.js";
+export * from "./review-fallback.js";
 export * from "./data.js";
 export * from "./not-implemented.js";
 export type * from "./orchestrator.js";

@@ -32,7 +32,7 @@ import {
 } from "../domain/documents.js";
 import { buildPlan, renderServerDocument } from "../domain/plans.js";
 import { createContribution } from "../domain/ledger.js";
-import { revealRound, subjectAuthors } from "../domain/review.js";
+import { agentSeatRefusals, revealRound, roundComplete, subjectAuthors } from "../domain/review.js";
 import {
   abuTransition,
   acquireLocks,
@@ -371,6 +371,8 @@ export const workHandlers: Pick<
           activeLeasesOfKind: active,
         });
         if (!elig.eligible) continue;
+        // D53: never the Fable seat under the fallback, never a reviewer of the model that built the subject.
+        if ((await agentSeatRefusals(tx, round, slot, elig.model.modelId)).length > 0) continue;
         let spec: AbuSpec | null = null;
         const repo = task.repo;
         if (round.attempt_id) {
@@ -958,6 +960,9 @@ export const workHandlers: Pick<
       });
       if (!elig.eligible) throw new ApiFailure("CONFLICT", "you are no longer eligible to review this subject", { reasons: elig.reasons });
       const plan = l.context_plan as unknown as ContextPlan;
+      const seatRefusals = await agentSeatRefusals(tx, round, task.reviewer_slot!, plan.modelId);
+      if (seatRefusals.length > 0)
+        throw new ApiFailure("CONFLICT", "this verdict cannot hold a seat of the round (D53)", { reasons: seatRefusals });
       const reviewId = uuidv7();
       try {
         await tx`
@@ -990,8 +995,7 @@ export const workHandlers: Pick<
         { type: "round.verdict_sealed", v: 1, visibility: "private", payload: { roundId: round.id, slot: task.reviewer_slot!, reviewId } },
         { aggregateKind: "round", aggregateId: round.id, actor: "contributor", actorAccountId: caller.accountId },
       );
-      const [count] = await tx<{ n: number }[]>`select count(*)::int as n from wos.reviews where round_id = ${round.id}`;
-      if ((count?.n ?? 0) === 2) await revealRound(tx, deps, round.id);
+      if (await roundComplete(tx, round.id)) await revealRound(tx, deps, round.id);
       return { sealed: true as const, reviewId };
     });
   },

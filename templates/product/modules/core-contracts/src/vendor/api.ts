@@ -33,6 +33,14 @@ import {
 } from "./domain.js";
 import { DomainEvent } from "./events.js";
 import {
+  HumanReviewQueueItem,
+  HumanReviewSubject,
+  HumanRulingBody,
+  ReviewFallback,
+  SubmitHumanReviewBody,
+  SubmitHumanReviewResponse,
+} from "./review-fallback.js";
+import {
   AppId,
   AppRegistryEntry,
   AppReleaseView,
@@ -786,6 +794,55 @@ export const Routes = {
     errors: ["LEASE_NOT_HELD", "VALIDATION_FAILED"],
     summary: "Conflict resolver output; needs maintainer confirmation in V1.",
   }),
+  // ------------------------------------------------------------------ D53 human review seat (contracts 5.15.0)
+  listHumanReviews: route({
+    method: "GET",
+    path: "/v1/human-reviews",
+    auth: "maintainer",
+    idempotent: false,
+    params: None,
+    query: None,
+    body: None,
+    response: z.object({ items: z.array(HumanReviewQueueItem) }),
+    errors: [],
+    summary: "Rounds awaiting their human review (fable_unavailable fallback), oldest first, with the caller's eligibility.",
+  }),
+  getHumanReview: route({
+    method: "GET",
+    path: "/v1/rounds/:id/human-review",
+    auth: "maintainer",
+    idempotent: false,
+    params: IdParams,
+    query: None,
+    body: None,
+    response: HumanReviewSubject,
+    errors: ["NOT_FOUND", "CONFLICT"],
+    summary: "The round's subject, the sealed Astra verdict and prior findings, for the human seat (CONFLICT: no human seat or not open).",
+  }),
+  submitHumanReview: route({
+    method: "POST",
+    path: "/v1/rounds/:id/human-review",
+    auth: "maintainer",
+    idempotent: true,
+    params: IdParams,
+    query: None,
+    body: SubmitHumanReviewBody,
+    response: SubmitHumanReviewResponse,
+    errors: ["NOT_FOUND", "CONFLICT", "NOT_ELIGIBLE", "VALIDATION_FAILED"],
+    summary: "Seals the human verdict bound to head sha + submission hash; reveals the round when the Astra verdict is in.",
+  }),
+  submitHumanRuling: route({
+    method: "POST",
+    path: "/v1/admin/documents/:id/human-ruling",
+    auth: "maintainer",
+    idempotent: true,
+    params: IdParams,
+    query: None,
+    body: HumanRulingBody,
+    response: Ok,
+    errors: ["NOT_FOUND", "CONFLICT", "NOT_ELIGIBLE", "VALIDATION_FAILED"],
+    summary: "Under the fable_unavailable fallback every conflict goes to the human: rules every disputed finding; final.",
+  }),
   getAttempt: route({
     method: "GET",
     path: "/v1/attempts/:id",
@@ -883,6 +940,8 @@ export const Routes = {
       z.object({ action: z.literal("suspend_account"), handleOrEmail: z.string().min(3), reason: z.string().min(5) }),
       z.object({ action: z.literal("set_hosting"), target: TargetSlug, hostedUrl: z.url().nullable(), selfHostable: z.boolean() }),
       z.object({ action: z.literal("end_bootstrap"), reason: z.string().min(5) }),
+      /** D53 (contracts 5.15.0): forward-only, public; refused while a round is awaiting reviews. */
+      z.object({ action: z.literal("switch_review_policy"), fallback: ReviewFallback, reason: z.string().min(5) }),
       z.object({
         action: z.literal("ledger_adjustment"),
         handle: Handle,
