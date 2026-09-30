@@ -1,79 +1,80 @@
 /**
- * DesktopCore: everything the main process does for the renderer, with no Electron import, so it is
- * tested against the real orchestrator (fake and real control planes). One call per bridge method; no
- * workflow logic lives here — builds, reviews, sign-in and GitHub linking are the ONE orchestrator's
- * (packages/orchestrator/README.md). This file only validates, routes, tags events with a run id, keeps
- * a bounded activity log and translates failure codes into plain words.
+ * DesktopCore: the ONE wOS Desktop's app shell in the main process (D16), with no Electron import so it is tested
+ * against the real orchestrator and fake or real control planes.
+ *
+ * The shell owns: the wOS account sign-in (D8, through the orchestrator), settings, Settings -> Environment and its
+ * per-environment sessions, organizations, Your Apps / Available Apps with enable/disable, the desktop module
+ * installer, the merged navigation, and the S-40 gate for Build.
+ *
+ * S-40: Build's channels reach the Build app (src/apps/build/main) only while BOTH hold: Build is enabled for an
+ * organization of the signed-in account (checked against api.waronsaas.com at start, on every shell refresh and at
+ * least every 60 seconds), and the user turned Build on for this device. `onBuildGate` tells start.ts to register or
+ * unregister the IPC handlers; when the gate closes, running builds are aborted and held leases released. This file
+ * also refuses Build channels while closed, so a stale handler cannot reach the orchestrator.
  */
-import type {
-  AgentPolicyDocument,
-  LocalStatus,
-  Me,
-  ModelRef,
-  Orchestrator,
-  OrchestratorEvent,
-  RunResult,
-  SignInPrompt,
+import {
+  ACTIVE_APPS_REFRESH_SECONDS,
+  type ActiveApps,
+  type AgentPolicyDocument,
+  BUILD_APP_ID,
+  type Me,
+  type Orchestrator,
+  type OrgRole,
+  type SignInPrompt,
+  type WosAppManifest,
 } from "@waronsaas/contracts";
+import { BUILD_MANIFEST } from "../apps/build/manifest.js";
+import { type BuildCore, createBuildCore } from "../apps/build/main/build-core.js";
 import {
   type AppInfo,
-  type ContributionHistory,
+  BUILD_CHANNEL_LIST,
+  type BuildChannel,
+  type BuildGateView,
   type DesktopEvent,
   IPC_CHANNELS,
   type InvokeChannel,
-  type RunInfo,
-  type RunKind,
-  type RunSnapshot,
+  type ModuleBounds,
+  type NavEntryView,
+  type ShellState,
 } from "../shared/ipc.js";
-import { builderModelChoices } from "./models.js";
-import { type PublicApi, PublicApiError } from "./public-api.js";
+import type { EnvironmentManager } from "./environment.js";
+import type { ActiveModule, ModuleInstaller } from "./module-installer.js";
+import type { OrganizationView, PlatformApi } from "./platform-api.js";
+import type { PublicApi } from "./public-api.js";
 import { isAllowedExternalUrl, parseAuthDeepLink } from "./security.js";
 import type { SettingsStore } from "./settings.js";
 import { type Payloads, ValidationError, validatePayload } from "./validate.js";
 
+export { explainFailure } from "../apps/build/main/build-core.js";
+
+/** Where a verified module's page is shown (start.ts: a sandboxed WebContentsView under wos-module://). */
+export interface ModuleHost {
+  show(module: ActiveModule, route: string, bounds: ModuleBounds): Promise<void>;
+  hide(): Promise<void>;
+  /** The module shown right now, if any. */
+  current(): { app: string; version: string } | null;
+}
+
 export interface CoreDeps {
   orchestrator: Orchestrator;
   publicApi: PublicApi;
+  platform: PlatformApi;
+  environment: EnvironmentManager;
+  /** wOS Cloud's Core (HOSTS.core): where Settings -> Environment goes back to. */
+  cloudCoreUrl: string;
+  installer: ModuleInstaller;
   settings: SettingsStore;
   policy: AgentPolicyDocument;
   appInfo: AppInfo;
   emit: (event: DesktopEvent) => void;
   /** shell.openExternal, called only after the allowlist passed. */
   openExternal: (url: string) => Promise<void>;
+  /** S-40: start.ts registers Build's IPC handlers when true and removes them when false. */
+  onBuildGate?: (open: boolean) => void;
+  moduleHost?: ModuleHost;
   newId?: () => string;
   now?: () => Date;
   log?: (msg: string) => void;
-}
-
-/** Failure explanations in plain words (the coordinator's D15 brief: explain NOT_ELIGIBLE and LIMIT_REACHED plainly). */
-export function explainFailure(code: string, message: string, context: { kind: RunKind; leased: boolean; model: ModelRef | null }): string {
-  const model = context.model ? context.model.toUpperCase() : "THE CHOSEN MODEL";
-  switch (code) {
-    case "NOT_ELIGIBLE":
-      return context.kind === "build"
-        ? `NOT ELIGIBLE. The control plane will not give this device a build lease with ${model}: either the model is not allowed for builders, or this device has not attested the CLI that runs it (signed in and installed). Run STATUS to attest again, or pick another model. Server: ${message}`
-        : `NOT ELIGIBLE. This account or device may not take this review now. Server: ${message}`;
-    case "LIMIT_REACHED":
-      return context.leased
-        ? `LIMIT REACHED. The agent used every local repair loop the policy allows and the checks still fail. The lease is given back. ${message}`
-        : `LIMIT REACHED. You already hold a build lease on this provider. One Claude build (OPUS) and one Codex build (ASTRA or SOL) can run at the same time. Wait for the running build on this provider to submit, or pick a model on the other provider. Server: ${message}`;
-    case "RESOURCE_LOCKED":
-      return `LOCKED. Another build holds a resource this unit needs. Pick another unit or try later. Server: ${message}`;
-    case "GITHUB_REQUIRED":
-      return "GITHUB REQUIRED. Link a GitHub account before taking a lease (D8).";
-    case "UNAUTHENTICATED":
-      return "SIGNED OUT. The session is missing or expired. Sign in again.";
-    case "MODEL_MISMATCH":
-      return `MODEL MISMATCH. The CLI reported a different model from the one the plan requires, so wOS refused to submit. ${message}`;
-    case "SCOPE_VIOLATION":
-      return `OUT OF SCOPE. The change touched paths outside the unit's write scope and was not submitted. ${message}`;
-    case "ABORTED":
-      return "ABORTED.";
-    case "NETWORK":
-      return `OFFLINE. The control plane is unreachable. ${message}`;
-    default:
-      return `${code}. ${message}`;
-  }
 }
 
 class Deferred<T> {
@@ -126,165 +127,235 @@ interface SignInSession {
   abort: AbortController;
 }
 
-interface Run extends RunInfo {
-  events: OrchestratorEvent[];
-  leased: boolean;
-  abort: AbortController;
-}
-
-const RUN_EVENT_LIMIT = 800;
-const MAX_RUNS_KEPT = 30;
+/** The module host bridge may use these methods only, under the app's own `routes.api`. */
+const MODULE_METHODS = new Set(["GET", "POST", "PATCH", "DELETE"]);
 
 export interface DesktopCore {
   invoke(channel: InvokeChannel, payload: unknown): Promise<unknown>;
   /** wos:// URLs from open-url / second-instance / argv. Returns true when it was accepted. */
   handleDeepLink(url: string): boolean;
+  /** Re-checks the Build gate, the environment's active apps and the modules; emits the shell state. Never throws. */
+  refresh(): Promise<ShellState>;
+  shellState(): ShellState;
+  buildGateOpen(): boolean;
+  /** The module page's host bridge (`window.wos.app(<id>)`), for the module currently shown. */
+  moduleManifest(senderApp: string, requestedApp: string): WosAppManifest;
+  moduleRequest(
+    senderApp: string,
+    requestedApp: string,
+    method: string,
+    path: string,
+    body: unknown,
+  ): Promise<{ status: number; body: unknown }>;
+  /** The module view could not load: fail that version and roll back (ModuleInstallMachine). */
+  moduleLoadFailed(app: string, version: string, reason: string): Promise<void>;
   /** Waits for every running build/review (tests, shutdown). */
   settle(): Promise<void>;
-  lastStatus(): LocalStatus | null;
+  lastStatus(): ReturnType<BuildCore["lastStatus"]>;
 }
+
+const REFRESH_EVERY_MS = ACTIVE_APPS_REFRESH_SECONDS * 1000;
 
 export function createDesktopCore(deps: CoreDeps): DesktopCore {
   const now = deps.now ?? (() => new Date());
-  let counter = 0;
-  const newId = deps.newId ?? (() => `run-${Date.now().toString(36)}-${(++counter).toString(36)}`);
   const log = deps.log ?? (() => undefined);
-  let status: LocalStatus | null = null;
   let me: Me | null = null;
   let signIn: SignInSession | null = null;
-  const runs = new Map<string, Run>();
-  const running = new Set<Promise<unknown>>();
+  let organizations: OrganizationView[] = [];
+  let entitledOrgs: string[] = [];
+  let entitlementCheckedAt: string | null = null;
+  let entitlementProblem: string | null = null;
+  let activeApps: ActiveApps | null = null;
+  let activeAppsProblem: string | null = null;
+  let gateOpen = false;
+  let refreshing: Promise<ShellState> | null = null;
 
-  const emitOrchestrator = (runId: string | null, event: OrchestratorEvent) => {
-    deps.emit({ kind: "orchestrator", runId, at: now().toISOString(), event });
+  const build = createBuildCore({
+    orchestrator: deps.orchestrator,
+    publicApi: deps.publicApi,
+    settings: deps.settings,
+    policy: deps.policy,
+    emit: deps.emit,
+    me: () => me,
+    setMe: (m) => {
+      me = m;
+    },
+    ...(deps.newId ? { newId: deps.newId } : {}),
+    ...(deps.now ? { now: deps.now } : {}),
+    log,
+  });
+
+  const emitOrchestrator = (event: Parameters<Parameters<Orchestrator["signIn"]>[2]>[0]) =>
+    deps.emit({ kind: "orchestrator", runId: null, at: now().toISOString(), event });
+
+  /** The org the apps screen and the wOS Cloud environment token use: the chosen one, else the personal one. */
+  const selectedOrg = (): string | null => {
+    const chosen = deps.settings.get().organizationId;
+    if (chosen && organizations.some((o) => o.id === chosen)) return chosen;
+    return organizations.find((o) => o.kind === "personal")?.id ?? organizations[0]?.id ?? null;
   };
 
-  const info = (r: Run): RunInfo => {
-    const { events: _e, leased: _l, abort: _a, ...rest } = r;
-    return rest;
+  const gateView = (): BuildGateView => {
+    const onDevice = deps.settings.get().buildOnDevice;
+    const entitled = entitledOrgs.length > 0;
+    let reason: string | null = null;
+    if (!me) reason = "SIGN IN to your wOS account to use Build.";
+    else if (entitlementProblem) reason = entitlementProblem;
+    else if (!entitled) reason = "BUILD IS NOT ENABLED for any of your organizations. Enable it under YOUR APPS / AVAILABLE APPS.";
+    else if (!onDevice) reason = "BUILD IS OFF ON THIS DEVICE. Turn it on to let wOS run claude, codex and git here.";
+    return { entitled, entitledOrgs: [...entitledOrgs], onDevice, open: reason === null, reason, checkedAt: entitlementCheckedAt };
   };
 
-  function trimRuns() {
-    if (runs.size <= MAX_RUNS_KEPT) return;
-    for (const [id, r] of runs) {
-      if (runs.size <= MAX_RUNS_KEPT) break;
-      if (r.state !== "running") runs.delete(id);
-    }
-  }
+  const roleGrants = (manifest: WosAppManifest, permission: string | null, role: OrgRole | null) => {
+    if (permission === null) return true;
+    const p = manifest.permissions.find((x) => x.key === permission);
+    return Boolean(p && role && p.grantedTo.includes(role));
+  };
 
-  function startRun(
-    kind: RunKind,
-    subject: string,
-    model: ModelRef | null,
-    go: (observer: (e: OrchestratorEvent) => void, signal: AbortSignal) => Promise<RunResult>,
-  ) {
-    const run: Run = {
-      id: newId(),
-      kind,
-      subject,
-      model,
-      startedAt: now().toISOString(),
-      finishedAt: null,
-      state: "running",
-      code: null,
-      explanation: null,
-      attempt: null,
-      events: [],
-      leased: false,
-      abort: new AbortController(),
-    };
-    runs.set(run.id, run);
-    trimRuns();
-    deps.emit({ kind: "run", run: info(run) });
-    const observer = (e: OrchestratorEvent) => {
-      if (e.type === "lease") run.leased = true;
-      if (e.type === "attempt") run.attempt = e.attempt;
-      run.events.push(e);
-      if (run.events.length > RUN_EVENT_LIMIT) run.events.splice(0, run.events.length - RUN_EVENT_LIMIT);
-      emitOrchestrator(run.id, e);
-    };
-    const finish = (result: RunResult) => {
-      run.finishedAt = now().toISOString();
-      if (result.ok) {
-        run.state = "passed";
-        if (result.attempt) run.attempt = result.attempt;
-        const where = run.attempt ? ` ATTEMPT ${run.attempt.state.toUpperCase()}.` : "";
-        run.explanation =
-          kind === "build"
-            ? `SUBMITTED.${where} Reviews, qualification and the PR are driven by the control plane; this pane keeps following the activity.`
-            : "VERDICT SUBMITTED. It stays sealed until the round is revealed.";
-      } else {
-        run.state = "failed";
-        run.code = result.code;
-        run.explanation = explainFailure(result.code, result.message, { kind, leased: run.leased, model });
+  const navigation = (): NavEntryView[] => {
+    const out: NavEntryView[] = [];
+    const add = (manifest: WosAppManifest, role: OrgRole | null) => {
+      for (const n of manifest.navigation) {
+        if (!n.surfaces.includes("desktop") || !roleGrants(manifest, n.permission, role)) continue;
+        out.push({ id: n.id, app: manifest.app.id, title: n.title, route: n.route, order: n.order });
       }
-      deps.emit({ kind: "run", run: info(run) });
     };
-    const p = go(observer, run.abort.signal)
-      .then(finish)
-      .catch((e: unknown) => {
-        const code = typeof (e as { code?: unknown })?.code === "string" ? (e as { code: string }).code : "INTERNAL";
-        finish({ ok: false, code, message: e instanceof Error ? e.message : String(e), task: null });
-      })
-      .finally(() => running.delete(p));
-    running.add(p);
-    return run.id;
-  }
-
-  async function refreshStatus(): Promise<LocalStatus> {
-    status = await deps.orchestrator.status();
-    me = status.me;
-    return status;
-  }
-
-  async function contributions(): Promise<ContributionHistory> {
-    const account = me ?? (await refreshStatus()).me;
-    const handle = account?.handle ?? null;
-    if (!handle) {
-      return {
-        handle: null,
-        profile: null,
-        ledger: null,
-        ledgerHiddenReason: "NO HANDLE YET. A handle is set when GitHub is first linked.",
-      };
+    if (activeApps) {
+      const role = deps.environment.role();
+      for (const a of activeApps.apps) {
+        if (a.id === BUILD_APP_ID) continue; // Build is never an environment feature (WORKSTREAMS 12.4).
+        const m = deps.installer.active(a.id);
+        if (m && m.version === a.version) add(m.manifest, role);
+      }
     }
-    let profile: ContributionHistory["profile"] = null;
-    try {
-      profile = await deps.publicApi.get("getContributor", { params: { handle } });
-    } catch (e) {
-      if (!(e instanceof PublicApiError && e.code === "NOT_FOUND")) throw e;
+    if (gateOpen) {
+      // Build's role is the caller's best role among the orgs where Build is enabled.
+      const roles = organizations.filter((o) => entitledOrgs.includes(o.id)).map((o) => o.role);
+      const role = (["owner", "admin", "member"] as const).find((r) => roles.includes(r)) ?? null;
+      add(BUILD_MANIFEST, role);
     }
-    if (!profile) {
-      return {
-        handle,
-        profile: null,
-        ledger: null,
-        ledgerHiddenReason: "NO PUBLIC PROFILE YET. It appears after the first accepted contribution.",
-      };
+    return out.sort((a, b) => a.order - b.order || a.app.localeCompare(b.app) || a.id.localeCompare(b.id));
+  };
+
+  const shellState = (): ShellState => ({
+    environment: deps.environment.view(),
+    organizations: [...organizations],
+    organizationId: selectedOrg(),
+    activeApps:
+      activeApps?.apps.map((a) => ({
+        id: a.id,
+        name: a.manifest.app.name,
+        version: a.version,
+        source: a.source,
+        kind: a.manifest.app.kind,
+        desktop: a.manifest.surfaces.desktop.supported,
+      })) ?? null,
+    activeAppsProblem,
+    modules: deps.installer.status(),
+    navigation: navigation(),
+    build: gateView(),
+  });
+
+  const emitShell = () => {
+    const state = shellState();
+    deps.emit({ kind: "shell", state });
+    return state;
+  };
+
+  /** Applies the gate: registers or removes Build's handlers; on close, aborts runs and releases leases. */
+  const applyGate = async () => {
+    const open = gateView().open;
+    if (open === gateOpen) return;
+    gateOpen = open;
+    deps.onBuildGate?.(open);
+    log(`Build gate ${open ? "open" : "closed"}`);
+    if (!open) {
+      const r = await build.lapse(gateView().reason ?? "Build is off");
+      if (r.aborted || r.released.length) log(`Build lapsed: ${r.aborted} runs aborted, ${r.released.length} leases released`);
+    }
+  };
+
+  /** S-40 entitlement half: Build enabled for ANY organization of the account, from listOrgApps on api.waronsaas.com. */
+  const checkEntitlement = async () => {
+    entitlementCheckedAt = now().toISOString();
+    if (!me) {
+      organizations = [];
+      entitledOrgs = [];
+      entitlementProblem = null;
+      return;
     }
     try {
-      const page = await deps.publicApi.get("getContributorLedger", { params: { handle } });
-      return { handle, profile, ledger: page.items, ledgerHiddenReason: null };
-    } catch (e) {
-      if (e instanceof PublicApiError && e.code === "NOT_FOUND") {
-        return {
-          handle,
-          profile,
-          ledger: null,
-          ledgerHiddenReason: "HIDDEN. The token history is public only when you opt in to the leaderboard.",
-        };
+      organizations = await deps.platform.listMyOrganizations();
+      const entitled: string[] = [];
+      for (const o of organizations) {
+        const apps = await deps.platform.listOrgApps(o.id);
+        if (apps.yourApps.some((v) => v.app.id === BUILD_APP_ID && v.entitlement.state === "enabled")) entitled.push(o.id);
       }
-      throw e;
+      entitledOrgs = entitled;
+      entitlementProblem = null;
+    } catch (e) {
+      // Fail closed: an unknown entitlement is no entitlement (the server's NOT_ENTITLED stands behind this too).
+      entitledOrgs = [];
+      entitlementProblem = `COULD NOT CHECK BUILD'S ENTITLEMENT: ${e instanceof Error ? e.message : String(e)}`;
     }
-  }
+  };
+
+  const syncEnvironment = async () => {
+    await deps.environment.discover();
+    const d = deps.environment.descriptor();
+    if (!d) {
+      activeApps = null;
+      activeAppsProblem = deps.environment.view().problem;
+      return;
+    }
+    try {
+      activeApps = await deps.environment.activeApps(d.auth.kind === "wos_cloud" ? selectedOrg() : null);
+      activeAppsProblem = null;
+    } catch (e) {
+      activeApps = null;
+      activeAppsProblem = e instanceof Error ? e.message : String(e);
+      return;
+    }
+    await deps.installer.sync(activeApps, { coreVersion: d.coreVersion });
+    const shown = deps.moduleHost?.current();
+    if (shown && !navigation().some((n) => n.app === shown.app)) await deps.moduleHost?.hide();
+  };
+
+  const refresh = (): Promise<ShellState> => {
+    if (refreshing) return refreshing;
+    refreshing = (async () => {
+      try {
+        me = await deps.platform.me().catch(() => me);
+        await checkEntitlement();
+        await applyGate();
+        await syncEnvironment();
+      } catch (e) {
+        log(`shell refresh: ${e instanceof Error ? e.message : String(e)}`);
+      }
+      return emitShell();
+    })().finally(() => {
+      refreshing = null;
+    });
+    return refreshing;
+  };
+
+  const isBuildChannel = (c: InvokeChannel): c is BuildChannel => (BUILD_CHANNEL_LIST as readonly string[]).includes(c);
 
   async function handle<K extends InvokeChannel>(channel: K, p: Payloads[K]): Promise<unknown> {
     const C = IPC_CHANNELS;
+    if (isBuildChannel(channel)) {
+      if (!gateOpen)
+        throw Object.assign(new Error(gateView().reason ?? "Build is off"), {
+          code: "NOT_ENTITLED",
+        });
+      return build.invoke(channel, p as Payloads[BuildChannel]);
+    }
     switch (channel) {
       case C.appInfo:
         return deps.appInfo;
-      case C.status:
-        return refreshStatus();
+      case C.account:
+        me = await deps.platform.me().catch(() => me);
+        return { me };
       case C.signIn: {
         const { email } = p as Payloads["wos:sign-in"];
         if (signIn) signIn.abort.abort();
@@ -304,10 +375,9 @@ export function createDesktopCore(deps: CoreDeps): DesktopCore {
           signal: session.abort.signal,
         };
         try {
-          const account = await deps.orchestrator.signIn({ email, deviceName: deps.settings.get().deviceName }, prompt, (e) =>
-            emitOrchestrator(null, e),
-          );
+          const account = await deps.orchestrator.signIn({ email, deviceName: deps.settings.get().deviceName }, prompt, emitOrchestrator);
           me = account;
+          await refresh();
           return account;
         } finally {
           session.links.close();
@@ -328,61 +398,18 @@ export function createDesktopCore(deps: CoreDeps): DesktopCore {
         signIn?.abort.abort();
         signIn?.links.close();
         return undefined;
-      case C.linkGithub: {
-        const account = await deps.orchestrator.linkGithub(
-          (e) => emitOrchestrator(null, e),
-          (verificationUri, userCode) => deps.emit({ kind: "github_code", verificationUri, userCode }),
-        );
-        me = account;
-        return account;
-      }
-      case C.logout:
-        await deps.orchestrator.logout();
+      case C.logout: {
         me = null;
-        status = null;
-        return undefined;
-      case C.listTargets:
-        return (await deps.publicApi.get("listTargets")).items;
-      case C.getTarget:
-        return deps.publicApi.get("getTarget", { params: p as Payloads["wos:get-target"] });
-      case C.getFeature:
-        return deps.publicApi.get("getFeature", { params: p as Payloads["wos:get-feature"] });
-      case C.listClaimableAbus: {
-        const { slug, feature } = p as Payloads["wos:list-claimable-abus"];
-        return deps.orchestrator.listClaimableAbus(slug, feature);
-      }
-      case C.builderModels:
-        return builderModelChoices(deps.policy, status ?? (await refreshStatus()));
-      case C.build: {
-        const { abu, model } = p as Payloads["wos:build"];
-        const role = deps.policy.roles.find((r) => r.role === "builder");
-        if (!role?.allowedModels.includes(model)) throw new ValidationError(`${model} is not a builder model`);
-        const detachAfterSubmit = deps.settings.get().detachAfterSubmit;
-        const runId = startRun("build", abu, model, (observer, signal) =>
-          deps.orchestrator.build({ abu, model, detachAfterSubmit, signal }, observer),
-        );
-        return { runId };
-      }
-      case C.review: {
-        const { slot } = p as Payloads["wos:review"];
-        const runId = startRun("review", slot, null, (observer, signal) =>
-          deps.orchestrator.review({ slot, kinds: ["implementation_review"], signal }, observer),
-        );
-        return { runId };
-      }
-      case C.release: {
-        const { leaseId } = p as Payloads["wos:release"];
-        await deps.orchestrator.release(leaseId, "released from wOS Desktop");
+        await applyGate();
+        await deps.orchestrator.logout();
+        deps.environment.forgetCloudTokens();
+        organizations = [];
+        entitledOrgs = [];
+        activeApps = null;
+        await deps.moduleHost?.hide();
+        emitShell();
         return undefined;
       }
-      case C.runs:
-        return [...runs.values()].map((r): RunSnapshot => ({ ...info(r), events: [...r.events] }));
-      case C.myWork:
-        return deps.orchestrator.myWork();
-      case C.myEvents:
-        return deps.orchestrator.events((p as Payloads["wos:my-events"]).after);
-      case C.contributions:
-        return contributions();
       case C.getSettings:
         return deps.settings.get();
       case C.setSettings:
@@ -398,10 +425,91 @@ export function createDesktopCore(deps: CoreDeps): DesktopCore {
         await deps.openExternal(url);
         return undefined;
       }
+      case C.shellState:
+        return shellState();
+      case C.refreshShell:
+        return refresh();
+      case C.setEnvironment: {
+        const { url } = p as Payloads["wos:set-environment"];
+        const target = url ?? deps.cloudCoreUrl;
+        deps.settings.set({ environmentUrl: target });
+        deps.environment.setUrl(target);
+        activeApps = null;
+        await deps.moduleHost?.hide();
+        return refresh();
+      }
+      case C.environmentSignIn: {
+        await deps.environment.startLocalSignIn((p as Payloads["wos:environment-sign-in"]).email);
+        return emitShell();
+      }
+      case C.environmentSignInCode: {
+        await deps.environment.redeemLocalCode((p as Payloads["wos:environment-sign-in-code"]).code);
+        return refresh();
+      }
+      case C.environmentSignOut: {
+        await deps.environment.signOut();
+        activeApps = null;
+        await deps.moduleHost?.hide();
+        return refresh();
+      }
+      case C.selectOrganization: {
+        const { organizationId } = p as Payloads["wos:select-organization"];
+        if (!organizations.some((o) => o.id === organizationId))
+          throw Object.assign(new Error("that is not one of your organizations"), { code: "NOT_FOUND" });
+        deps.settings.set({ organizationId });
+        return refresh();
+      }
+      case C.orgApps:
+        return deps.platform.listOrgApps((p as Payloads["wos:org-apps"]).organizationId);
+      case C.enableApp:
+      case C.disableApp: {
+        const { organizationId, app, expectedRowVersion } = p as Payloads["wos:enable-app"];
+        const view =
+          channel === C.enableApp
+            ? await deps.platform.enableApp(organizationId, app, expectedRowVersion)
+            : await deps.platform.disableApp(organizationId, app, expectedRowVersion);
+        // One enable changes every surface: re-read the gate and the environment now, not in 60 s. Hosted Core takes
+        // the active apps from the environment token's claims, so the cached token (minted before this change) goes.
+        deps.environment.forgetCloudTokens();
+        await refresh();
+        return view;
+      }
+      case C.setBuildOnDevice: {
+        const { on } = p as Payloads["wos:set-build-on-device"];
+        deps.settings.set({ buildOnDevice: on });
+        if (on) await checkEntitlement();
+        await applyGate();
+        return emitShell();
+      }
+      case C.showModule: {
+        const { app, route, bounds } = p as Payloads["wos:show-module"];
+        if (!deps.moduleHost) throw Object.assign(new Error("modules are not available here"), { code: "NOT_IMPLEMENTED" });
+        if (!navigation().some((n) => n.app === app))
+          throw Object.assign(new Error(`${app} is not active in this environment`), { code: "NOT_FOUND" });
+        const m = deps.installer.active(app);
+        if (!m) throw Object.assign(new Error(`${app} has no verified desktop package installed`), { code: "NOT_FOUND" });
+        const ui = m.manifest.routes.ui;
+        if (!(route === ui || route.startsWith(`${ui}/`))) throw new ValidationError(`route must be under ${ui}`);
+        await deps.moduleHost.show(m, route, bounds);
+        return undefined;
+      }
+      case C.hideModule:
+        await deps.moduleHost?.hide();
+        return undefined;
       default:
         throw new ValidationError(`unknown channel ${String(channel)}`);
     }
   }
+
+  const requireShown = (senderApp: string, requestedApp: string): ActiveModule => {
+    if (senderApp !== requestedApp)
+      throw Object.assign(new Error(`a module may use only its own app (${senderApp})`), { code: "FORBIDDEN" });
+    const shown = deps.moduleHost?.current();
+    if (!shown || shown.app !== senderApp) throw Object.assign(new Error("that module is not shown"), { code: "FORBIDDEN" });
+    const m = deps.installer.active(senderApp);
+    if (!m || m.version !== shown.version) throw Object.assign(new Error("that module is not active"), { code: "FORBIDDEN" });
+    return m;
+  };
 
   return {
     async invoke(channel, payload) {
@@ -422,12 +530,38 @@ export function createDesktopCore(deps: CoreDeps): DesktopCore {
       deps.emit({ kind: "deep_link", accepted: true, detail: "SIGN-IN LINK RECEIVED." });
       return true;
     },
-    async settle() {
-      while (running.size) await Promise.allSettled([...running]);
+    refresh,
+    shellState,
+    buildGateOpen: () => gateOpen,
+    moduleManifest(senderApp, requestedApp) {
+      return requireShown(senderApp, requestedApp).manifest;
     },
-    lastStatus: () => status,
+    async moduleRequest(senderApp, requestedApp, method, path, body) {
+      const m = requireShown(senderApp, requestedApp);
+      const prefix = m.manifest.routes.api;
+      if (!prefix) throw Object.assign(new Error(`${senderApp} declares no API`), { code: "FORBIDDEN" });
+      if (!MODULE_METHODS.has(method)) throw new ValidationError("method must be GET, POST, PATCH or DELETE");
+      if (
+        typeof path !== "string" ||
+        path.length > 1024 ||
+        !(path === prefix || path.startsWith(`${prefix}/`)) ||
+        /(^|\/)\.\.?(\/|$)|[\\?#%]/.test(path)
+      )
+        throw Object.assign(new Error(`a module may call only ${prefix}/...`), { code: "FORBIDDEN" });
+      const d = deps.environment.descriptor();
+      return deps.environment.request(d?.auth.kind === "wos_cloud" ? selectedOrg() : null, method, path, body);
+    },
+    async moduleLoadFailed(app, version, reason) {
+      deps.installer.reportLoadFailure(app, version, reason);
+      await deps.moduleHost?.hide();
+      emitShell();
+    },
+    settle: () => build.settle(),
+    lastStatus: () => build.lastStatus(),
   };
 }
+
+export { REFRESH_EVERY_MS };
 
 /** Serialises an error for the bridge: "<CODE>: <message>" (see splitBridgeError in shared/ipc.ts). */
 export function bridgeErrorMessage(e: unknown): string {

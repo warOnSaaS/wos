@@ -7,6 +7,21 @@
     "tsBuildInfoFile": "dist-types/node/.tsbuildinfo",
     "types": ["node"]
   },
-  "include": ["src/main", "src/preload", "src/shared"],
-  "references": [{ "path": "../../packages/contracts" }, { "path": "../../packages/orchestrator" }]
+  "include": [
+    "src/main",
+    "src/main/keys/*.json",
+    "src/preload",
+    "src/shared",
+    "src/apps/build/main",
+    "src/apps/build/manifest.ts",
+    "src/apps/build/wos-app.json"
+  ],
+  "references": [
+    {
+      "path": "../../packages/contracts"
+    },
+    {
+      "path": "../../packages/orchestrator"
+    }
+  ]
 }

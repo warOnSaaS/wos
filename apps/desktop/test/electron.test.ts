@@ -59,6 +59,29 @@ describe.skipIf(!canRun)("Electron renderer security (S-29), live", () => {
       expect(r.openedExternally).toEqual(["https://github.com/waronsaas/wos/releases/latest"]);
       expect(r.badPayload).toMatch(/VALIDATION_FAILED/);
       expect(r.badModel).toMatch(/VALIDATION_FAILED: fable is not a builder model/);
+
+      // S-40, live: before sign-in no Build handler exists in main; after it, all of them.
+      expect(r.buildHandlersBefore).toEqual([]);
+      expect(r.buildWhileOff).toMatch(/No handler registered for 'wos:build'/);
+      expect(r.gateOpen).toBe(true);
+      expect((r.buildHandlersAfter as string[]).length).toBe(14);
+      expect(r.navigation).toEqual(["build.targets", "build.work", "build.contributions", "sample.home"]);
+
+      // S-37/S-38, live: the signed TEST module runs in its own sandboxed view under wos-module://, with no Node,
+      // only window.wos.app, no network, and a bridge limited to its own app and API prefix.
+      const m = r.moduleView as Record<string, unknown>;
+      expect(m.loaded).toBe(true);
+      expect(m.url).toBe("wos-module://sample/0.1.0/index.html#/sample");
+      expect(m.origin).toBe("wos-module://sample");
+      expect(m.heading).toBe("SAMPLE TEST MODULE 0.1.0");
+      expect(m.ping).toBe('BRIDGE 200 {"ok":true,"environment":"FAKE wOS CLOUD"}');
+      expect(m.require).toBe("undefined");
+      expect(m.process).toBe("undefined");
+      expect(m.wosKeys).toEqual(["app"]);
+      expect(m.otherApp).toMatch(/FORBIDDEN/);
+      expect(m.outsidePrefix).toMatch(/FORBIDDEN/);
+      expect(m.fetch).toBe("blocked");
+      expect(m.fetchOwnFile).toBe("blocked");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

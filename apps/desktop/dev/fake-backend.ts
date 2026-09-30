@@ -15,9 +15,11 @@ import { configureLocalGit } from "@waronsaas/github/local";
 import type { SecretStore } from "@waronsaas/orchestrator";
 import { FakeControlPlane, makeUpstream, SIGNIN_REQUEST_ID } from "../../../packages/orchestrator/test/support/fake-control-plane.js";
 import { DemoProcesses } from "./demo-processes.js";
+import { FAKE_CORE, FakeApps } from "./fake-apps.js";
 import { featureDetail, targetDetail, targets } from "./fixtures.js";
 
 export { SIGNIN_REQUEST_ID };
+export { FAKE_CORE };
 export const FAKE_CODE = "ABCD-EFGH";
 export const FAKE_LINK = `wos://auth?r=${SIGNIN_REQUEST_ID}&t=good-token`;
 export const FAKE_API = "https://api.waronsaas.test";
@@ -37,6 +39,8 @@ export class MemorySecrets implements SecretStore {
 
 export interface FakeBackend {
   server: FakeControlPlane;
+  /** Organizations, entitlements, the registry and the fake environments (dev/fake-apps.ts). */
+  apps: FakeApps;
   processes: DemoProcesses;
   secrets: MemorySecrets;
   fetch: typeof fetch;
@@ -50,7 +54,9 @@ function json(status: number, data: unknown): Response {
   return new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json" } });
 }
 
-export function createFakeBackend(opts: { delayMs?: number; githubLinked?: boolean; now?: () => Date } = {}): FakeBackend {
+export function createFakeBackend(
+  opts: { delayMs?: number; githubLinked?: boolean; now?: () => Date; buildEnabled?: boolean } = {},
+): FakeBackend {
   const upstream = makeUpstream();
   configureLocalGit({ remoteUrl: () => upstream.dir });
   const server = new FakeControlPlane(upstream, opts.now ?? (() => new Date()));
@@ -61,10 +67,13 @@ export function createFakeBackend(opts: { delayMs?: number; githubLinked?: boole
   const machine = process.platform === "darwin" ? "macos" : "linux";
   const processes = new DemoProcesses(machine, opts.delayMs ?? 0);
   const secrets = new MemorySecrets();
+  const apps = new FakeApps(opts.now ?? (() => new Date()), { buildEnabled: opts.buildEnabled ?? true });
 
   const fetchImpl: typeof fetch = async (input, init) => {
     const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
     calls.push(`${init?.method ?? "GET"} ${url.pathname}`);
+    const owned = apps.handle(url, init);
+    if (owned) return owned;
     const p = url.pathname;
     if (p === "/v1/public/targets") return json(200, { items: targets() });
     let m = /^\/v1\/public\/targets\/([^/]+)$/.exec(p);
@@ -117,6 +126,7 @@ export function createFakeBackend(opts: { delayMs?: number; githubLinked?: boole
 
   return {
     server,
+    apps,
     processes,
     secrets,
     fetch: fetchImpl,

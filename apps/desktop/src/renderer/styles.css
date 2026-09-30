@@ -22,6 +22,14 @@
   font-style: normal;
   font-display: block;
 }
+/* The mark only: `wOS` in Geist Mono Bold (the brand rule), bundled with its OFL licence. */
+@font-face {
+  font-family: "Geist Mono";
+  src: url("./fonts/GeistMono-700.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+}
 
 :root {
   --bg: #0b0b0b;
@@ -179,6 +187,7 @@ strong {
   border-bottom: 2px solid var(--rule-strong);
 }
 .wordmark {
+  font-family: "Geist Mono", "JetBrains Mono", monospace;
   color: var(--fg);
   font-weight: 700;
   font-size: 1.375rem;
@@ -222,6 +231,12 @@ strong {
 }
 .body--solo {
   grid-template-columns: minmax(0, 1fr);
+}
+/* A desktop module's page is drawn by main over this rectangle (its own sandboxed view, S-38). */
+.module-host {
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
 }
 .main {
   overflow-y: auto;
@@ -605,6 +620,7 @@ strong {
   border-left: 1px solid var(--rule);
 }
 .gate .mark {
+  font-family: "Geist Mono", "JetBrains Mono", monospace;
   font-size: 4.5rem;
   font-weight: 700;
   color: var(--fg);

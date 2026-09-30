@@ -2,11 +2,15 @@
 # the macOS dmg is signed with the Developer ID certificate and notarised there, from the protected
 # `release` environment's secrets (CSC_LINK, CSC_KEY_PASSWORD, APPLE_API_KEY, APPLE_API_KEY_ID,
 # APPLE_API_ISSUER; FOUNDER-CHECKLIST section 7). Never sign or notarise from a laptop.
+# Windows (D17, S-42): an NSIS installer. It is NOT signed here: the `release` job signs it with Azure Trusted
+# Signing (verification's desktop-release.yml), and an unsigned Windows artefact is never uploaded.
+# Icons: build/icon.icns, build/icon.ico and build/icons/*.png come from ONE source, the wOS mark, rendered by
+# scripts/render-icons.mjs (npm run icons); never edited by hand.
 # The app is dist/app (written by scripts/build.mjs --no-fake): bundled main, preload and renderer,
 # with a dependency-free package.json. The development fake control plane is never packaged.
 appId: com.waronsaas.wos
 productName: wOS
-executableName: wos
+# The .app, the .exe and the Start menu entry are named productName (wOS); only Linux uses a lowercase binary (below).
 copyright: Copyright warOnSaaS
 electronVersion: 44.4.5
 npmRebuild: false
@@ -20,6 +24,8 @@ directories:
 files:
   - main.mjs
   - preload.cjs
+  - module-preload.cjs
+  - icon.png
   - chunks/**
   - renderer/**
   - package.json
@@ -36,7 +42,7 @@ mac:
     - target: dmg
       arch: [arm64, x64]
   category: public.app-category.developer-tools
-  icon: build/icon.png
+  icon: build/icon.icns
   hardenedRuntime: true
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
@@ -47,14 +53,41 @@ mac:
 dmg:
   title: wOS ${version}
   sign: false
+win:
+  target:
+    - target: nsis
+      arch: [x64, arm64]
+  icon: build/icon.ico
+  executableName: wOS
+  # No signing configuration here (S-42): the release job signs with Azure Trusted Signing.
+  signAndEditExecutable: true
+  artifactName: wOS-${version}-win-${arch}.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowElevation: false
+  allowToChangeInstallationDirectory: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: wOS
+  uninstallDisplayName: wOS
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  installerHeaderIcon: build/icon.ico
+  deleteAppDataOnUninstall: false
+  artifactName: wOS-${version}-win-${arch}-setup.${ext}
 linux:
   target:
     - target: AppImage
       arch: [x64]
   category: Development
-  icon: build/icon.png
+  icon: build/icons
   executableName: wos
   synopsis: wOS Desktop, the warOnSaaS contributor build environment
   mimeTypes: [x-scheme-handler/wos]
+  desktop:
+    entry:
+      Name: wOS
+      StartupWMClass: wOS
   artifactName: wOS-${version}-linux-${arch}.${ext}
 publish: null

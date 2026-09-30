@@ -1,7 +1,7 @@
 /**
- * D8: sign in by email (the 8-character code, or the wos://auth link opened on this machine), then link
- * GitHub to contribute. Both flows are the orchestrator's; this screen only collects input and shows
- * the events it streams.
+ * D8: sign in to the wOS account by email (the 8-character code, or the wos://auth link opened on this machine).
+ * The flow is the orchestrator's; this screen only collects input and shows the events it streams. Linking GitHub
+ * is Build's (src/apps/build/renderer/LinkGithub.tsx).
  */
 import type { Me } from "@waronsaas/contracts";
 import { type FormEvent, useEffect, useState } from "react";
@@ -11,7 +11,16 @@ import { wos } from "../lib/hooks.js";
 
 type Phase = "email" | "sending" | "code" | "checking";
 
-export function SignIn({ onSignedIn, fake }: { onSignedIn: (me: Me) => void; fake: boolean }) {
+export function SignIn({
+  onSignedIn,
+  fake,
+  onSelfHosted,
+}: {
+  onSignedIn: (me: Me) => void;
+  fake: boolean;
+  /** Settings -> Environment: a self-hosted environment signs in on its own, without a wOS account. */
+  onSelfHosted?: () => void;
+}) {
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [phase, setPhase] = useState<Phase>("email");
@@ -106,7 +115,7 @@ export function SignIn({ onSignedIn, fake }: { onSignedIn: (me: Me) => void; fak
         {phase === "email" || phase === "sending" ? (
           <form onSubmit={start}>
             <div className="label" style={{ marginBottom: "1.25rem" }}>
-              STEP 01 OF 03
+              STEP 01 OF 02
             </div>
             <div className="field">
               <label className="label" htmlFor="email">
@@ -132,7 +141,7 @@ export function SignIn({ onSignedIn, fake }: { onSignedIn: (me: Me) => void; fak
         ) : (
           <form onSubmit={submitCode}>
             <div className="label" style={{ marginBottom: "1.25rem" }}>
-              STEP 02 OF 03
+              STEP 02 OF 02
             </div>
             <p>
               EMAIL SENT TO <strong>{email}</strong>. It expires in 15 minutes.
@@ -186,114 +195,13 @@ export function SignIn({ onSignedIn, fake }: { onSignedIn: (me: Me) => void; fak
           </Notice>
         ) : null}
         {error ? <Notice label="NOT SIGNED IN">{error}</Notice> : null}
-      </section>
-    </div>
-  );
-}
-
-export function LinkGithub({ me, onLinked, onLater }: { me: Me; onLinked: (me: Me) => void; onLater: () => void }) {
-  const [code, setCode] = useState<{ verificationUri: string; userCode: string } | null>(null);
-  const [state, setState] = useState<"idle" | "waiting" | "linked">("idle");
-  const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
-
-  useEffect(
-    () =>
-      wos().onEvent((e) => {
-        if (e.kind === "github_code") setCode({ verificationUri: e.verificationUri, userCode: e.userCode });
-      }),
-    [],
-  );
-
-  const link = () => {
-    setError(null);
-    setState("waiting");
-    wos()
-      .linkGithub()
-      .then((m) => {
-        setState("linked");
-        onLinked(m);
-      })
-      .catch((e: unknown) => {
-        const { code: c, message } = splitBridgeError(e);
-        setState("idle");
-        setError(
-          c === "GITHUB_LINKED_ELSEWHERE"
-            ? "THAT GITHUB ACCOUNT IS LINKED TO ANOTHER wOS ACCOUNT. One GitHub per account, one account per GitHub."
-            : c === "GITHUB_RESERVED"
-              ? "THAT GITHUB ACCOUNT WAS UNLINKED RECENTLY AND STAYS RESERVED TO ITS wOS ACCOUNT FOR 90 DAYS."
-              : `${c}. ${message}`,
-        );
-      });
-  };
-
-  const copy = () => {
-    if (!code) return;
-    navigator.clipboard
-      .writeText(code.userCode)
-      .then(() => setCopied(true))
-      .catch(() => setCopied(false));
-  };
-
-  return (
-    <div className="gate">
-      <section>
-        <div className="mark">wOS</div>
-        <div className="label">SIGNED IN AS {me.email}</div>
-        <h1 style={{ marginTop: "0.75rem" }}>LINK GITHUB</h1>
-        <p style={{ marginTop: "1rem" }}>
-          To take a lease, review, propose or resolve, wOS needs your GitHub identity. Commits are credited to it; rewards stay with this
-          account.
-        </p>
-        <p className="dim">
-          wOS reads your GitHub id, login, account age and avatar once and keeps nothing else. You can browse the Sniper List without it.
-        </p>
-      </section>
-      <section>
-        <div className="label" style={{ marginBottom: "1.25rem" }}>
-          STEP 03 OF 03
-        </div>
-        {state === "idle" ? (
-          <div className="btn-row">
-            <button className="btn btn--primary" type="button" onClick={link} data-testid="link-github">
-              LINK GITHUB
-            </button>
-            <button className="btn btn--quiet" type="button" onClick={onLater} data-testid="later">
-              LATER
+        {onSelfHosted ? (
+          <div className="btn-row" style={{ marginTop: "1.5rem" }}>
+            <button className="btn btn--quiet" type="button" onClick={onSelfHosted} data-testid="self-hosted">
+              USING A SELF-HOSTED wOS? SET THE ENVIRONMENT
             </button>
           </div>
         ) : null}
-        {state === "waiting" ? (
-          <>
-            {code ? (
-              <>
-                <p>ON GITHUB, OPEN THIS PAGE AND ENTER THE CODE:</p>
-                <p className="selectable">
-                  <strong>{code.verificationUri}</strong>
-                </p>
-                <div className="bigcode" data-testid="github-code">
-                  {code.userCode}
-                </div>
-                <div className="btn-row" style={{ marginTop: "1.25rem" }}>
-                  <button className="btn" type="button" onClick={copy}>
-                    {copied ? "CODE COPIED" : "COPY CODE"}
-                  </button>
-                </div>
-                <p className="fine" style={{ marginTop: "1rem" }}>
-                  wOS does not open this page for you: its link allowlist covers waronsaas.com and github.com/waronsaas only. Type the
-                  address into your browser.
-                </p>
-              </>
-            ) : (
-              <p>STARTING GITHUB DEVICE FLOW...</p>
-            )}
-            <p className="label" style={{ marginTop: "1.5rem" }}>
-              STATUS: WAITING FOR GITHUB
-            </p>
-          </>
-        ) : null}
-        {state === "linked" ? <p>LINKED.</p> : null}
-        {error ? <Notice label="NOT LINKED">{error}</Notice> : null}
       </section>
     </div>
   );

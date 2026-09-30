@@ -9,9 +9,10 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { AGENT_POLICY_V1, type AbuSummary, type Changeset, type Me, type TargetDetail } from "@waronsaas/contracts";
+import { readFileSync } from "node:fs";
+import { AGENT_POLICY_V1, type AbuSummary, type Changeset, type Me, type OrgApps, type TargetDetail } from "@waronsaas/contracts";
 import { configureLocalGit } from "@waronsaas/github/local";
-import { createOrchestrator } from "@waronsaas/orchestrator";
+import { createApiClient, createOrchestrator, createSessionReader } from "@waronsaas/orchestrator";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { BUILD_GRAPH, git, WOS_JSON } from "../../../packages/orchestrator/test/support/fake-control-plane.js";
 import {
@@ -25,6 +26,9 @@ import {
 import { DemoProcesses } from "../dev/demo-processes.js";
 import { MemorySecrets } from "../dev/fake-backend.js";
 import { createDesktopCore, type DesktopCore } from "../src/main/core.js";
+import { createEnvironmentManager } from "../src/main/environment.js";
+import { createModuleInstaller } from "../src/main/module-installer.js";
+import { createPlatformApi } from "../src/main/platform-api.js";
 import { createPublicApi } from "../src/main/public-api.js";
 import { defaultSettings, memorySettingsStore } from "../src/main/settings.js";
 import type { BuilderModelChoice, DesktopEvent, RunSnapshot } from "../src/shared/ipc.js";
@@ -106,13 +110,13 @@ describe.skipIf(!HAS_DB)("wOS Desktop main process against the real control plan
       return h.app.request(`${url.pathname}${url.search}`, { ...init, headers });
     }) as typeof fetch)();
 
-  function machine(idle: Array<() => Promise<void>>) {
+  function machine(idle: Array<() => Promise<void>>, secrets = new MemorySecrets()) {
     const root = mkdtempSync(join(tmpdir(), "wos-desktop-e2e-ws-"));
     roots.push(root);
     return createOrchestrator({
       apiBaseUrl: API,
       workspaceRoot: root,
-      secrets: new MemorySecrets(),
+      secrets,
       processes: new DemoProcesses("linux"),
       fetch: fetchVia,
       clientKind: "desktop",
@@ -140,13 +144,57 @@ describe.skipIf(!HAS_DB)("wOS Desktop main process against the real control plan
     const astra = await reviewer("dt-rev-astra");
     const fable = await reviewer("dt-rev-fable");
 
+    // Build's registry release (bundled in Desktop, no package), published by a maintainer as in production.
+    const maint = await h.contributor("dt-maintainer", { maintainer: true });
+    const buildManifest = JSON.parse(readFileSync(join(import.meta.dirname, "../src/apps/build/wos-app.json"), "utf8"));
+    const published = await h.call("POST", "/v1/admin/app-releases", {
+      token: maint.token,
+      idem: true,
+      body: {
+        manifest: buildManifest,
+        desktopPackage: null,
+        desktopPackageUrl: null,
+        source: { repo: "waronsaas/wos", tag: "build@0.1.0", commit: "a".repeat(40) },
+      },
+    });
+    expect(published.status, JSON.stringify(published.body)).toBe(200);
+
     const idle: Array<() => Promise<void>> = [];
     const events: DesktopEvent[] = [];
-    const settings = memorySettingsStore(defaultSettings("desktop-e2e"));
+    const settings = memorySettingsStore({ ...defaultSettings("desktop-e2e"), buildOnDevice: true });
     settings.set({ detachAfterSubmit: false });
+    const secrets = new MemorySecrets();
+    const refreshClient = createApiClient({
+      baseUrl: API,
+      fetch: fetchVia,
+      clientKind: "desktop",
+      clientVersion: "0.0.0-e2e",
+      accessToken: async () => null,
+    });
+    const session = createSessionReader({
+      secrets,
+      refresh: (refreshToken) => refreshClient.call("refreshSession", { body: { refreshToken } }),
+    });
+    const platform = createPlatformApi({ baseUrl: API, fetch: fetchVia, session, clientVersion: "0.0.0-e2e" });
+    const modulesDir = mkdtempSync(join(tmpdir(), "wos-desktop-e2e-modules-"));
+    roots.push(modulesDir);
+    const gate: boolean[] = [];
     const core: DesktopCore = createDesktopCore({
-      orchestrator: machine(idle),
+      orchestrator: machine(idle, secrets),
       publicApi: createPublicApi(fetchVia, API, "0.0.0-e2e"),
+      platform,
+      // No hosted Core in this harness: the environment reports itself unreachable, and Build does not need it.
+      environment: createEnvironmentManager("https://core.waronsaas.com", {
+        fetch: fetchVia,
+        secrets,
+        platform,
+        cloudCoreUrl: "https://core.waronsaas.com",
+        cloudIssuer: API,
+        clientVersion: "0.0.0-e2e",
+      }),
+      cloudCoreUrl: "https://core.waronsaas.com",
+      installer: createModuleInstaller({ root: modulesDir, platform: "linux", pinnedKeys: {}, registry: platform }),
+      onBuildGate: (open) => gate.push(open),
       settings,
       policy: AGENT_POLICY_V1,
       appInfo: { ...APP_INFO, fakeControlPlane: false, apiBaseUrl: API },
@@ -160,6 +208,27 @@ describe.skipIf(!HAS_DB)("wOS Desktop main process against the real control plan
     await until(() => events.some((e) => e.kind === "orchestrator" && e.event.type === "sign_in" && e.event.status === "waiting_for_code"));
     await core.invoke("wos:sign-in-code", { code: h.mailer.lastTo(email).code });
     expect(((await pending) as Me).email).toBe(email);
+
+    // S-40 against the real AppRoutes. The harness enables Build on every new personal org (as for accounts from before
+    // migration 0006), so the gate opened at sign-in. Disabling Build from Desktop closes it and Build is refused;
+    // enabling it again from Desktop (V1 proof step 2, for Build) reopens it.
+    expect(gate).toEqual([true]);
+    const personal = core.shellState().organizations.find((o) => o.kind === "personal")!;
+    expect(personal.role).toBe("owner");
+    const before = (await core.invoke("wos:org-apps", { organizationId: personal.id })) as OrgApps;
+    const buildRow = before.yourApps.find((a) => a.app.id === "build")!;
+    expect(buildRow.entitlement.state).toBe("enabled");
+    const off = (await core.invoke("wos:disable-app", {
+      organizationId: personal.id,
+      app: "build",
+      expectedRowVersion: buildRow.entitlement.rowVersion,
+    })) as OrgApps["yourApps"][number];
+    expect(gate).toEqual([true, false]);
+    await expect(core.invoke("wos:list-targets", undefined)).rejects.toMatchObject({ code: "NOT_ENTITLED" });
+    expect(core.shellState().build.reason).toMatch(/NOT ENABLED/);
+    await core.invoke("wos:enable-app", { organizationId: personal.id, app: "build", expectedRowVersion: off.entitlement.rowVersion });
+    expect(gate).toEqual([true, false, true]);
+    expect(core.shellState().navigation.map((n) => n.id)).toEqual(["build.targets", "build.work", "build.contributions"]);
 
     // GitHub device flow, granted by the fake GitHub while the orchestrator polls.
     idle.push(async () => {

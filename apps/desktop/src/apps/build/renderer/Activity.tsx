@@ -4,8 +4,8 @@
  */
 import type { DomainEvent } from "@waronsaas/contracts";
 import { useEffect, useRef } from "react";
-import type { RunInfo } from "../../shared/ipc.js";
-import { clock, type LogLine, upper } from "../lib/format.js";
+import type { RunInfo } from "../../../shared/ipc.js";
+import { clock, type LogLine, upper } from "../../../renderer/lib/format.js";
 
 export interface LogEntry {
   seq: number;

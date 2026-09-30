@@ -1,5 +1,5 @@
 /** S-4: the session lives only in the OS keychain (safeStorage), never as a plain file; plus the public-route client. */
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -66,6 +66,16 @@ describe("local settings file", () => {
       detachAfterSubmit: true,
       preferredModel: "sol",
       eventsPollSeconds: 5,
+      environmentUrl: "https://core.waronsaas.com",
+      organizationId: null,
+      buildOnDevice: false,
+    });
+    // A tampered file cannot point the environment at a non-https address or switch Build on with a non-boolean.
+    writeFileSync(path, JSON.stringify({ environmentUrl: "http://evil.example", buildOnDevice: "yes", organizationId: "x" }));
+    expect(fileSettingsStore(path, defaultSettings("dev")).get()).toMatchObject({
+      environmentUrl: "https://core.waronsaas.com",
+      buildOnDevice: false,
+      organizationId: null,
     });
     rmSync(path);
     expect(fileSettingsStore(path, defaultSettings("dev")).get()).toEqual(defaultSettings("dev"));

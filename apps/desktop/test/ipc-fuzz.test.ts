@@ -4,11 +4,12 @@
  */
 import { AGENT_POLICY_V1, type Orchestrator } from "@waronsaas/contracts";
 import { describe, expect, it } from "vitest";
-import { createDesktopCore } from "../src/main/core.js";
+import { createDesktopCore, type DesktopCore } from "../src/main/core.js";
+import { createHandlerRegistry } from "../src/main/handlers.js";
 import type { PublicApi } from "../src/main/public-api.js";
 import { defaultSettings, memorySettingsStore } from "../src/main/settings.js";
 import { isInvokeChannel, VALIDATORS, validatePayload } from "../src/main/validate.js";
-import { IPC_CHANNELS, type InvokeChannel } from "../src/shared/ipc.js";
+import { BUILD_CHANNEL_LIST, IPC_CHANNELS, type InvokeChannel, SHELL_CHANNEL_LIST } from "../src/shared/ipc.js";
 import { APP_INFO } from "./support.js";
 
 const HOSTILE: unknown[] = [
@@ -50,7 +51,7 @@ const HOSTILE: unknown[] = [
   { apiBaseUrl: "https://evil.example" },
 ];
 
-function trap(): { calls: string[]; orchestrator: Orchestrator; publicApi: PublicApi; opened: string[] } {
+function trap(): { calls: string[]; orchestrator: Orchestrator; publicApi: PublicApi; opened: string[]; any: object } {
   const calls: string[] = [];
   const handler: ProxyHandler<object> = {
     get:
@@ -60,8 +61,76 @@ function trap(): { calls: string[]; orchestrator: Orchestrator; publicApi: Publi
         return Promise.resolve(null);
       },
   };
-  return { calls, orchestrator: new Proxy({}, handler) as Orchestrator, publicApi: new Proxy({}, handler) as PublicApi, opened: [] };
+  return {
+    calls,
+    orchestrator: new Proxy({}, handler) as Orchestrator,
+    publicApi: new Proxy({}, handler) as PublicApi,
+    opened: [],
+    any: new Proxy({}, handler),
+  };
 }
+
+/** A core whose every dependency records calls: nothing may be reached by a refused payload. */
+function trappedCore(t: ReturnType<typeof trap>, settings = memorySettingsStore(defaultSettings("dev"))): DesktopCore {
+  return createDesktopCore({
+    orchestrator: t.orchestrator,
+    publicApi: t.publicApi,
+    platform: t.any as never,
+    environment: t.any as never,
+    cloudCoreUrl: "https://core.waronsaas.com",
+    installer: t.any as never,
+    settings,
+    policy: AGENT_POLICY_V1,
+    appInfo: APP_INFO,
+    emit: () => undefined,
+    openExternal: async (u) => {
+      t.opened.push(u);
+    },
+  });
+}
+
+describe("S-40: Build's handlers exist only while the gate is open", () => {
+  it("the shell's channels are registered once; Build's are added on open and removed on close", () => {
+    const handlers = new Map<string, unknown>();
+    const reg = createHandlerRegistry(
+      { handle: (c, l) => void handlers.set(c, l), removeHandler: (c) => void handlers.delete(c) },
+      () => async () => undefined,
+    );
+    reg.registerShell();
+    expect([...handlers.keys()].sort()).toEqual([...SHELL_CHANNEL_LIST].sort());
+    for (const c of BUILD_CHANNEL_LIST) expect(handlers.has(c), c).toBe(false);
+    reg.setBuild(true);
+    for (const c of BUILD_CHANNEL_LIST) expect(handlers.has(c), c).toBe(true);
+    reg.setBuild(true);
+    expect(handlers.size).toBe(SHELL_CHANNEL_LIST.length + BUILD_CHANNEL_LIST.length);
+    reg.setBuild(false);
+    expect([...handlers.keys()].sort()).toEqual([...SHELL_CHANNEL_LIST].sort());
+    expect(reg.registered()).toEqual([...SHELL_CHANNEL_LIST].sort());
+  });
+
+  it("with Build off the core refuses every Build channel before any dependency is touched (IPC fuzz, S-40)", async () => {
+    const t = trap();
+    const core = trappedCore(t);
+    for (const c of BUILD_CHANNEL_LIST) {
+      for (const payload of [
+        undefined,
+        { abu: "salesforce/contacts#04", model: "opus" },
+        { slug: "salesforce", feature: "contacts" },
+        ...HOSTILE,
+      ]) {
+        await expect(core.invoke(c, payload), c).rejects.toBeDefined();
+      }
+    }
+    expect(t.calls).toEqual([]);
+    expect(core.buildGateOpen()).toBe(false);
+  });
+
+  it("Build and shell channels do not overlap and cover every invoke channel", () => {
+    const all = Object.values(IPC_CHANNELS).filter((c) => c !== IPC_CHANNELS.events);
+    expect(new Set([...BUILD_CHANNEL_LIST, ...SHELL_CHANNEL_LIST]).size).toBe(all.length);
+    expect(BUILD_CHANNEL_LIST).toEqual(expect.arrayContaining(["wos:build", "wos:review", "wos:release", "wos:status", "wos:link-github"]));
+  });
+});
 
 describe("IPC payload validation", () => {
   it("every invoke channel has a validator and nothing else does", () => {
@@ -82,22 +151,21 @@ describe("IPC payload validation", () => {
     "wos:review",
     "wos:release",
     "wos:open-external",
+    "wos:set-environment",
+    "wos:environment-sign-in",
+    "wos:environment-sign-in-code",
+    "wos:select-organization",
+    "wos:org-apps",
+    "wos:enable-app",
+    "wos:disable-app",
+    "wos:set-build-on-device",
+    "wos:show-module",
   ];
 
   it.each(withPayload)("%s refuses every hostile payload before any side effect", async (channel) => {
     const t = trap();
     const settings = memorySettingsStore(defaultSettings("dev"));
-    const core = createDesktopCore({
-      orchestrator: t.orchestrator,
-      publicApi: t.publicApi,
-      settings,
-      policy: AGENT_POLICY_V1,
-      appInfo: APP_INFO,
-      emit: () => undefined,
-      openExternal: async (u) => {
-        t.opened.push(u);
-      },
-    });
+    const core = trappedCore(t, settings);
     for (const payload of HOSTILE) {
       await expect(core.invoke(channel, payload), `${channel} ${JSON.stringify(payload)?.slice(0, 60)}`).rejects.toBeDefined();
     }
@@ -118,19 +186,33 @@ describe("IPC payload validation", () => {
   it("set-settings refuses hostile payloads without touching the store", async () => {
     const settings = memorySettingsStore(defaultSettings("dev"));
     const t = trap();
-    const core = createDesktopCore({
-      orchestrator: t.orchestrator,
-      publicApi: t.publicApi,
-      settings,
-      policy: AGENT_POLICY_V1,
-      appInfo: APP_INFO,
-      emit: () => undefined,
-      openExternal: async () => undefined,
-    });
+    const core = trappedCore(t, settings);
     for (const p of HOSTILE.filter((x) => !(x && typeof x === "object" && !Array.isArray(x) && Object.keys(x).length === 0))) {
       await core.invoke("wos:set-settings", p).catch(() => undefined);
     }
     expect(settings.get()).toEqual(defaultSettings("dev"));
+  });
+
+  it("setSettings cannot set the environment, the organization or the Build switch (they have their own channels)", () => {
+    for (const k of ["environmentUrl", "organizationId", "buildOnDevice"])
+      expect(() => validatePayload("wos:set-settings", { [k]: k === "buildOnDevice" ? true : "x" })).toThrow(/unexpected field/);
+  });
+
+  it("the environment address: https, or http on loopback only; the origin is kept", () => {
+    expect(validatePayload("wos:set-environment", { url: "https://wos.example-company.com/" })).toEqual({
+      url: "https://wos.example-company.com",
+    });
+    expect(validatePayload("wos:set-environment", { url: "http://localhost:8080" })).toEqual({ url: "http://localhost:8080" });
+    expect(validatePayload("wos:set-environment", { url: null })).toEqual({ url: null });
+    for (const url of [
+      "http://wos.example.com",
+      "https://u:p@wos.example.com",
+      "https://wos.example.com/path",
+      "https://x.test/?q=1",
+      "file:///etc",
+      "javascript:1",
+    ])
+      expect(() => validatePayload("wos:set-environment", { url }), url).toThrow(/environment address/);
   });
 
   it("accepts the valid shapes", () => {
