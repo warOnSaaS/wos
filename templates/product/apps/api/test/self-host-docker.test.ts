@@ -1,13 +1,15 @@
 /**
  * V1 proof step 8 in Docker (S-41): `docker compose` Core with WOS_APPS=crm on networks with NO route out, wOS Web
- * pointed at it shows CRM. Runs only with WOS_DOCKER_PROOF=1 (`npm run proof:self-host`); needs Docker.
+ * pointed at it shows CRM. Runs only with WOS_DOCKER_PROOF=1 (`npm run proof:self-host`, here or at the repository
+ * root); needs Docker.
  */
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 
-const dir = fileURLToPath(new URL("..", import.meta.url));
+/** The product repository root: docker-compose.yml, docker-compose.proof.yml and proof/ live there (B-0003-suite-shell). */
+const dir = fileURLToPath(new URL("../../..", import.meta.url));
 const project = `wos-proof-${randomBytes(3).toString("hex")}`;
 const env = {
   ...process.env,
@@ -33,8 +35,8 @@ describe.skipIf(process.env.WOS_DOCKER_PROOF !== "1")("suite-shell V1 proof step
   });
 
   it("self-hosted Core with WOS_APPS=crm and no route to warOnSaaS; wOS Web shows CRM", { timeout: 300_000 }, () => {
-    execFileSync(process.execPath, ["build.mjs"], { cwd: dir, stdio: "ignore" });
-    execFileSync(process.execPath, ["build.mjs"], { cwd: `${dir}../web`, stdio: "ignore" });
+    execFileSync(process.execPath, ["build.mjs"], { cwd: `${dir}apps/api`, stdio: "ignore" });
+    execFileSync(process.execPath, ["build.mjs"], { cwd: `${dir}apps/web`, stdio: "ignore" });
     compose("up", "-d", "--build", "--wait", "postgres", "core", "web");
 
     // Nothing is published and the networks are internal: neither Core nor the probe can reach warOnSaaS.

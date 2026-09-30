@@ -11,6 +11,7 @@ import { verifyEnvironmentToken as vendoredVerify } from "../templates/product/m
 
 import "../templates/product/apps/api/test/manifests.test.js";
 import "../templates/product/apps/api/test/core.test.js";
+import "../templates/product/apps/api/test/mail.test.js";
 import "../templates/product/apps/api/test/registry.test.js";
 import "../templates/product/apps/api/test/postgres.test.js";
 import "../templates/product/apps/api/test/self-host-docker.test.js";

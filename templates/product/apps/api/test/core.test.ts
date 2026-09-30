@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { BUNDLED_APPS } from "../../../applications/registry.js";
 import {
   ActiveApps,
+  CoreRoutes,
   ENVIRONMENT_TOKEN_SKEW_SECONDS,
   ENVIRONMENT_TOKEN_TTL_SECONDS,
   EnvironmentDescriptor,
@@ -176,11 +177,68 @@ describe("suite-shell Core: local sign-in", () => {
     expect((await app.request("/v1/core/auth/local/redeem", post({ requestId: late.requestId, code: late.code }))).status).toBe(401);
   });
 
-  it("logout ends the session", async () => {
+  it("logout ends the session; it needs a Bearer (auth environment_session)", async () => {
     const { app, mailer } = selfHostedCore();
     const { token } = await signInLocal(app, mailer, "owner@example.test");
-    await app.request("/v1/core/auth/logout", { method: "POST", ...bearer(token) });
+    expect((await app.request(CoreRoutes.logout.path, { method: "POST" })).status).toBe(401);
+    const out = await app.request(CoreRoutes.logout.path, { method: "POST", ...bearer(token) });
+    expect(out.status).toBe(200);
+    expect(CoreRoutes.logout.response.parse(await out.json())).toEqual({ ok: true });
     expect((await app.request("/v1/core/apps", bearer(token))).status).toBe(401);
+    expect((await app.request(CoreRoutes.logout.path, { method: "POST", ...bearer(token) })).status).toBe(401);
+  });
+
+  it("serves exactly the contracted routes and shapes (B-0001-suite-shell, contracts 5.6.0)", async () => {
+    expect(CoreRoutes.localSignInStart.path).toBe("/v1/core/auth/local/start");
+    const { app, mailer } = selfHostedCore();
+    const bad = await app.request(
+      CoreRoutes.localSignInRedeem.path,
+      post({ requestId: "0192f000-0000-7000-8000-000000000001", code: "abcd-efgh" }),
+    );
+    expect(bad.status).toBe(422);
+    const start = await app.request(CoreRoutes.localSignInStart.path, post({ email: "owner@example.test" }));
+    const started = CoreRoutes.localSignInStart.response.parse(await start.json());
+    const code = mailer.sent.find((m) => m.requestId === started.requestId)!.code;
+    const res = await app.request(CoreRoutes.localSignInRedeem.path, post({ requestId: started.requestId, code }));
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(Object.keys(body).sort()).toEqual(["expiresAt", "organizationId", "role", "token", "userId"]);
+    expect(CoreRoutes.localSignInRedeem.response.safeParse(body).success).toBe(true);
+  });
+
+  it("a wOS Cloud Core answers 404 to local sign-in; logout with an environment token is a no-op", async () => {
+    const key = testKey();
+    const { app } = cloudCore({ keys: () => [key] });
+    expect((await app.request(CoreRoutes.localSignInStart.path, post({ email: "owner@example.test" }))).status).toBe(404);
+    expect(
+      (await app.request(CoreRoutes.localSignInRedeem.path, post({ requestId: "0192f000-0000-7000-8000-000000000001", code: "ABCD-EFGH" })))
+        .status,
+    ).toBe(404);
+    const token = mint(key, { apps: ["core"] });
+    const out = await app.request(CoreRoutes.logout.path, { method: "POST", ...bearer(token) });
+    expect(out.status).toBe(200);
+    expect(await out.json()).toEqual({ ok: true });
+    expect((await app.request("/v1/core/apps", bearer(token))).status).toBe(200);
+  });
+
+  it("a failed email still answers 202 (no enumeration), logs the failure and never the code", async () => {
+    const lines: string[] = [];
+    const codes: string[] = [];
+    const { app } = selfHostedCore({
+      mailer: {
+        sendSigninCode: async (m) => {
+          codes.push(m.code);
+          throw new Error("smtp down");
+        },
+      },
+      log: (msg, fields) => lines.push(`${msg} ${JSON.stringify(fields)}`),
+    });
+    const res = await app.request(CoreRoutes.localSignInStart.path, post({ email: "owner@example.test" }));
+    expect(res.status).toBe(202);
+    expect(codes).toHaveLength(1);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("sign-in email failed");
+    expect(lines[0]).toContain("smtp down");
+    expect(lines[0]).not.toContain(codes[0]!);
   });
 });
 

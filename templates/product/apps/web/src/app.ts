@@ -2,14 +2,20 @@
  * wOS Web (app.waronsaas.com, or any self-hosted Core): the authenticated shell. It reads its environment's
  * descriptor to choose the sign-in (the wOS account on wOS Cloud, local sign-in on a self-hosted Core), shows
  * Your Apps / Available Apps, builds navigation from the active manifests and renders each active app's compiled-in
- * web page. Everything is server-rendered; the browser holds one sealed, HttpOnly cookie.
+ * web page. Everything is server-rendered; the browser holds sealed, HttpOnly, host-only cookies (no Domain, S-43).
  */
 import { randomBytes, randomUUID } from "node:crypto";
 import { Hono, type Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { BUNDLED_APPS } from "../../../applications/registry.js";
 import { type AppRow, renderAppsPage } from "../../../applications/core/web/index.js";
-import type { ActiveApps, EnvironmentDescriptor, OrganizationView, OrgRole } from "../../../modules/core-contracts/src/index.js";
+import {
+  type ActiveApps,
+  type EnvironmentDescriptor,
+  type OrganizationView,
+  type OrgRole,
+  WEB_APP_SIGNIN_CODE_PATH,
+} from "../../../modules/core-contracts/src/index.js";
 import { type Bundle, loadBundle } from "../../../modules/core/src/bundle.js";
 import type { Fetch } from "../../../modules/core/src/env-token.js";
 import { escapeHtml as e } from "../../../modules/core/src/html.js";
@@ -46,6 +52,7 @@ type CloudSession = {
   env: { token: string; expiresAt: string; orgId: string } | null;
 };
 type Session = LocalSession | CloudSession;
+/** A sign-in in progress, sealed in this browser's cookie. `pollSecret` (cloud only) binds the emailed link to it. */
 type Pending = { kind: "local" | "cloud"; requestId: string; pollSecret: string | null; email: string };
 
 const SESSION_COOKIE = "wos_web";
@@ -198,15 +205,52 @@ export function createWebApp(deps: WebDeps): Hono {
       pending = { kind: "local", requestId: (r.body as { requestId: string }).requestId, pollSecret: null, email };
     } else return c.text("OpenID Connect sign-in is not built yet", 501);
     setCookie(c, PENDING_COOKIE, sealer.seal(pending), { ...cookieOpts, maxAge: 15 * 60 });
-    return c.redirect("/sign-in/code");
+    return c.redirect(WEB_APP_SIGNIN_CODE_PATH);
   });
 
-  app.get("/sign-in/code", async (c) => {
+  /**
+   * The code page, and where the emailed link lands for a wOS Cloud sign-in (HOSTS.app + WEB_APP_SIGNIN_CODE_PATH
+   * + ?r=<requestId>&t=<linkToken>, S-43). The link is redeemed only with the pollSecret sealed in THIS browser's
+   * pending cookie for that same request, so it is bound to the browser that started sign-in. Opened anywhere else,
+   * the page says so; it never shows the link token and never offers it as a code.
+   */
+  app.get(WEB_APP_SIGNIN_CODE_PATH, async (c) => {
     const d = await core.descriptor();
     const p = sealer.open<Pending>(getCookie(c, PENDING_COOKIE));
+    const r = c.req.query("r");
+    const t = c.req.query("t");
+    if (r !== undefined || t !== undefined) {
+      const otherBrowser = () => {
+        const n = nonce();
+        return html(
+          c,
+          n,
+          bare({
+            title: "Sign in · wOS",
+            nonce: n,
+            envName: d.name,
+            body: `<h1>OPEN IT WHERE YOU STARTED</h1><p>This sign-in link works only in the browser where you asked for it. Open the link there, or type the code from the same email in that browser.</p><p><a href="/sign-in">START AGAIN HERE</a></p>`,
+          }),
+          400,
+        );
+      };
+      if (!r || !t || !p || p.kind !== "cloud" || p.requestId !== r || !p.pollSecret || d.auth.kind !== "wos_cloud") return otherBrowser();
+      try {
+        const tokens = await cloudFor(d)!.redeemSignIn(p.requestId, p.pollSecret, { linkToken: t });
+        save(c, { kind: "cloud", sid: randomUUID(), tokens, orgId: null, env: null });
+      } catch (err) {
+        if (err instanceof CloudError && err.status < 500) return otherBrowser();
+        throw err;
+      }
+      deleteCookie(c, PENDING_COOKIE, cookieOpts);
+      return c.redirect("/core/apps");
+    }
     if (!p) return c.redirect("/sign-in");
     const n = nonce();
-    const where = d.auth.kind === "local" ? "Your operator's wOS Core sends it by email, or writes it to its log." : "Check your email.";
+    const where =
+      d.auth.kind === "local"
+        ? "Your operator's wOS Core sends it by email, or writes it to its log."
+        : "Check your email: open its link in this browser, or type its code here.";
     return html(
       c,
       n,
@@ -215,12 +259,12 @@ export function createWebApp(deps: WebDeps): Hono {
         nonce: n,
         envName: d.name,
         body: `<h1>ENTER CODE</h1><p>A code was requested for ${e(p.email)}. ${e(where)}</p>
-<form method="post" action="/sign-in/code"><p><label>CODE<br><input name="code" required pattern="[A-HJ-NP-Za-hj-np-z2-9]{4}-?[A-HJ-NP-Za-hj-np-z2-9]{4}" autocomplete="one-time-code"></label></p><button>SIGN IN</button></form>`,
+<form method="post" action="${WEB_APP_SIGNIN_CODE_PATH}"><p><label>CODE<br><input name="code" required pattern="[A-HJ-NP-Za-hj-np-z2-9]{4}-?[A-HJ-NP-Za-hj-np-z2-9]{4}" autocomplete="one-time-code"></label></p><button>SIGN IN</button></form>`,
       }),
     );
   });
 
-  app.post("/sign-in/code", async (c) => {
+  app.post(WEB_APP_SIGNIN_CODE_PATH, async (c) => {
     const d = await core.descriptor();
     const p = sealer.open<Pending>(getCookie(c, PENDING_COOKIE));
     if (!p) return c.redirect("/sign-in");
@@ -238,7 +282,7 @@ export function createWebApp(deps: WebDeps): Hono {
           title: "Code · wOS",
           nonce: n,
           envName: d.name,
-          body: `<p class="error">That code was not accepted.</p><p><a href="/sign-in/code">TRY AGAIN</a></p>`,
+          body: `<p class="error">That code was not accepted.</p><p><a href="${WEB_APP_SIGNIN_CODE_PATH}">TRY AGAIN</a></p>`,
         }),
         401,
       );
@@ -250,14 +294,15 @@ export function createWebApp(deps: WebDeps): Hono {
       save(c, { kind: "local", sid, token: b.token, expiresAt: b.expiresAt, role: b.role });
     } else {
       try {
-        const tokens = await cloudFor(d)!.redeemSignIn(p.requestId, p.pollSecret, code);
+        if (!p.pollSecret) return fail();
+        const tokens = await cloudFor(d)!.redeemSignIn(p.requestId, p.pollSecret, { code });
         save(c, { kind: "cloud", sid, tokens, orgId: null, env: null });
       } catch (err) {
         if (err instanceof CloudError && err.status < 500) return fail();
         throw err;
       }
     }
-    deleteCookie(c, PENDING_COOKIE, { path: "/" });
+    deleteCookie(c, PENDING_COOKIE, cookieOpts);
     return c.redirect("/core/apps");
   });
 
@@ -270,7 +315,7 @@ export function createWebApp(deps: WebDeps): Hono {
         const cloud = cloudFor(await core.descriptor());
         await cloud?.logout(s.tokens.access);
       }
-      deleteCookie(c, SESSION_COOKIE, { path: "/" });
+      deleteCookie(c, SESSION_COOKIE, cookieOpts);
     }
     return c.redirect("/sign-in");
   });
