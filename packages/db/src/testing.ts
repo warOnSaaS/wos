@@ -13,7 +13,13 @@ export const ADMIN_URL = process.env.WOS_TEST_DATABASE_URL ?? "";
 export const HAS_DB = ADMIN_URL.length > 0;
 export const MIGRATIONS_DIR = fileURLToPath(new URL("../migrations", import.meta.url));
 export const APP_PASSWORD = "wos_app_test_password";
-/** Advisory lock taken on the maintenance database while creating databases (files run in parallel). */
+/**
+ * Advisory lock taken on the maintenance database while the migrated template is checked, built and cloned (files run
+ * in parallel). Only that needs it: creating an empty database or dropping a uniquely named one touches no shared
+ * template. Holding it for every drop queued afterAll hooks behind every other file's create and drop (each DROP
+ * DATABASE waits for an immediate checkpoint), past the hook timeout under a loaded full run: the file-level
+ * "Hook timed out" failures.
+ */
 const CREATE_LOCK = 7_313_399;
 
 export function urlFor(database: string, user?: { name: string; password: string }): string {
@@ -26,10 +32,10 @@ export function urlFor(database: string, user?: { name: string; password: string
   return u.toString();
 }
 
-async function withAdmin<T>(fn: (sql: postgres.Sql) => Promise<T>): Promise<T> {
+async function withAdmin<T>(fn: (sql: postgres.Sql) => Promise<T>, options: { lock: boolean } = { lock: true }): Promise<T> {
   const sql = postgres(ADMIN_URL, { max: 1, onnotice: () => {} });
   try {
-    await sql`select pg_advisory_lock(${CREATE_LOCK})`;
+    if (options.lock) await sql`select pg_advisory_lock(${CREATE_LOCK})`;
     return await fn(sql);
   } finally {
     await sql.end({ timeout: 5 });
@@ -45,14 +51,17 @@ export interface ScratchDb {
 /** An empty database (no migrations). */
 export async function createEmptyDb(prefix = "wos_t"): Promise<ScratchDb> {
   const name = `${prefix}_${randomBytes(6).toString("hex")}`;
-  await withAdmin((sql) => sql.unsafe(`create database ${name}`));
+  await withAdmin((sql) => sql.unsafe(`create database ${name}`), { lock: false });
   return { name, ownerUrl: urlFor(name), drop: () => dropDb(name) };
 }
 
 export async function dropDb(name: string): Promise<void> {
-  await withAdmin(async (sql) => {
-    await sql.unsafe(`drop database if exists ${name} with (force)`);
-  });
+  await withAdmin(
+    async (sql) => {
+      await sql.unsafe(`drop database if exists ${name} with (force)`);
+    },
+    { lock: false },
+  );
 }
 
 export interface MigratedDb extends ScratchDb {

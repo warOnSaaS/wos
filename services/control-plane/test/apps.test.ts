@@ -264,6 +264,24 @@ describe.skipIf(!HAS_DB)("AppRoutes", () => {
     expect(new Set(events.map((e) => e.visibility))).toEqual(new Set(["private"]));
   });
 
+  it("parallel enables of one app: exactly one wins, the rest answer 409 CONFLICT", async () => {
+    const team = await h.call("POST", "/v1/orgs", { token: outsider.token, idem: true, body: { name: "Race Team", slug: "race-team" } });
+    expect(team.status).toBe(200);
+    const results = await Promise.all(
+      Array.from({ length: 8 }, () =>
+        h.call("POST", `/v1/orgs/${team.body.id}/apps/crm/enable`, {
+          token: outsider.token,
+          idem: true,
+          body: { expectedRowVersion: null },
+        }),
+      ),
+    );
+    expect(results.map((r) => r.status).sort()).toEqual([200, 409, 409, 409, 409, 409, 409, 409]);
+    const [n] = await h.owner<{ n: number }[]>`
+      select count(*)::int as n from wos.events where type = 'entitlement.changed' and payload->>'organizationId' = ${team.body.id}`;
+    expect(n!.n).toBe(1);
+  });
+
   it("mints a 15-minute EdDSA environment token with the org's active apps, verifiable with the published keys", async () => {
     const team = (await h.owner<{ id: string }[]>`select id from wos.organizations where slug = 'acme-sales'`)[0]!.id;
     const res = await h.call("POST", `/v1/environments/${WOS_CLOUD_ENVIRONMENT_ID}/token`, {

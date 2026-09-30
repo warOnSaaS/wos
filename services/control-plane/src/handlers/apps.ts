@@ -100,6 +100,8 @@ async function changeEntitlement(ctx: HandlerCtx<"enableApp" | "disableApp">, ev
   if (role !== "owner" && role !== "admin")
     throw new ApiFailure("FORBIDDEN", "only an owner or admin of the organization changes its apps");
   return inTransaction(deps.sql, asAccount(caller), async (tx) => {
+    // One entitlement change per organization at a time: the dependency and dependent checks read the org's other rows.
+    await tx`select 1 from wos.organizations where id = ${orgId} for update`;
     const releases = await currentReleases(tx);
     const release = releases.find((r) => r.app_id === app);
     if (!release) throw new ApiFailure("NOT_FOUND", `app ${app} has no published release`);
