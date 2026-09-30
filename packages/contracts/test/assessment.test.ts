@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { ASSESSMENT_SCHEMA, AssessmentBlock, AssessmentRecord, extractAssessmentBlock, REFERENCE_SOURCE } from "../src/assessment.js";
+import {
+  ASSESSMENT_SCHEMA,
+  ASSESSMENT_SCHEMA_V2,
+  AssessmentBlock,
+  AssessmentRecord,
+  CURRENT_ASSESSMENT_SCHEMA,
+  extractAssessmentBlock,
+  hasGaps,
+  MAX_GAPS,
+  REFERENCE_SOURCE,
+} from "../src/assessment.js";
 
 // A structurally valid block for tests. Test data only: never written to docs/assessments.
 const thesis = { importance: 5, compelling: 5, confidence: "low" };
@@ -40,11 +50,81 @@ describe("AssessmentBlock (wos-assessment/v1)", () => {
     ["bad date", (b: ReturnType<typeof block>) => (b.date = "1 Oct 2026")],
     ["bad version", (b: ReturnType<typeof block>) => (b.paperVersion = "v0.7")],
     ["empty model", (b: ReturnType<typeof block>) => (b.evaluator.model = " ")],
-    ["wrong schema", (b: ReturnType<typeof block>) => ((b as { schema: string }).schema = "wos-assessment/v2")],
+    ["unknown schema", (b: ReturnType<typeof block>) => ((b as { schema: string }).schema = "wos-assessment/v9")],
+    // A v1 block relabelled v2 lacks the required lists.
+    ["v2 without gaps and improvements", (b: ReturnType<typeof block>) => ((b as { schema: string }).schema = "wos-assessment/v2")],
   ])("rejects %s", (_name, mutate) => {
     const b = block();
     mutate(b);
     expect(AssessmentBlock.safeParse(b).success).toBe(false);
+  });
+});
+
+// ------------------------------------------------------------------ v2 (contracts 5.2.0)
+const gap = (id: string, severity = "high", part = "I") => ({ id, title: `Gap ${id}`, concerns: "section 3", part, severity });
+const improvement = (id: string, g: string | null) => ({
+  id,
+  change: `Publish the data behind ${id}`,
+  gap: g,
+  raises: ["evidence", "credibility"],
+});
+const blockV2 = () => ({
+  ...block(),
+  schema: ASSESSMENT_SCHEMA_V2,
+  paperVersion: "0.9",
+  gaps: [gap("duplication-share-unsourced"), gap("no-pilot-data", "medium", "II")],
+  improvements: [improvement("source-duplication-share", "duplication-share-unsourced"), improvement("run-a-public-pilot", null)],
+});
+
+describe("AssessmentBlock (wos-assessment/v2: gaps and improvements)", () => {
+  it("the current paper asks for v2; v1 keeps its old value", () => {
+    expect(CURRENT_ASSESSMENT_SCHEMA).toBe("wos-assessment/v2");
+    expect(ASSESSMENT_SCHEMA).toBe("wos-assessment/v1");
+  });
+
+  it("accepts a complete v2 block, and empty lists (the agent looked and found none)", () => {
+    const r = AssessmentBlock.safeParse(blockV2());
+    expect(r.success).toBe(true);
+    expect(r.success && hasGaps(r.data) && r.data.gaps.map((g) => g.id)).toEqual(["duplication-share-unsourced", "no-pilot-data"]);
+    expect(AssessmentBlock.safeParse({ ...blockV2(), gaps: [], improvements: [] }).success).toBe(true);
+  });
+
+  it("still accepts a v1 block, and hasGaps tells them apart", () => {
+    const r = AssessmentBlock.parse(block());
+    expect(hasGaps(r)).toBe(false);
+  });
+
+  it("keeps the v1 rules (the total is the sum)", () => {
+    const b = blockV2();
+    b.stage1.importance.total = 51;
+    expect(JSON.stringify(AssessmentBlock.safeParse(b).error?.issues)).toContain("sum of the five dimensions");
+  });
+
+  it.each([
+    [
+      "more than MAX_GAPS gaps",
+      (b: ReturnType<typeof blockV2>) => (b.gaps = Array.from({ length: MAX_GAPS + 1 }, (_, i) => gap(`gap-${i}`))),
+    ],
+    ["a gap id that is not a slug", (b: ReturnType<typeof blockV2>) => (b.gaps[0]!.id = "Duplication Share")],
+    ["a gap id too short", (b: ReturnType<typeof blockV2>) => (b.gaps[0]!.id = "ab")],
+    ["a title over 120 characters", (b: ReturnType<typeof blockV2>) => (b.gaps[0]!.title = "x".repeat(121))],
+    ["an unknown severity", (b: ReturnType<typeof blockV2>) => (b.gaps[0]!.severity = "critical")],
+    ["an unknown part", (b: ReturnType<typeof blockV2>) => (b.gaps[0]!.part = "III")],
+    ["duplicate gap ids", (b: ReturnType<typeof blockV2>) => (b.gaps[1]!.id = b.gaps[0]!.id)],
+    ["an improvement tied to a gap not in the block", (b: ReturnType<typeof blockV2>) => (b.improvements[0]!.gap = "not-a-gap-here")],
+    ["an improvement that raises no score", (b: ReturnType<typeof blockV2>) => (b.improvements[0]!.raises = [])],
+    ["an improvement that raises an unknown score", (b: ReturnType<typeof blockV2>) => (b.improvements[0]!.raises = ["vibes"])],
+    ["a change over 240 characters", (b: ReturnType<typeof blockV2>) => (b.improvements[0]!.change = "x".repeat(241))],
+    ["a missing improvements list", (b: ReturnType<typeof blockV2>) => delete (b as { improvements?: unknown }).improvements],
+  ])("rejects %s", (_name, mutate) => {
+    const b = blockV2();
+    mutate(b);
+    expect(AssessmentBlock.safeParse(b).success).toBe(false);
+  });
+
+  it("extracts a v2 block, including from a json fence that declares v2", () => {
+    const r = extractAssessmentBlock(`intro\n\n\`\`\`json\n${JSON.stringify(blockV2())}\n\`\`\`\n`);
+    expect(r.ok && hasGaps(r.block) && r.block.improvements[0]!.gap).toBe("duplication-share-unsourced");
   });
 });
 
@@ -109,6 +189,18 @@ describe("AssessmentRecord", () => {
 
   it("accepts a reference run", () => {
     expect(AssessmentRecord.safeParse(record()).success).toBe(true);
+  });
+
+  it("accepts a v1 record (written under 5.1.0) and a v2 record", () => {
+    expect(AssessmentRecord.safeParse(record()).success).toBe(true);
+    const v2 = {
+      ...record(),
+      id: "2026-10-01-v0.9-test-model",
+      servedPaperVersion: "0.9",
+      reportFile: "2026-10-01-v0.9-test-model.md",
+      block: blockV2(),
+    };
+    expect(AssessmentRecord.safeParse({ ...v2, rawBlock: JSON.stringify(blockV2()) }).success).toBe(true);
   });
 
   it("accepts only the reference source", () => {

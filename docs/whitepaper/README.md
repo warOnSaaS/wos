@@ -51,4 +51,21 @@ The prompt on /whitepaper lives in `apps/web/lib/handoff-prompt.ts` (`HANDOFF_PR
 
 The brief asks the evaluating agent to end its report with a `wos-assessment` score block (spec in the core, "The score block"; machine schema `packages/contracts/src/assessment.ts`). warOnSaaS records only its own reference runs (`tools/assessments/run-reference.ts`, files in `docs/assessments/`), shown at https://waronsaas.com/assessments and https://waronsaas.com/whitepaper/assessments.md.
 
-**Anti-anchoring rule:** no recorded score may appear in the core, a companion file or the full pack, and the assessments file is never a companion. The paper and the prompt tell the agent to open the record only after writing its own block. `tests/assessments.test.ts` checks the template in the core parses against the schema and that the record stays out of the companions and the pack. When the score block changes, bump the schema (`wos-assessment/v2`) and the paper together.
+**Anti-anchoring rule:** no recorded score may appear in the core, a companion file or the full pack, and the assessments file is never a companion. The paper and the prompt tell the agent to open the record only after writing its own block. `tests/assessments.test.ts` checks the template in the core parses against the schema and that the record stays out of the companions and the pack. `scripts/check-numbers.mjs` fails the build if /whitepaper/read, /whitepaper.md, the download, /whitepaper/changes.md or a companion carries a score figure, a score ring or a link to a recorded run. The human handoff page /whitepaper shows the current version's self-assessment as score rings, after the handoff buttons and the prompt, under "Evaluating as an agent? Score first; these are our own runs." When the score block changes, bump the schema (next: `wos-assessment/v3`) and the paper together.
+
+## Self-assessment and gaps (since v0.9)
+
+Founder directive (2026-09-30): "The white paper should always ship with a self-assessment, as well as rooms for improvement, gaps, etc."
+
+- **Every version gets a self-assessment.** After a push to main that changes `WHITEPAPER.md`, `.github/workflows/self-assessment.yml` waits until https://waronsaas.com/whitepaper.md serves the new version, runs `tools/assessments/run-reference.ts --cli claude --commit` on the founder's `CLAUDE_CODE_OAUTH_TOKEN`, and pushes the recorded run (`docs/assessments/*` and the site's derived copies) to main. Codex (Astra) runs stay manual, on the founder's machine: Codex signs in with a ChatGPT login that cannot be automated.
+- **No version is superseded unassessed.** `apps/web/scripts/check-whitepaper-version.mjs` fails the build of a new version while any older version has no recorded run (`servedPaperVersion` match). v0.1 to v0.8 predate the rule and are exempt by a frozen list (`GRANDFATHERED_UNASSESSED` in `apps/web/scripts/wp-history-lib.mts`); never add to it. So v0.10 cannot ship until v0.9 has a run. Until the current version's run lands, /whitepaper, /whitepaper/changes and /assessments show SELF-ASSESSMENT PENDING.
+- **Gaps and improvements.** Since v0.9 the score block is `wos-assessment/v2` (contracts 5.2.0): at most 10 gaps (id slug, title, the section or thesis, Part I or II, severity) and at most 10 improvements (the change, the gap it answers, the scores it would raise). `wos-assessment/v1` records stay valid. The runner refuses a block in another schema than the one the served paper's template declares.
+- **The gap register** (https://waronsaas.com/assessments/gaps, `.md` for agents after scoring) lists every gap from the latest run of each version with its status. It is generated at build (`apps/web/scripts/sync-shared.mjs` into `apps/web/generated/gap-register.json`, rules in `buildGapRegister`).
+- **Changelog convention.** A version's changelog entry may cite gap ids it addresses or declines, one line each:
+
+  ```
+  - Gaps addressed: `duplication-share-unsourced`, `no-pilot-data`
+  - Gap declined: `token-needed`: the reason, in one sentence
+  ```
+
+  A gap from version N is addressed (or declined) by the newest later version whose entry cites its exact id; otherwise it is open. **Matching is by exact id only**, never by similar wording or a model's judgment: two runs that name the same problem with different ids stay two gaps. The build warns (it does not fail) when a new version's entry leaves a high-severity gap of the previous version's latest run unmentioned.

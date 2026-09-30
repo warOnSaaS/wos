@@ -12,12 +12,24 @@
  *   2. always: the last commit that changed the paper against its parent (skipped, with a note, when the parent is
  *      beyond a shallow clone's depth: Vercel clones main at depth 10);
  *   3. with full git history: every commit that changed the paper against the one before it.
- * The rules themselves are checkVersionGate in scripts/wp-history-lib.mts (tested in tests/wp-history.test.ts).
+ *
+ * The self-assessment rule (paper v0.9, docs/whitepaper/README.md): every version ships with a self-assessment, so no
+ * version is superseded unassessed. Every version older than the working tree's must have at least one recorded
+ * reference run (docs/assessments/*.json, servedPaperVersion match), except the frozen grandfather list (v0.1 to v0.8).
+ * The current version is exempt until the next bump: its run can only happen after it is deployed
+ * (.github/workflows/self-assessment.yml). Checked on the working tree only: runs are never removed, so the working
+ * tree's record covers every earlier state.
+ *
+ * Warning, never a failure: high-severity gaps from the previous version's latest run that the current version's
+ * changelog entry neither addresses nor declines ("Gaps addressed: `id`" / "Gap declined: `id`: reason").
+ *
+ * The rules themselves are checkVersionGate, checkAssessedGate and unmentionedHighGaps in scripts/wp-history-lib.mts
+ * (tested in tests/wp-history.test.ts and tests/self-assessment.test.ts).
  */
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { checkVersionGate } from "./wp-history-lib.mts";
+import { checkAssessedGate, checkVersionGate, extractChangelog, extractVersion, selfAssessmentPending, unmentionedHighGaps } from "./wp-history-lib.mts";
 
 const repo = join(import.meta.dirname, "..", "..", "..");
 const PAPER = "docs/whitepaper/WHITEPAPER.md";
@@ -76,6 +88,33 @@ if (!hasGit) {
     notes.push("shallow clone: the full history was not re-checked");
   }
 }
+
+// The self-assessment rule, on the working tree.
+const runs = (() => {
+  const dir = join(repo, "docs", "assessments");
+  if (existsSync(dir)) {
+    return readdirSync(dir)
+      .filter((f) => f.endsWith(".json"))
+      .map((f) => JSON.parse(readFileSync(join(dir, f), "utf8")));
+  }
+  // Without the repository's docs (should not happen in a build): the site's committed copy.
+  return JSON.parse(readFileSync(join(import.meta.dirname, "..", "generated", "assessments.json"), "utf8")).runs;
+})();
+const warnings = [];
+const current = extractVersion(now);
+if (current) {
+  const changelog = [...extractChangelog(now), ...extractChangelog(nowAppendices)];
+  const versions = [current, ...changelog.map((e) => e.version)];
+  for (const e of checkAssessedGate(current, versions, runs).errors) errors.push(`self-assessment: ${e}`);
+  const high = unmentionedHighGaps(runs, changelog, current);
+  if (high?.ids.length) {
+    warnings.push(
+      `v${current}'s changelog entry does not mention ${high.ids.length} high-severity gap(s) from v${high.version}'s latest self-assessment: ${high.ids.join(", ")}. Add "Gaps addressed: \`id\`" or "Gap declined: \`id\`: reason" lines (see /assessments/gaps).`,
+    );
+  }
+  notes.push(`${runs.length} recorded run(s); v${current} ${selfAssessmentPending(current, runs) ? "self-assessment pending" : "has its self-assessment"}`);
+}
+for (const w of warnings) console.warn(`check-whitepaper-version: WARNING: ${w}`);
 
 const unique = [...new Set(errors)];
 if (unique.length) {

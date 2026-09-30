@@ -77,6 +77,7 @@ export async function llmsTxt(): Promise<string> {
     `- [White paper, Markdown](${abs("/whitepaper.md")}): the core white paper (v${whitepaper().version}) in one file, written for agents. ${HANDOFF_PROMPT_SHORT}`,
     ...COMPANIONS.map((c) => `- [White paper companion: ${c.title}](${abs(`/whitepaper/${c.slug}.md`)}): ${c.about}.`),
     `- [Recorded trend of reference assessments](${abs(ASSESSMENTS_MD_PATH)}): not a companion. ${AFTER_SCORING}`,
+    `- [Gap register](${abs("/assessments/gaps.md")}): what warOnSaaS's own self-assessments found missing in each paper version, and what became of each gap. Not a companion; like the trend, read it only after you have written your own score block.`,
     `- [Sitemap](${abs("/sitemap.xml")})`,
     `- [GitHub](${LINKS.repo})`,
     "",

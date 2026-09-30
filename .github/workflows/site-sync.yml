@@ -21,6 +21,8 @@ on:
       - "apps/**"
       - "AGENTS.md"
       - "!apps/web/**"
+      # Recorded self-assessments (.github/workflows/self-assessment.yml commits them to main): data, not copy.
+      - "!docs/assessments/**"
   workflow_dispatch:
 
 # A burst of merges runs once, on the newest main.

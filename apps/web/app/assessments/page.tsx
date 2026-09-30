@@ -3,6 +3,7 @@ import { Empty } from "@/components/Empty";
 import { JsonLd } from "@/components/JsonLd";
 import { MarkerKey, ScoreChart } from "@/components/ScoreChart";
 import { Section } from "@/components/Section";
+import { SelfAssessment } from "@/components/SelfAssessment";
 import {
   ASSESSMENTS_SOURCE_PATH,
   METRIC_GROUPS,
@@ -14,6 +15,8 @@ import {
   reportUrl,
   versionMarks,
 } from "@/lib/assessments";
+import { GAP_REGISTER, GAPS_PATH } from "@/lib/gaps";
+import { CURRENT_PENDING, CURRENT_RUN, CURRENT_VERSION, PENDING_LABEL } from "@/lib/self-assessment";
 import { breadcrumbLd, pageMetadata } from "@/lib/seo";
 import { ASSESSMENTS_MD_PATH, ASSESSMENTS_PATH, WHITEPAPER_CHANGES_PATH, WHITEPAPER_PATH } from "@/lib/whitepaper";
 import { hasVersionPage, versionPath } from "@/lib/whitepaper-history";
@@ -57,6 +60,23 @@ export default function AssessmentsPage() {
           the full text of the version it scored.
         </p>
       </div>
+
+      <Section
+        n="00"
+        title={`SELF-ASSESSMENT OF v${CURRENT_VERSION}, THE CURRENT VERSION`}
+        id="self-assessment"
+        aside={CURRENT_PENDING ? PENDING_LABEL : "LATEST RUN"}
+      >
+        <p className="fine">
+          Every version of the paper ships with a self-assessment: our own reference run of the public prompt, recorded
+          after the version reaches this site.{" "}
+          {CURRENT_PENDING
+            ? `No run of v${CURRENT_VERSION} is recorded yet, so every ring below is empty. It fills in when the run lands; the next version of the paper cannot ship until it has.`
+            : "The latest recorded run of the current version, as recorded."}{" "}
+          What the runs found missing: <Link href={GAPS_PATH}>the gap register</Link> ({GAP_REGISTER.gaps.length === 0 ? "no gaps recorded yet" : "every gap with its status"}).
+        </p>
+        <SelfAssessment run={CURRENT_RUN} version={CURRENT_VERSION} />
+      </Section>
 
       <Section n="01" title="SCORES OVER TIME" id="scores" aside={`RUNS: ${runs.length}`}>
         {runs.length === 0 ? (

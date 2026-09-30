@@ -51,7 +51,14 @@ outside `apps/web/` changed. Never edit `docs/whitepaper/WHITEPAPER-v0.1-origina
    only when a signed Desktop release exists on GitHub Releases or `@waronsaas/cli` is published on npm, and cite it;
    then update both places (and "designed, not built" for BUILD NEXT and `wos build --next` only when that code is on main).
 8. **Assessments are data, not copy.** Never write, edit or summarise a score from `docs/assessments/` into any page,
-   the white paper or the llms files. /assessments and /whitepaper/assessments.md render them from the files.
+   the white paper or the llms files. /assessments, /assessments/gaps and /whitepaper/assessments.md render them from
+   the files, and the score rings on /whitepaper and /whitepaper/changes are drawn from the same files.
+9. **A new paper version needs the previous one assessed.** Since v0.9 the build fails a version bump while the
+   previous version has no recorded self-assessment (`.github/workflows/self-assessment.yml` records one after each
+   paper change reaches the site). If your build fails for that reason, do not work around it: leave the paper edit
+   out of your pull request and say so in your summary. When you bump the version, cite the gaps of the previous
+   version's self-assessment that your change addresses or declines, in its changelog entry: "Gaps addressed: `id`" or
+   "Gap declined: `id`: reason" (ids from https://waronsaas.com/assessments/gaps.md or `apps/web/generated/gap-register.json`).
 
 ## The white paper
 

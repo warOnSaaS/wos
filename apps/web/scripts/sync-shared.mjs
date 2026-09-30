@@ -14,12 +14,18 @@
  *                                           first, without the raw block text; /assessments and
  *                                           /whitepaper/assessments.md render it. Validated against the contract
  *                                           by tests/assessments.test.ts.)
+ *   docs/assessments/*.json + the paper's and APPENDICES.md's changelogs
+ *                                        -> generated/gap-register.json      (the gap register: each gap of the latest
+ *                                           run of each version with its status, open / addressed in vN / declined;
+ *                                           buildGapRegister in scripts/wp-history-lib.mts. /assessments/gaps and
+ *                                           /assessments/gaps.md render it.)
  *
  * With the repo present (local builds): writes the copies, or with --check fails if they differ.
  * Without the repo (Vercel): checks the committed copies exist and exits 0.
  */
 import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { buildGapRegister, extractChangelog, extractVersion } from "./wp-history-lib.mts";
 
 const web = process.cwd();
 const repo = join(web, "..", "..");
@@ -45,6 +51,13 @@ const files = [
     map: (s) => s,
   },
   {
+    // Derived from the same runs plus the changelogs (the convention "Gaps addressed: `id`" / "Gap declined: `id`: why").
+    from: join(repo, "docs/assessments"),
+    to: join(web, "generated/gap-register.json"),
+    read: (dir) => gapRegisterJson(dir),
+    map: (s) => s,
+  },
+  {
     from: join(repo, "packages/contracts/src/progress.ts"),
     to: join(web, "generated/contracts-progress.ts"),
     map: (s) => {
@@ -53,6 +66,17 @@ const files = [
     },
   },
 ];
+
+/** The gap register (deterministic: a pure function of the runs and the two changelogs). */
+function gapRegisterJson(dir) {
+  const { runs } = JSON.parse(assessmentsJson(dir));
+  const paper = readFileSync(join(repo, "docs/whitepaper/WHITEPAPER.md"), "utf8");
+  const appendices = readFileSync(join(repo, "docs/whitepaper/APPENDICES.md"), "utf8");
+  const current = extractVersion(paper);
+  if (!current) throw new Error("sync-shared: WHITEPAPER.md has no Version row");
+  const register = buildGapRegister(runs, [...extractChangelog(paper), ...extractChangelog(appendices)], current);
+  return `${JSON.stringify(register, null, 2)}\n`;
+}
 
 /** The site's copy of the recorded runs: deterministic (sorted, fixed formatting), so --check can compare it. */
 function assessmentsJson(dir) {
