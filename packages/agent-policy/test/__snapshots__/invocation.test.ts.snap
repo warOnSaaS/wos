@@ -27,7 +27,7 @@ exports[`agent-policy buildInvocation: argv snapshots for all ten roles > agent-
     "--effort",
     "high",
     "--json-schema",
-    "<schemaJson build-summary.v1 41464c20bd858be2>",
+    "<schemaJson build-summary.v1 db6b23238ceaa5d0>",
   ],
   "binary": "claude",
   "env": {
@@ -60,7 +60,7 @@ exports[`agent-policy buildInvocation: argv snapshots for all ten roles > agent-
     "--effort",
     "max",
     "--json-schema",
-    "<schemaJson ruling.v1 bf2c3bf8aeb00ee3>",
+    "<schemaJson ruling.v1 c50b90edf3ea1993>",
   ],
   "binary": "claude",
   "env": {
@@ -93,7 +93,7 @@ exports[`agent-policy buildInvocation: argv snapshots for all ten roles > agent-
     "--effort",
     "max",
     "--json-schema",
-    "<schemaJson author-summary.v1 c95cad5205770670>",
+    "<schemaJson author-summary.v1 5b05e4d1ca22f7b1>",
   ],
   "binary": "claude",
   "env": {
@@ -157,7 +157,7 @@ exports[`agent-policy buildInvocation: argv snapshots for all ten roles > agent-
     "--effort",
     "max",
     "--json-schema",
-    "<schemaJson review-verdict.v1 75cf5d8c9de7c85b>",
+    "<schemaJson review-verdict.v1 ca5b755a852aa1b2>",
   ],
   "binary": "claude",
   "env": {
@@ -221,7 +221,7 @@ exports[`agent-policy buildInvocation: argv snapshots for all ten roles > agent-
     "--effort",
     "max",
     "--json-schema",
-    "<schemaJson review-verdict.v1 75cf5d8c9de7c85b>",
+    "<schemaJson review-verdict.v1 ca5b755a852aa1b2>",
   ],
   "binary": "claude",
   "env": {
@@ -254,7 +254,7 @@ exports[`agent-policy buildInvocation: argv snapshots for all ten roles > agent-
     "--effort",
     "max",
     "--json-schema",
-    "<schemaJson author-summary.v1 c95cad5205770670>",
+    "<schemaJson author-summary.v1 5b05e4d1ca22f7b1>",
   ],
   "binary": "claude",
   "env": {
@@ -318,7 +318,7 @@ exports[`agent-policy buildInvocation: argv snapshots for all ten roles > agent-
     "--effort",
     "max",
     "--json-schema",
-    "<schemaJson review-verdict.v1 75cf5d8c9de7c85b>",
+    "<schemaJson review-verdict.v1 ca5b755a852aa1b2>",
   ],
   "binary": "claude",
   "env": {
