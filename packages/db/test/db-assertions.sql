@@ -1016,6 +1016,27 @@ select wos_test.expect_error($$insert into wos.genesis_reference_manifests (vers
   values ('reference.v1', 2, '{}', '{00000000-0000-0000-0000-0000000cc001}', 'sha256:' || repeat('c', 64), wos_test.aa('approve_genesis_reference', 'genesis_reference', 'reference.v1'))$$,
   'A3-12: a second manifest for the same version', 'duplicate key');
 
+-- D58: a disputed finding is never resolved by the lab that raised it; the raising lab is derived from the review.
+set session_replication_role = replica;
+insert into wos.findings (id, review_id, round_id, document_id, local_id, severity, category, title, detail, state)
+values ('00000000-0000-0000-0058-0000000000f1', '00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-0000000000e1',
+        '00000000-0000-0000-0000-0000000000d1', 'F-58', 'material', 'scope', 'd58 fixture', 'raised by the Fable seat', 'disputed');
+insert into wos.rulings (id, task_id, lease_id, account_id, body, state)
+values ('00000000-0000-0000-0058-0000000000a1', '00000000-0000-0000-0000-0000000000f1', '00000000-0000-0000-0000-0000000000c1',
+        '00000000-0000-0000-0000-00000000000d', '{}', 'awaiting_maintainer');
+set session_replication_role = origin;
+select wos_test.expect_error($$insert into wos.ruling_lab_records (ruling_id, finding_id, resolved_by_lab, outcome)
+  values ('00000000-0000-0000-0058-0000000000a1', '00000000-0000-0000-0058-0000000000f1', 'anthropic', 'overruled')$$,
+  'D58: a Fable-raised finding resolved by a resolver of the same lab', 'same lab');
+insert into wos.ruling_lab_records (ruling_id, finding_id, raised_by_lab, resolved_by_lab, outcome)
+values ('00000000-0000-0000-0058-0000000000a1', '00000000-0000-0000-0058-0000000000f1', 'openai', 'openai', 'upheld');
+do $$ begin
+  if (select raised_by_lab from wos.ruling_lab_records where finding_id = '00000000-0000-0000-0058-0000000000f1') <> 'anthropic' then
+    raise exception 'D58: the raising lab must be derived from the review (a caller-supplied value is ignored)';
+  end if;
+  raise notice 'ok: D58 raising lab derived from the review; an other-lab ruling is recorded (raised, resolved, outcome)';
+end $$;
+
 -- RLS: canary classification, abuse signals, assignments and the wallet registry are private; approvals are own-session.
 insert into wos.abuse_signals (kind, severity, subject_kind, subject_id, detector, detector_version, evidence)
 values ('payout_canary_passed', 'high', 'account', 'x', 'canary', 'v1', '{}');

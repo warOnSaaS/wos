@@ -103,10 +103,10 @@ Every author submission must answer every open material finding with `fixed` or 
 
 Triggered by round limits (roadmap 6, contract 5 rounds; implementations: 3 repairs, then the attempt fails instead of escalating) or repeated disputes.
 
-1. A `conflict_resolution` task opens (role `conflict_resolver`: Fable, `max`, read-only; eligibility: 3 accepted contributions; excludes authors and both reviewers of the disputed rounds).
+1. A `conflict_resolution` task opens (role `conflict_resolver`, `max`, read-only; eligibility: 3 accepted contributions; excludes authors and both reviewers of the disputed rounds). **D58 (protocol draft): the resolver comes from a different lab than the reviewer who raised each disputed finding** — Fable-raised findings go to an Astra resolver, Astra-raised findings to a Fable resolver. A disputed set with findings from both labs is split into one task per raising lab (the same task kind opened twice; less change than routing every mixed set to the human). A finding raised by both reviewers, or with no eligible other-lab resolver, goes to the human maintainer; while the D53 fallback is active every conflict goes to the human (unchanged). Rules `routeDisputedFindings`, `resolverEligibilityRefusals`.
 2. The resolver receives the subject, the disputed findings, both sides' arguments; not the reviewers' identities. It submits `ruling.v1` (`POST /v1/leases/:id/ruling`): per finding `upheld` or `overruled` with a rationale of at least 20 chars.
 3. The ruling is `awaiting_maintainer`. A maintainer confirms or rejects with a public note (`POST /v1/admin/rulings/:id/confirm`). Rejected: a new resolver task opens.
-4. Confirmed: findings take the ruled states; document `ruling_upheld -> revising` or `ruling_all_overruled -> validating` (fresh round on the same head with overruled findings closed). Event `finding.ruled`.
+4. Confirmed: findings take the ruled states; one `ruling_lab_records` row per ruled finding records the raising lab (derived by the database from the finding's review), the resolving lab (`human` for the maintainer) and the outcome, public and queryable (`crossLabUpholdRates`), so resolver bias toward its own lab can be measured; the database refuses a same-lab row; document `ruling_upheld -> revising` or `ruling_all_overruled -> validating` (fresh round on the same head with overruled findings closed). Event `finding.ruled`.
 
 What stops infinite rounds: fixed round limits, dispute escalation, and a human final say. A maintainer may also abandon the workflow with a public reason.
 

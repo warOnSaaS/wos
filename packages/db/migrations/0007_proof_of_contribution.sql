@@ -1023,6 +1023,21 @@ create table wos.confiscation_releases (
   created_at       timestamptz not null default now()
 );
 
+-- D58: per ruled finding, which lab raised it, which resolved it, and the outcome — queryable, so resolver bias toward
+-- its own lab can be measured. `raised_by_lab` is derived by the server from the finding's review; a resolver never
+-- comes from the raising lab (the human maintainer is 'human').
+create table wos.ruling_lab_records (
+  ruling_id        uuid not null references wos.rulings (id),
+  finding_id       uuid not null references wos.findings (id),
+  raised_by_lab    text not null default '' check (raised_by_lab in ('', 'anthropic', 'openai', 'zai')),
+  resolved_by_lab  text not null check (resolved_by_lab in ('anthropic', 'openai', 'zai', 'human')),
+  outcome          text not null check (outcome in ('upheld', 'overruled')),
+  created_at       timestamptz not null default now(),
+  primary key (ruling_id, finding_id),
+  check (resolved_by_lab <> raised_by_lab)
+);
+create index ruling_lab_records_labs on wos.ruling_lab_records (raised_by_lab, resolved_by_lab, outcome);
+
 create table wos.epoch_balances (
   epoch_number        integer primary key references wos.epochs (epoch_number),
   emission_reserve    bigint not null check (emission_reserve > 0),
@@ -1583,6 +1598,29 @@ begin
 end $$;
 create trigger settlement_outcomes_check before insert on wos.settlement_outcomes for each row execute function wos.check_settlement_outcome();
 
+-- I6 (D58): a disputed finding is never resolved by the lab that raised it. The raising lab is derived from the
+-- finding's review provider (never trusted from the caller).
+create or replace function wos.lab_of_provider(p text) returns text
+language sql immutable as $$
+  select case p when 'claude_cli' then 'anthropic' when 'codex_cli' then 'openai' when 'zai' then 'zai' end
+$$;
+create or replace function wos.check_ruling_lab_record() returns trigger
+language plpgsql security definer set search_path = wos, pg_temp as $$
+begin
+  new.created_at := clock_timestamp();
+  select wos.lab_of_provider(r.provider) into new.raised_by_lab
+    from wos.findings f join wos.reviews r on r.id = f.review_id where f.id = new.finding_id;
+  if new.raised_by_lab is null or new.raised_by_lab = '' then
+    raise exception 'wos: the lab that raised finding % is unknown', new.finding_id using errcode = 'check_violation';
+  end if;
+  if new.resolved_by_lab = new.raised_by_lab then
+    raise exception 'wos: finding % was raised by % and cannot be resolved by the same lab (D58)', new.finding_id, new.raised_by_lab
+      using errcode = 'check_violation';
+  end if;
+  return new;
+end $$;
+create trigger ruling_lab_records_check before insert on wos.ruling_lab_records for each row execute function wos.check_ruling_lab_record();
+
 -- I9 (review 04 finding 4): a confiscation ENDS once — executed or released, never both — serialized per confiscation
 -- (a lock both writers take), so an execution left open across the hold's expiry cannot commit beside a lapse release
 -- and a claim of the source. Execution only before the hold lapses; a 'lapsed' release only once it has (server time).
@@ -1697,7 +1735,7 @@ begin
     'genesis_reference_manifests', 'governance_proposals', 'governance_weight_snapshots', 'governance_votes',
     'settlement_adapter_events', 'migration_snapshots', 'abuse_signals', 'risk_flags', 'admin_action_approvals',
     'admin_action_uses', 'contribution_usage', 'payout_audit_assignments', 'acceptance_objectives', 'task_budgets', 'task_budget_releases', 'confiscation_releases', 'epoch_balances',
-    'human_review_assignments'
+    'human_review_assignments', 'ruling_lab_records'
   ] loop
     perform wos.protocol_append_only(t);
   end loop;
@@ -1717,7 +1755,7 @@ begin
     'genesis_contributions', 'genesis_commit_claims', 'genesis_reference_manifests', 'governance_proposals',
     'governance_weight_snapshots', 'governance_votes', 'settlement_adapter_events', 'migration_snapshots',
     'abuse_signals', 'risk_flags', 'admin_action_approvals', 'admin_action_uses', 'contribution_usage', 'payout_audit_assignments',
-    'acceptance_objectives', 'task_budgets', 'task_budget_releases', 'confiscation_releases', 'epoch_balances', 'human_review_assignments'
+    'acceptance_objectives', 'task_budgets', 'task_budget_releases', 'confiscation_releases', 'epoch_balances', 'human_review_assignments', 'ruling_lab_records'
   ] loop
     execute format('alter table wos.%I enable row level security', t);
     execute format('grant select, insert on wos.%I to wos_app', t);
@@ -1743,7 +1781,7 @@ begin
     'pool_accruals', 'pool_accrual_corrections', 'pool_events', 'genesis_contributions', 'genesis_commit_claims',
     'genesis_reference_manifests', 'governance_proposals', 'governance_weight_snapshots', 'settlement_adapter_events',
     'migration_snapshots', 'admin_action_uses', 'contribution_usage', 'acceptance_objectives', 'task_budgets', 'task_budget_releases',
-    'confiscation_releases', 'epoch_balances'
+    'confiscation_releases', 'epoch_balances', 'ruling_lab_records'
   ] loop
     execute format('create policy public_read on wos.%I for select to wos_app using (true)', t);
     execute format('create policy privileged_write on wos.%I for insert to wos_app with check (wos.is_privileged())', t);

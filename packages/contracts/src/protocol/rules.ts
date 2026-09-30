@@ -1359,3 +1359,92 @@ export function continuousNextStop(x: {
   if (pp !== undefined && (x.used.unitsByProvider[x.provider] ?? 0) >= pp) return `${x.provider} unit limit reached`;
   return null;
 }
+
+// ------------------------------------------------------------------------------------------------ D58 cross-lab resolvers
+
+export type Lab = "anthropic" | "openai" | "zai";
+export type ResolverSeat = Lab | "human";
+
+/** The lab behind a provider (the model's maker), for independence between a finding's reviewer and its resolver. */
+export function labOfProvider(provider: string): Lab | null {
+  return provider === "claude_cli" ? "anthropic" : provider === "codex_cli" ? "openai" : provider === "zai" ? "zai" : null;
+}
+
+/**
+ * D58: route each disputed finding to a resolver from a DIFFERENT lab than the one that raised it. A set holding findings
+ * of both labs is SPLIT per raising lab (one conflict_resolution task per group — the existing task, opened twice; the
+ * smaller change than sending every mixed set to the human). The human maintainer gets: every finding while the D53
+ * fallback is active (unchanged), a finding raised by both reviewers (with two labs no other lab exists), and any
+ * finding with no eligible other-lab resolver. The human's confirmation stays final for every ruling.
+ */
+export function routeDisputedFindings(x: {
+  fallbackActive: boolean;
+  findings: ReadonlyArray<{ findingId: string; raisedByLabs: readonly Lab[] }>;
+  /** Labs that have an eligible resolver now (after the author / reviewer exclusions). */
+  labsWithEligibleResolver: readonly Lab[];
+}): Array<{ resolver: ResolverSeat; raisedByLab: Lab | "both"; findingIds: string[] }> {
+  const groups = new Map<string, { resolver: ResolverSeat; raisedByLab: Lab | "both"; findingIds: string[] }>();
+  const add = (resolver: ResolverSeat, raisedByLab: Lab | "both", id: string) => {
+    const k = `${resolver}/${raisedByLab}`;
+    const g = groups.get(k) ?? { resolver, raisedByLab, findingIds: [] };
+    g.findingIds.push(id);
+    groups.set(k, g);
+  };
+  for (const f of x.findings) {
+    const labs = [...new Set(f.raisedByLabs)];
+    if (labs.length !== 1) {
+      add("human", "both", f.findingId);
+      continue;
+    }
+    const raised = labs[0]!;
+    if (x.fallbackActive) {
+      add("human", raised, f.findingId);
+      continue;
+    }
+    const other = x.labsWithEligibleResolver.filter((l) => l !== raised).sort()[0];
+    add(other ?? "human", raised, f.findingId);
+  }
+  return [...groups.values()].sort((a, b) => (a.resolver + a.raisedByLab < b.resolver + b.raisedByLab ? -1 : 1));
+}
+
+/** D58: may this resolver rule on these findings? Other lab, not an author, not a reviewer of the disputed rounds. */
+export function resolverEligibilityRefusals(x: {
+  resolverAccountId: string;
+  resolverLab: ResolverSeat;
+  raisedByLab: Lab;
+  authorAccountIds: readonly string[];
+  reviewerAccountIds: readonly string[];
+}): string[] {
+  const r: string[] = [];
+  if (x.resolverLab === x.raisedByLab) r.push(`a finding raised by ${x.raisedByLab} is resolved by another lab or the human (D58)`);
+  if (x.authorAccountIds.includes(x.resolverAccountId)) r.push("the resolver may not be an author of the subject");
+  if (x.reviewerAccountIds.includes(x.resolverAccountId)) r.push("the resolver may not be a reviewer of the disputed rounds");
+  return r;
+}
+
+/** D58: one queryable record per ruled finding (wos.ruling_lab_records): raising lab, resolving lab, outcome. */
+export interface RulingLabRecord {
+  rulingId: string;
+  findingId: string;
+  raisedByLab: Lab;
+  resolvedByLab: ResolverSeat;
+  outcome: "upheld" | "overruled";
+}
+
+/** D58: the measurement the records exist for — how often each resolver lab upholds findings of each raising lab. */
+export function crossLabUpholdRates(records: readonly RulingLabRecord[]): Array<{
+  raisedByLab: Lab;
+  resolvedByLab: ResolverSeat;
+  rulings: number;
+  upheld: number;
+}> {
+  const m = new Map<string, { raisedByLab: Lab; resolvedByLab: ResolverSeat; rulings: number; upheld: number }>();
+  for (const r of records) {
+    const k = `${r.raisedByLab}/${r.resolvedByLab}`;
+    const g = m.get(k) ?? { raisedByLab: r.raisedByLab, resolvedByLab: r.resolvedByLab, rulings: 0, upheld: 0 };
+    g.rulings += 1;
+    if (r.outcome === "upheld") g.upheld += 1;
+    m.set(k, g);
+  }
+  return [...m.values()].sort((a, b) => `${a.raisedByLab}/${a.resolvedByLab}`.localeCompare(`${b.raisedByLab}/${b.resolvedByLab}`));
+}

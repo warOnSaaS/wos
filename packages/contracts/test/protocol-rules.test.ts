@@ -5,6 +5,10 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  crossLabUpholdRates,
+  labOfProvider,
+  resolverEligibilityRefusals,
+  routeDisputedFindings,
   CLAIM_NEXT_BUILD_ROUTE,
   ClaimNextBuildRequest,
   continuousNextStop,
@@ -1336,5 +1340,74 @@ describe("D56: build next — assigned mode", () => {
       continuous: false,
       limits: {},
     });
+  });
+});
+
+describe("D58: a disputed finding is resolved by another lab than the one that raised it", () => {
+  const f = (findingId: string, ...raisedByLabs: ("anthropic" | "openai")[]) => ({ findingId, raisedByLabs });
+  const both = ["anthropic", "openai"] as const;
+  it("Fable-raised findings go to an Astra (openai) resolver, Astra-raised to a Fable (anthropic) resolver; a mixed set is split", () => {
+    expect(
+      routeDisputedFindings({
+        fallbackActive: false,
+        findings: [f("a1", "anthropic"), f("o1", "openai"), f("a2", "anthropic")],
+        labsWithEligibleResolver: both,
+      }),
+    ).toEqual([
+      { resolver: "anthropic", raisedByLab: "openai", findingIds: ["o1"] },
+      { resolver: "openai", raisedByLab: "anthropic", findingIds: ["a1", "a2"] },
+    ]);
+  });
+  it("a finding raised by both reviewers, or with no eligible other-lab resolver, goes to the human", () => {
+    expect(
+      routeDisputedFindings({ fallbackActive: false, findings: [f("x", "anthropic", "openai")], labsWithEligibleResolver: both }),
+    ).toEqual([{ resolver: "human", raisedByLab: "both", findingIds: ["x"] }]);
+    expect(
+      routeDisputedFindings({ fallbackActive: false, findings: [f("a", "anthropic")], labsWithEligibleResolver: ["anthropic"] }),
+    ).toEqual([{ resolver: "human", raisedByLab: "anthropic", findingIds: ["a"] }]);
+  });
+  it("while the D53 fallback is active every conflict goes to the human (unchanged)", () => {
+    expect(routeDisputedFindings({ fallbackActive: true, findings: [f("o", "openai")], labsWithEligibleResolver: both })[0]!.resolver).toBe(
+      "human",
+    );
+  });
+  it("resolver eligibility: other lab, not an author, not a reviewer of the disputed rounds", () => {
+    const x = {
+      resolverAccountId: "r",
+      resolverLab: "openai" as const,
+      raisedByLab: "anthropic" as const,
+      authorAccountIds: ["au"],
+      reviewerAccountIds: ["rv"],
+    };
+    expect(resolverEligibilityRefusals(x)).toEqual([]);
+    refused(resolverEligibilityRefusals({ ...x, resolverLab: "anthropic" }), /another lab/);
+    refused(resolverEligibilityRefusals({ ...x, resolverAccountId: "au" }), /author/);
+    refused(resolverEligibilityRefusals({ ...x, resolverAccountId: "rv" }), /reviewer/);
+    expect(resolverEligibilityRefusals({ ...x, resolverLab: "human" })).toEqual([]);
+    expect(labOfProvider("claude_cli")).toBe("anthropic");
+    expect(labOfProvider("codex_cli")).toBe("openai");
+  });
+  it("ruling records are queryable: uphold rate per (raising lab, resolving lab)", () => {
+    const rec = (
+      raisedByLab: "anthropic" | "openai",
+      resolvedByLab: "anthropic" | "openai" | "human",
+      outcome: "upheld" | "overruled",
+    ) => ({
+      rulingId: "r",
+      findingId: `${raisedByLab}${resolvedByLab}${outcome}${Math.random()}`,
+      raisedByLab,
+      resolvedByLab,
+      outcome,
+    });
+    expect(
+      crossLabUpholdRates([
+        rec("anthropic", "openai", "upheld"),
+        rec("anthropic", "openai", "overruled"),
+        rec("openai", "anthropic", "upheld"),
+      ]),
+    ).toEqual([
+      { raisedByLab: "anthropic", resolvedByLab: "openai", rulings: 2, upheld: 1 },
+      { raisedByLab: "openai", resolvedByLab: "anthropic", rulings: 1, upheld: 1 },
+    ]);
   });
 });

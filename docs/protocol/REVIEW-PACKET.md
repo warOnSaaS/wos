@@ -188,6 +188,11 @@ Method: every finding was re-run on the code BEFORE this fix pass (commit 710600
 5. **D55 V1-active and dormant modules** — review 06 should concentrate on the V1-ACTIVE set (§1); dormant modules are listed in PROTOCOL §13 with their triggers, and their open findings are preconditions of activation.
 6. **D56 build next** — assigned mode picks the highest-ranked eligible unit by a published ranking; budgets identical to self-pick.
 
+## 3h. Queued for bundle 07 (after bundle 06 at 3cddbb1 was sent)
+
+- **D57** (03d39d5): the founder accepted the recommended protocol decisions; recurring builder pay not adopted.
+- **D58** (V1-active, low priority): the conflict resolver comes from another lab than the reviewer who raised each disputed finding; mixed sets split per lab; both-lab findings, no eligible resolver, or the D53 fallback → the human; per-ruling raised lab / resolved lab / outcome recorded in `wos.ruling_lab_records` (raising lab derived by the database, same-lab refused). Rules `routeDisputedFindings`, `resolverEligibilityRefusals`, `crossLabUpholdRates`; REVIEW-PROTOCOL §8.
+
 ## 4. Questions for review 06 (ranked by what worries the architect most)
 
 This is a correctness, conservation and fairness review. For every item, the most useful answer is a concrete failing sequence (inputs and order of operations) so that it can be written as a test. Concentrate on the V1-ACTIVE modules (§1, PROTOCOL §13); for dormant modules only say whether their recorded activation preconditions (G-98) are complete.
