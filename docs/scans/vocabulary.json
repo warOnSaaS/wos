@@ -1,0 +1,1038 @@
+{
+  "schema": "wos-scan-vocabulary.v0",
+  "label": "SCAN — unreviewed, 2026-09-30",
+  "capabilities": [
+    {
+      "id": "users-teams",
+      "group": "Platform",
+      "definition": "User accounts, invitations, teams and groups inside a workspace or organisation.",
+      "notes": null
+    },
+    {
+      "id": "roles-permissions",
+      "group": "Platform",
+      "definition": "Roles, profiles and permission sets that decide who can see and change what.",
+      "notes": null
+    },
+    {
+      "id": "sso-identity",
+      "group": "Platform",
+      "definition": "Single sign-on (SAML/OIDC), multi-factor authentication and user provisioning (SCIM).",
+      "notes": null
+    },
+    {
+      "id": "audit-log",
+      "group": "Platform",
+      "definition": "A record of who did what and when, for admins and compliance.",
+      "notes": null
+    },
+    {
+      "id": "compliance-security",
+      "group": "Platform",
+      "definition": "Encryption controls, data residency, retention policies, legal hold and compliance certifications.",
+      "notes": null
+    },
+    {
+      "id": "data-import-export",
+      "group": "Platform",
+      "definition": "Bringing records in from files or other tools and exporting or backing them up.",
+      "notes": null
+    },
+    {
+      "id": "custom-fields-objects",
+      "group": "Platform",
+      "definition": "Admin-defined fields, record types and custom objects that extend the data model.",
+      "notes": null
+    },
+    {
+      "id": "low-code-builder",
+      "group": "Platform",
+      "definition": "Point-and-click builders for custom apps, pages, layouts or components on the platform.",
+      "notes": null
+    },
+    {
+      "id": "developer-platform",
+      "group": "Platform",
+      "definition": "Code-level customisation: a hosted language, SDKs, CLIs, packaging and deployment tooling.",
+      "notes": null
+    },
+    {
+      "id": "sandbox-environments",
+      "group": "Platform",
+      "definition": "Separate test or staging copies of an account for building and testing changes.",
+      "notes": null
+    },
+    {
+      "id": "search",
+      "group": "Platform",
+      "definition": "Finding records, messages, files or content across the product.",
+      "notes": null
+    },
+    {
+      "id": "notifications",
+      "group": "Platform",
+      "definition": "In-app, email and push alerts about activity a user cares about.",
+      "notes": null
+    },
+    {
+      "id": "mobile-app",
+      "group": "Platform",
+      "definition": "The vendor's native phone and tablet apps as a product area in their own right (offline use, mobile-only features).",
+      "notes": null
+    },
+    {
+      "id": "desktop-app",
+      "group": "Platform",
+      "definition": "The vendor's native desktop app for macOS, Windows or Linux.",
+      "notes": null
+    },
+    {
+      "id": "api-webhooks",
+      "group": "Platform",
+      "definition": "Public APIs and outgoing webhooks/events for programmatic access to the product.",
+      "notes": null
+    },
+    {
+      "id": "app-marketplace",
+      "group": "Platform",
+      "definition": "A directory of third-party and vendor apps and integrations that install into the product.",
+      "notes": null
+    },
+    {
+      "id": "native-integrations",
+      "group": "Platform",
+      "definition": "Vendor-built connectors to named outside products (email suites, calendars, accounting, dev tools).",
+      "notes": null
+    },
+    {
+      "id": "workflow-automation",
+      "group": "Platform",
+      "definition": "Rules, triggers and visual flows that perform actions automatically when conditions are met.",
+      "notes": null
+    },
+    {
+      "id": "approvals",
+      "group": "Platform",
+      "definition": "Routing a record or request to people who must approve or reject it.",
+      "notes": null
+    },
+    {
+      "id": "reporting-dashboards",
+      "group": "Platform",
+      "definition": "Reports, charts and dashboards built from the product's own data.",
+      "notes": null
+    },
+    {
+      "id": "ai-assistant",
+      "group": "Platform",
+      "definition": "A generative-AI assistant that helps the user inside the product (summaries, drafting, answering questions).",
+      "notes": null
+    },
+    {
+      "id": "ai-agents",
+      "group": "Platform",
+      "definition": "Autonomous or semi-autonomous AI agents that act on the user's or customer's behalf.",
+      "notes": null
+    },
+    {
+      "id": "multi-currency-localization",
+      "group": "Platform",
+      "definition": "Multiple currencies, languages and regional formats.",
+      "notes": null
+    },
+    {
+      "id": "templates",
+      "group": "Platform",
+      "definition": "Reusable templates for records, documents, messages or projects.",
+      "notes": null
+    },
+    {
+      "id": "file-storage",
+      "group": "Platform",
+      "definition": "Uploading, storing, previewing and sharing files and attachments.",
+      "notes": null
+    },
+    {
+      "id": "tasks",
+      "group": "Platform",
+      "definition": "To-dos with owners and due dates.",
+      "notes": null
+    },
+    {
+      "id": "forms",
+      "group": "Platform",
+      "definition": "Forms that collect data from people and create or update records.",
+      "notes": null
+    },
+    {
+      "id": "calendar-scheduling",
+      "group": "Platform",
+      "definition": "Calendars, booking links and scheduling of meetings or appointments.",
+      "notes": null
+    },
+    {
+      "id": "email-calendar-sync",
+      "group": "Platform",
+      "definition": "Two-way sync with outside email and calendar providers (e.g. Gmail, Outlook).",
+      "notes": null
+    },
+    {
+      "id": "comments-mentions",
+      "group": "Platform",
+      "definition": "Comments and @mentions on records for internal collaboration.",
+      "notes": null
+    },
+    {
+      "id": "docs-wiki",
+      "group": "Platform",
+      "definition": "Collaborative documents, canvases or wiki pages inside the product.",
+      "notes": null
+    },
+    {
+      "id": "data-quality-dedup",
+      "group": "Platform",
+      "definition": "Duplicate detection, merging and data validation rules.",
+      "notes": null
+    },
+    {
+      "id": "admin-console",
+      "group": "Platform",
+      "definition": "Central administration settings, usage and billing management for the account.",
+      "notes": null
+    },
+    {
+      "id": "archiving",
+      "group": "Platform",
+      "definition": "Archiving inactive projects, spaces or records so they leave active views and limits but can be restored.",
+      "notes": null
+    },
+    {
+      "id": "custom-branding",
+      "group": "Platform",
+      "definition": "Account logo, colours and sender domain applied to customer-facing pages and messages.",
+      "notes": null
+    },
+    {
+      "id": "security-activity-monitoring",
+      "group": "Platform",
+      "definition": "Near real-time monitoring of account activity with security alerts and SIEM export.",
+      "notes": null
+    },
+    {
+      "id": "contacts",
+      "group": "CRM",
+      "definition": "People records with their details, history and relationships.",
+      "notes": null
+    },
+    {
+      "id": "organizations",
+      "group": "CRM",
+      "definition": "Company or account records that group contacts and activity.",
+      "notes": null
+    },
+    {
+      "id": "leads",
+      "group": "CRM",
+      "definition": "Prospects not yet qualified, with capture, qualification and conversion.",
+      "notes": null
+    },
+    {
+      "id": "activities",
+      "group": "CRM",
+      "definition": "Logged calls, emails, meetings and notes on a record's timeline.",
+      "notes": null
+    },
+    {
+      "id": "pipelines-deals",
+      "group": "CRM",
+      "definition": "Opportunities or deals moving through configurable sales stages.",
+      "notes": null
+    },
+    {
+      "id": "quotes-cpq",
+      "group": "CRM",
+      "definition": "Building quotes from products and prices, including configure-price-quote rules.",
+      "notes": null
+    },
+    {
+      "id": "products-price-books",
+      "group": "CRM",
+      "definition": "A catalogue of sellable products with prices and price lists.",
+      "notes": null
+    },
+    {
+      "id": "forecasting",
+      "group": "CRM",
+      "definition": "Projected revenue by period, owner or team, with adjustments.",
+      "notes": null
+    },
+    {
+      "id": "territory-management",
+      "group": "CRM",
+      "definition": "Dividing accounts and leads among sales territories and teams.",
+      "notes": null
+    },
+    {
+      "id": "lead-scoring",
+      "group": "CRM",
+      "definition": "Ranking leads or contacts by fit and engagement, by rules or models.",
+      "notes": null
+    },
+    {
+      "id": "sales-sequences",
+      "group": "CRM",
+      "definition": "Multi-step outreach cadences of emails, calls and tasks.",
+      "notes": null
+    },
+    {
+      "id": "sales-engagement-tools",
+      "group": "CRM",
+      "definition": "Seller productivity tools such as email tracking, templates, meeting links and call coaching.",
+      "notes": null
+    },
+    {
+      "id": "partner-management",
+      "group": "CRM",
+      "definition": "Managing channel partners, partner portals and shared deals.",
+      "notes": null
+    },
+    {
+      "id": "contracts-renewals",
+      "group": "CRM",
+      "definition": "Tracking customer contracts, subscriptions and renewals on the CRM record.",
+      "notes": null
+    },
+    {
+      "id": "customer-portal",
+      "group": "CRM",
+      "definition": "A logged-in site where customers or partners view and act on their own records.",
+      "notes": null
+    },
+    {
+      "id": "conversation-intelligence",
+      "group": "CRM",
+      "definition": "Recording, transcribing and analysing sales calls for insights, coaching and deal risk.",
+      "notes": null
+    },
+    {
+      "id": "sales-performance-management",
+      "group": "CRM",
+      "definition": "Sales quotas, commission and incentive compensation plans, and payout calculation.",
+      "notes": "Salesforce sells quota planning plus incentive compensation; NetSuite (Sales Commissions) scopes it to commission plans and payout calculation."
+    },
+    {
+      "id": "sales-enablement",
+      "group": "CRM",
+      "definition": "Seller training, onboarding programs and content tied to sales outcomes.",
+      "notes": null
+    },
+    {
+      "id": "maps-route-planning",
+      "group": "CRM",
+      "definition": "Map views of accounts and route planning for field sellers.",
+      "notes": null
+    },
+    {
+      "id": "data-enrichment",
+      "group": "CRM",
+      "definition": "Filling in company and contact attributes automatically from a vendor-provided data source.",
+      "notes": null
+    },
+    {
+      "id": "email-marketing",
+      "group": "Marketing",
+      "definition": "Designing and sending bulk marketing emails and newsletters to lists.",
+      "notes": null
+    },
+    {
+      "id": "email-sending",
+      "group": "Marketing",
+      "definition": "Sending one-to-one or transactional email from the product.",
+      "notes": null
+    },
+    {
+      "id": "marketing-automation",
+      "group": "Marketing",
+      "definition": "Multi-step nurture journeys that react to contact behaviour.",
+      "notes": null
+    },
+    {
+      "id": "segmentation-lists",
+      "group": "Marketing",
+      "definition": "Static and dynamic lists or segments of contacts.",
+      "notes": null
+    },
+    {
+      "id": "landing-pages",
+      "group": "Marketing",
+      "definition": "Building and publishing campaign landing pages.",
+      "notes": null
+    },
+    {
+      "id": "website-cms",
+      "group": "Marketing",
+      "definition": "Hosting and managing a full website: pages, themes, blog, domains.",
+      "notes": null
+    },
+    {
+      "id": "social-media",
+      "group": "Marketing",
+      "definition": "Publishing to and monitoring social networks.",
+      "notes": null
+    },
+    {
+      "id": "ads-management",
+      "group": "Marketing",
+      "definition": "Creating, syncing audiences with and reporting on paid ad campaigns.",
+      "notes": null
+    },
+    {
+      "id": "campaigns-attribution",
+      "group": "Marketing",
+      "definition": "Grouping marketing work into campaigns and attributing revenue to touchpoints.",
+      "notes": null
+    },
+    {
+      "id": "seo-tools",
+      "group": "Marketing",
+      "definition": "Search engine optimisation recommendations and tracking.",
+      "notes": null
+    },
+    {
+      "id": "sms-messaging",
+      "group": "Marketing",
+      "definition": "Sending and receiving SMS or WhatsApp messages with contacts.",
+      "notes": null
+    },
+    {
+      "id": "customer-data-platform",
+      "group": "Marketing",
+      "definition": "Unifying customer data from many sources into profiles for activation.",
+      "notes": null
+    },
+    {
+      "id": "video-hosting",
+      "group": "Marketing",
+      "definition": "Hosting and sharing recorded video content.",
+      "notes": null
+    },
+    {
+      "id": "affiliate-influencer",
+      "group": "Marketing",
+      "definition": "Recruiting and paying creators, influencers and affiliates to promote products.",
+      "notes": null
+    },
+    {
+      "id": "channels",
+      "group": "Collaboration",
+      "definition": "Persistent group conversations organised by topic, team or project.",
+      "notes": null
+    },
+    {
+      "id": "direct-messages",
+      "group": "Collaboration",
+      "definition": "Private one-to-one and small-group conversations.",
+      "notes": null
+    },
+    {
+      "id": "threads-reactions",
+      "group": "Collaboration",
+      "definition": "Replying in threads and reacting to messages with emoji.",
+      "notes": null
+    },
+    {
+      "id": "presence-status",
+      "group": "Collaboration",
+      "definition": "Showing whether people are available, away or in a meeting, with custom status.",
+      "notes": null
+    },
+    {
+      "id": "external-collaboration",
+      "group": "Collaboration",
+      "definition": "Working with people outside the organisation in shared spaces or as guests.",
+      "notes": null
+    },
+    {
+      "id": "audio-huddles",
+      "group": "Collaboration",
+      "definition": "Quick drop-in audio or video conversations inside a chat tool.",
+      "notes": null
+    },
+    {
+      "id": "async-video-clips",
+      "group": "Collaboration",
+      "definition": "Recording and sharing short audio, video or screen clips instead of meeting.",
+      "notes": null
+    },
+    {
+      "id": "bots-slash-commands",
+      "group": "Collaboration",
+      "definition": "Bots and command shortcuts that let users act on apps from a conversation.",
+      "notes": null
+    },
+    {
+      "id": "whiteboard",
+      "group": "Collaboration",
+      "definition": "A shared digital canvas for drawing and visual collaboration.",
+      "notes": null
+    },
+    {
+      "id": "lists-databases",
+      "group": "Collaboration",
+      "definition": "Structured lists or tables for tracking items inside a collaboration tool.",
+      "notes": null
+    },
+    {
+      "id": "hosted-email",
+      "group": "Collaboration",
+      "definition": "A vendor-hosted mailbox and calendar service with custom domains, as opposed to a client that syncs an outside provider.",
+      "notes": null
+    },
+    {
+      "id": "workplace-facilities",
+      "group": "Collaboration",
+      "definition": "Physical-office tools: desk and room reservation, visitor check-in and digital signage.",
+      "notes": null
+    },
+    {
+      "id": "employee-engagement",
+      "group": "Collaboration",
+      "definition": "An employee communications and engagement hub (intranet-style feed, company updates, recognition).",
+      "notes": null
+    },
+    {
+      "id": "video-meetings",
+      "group": "Meetings",
+      "definition": "Scheduled and instant video and audio meetings.",
+      "notes": null
+    },
+    {
+      "id": "screen-sharing",
+      "group": "Meetings",
+      "definition": "Sharing a screen or window with others during a call.",
+      "notes": null
+    },
+    {
+      "id": "meeting-recording",
+      "group": "Meetings",
+      "definition": "Recording meetings locally or to the cloud and playing them back.",
+      "notes": null
+    },
+    {
+      "id": "transcription-captions",
+      "group": "Meetings",
+      "definition": "Live captions, translated captions and transcripts of spoken audio.",
+      "notes": null
+    },
+    {
+      "id": "meeting-controls",
+      "group": "Meetings",
+      "definition": "Host controls, waiting rooms, breakout rooms, polls and in-meeting chat.",
+      "notes": null
+    },
+    {
+      "id": "webinars-events",
+      "group": "Meetings",
+      "definition": "Registration-based webinars and virtual or hybrid events for large audiences.",
+      "notes": null
+    },
+    {
+      "id": "phone-calling",
+      "group": "Meetings",
+      "definition": "Cloud phone system or calling: numbers, dialing, call routing and voicemail.",
+      "notes": null
+    },
+    {
+      "id": "room-systems",
+      "group": "Meetings",
+      "definition": "Software and certified hardware for conference rooms and shared spaces.",
+      "notes": null
+    },
+    {
+      "id": "contact-center",
+      "group": "Meetings",
+      "definition": "A multichannel contact centre with queues, agents and supervisors.",
+      "notes": null
+    },
+    {
+      "id": "online-storefront",
+      "group": "Commerce",
+      "definition": "An online store with themes, pages and a domain.",
+      "notes": null
+    },
+    {
+      "id": "product-catalog",
+      "group": "Commerce",
+      "definition": "Products, variants, collections and media for sale.",
+      "notes": null
+    },
+    {
+      "id": "inventory-management",
+      "group": "Commerce",
+      "definition": "Tracking stock levels across locations and adjusting inventory.",
+      "notes": null
+    },
+    {
+      "id": "checkout-payments",
+      "group": "Commerce",
+      "definition": "Cart, checkout and accepting card and wallet payments.",
+      "notes": null
+    },
+    {
+      "id": "order-management",
+      "group": "Commerce",
+      "definition": "Viewing, editing, fulfilling, refunding and returning orders.",
+      "notes": null
+    },
+    {
+      "id": "shipping-fulfillment",
+      "group": "Commerce",
+      "definition": "Shipping rates, labels, carrier connections and fulfilment services.",
+      "notes": null
+    },
+    {
+      "id": "point-of-sale",
+      "group": "Commerce",
+      "definition": "In-person selling with POS hardware and software tied to the same catalogue.",
+      "notes": null
+    },
+    {
+      "id": "discounts-promotions",
+      "group": "Commerce",
+      "definition": "Discount codes, automatic discounts and gift cards.",
+      "notes": null
+    },
+    {
+      "id": "customer-accounts",
+      "group": "Commerce",
+      "definition": "Buyer accounts, order history and customer records for a store.",
+      "notes": null
+    },
+    {
+      "id": "multichannel-selling",
+      "group": "Commerce",
+      "definition": "Selling through marketplaces and social channels from one catalogue.",
+      "notes": null
+    },
+    {
+      "id": "b2b-wholesale",
+      "group": "Commerce",
+      "definition": "Company buyers, price lists, payment terms and wholesale ordering.",
+      "notes": null
+    },
+    {
+      "id": "subscriptions-recurring-billing",
+      "group": "Commerce",
+      "definition": "Recurring charges, subscription plans and billing schedules.",
+      "notes": null
+    },
+    {
+      "id": "international-selling",
+      "group": "Commerce",
+      "definition": "Selling in multiple markets with local currency, language, duties and domains.",
+      "notes": null
+    },
+    {
+      "id": "headless-commerce",
+      "group": "Commerce",
+      "definition": "APIs and frameworks for building custom storefronts decoupled from the platform's own themes.",
+      "notes": null
+    },
+    {
+      "id": "agentic-commerce",
+      "group": "Commerce",
+      "definition": "Making products discoverable and purchasable through third-party AI assistants and agents.",
+      "notes": null
+    },
+    {
+      "id": "general-ledger",
+      "group": "Finance",
+      "definition": "The chart of accounts, journal entries and the books of record.",
+      "notes": null
+    },
+    {
+      "id": "bank-feeds-reconciliation",
+      "group": "Finance",
+      "definition": "Connecting bank and card accounts, categorising transactions and reconciling.",
+      "notes": null
+    },
+    {
+      "id": "invoicing",
+      "group": "Finance",
+      "definition": "Creating and sending invoices and estimates to customers.",
+      "notes": null
+    },
+    {
+      "id": "accounts-receivable",
+      "group": "Finance",
+      "definition": "Tracking what customers owe, payments received, collections and dunning.",
+      "notes": null
+    },
+    {
+      "id": "accounts-payable",
+      "group": "Finance",
+      "definition": "Recording and paying bills from vendors.",
+      "notes": null
+    },
+    {
+      "id": "expense-management",
+      "group": "Finance",
+      "definition": "Capturing receipts and tracking business expenses and reimbursements.",
+      "notes": null
+    },
+    {
+      "id": "payments-acceptance",
+      "group": "Finance",
+      "definition": "Accepting customer payments online or by card through the product.",
+      "notes": null
+    },
+    {
+      "id": "payroll",
+      "group": "Finance",
+      "definition": "Paying employees, withholding and filing payroll taxes.",
+      "notes": null
+    },
+    {
+      "id": "time-tracking",
+      "group": "Finance",
+      "definition": "Recording time worked against people, projects or customers.",
+      "notes": null
+    },
+    {
+      "id": "sales-tax",
+      "group": "Finance",
+      "definition": "Calculating, tracking and filing sales tax or VAT.",
+      "notes": null
+    },
+    {
+      "id": "financial-reports",
+      "group": "Finance",
+      "definition": "Financial statements such as profit and loss, balance sheet and cash flow.",
+      "notes": null
+    },
+    {
+      "id": "budgeting-planning",
+      "group": "Finance",
+      "definition": "Budgets, forecasts and financial planning.",
+      "notes": null
+    },
+    {
+      "id": "project-accounting",
+      "group": "Finance",
+      "definition": "Tracking profitability, costs and billing per project or job.",
+      "notes": null
+    },
+    {
+      "id": "fixed-assets",
+      "group": "Finance",
+      "definition": "Recording, depreciating and disposing of fixed assets.",
+      "notes": null
+    },
+    {
+      "id": "multi-entity-consolidation",
+      "group": "Finance",
+      "definition": "Managing multiple companies or subsidiaries and consolidating their books.",
+      "notes": null
+    },
+    {
+      "id": "revenue-recognition",
+      "group": "Finance",
+      "definition": "Recognising revenue over time according to accounting standards.",
+      "notes": null
+    },
+    {
+      "id": "purchasing-procurement",
+      "group": "Finance",
+      "definition": "Purchase requisitions, purchase orders, vendors and receiving.",
+      "notes": null
+    },
+    {
+      "id": "tax-1099-compliance",
+      "group": "Finance",
+      "definition": "Contractor and tax-form filing such as US 1099s.",
+      "notes": null
+    },
+    {
+      "id": "accountant-collaboration",
+      "group": "Finance",
+      "definition": "Tools for outside accountants and bookkeepers to access and work on client books.",
+      "notes": null
+    },
+    {
+      "id": "business-banking-financing",
+      "group": "Finance",
+      "definition": "Merchant money accounts, business cards and lending offered inside the platform.",
+      "notes": null
+    },
+    {
+      "id": "mileage-tracking",
+      "group": "Finance",
+      "definition": "Logging business trips (manually or by GPS) to claim vehicle expenses or reimburse mileage.",
+      "notes": null
+    },
+    {
+      "id": "tracking-dimensions",
+      "group": "Finance",
+      "definition": "Tagging transactions with classes, locations, departments or other segments to report by dimension.",
+      "notes": null
+    },
+    {
+      "id": "financial-close",
+      "group": "Finance",
+      "definition": "Period-close management: close checklists, task tracking and close status across accounting periods.",
+      "notes": null
+    },
+    {
+      "id": "warehouse-management",
+      "group": "Operations",
+      "definition": "Bins, picking, packing and warehouse operations.",
+      "notes": null
+    },
+    {
+      "id": "manufacturing",
+      "group": "Operations",
+      "definition": "Bills of materials, work orders and production management.",
+      "notes": null
+    },
+    {
+      "id": "supply-chain-planning",
+      "group": "Operations",
+      "definition": "Demand planning, supply planning and replenishment.",
+      "notes": null
+    },
+    {
+      "id": "hr-people",
+      "group": "Operations",
+      "definition": "Employee records, org structure and HR processes.",
+      "notes": null
+    },
+    {
+      "id": "professional-services-automation",
+      "group": "Operations",
+      "definition": "Resource planning, project delivery and billing for services businesses.",
+      "notes": null
+    },
+    {
+      "id": "issues-work-items",
+      "group": "Work management",
+      "definition": "Issues, tasks or work items with types, fields, assignees and statuses.",
+      "notes": null
+    },
+    {
+      "id": "boards-kanban",
+      "group": "Work management",
+      "definition": "Visual boards of cards moving across columns.",
+      "notes": null
+    },
+    {
+      "id": "sprints-agile",
+      "group": "Work management",
+      "definition": "Scrum sprints, backlogs, estimation and velocity.",
+      "notes": null
+    },
+    {
+      "id": "roadmaps-timelines",
+      "group": "Work management",
+      "definition": "Timeline or Gantt views planning work over time across teams.",
+      "notes": null
+    },
+    {
+      "id": "issue-workflows",
+      "group": "Work management",
+      "definition": "Configurable status workflows, transitions and rules for work items.",
+      "notes": null
+    },
+    {
+      "id": "releases-versions",
+      "group": "Work management",
+      "definition": "Grouping work into versions or releases and tracking what shipped.",
+      "notes": null
+    },
+    {
+      "id": "dependencies",
+      "group": "Work management",
+      "definition": "Linking work items that block or depend on each other.",
+      "notes": null
+    },
+    {
+      "id": "dev-tool-integration",
+      "group": "Work management",
+      "definition": "Connecting code repositories, builds and deployments to work items.",
+      "notes": null
+    },
+    {
+      "id": "goals-okrs",
+      "group": "Work management",
+      "definition": "Tracking goals or objectives and linking work to them.",
+      "notes": null
+    },
+    {
+      "id": "capacity-resource-planning",
+      "group": "Work management",
+      "definition": "Planning team capacity and allocating people to work.",
+      "notes": null
+    },
+    {
+      "id": "ticketing",
+      "group": "Service",
+      "definition": "Receiving, tracking and resolving customer requests as tickets or cases.",
+      "notes": null
+    },
+    {
+      "id": "omnichannel-routing",
+      "group": "Service",
+      "definition": "Routing conversations and tickets across email, chat, phone and social to the right agent.",
+      "notes": null
+    },
+    {
+      "id": "live-chat-messaging",
+      "group": "Service",
+      "definition": "Web, in-app and social messaging with customers in real time.",
+      "notes": null
+    },
+    {
+      "id": "knowledge-base",
+      "group": "Service",
+      "definition": "Help-centre articles for customers and internal agents.",
+      "notes": null
+    },
+    {
+      "id": "community-forums",
+      "group": "Service",
+      "definition": "Customer community forums for peer help.",
+      "notes": null
+    },
+    {
+      "id": "sla-management",
+      "group": "Service",
+      "definition": "Service-level targets and breach tracking on tickets.",
+      "notes": null
+    },
+    {
+      "id": "csat-surveys",
+      "group": "Service",
+      "definition": "Customer satisfaction and feedback surveys.",
+      "notes": null
+    },
+    {
+      "id": "workforce-management",
+      "group": "Service",
+      "definition": "Forecasting, scheduling and tracking agent workforce.",
+      "notes": null
+    },
+    {
+      "id": "quality-assurance",
+      "group": "Service",
+      "definition": "Reviewing and scoring agent conversations for quality.",
+      "notes": null
+    },
+    {
+      "id": "macros-canned-responses",
+      "group": "Service",
+      "definition": "Saved replies and actions agents apply to tickets in one step.",
+      "notes": null
+    },
+    {
+      "id": "field-service",
+      "group": "Service",
+      "definition": "Scheduling and dispatching mobile technicians for on-site work.",
+      "notes": null
+    },
+    {
+      "id": "it-service-management",
+      "group": "Service",
+      "definition": "IT help desk: incidents, problems, changes, and service catalogue.",
+      "notes": null
+    },
+    {
+      "id": "asset-management",
+      "group": "Service",
+      "definition": "Tracking IT or physical assets and configuration items.",
+      "notes": null
+    },
+    {
+      "id": "customer-health-scores",
+      "group": "Service",
+      "definition": "Scoring customer accounts' health from behaviour and profile data to drive retention work.",
+      "notes": null
+    },
+    {
+      "id": "multi-brand",
+      "group": "Service",
+      "definition": "Running several customer-facing brands, each with its own help centre, channels and addresses, from one account.",
+      "notes": null
+    },
+    {
+      "id": "side-conversations",
+      "group": "Service",
+      "definition": "Separate threads started from a ticket to work with other teams, vendors or tools without exposing them to the customer.",
+      "notes": null
+    },
+    {
+      "id": "e-signature",
+      "group": "Agreements",
+      "definition": "Sending documents for legally binding electronic signature and signing them.",
+      "notes": null
+    },
+    {
+      "id": "signer-identity-verification",
+      "group": "Agreements",
+      "definition": "Verifying signer identity (SMS, knowledge-based, ID document, qualified signatures).",
+      "notes": null
+    },
+    {
+      "id": "bulk-send",
+      "group": "Agreements",
+      "definition": "Sending one document to many recipients individually at once.",
+      "notes": null
+    },
+    {
+      "id": "document-generation",
+      "group": "Agreements",
+      "definition": "Generating agreements or documents from templates and record data.",
+      "notes": null
+    },
+    {
+      "id": "contract-lifecycle-management",
+      "group": "Agreements",
+      "definition": "Authoring, negotiating, storing and tracking contracts through their lifecycle.",
+      "notes": null
+    },
+    {
+      "id": "agreement-repository",
+      "group": "Agreements",
+      "definition": "A searchable store of completed agreements with extracted terms.",
+      "notes": null
+    },
+    {
+      "id": "notary",
+      "group": "Agreements",
+      "definition": "Remote online notarisation of documents.",
+      "notes": null
+    },
+    {
+      "id": "payment-collection-in-documents",
+      "group": "Agreements",
+      "definition": "Collecting payment as part of signing a document.",
+      "notes": null
+    },
+    {
+      "id": "signing-order-routing",
+      "group": "Agreements",
+      "definition": "Recipient order and routing rules for a signing request: serial, parallel, conditional, delegated and signing groups.",
+      "notes": null
+    },
+    {
+      "id": "document-fields-logic",
+      "group": "Agreements",
+      "definition": "Fillable fields placed in a document for signers, with validation, conditional display and calculated values.",
+      "notes": null
+    },
+    {
+      "id": "embedded-signing",
+      "group": "Agreements",
+      "definition": "Signing or sending experience embedded inside a third-party website or app through the API.",
+      "notes": null
+    }
+  ]
+}

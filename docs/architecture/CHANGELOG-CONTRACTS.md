@@ -167,3 +167,16 @@ MINOR, additive. No route, no migration. Only `packages/contracts/src/assessment
 - Why v2 and not optional fields on v1: the schema string says which brief a block answers. With optional fields, a v0.9 run that skipped the lists would be recorded as "no gaps"; with v2 the lists are required (empty means "looked, found none") and the runner refuses a block whose schema is not the one the served paper specifies.
 - New exports: `ASSESSMENT_SCHEMA_V2`, `ASSESSMENT_SCHEMAS`, `CURRENT_ASSESSMENT_SCHEMA`, `AssessmentGap`, `AssessmentImprovement`, `SEVERITIES`, `PAPER_PARTS`, `IMPROVABLE_SCORES`, `hasGaps(block)`. `ASSESSMENT_SCHEMA` keeps its value (`wos-assessment/v1`). `AssessmentRecord` keeps `wos-assessment-record/v1`; its `block` widens to the union. `extractAssessmentBlock`'s json fallback recognises either schema.
 - Golden files that embed the contracts version re-recorded for 5.3.0 where needed; no other change in them.
+
+## 5.4.0 — 2026-09-30 (D59: every target roadmap plans getting customers off the target)
+
+MINOR, additive. No route, no migration.
+- `artifacts.ts`: `MIGRATION_DATA_CLASSES`, `MigrationDataClass`, `MigrationClassPlan`, `NotExtractable`, `RoadmapMigration`, `IMPORT_ENGINE_FEATURE` (`import-engine`), `PLATFORM_TARGET` (`waronsaas`), and `Roadmap.migration` (optional in the schema, so earlier documents still parse).
+- `@waronsaas/planning` `validateRoadmap` (added by the architect with the coordinator's leave; the planning workstream owns it from here) refuses a target roadmap without the section or with a class unaccounted for. It adds the codes `MIGRATION_MISSING`, `MIGRATION_CLASS_MISSING`, `MIGRATION_CLASS_DUPLICATE`, `MIGRATION_CLASS_UNACCOUNTED`, `MIGRATION_EXTRACTION_MISSING` and `MIGRATION_FEATURE_NOT_IN_CATALOG`, with one failing fixture each. TGT-00 is exempt. For consumers this is a new rejection path of an existing validator. It is recorded as MINOR because no product roadmap exists yet.
+- Policy data (`agent-policy.v1`):
+  - a MIGRATION obligation for `roadmap_author` and an IMPORTERS obligation for `feature_author`;
+  - material-finding rules for both roadmap reviewers and both feature reviewers.
+- Docs: DECISIONS D59; ROADMAP-PROTOCOL section 2 "Migration" (importer guarantees, `import-engine` as TGT-00-stewarded shared infrastructure catalogued in the product repo, customer-owned OAuth credentials deferred to Amendment 03); WORKSTREAMS 12.5.
+- Regenerated, no other change: context-engine golden hashes, CLI golden output, the vendored validator bundle.
+
+Affected workstreams: planning (owns the new rule), context-policy (prompts carry the new policy text), control-plane (surfaces the new codes through document validation unchanged).

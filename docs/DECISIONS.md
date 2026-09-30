@@ -131,3 +131,23 @@ These override `docs/V1-SPEC.md` where they differ. Date: 2026-09-29.
 - Founder: wOS Desktop V1 ships on macOS, Windows and Linux. This supersedes the G-18 recommendation of "macOS + Linux; Windows later".
 - Windows code signing uses Azure Trusted Signing or an OV certificate (FOUNDER-CHECKLIST section 12).
 - Windows paths and worktrees need test coverage.
+
+## D59. Every target roadmap plans getting customers OFF the target (seamless importers)
+- Founder (2026-09-30): parity is not enough if a customer cannot leave. Every target roadmap must include getting its customers OFF that target.
+- **Migration section.** Every target roadmap has a `migration` section (`Roadmap.migration`, contracts 5.4.0) covering the target's data classes:
+  - records;
+  - custom objects and fields;
+  - files and attachments;
+  - history and activity;
+  - users and permissions mapping, where exposed.
+
+  Each class is imported by a named connector feature, or listed as "not extractable" with a public source. Partial classes do both. A roadmap without the section fails validation (`MIGRATION_MISSING`), and so does a class left unaccounted for. TGT-00 warOnSaaS is exempt: it has no customers to move off.
+- **Importer guarantees.** Every importer supports:
+  - a dry run;
+  - idempotent re-runs;
+  - delta sync during cutover wherever the target exposes an incremental API;
+  - a verification report with per-object counts and checksums, in which nothing is silently dropped.
+- **Built once.** `import-engine` is a shared catalog feature: mapping, dry run, verification report, idempotency and delta sync. It is built once and stewarded by TGT-00 warOnSaaS as shared infrastructure. Per-target connectors are small catalog features that depend on it. The first proof is importing Salesforce contacts and accounts in the first CRM catalog build.
+- **Credentials.** An importer signs in to the CUSTOMER's own account with the customer's OAuth tokens, held encrypted and scoped per organization, never with wOS's own credentials. The detailed design belongs to Amendment 03 (connections) and is not decided here.
+- **Input facts.** They come from `docs/scans/<target>.md`, section "Getting data out", on main since the `ws/scans` merge.
+- Protocol text: ROADMAP-PROTOCOL.md "Migration: getting customers off the target (D59)".
