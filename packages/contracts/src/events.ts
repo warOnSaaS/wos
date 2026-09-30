@@ -143,6 +143,14 @@ export const DomainEventBody = z.discriminatedUnion("type", [
   }),
   e("organization.permission_override_changed", "private", { organizationId: Uuid, app: AppId, overrides: z.number().int().min(0) }),
   e("account.github_signed_in", "private", { accountId: Uuid, created: z.boolean(), linked: z.boolean() }),
+  // Amendment 04 addendum A (contracts 5.13.0). No addresses in payloads.
+  e("account.email_changed", "private", { accountId: Uuid, via: z.enum(["old_address", "github", "admin_action"]) }),
+  e("account.deletion_changed", "private", {
+    accountId: Uuid,
+    state: z.enum(["requested", "scheduled", "cancelled", "completed", "blocked"]),
+    scheduledFor: z.string().nullable(),
+  }),
+  e("account.export_ready", "private", { accountId: Uuid, exportId: Uuid }),
   // D60 (contracts 5.5.0): architecture records. The impact is computed by computeArchitectureImpact, never an agent.
   e("architecture.impact_computed", "public", {
     documentId: Uuid,

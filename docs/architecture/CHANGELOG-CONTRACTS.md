@@ -382,3 +382,20 @@ MINOR, additive, plus production migration 0012.
   - AGENTS.md "Next" (D64).
 
 Affected workstreams: control-plane, suite-shell, desktop, cli, mobile-runtime, web, verification (section 17).
+
+## 5.13.0 — 2026-09-30 (D66: Amendment 04 decisions and addendum A, account lifecycle)
+
+MINOR, additive. No migration yet: the build's migration comes in Wave 3b (WORKSTREAMS 18).
+- `identity.ts`:
+  - domain lists: `DomainList`, `isDisposableDomain`;
+  - addendum A: `DataExportRequest`, `DATA_EXPORT_SECTIONS`, `AccountDeletionRequest`, `ACCOUNT_DELETION_GRACE_DAYS`, `RETENTION_RULES`, `deletedContributorPseudonym`, `accountDeletionRefusals`, `EmailChangeRequest`, `emailChangeComplete`;
+  - `IdentityPolicy.lists` and `ssoBreakGlass` (optional).
+- Data:
+  - `disposable-email-domains.v1.json` (`DISPOSABLE_EMAIL_DOMAINS`): 9189 domains from `disposable-email-domains` at 51fafcd878e7e67b82f8184c21134fa079f8609f, CC0-1.0, with the source sha256; refreshed by `tools/domain-lists/refresh-disposable.mjs` through a reviewed PR;
+  - `identity-policy.v1` gains `lists` and `ssoBreakGlass`.
+- `IdentityRoutes` gains `requestDataExport`, `confirmDataExport`, `getDataExport`, `requestAccountDeletion`, `confirmAccountDeletion`, `cancelAccountDeletion`, `startEmailChange` and `confirmEmailChange`. `ApiErrorCode` gains `DELETION_BLOCKED` (mapped to 409).
+- `AccountDeletionMachine`. Events `account.email_changed`, `account.deletion_changed` and `account.export_ready` (private).
+- Docs: DECISIONS D66; Amendment 04 sections 11 and addendum A; WORKSTREAMS 18.
+- `biome.json` skips the pinned list (and its vendored copy).
+
+Affected workstreams: control-plane, suite-shell, desktop, cli, mobile-runtime, web, verification, protocol (a note).

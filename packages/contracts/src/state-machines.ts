@@ -1158,6 +1158,48 @@ export const OrgJoinRequestMachine = machine<OrgJoinRequestStateName, OrgJoinReq
   ],
 });
 
+// ---------------------------------------------------------------------------------------------
+// Amendment 04 addendum A (D66, contracts 5.13.0): account deletion.
+// ---------------------------------------------------------------------------------------------
+
+export const AccountDeletionStates = ["requested", "scheduled", "cancelled", "completed", "blocked"] as const;
+export type AccountDeletionStateName = (typeof AccountDeletionStates)[number];
+export type AccountDeletionEvent = "confirm" | "block" | "unblock" | "cancel" | "complete";
+
+export const AccountDeletionMachine = machine<AccountDeletionStateName, AccountDeletionEvent>({
+  name: "account_deletion",
+  states: AccountDeletionStates,
+  initial: ["requested"],
+  terminal: ["cancelled", "completed"],
+  transitions: [
+    {
+      from: "requested",
+      to: "scheduled",
+      event: "confirm",
+      actor: ["account"],
+      guard: "the emailed code is valid; accountDeletionRefusals is empty; scheduled_for = now + 14 days",
+    },
+    {
+      from: "requested",
+      to: "blocked",
+      event: "block",
+      actor: ["system"],
+      guard: "accountDeletionRefusals is not empty (DELETION_BLOCKED)",
+    },
+    { from: "blocked", to: "requested", event: "unblock", actor: ["account"], guard: "the blockers were resolved; a new code is emailed" },
+    { from: "requested", to: "cancelled", event: "cancel", actor: ["account"], guard: "caller is the account" },
+    { from: "scheduled", to: "cancelled", event: "cancel", actor: ["account"], guard: "caller is the account; before scheduled_for" },
+    {
+      from: "scheduled",
+      to: "completed",
+      event: "complete",
+      actor: ["system"],
+      guard:
+        "now >= scheduled_for and accountDeletionRefusals still empty; every RETENTION_RULES action is applied in one transaction; sessions revoked; the account row keeps only its id, status deleted and the pseudonym",
+    },
+  ],
+});
+
 export const ModuleInstallMachine = machine<ModuleInstallState, ModuleInstallEvent>({
   name: "module_install",
   states: ModuleInstallStates,
@@ -1239,4 +1281,5 @@ export const ALL_MACHINES = [
   OrgInviteMachine,
   OrgDomainMachine,
   OrgJoinRequestMachine,
+  AccountDeletionMachine,
 ] as const;

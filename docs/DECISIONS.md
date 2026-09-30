@@ -412,3 +412,15 @@ These override `docs/V1-SPEC.md` where they differ. Date: 2026-09-29.
 
   Their contracts are designed now; their routes answer `MODULE_DORMANT` until a public AdminAction activates them. They are never gated on self-hosted Core (S-41).
 - Contributors keep one account. Build is independent of company organizations.
+
+## D66. Amendment 04 open items, decided (coordinator for the founder, "do what you think"; 2026-09-30)
+- **Quotas:** the `free` plan quotas are accepted as drafted; a paid plan is undecided until one is sold.
+- **Blocklists:** maintained open lists, pinned by commit hash and refreshed only by a reviewed PR, never fetched live.
+  - Disposable domains: `disposable-email-domains` (CC0-1.0) at 51fafcd8…, committed as `data/disposable-email-domains.v1.json`.
+  - Public mail providers: the curated committed list.
+- **SSO break-glass:** an email code plus a second owner's approval; with a single owner, a maintainer AdminAction with a public label.
+- **Account lifecycle:** account deletion, data export and email change are designed before Wave 3b (Amendment 04 addendum A, contracts 5.13.0).
+  - Deletion has a 14-day grace; personal data is deleted; contribution, ledger and receipt records are pseudonymised; git history is kept.
+  - An email change is re-verified at both addresses, or by the linked GitHub when the old mailbox is lost.
+- **Public site:** "Sign in with GitHub" appears next to the email code once the routes are live.
+- **GitHub App:** the founder enables the App's "Email addresses: read" permission (FOUNDER-CHECKLIST).

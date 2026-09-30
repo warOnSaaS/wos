@@ -57,6 +57,11 @@
     "lapseAfterFailingDays": 7
   },
   "invites": { "ttlDays": 7 },
+  "lists": {
+    "disposable": { "file": "disposable-email-domains.v1.json", "refreshedBy": "reviewed_pr" },
+    "publicEmailProviders": { "source": "curated", "refreshedBy": "reviewed_pr" }
+  },
+  "ssoBreakGlass": { "rule": "email_code_and_second_owner", "singleOwnerFallback": "maintainer_admin_action_public_label" },
   "modules": {
     "sso": {
       "status": "dormant",
