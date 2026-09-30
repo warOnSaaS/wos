@@ -16,7 +16,7 @@
 import { z } from "zod";
 import { type BugSeverity, type RedGreenEvidence, redGreenRefusals, type TriageOutcome, type WorkHoldSource } from "../bugs.js";
 import { canonicalSha256 } from "../canonical.js";
-import { splitTaskReservation } from "./engine.js";
+import { splitTaskReservation, taskPayableBase } from "./engine.js";
 import { type BugTriageConfirmation, type BugTriageRecord, type ReceiptStatus, RunPolicySnapshot, receiptCountsIn } from "./entities.js";
 import type { AgentCapabilityPolicy, WorkKind } from "./policies.js";
 import { runPolicySnapshotSha256 } from "./receipts.js";
@@ -466,12 +466,24 @@ export function receiptRouteRefusals(x: {
     receiptDecisionSha256: string | null;
     confirmationRefusals: readonly string[];
   } | null;
-  /** D61, BUG_FIX: the bug's triage record and effective severity, the red-then-green evidence, and independence. */
+  /**
+   * Review 09 R09-3: the IMMUTABLE commissioning metadata of the task the receipt is paid from (its budget basis): the
+   * commissioned kind and, for a fix unit, the bug it fixes (AbuSpec.fix). REQUIRED whenever the pinned policy has
+   * the D61 routes: the route is derived from it in both directions, never chosen by the caller.
+   */
+  commission?: { taskKind: string; fixBug: string | null } | null;
+  /**
+   * D61, BUG_FIX: the bug's triage outcome; the severity the budget was priced at and the severity that was effective
+   * at the budget's ISSUANCE (review 09 R09-6: the pinned decision revision; later corrections do not change a quote);
+   * the red-then-green evidence and what it must be bound to (review 09 R09-3: the accepted fix's bug, feature,
+   * changeset parent and head, regression test and its content hash); independence.
+   */
   bugFix?: {
     outcome: TriageOutcome | null;
-    effectiveSeverity: BugSeverity | null;
     budgetSeverity: BugSeverity | null;
+    severityAtIssuance: BugSeverity | null;
     redGreen: RedGreenEvidence | null;
+    expected: { bug: string; feature: string; parentSha: string; headSha: string; regressionTest: string; testSha256: string } | null;
     /** The fixer (or a related account) triaged this bug: nobody both triages and fixes one bug. */
     fixerTriagedIt: boolean;
     /** The fixer (or a related account) introduced it within the revert-offset window. */
@@ -499,6 +511,27 @@ export function receiptRouteRefusals(x: {
     )
       r.push("a HUMAN_REVIEW receipt needs this account's sealed human review under the task's own assignment");
   }
+  if (x.acceptance.some((a) => a.contributionType === "BUG_FIX" || a.contributionType === "BUG_TRIAGE")) {
+    // R09-3: the route follows the commissioned work, in both directions.
+    const c = x.commission;
+    if (x.evidenceClass === "accepted_budget" && !c) r.push("the task's commissioning metadata is required to derive its route");
+    if (c) {
+      const isFixTask = c.fixBug !== null;
+      if (isFixTask !== (x.contributionType === "BUG_FIX"))
+        r.push(
+          isFixTask
+            ? "a fix task's receipt is BUG_FIX (its evidence and independence rules apply)"
+            : "BUG_FIX is paid only on a commissioned fix task",
+        );
+      if (isFixTask && c.taskKind !== "abu_build" && c.taskKind !== "abu_revision") r.push("a fix task is an abu_build or abu_revision");
+      if ((c.taskKind === "bug_triage") !== (x.contributionType === "BUG_TRIAGE"))
+        r.push(
+          c.taskKind === "bug_triage"
+            ? "a bug_triage task's receipt is BUG_TRIAGE"
+            : "BUG_TRIAGE is paid only on a commissioned bug_triage task",
+        );
+    }
+  }
   if (x.contributionType === "BUG_TRIAGE") {
     const t = x.triage?.record;
     if (!t || t.decidedBy !== "agent" || t.deciderAccountId !== x.receiptAccountId || t.triageTaskId !== x.taskId)
@@ -510,11 +543,31 @@ export function receiptRouteRefusals(x: {
   if (x.contributionType === "BUG_FIX") {
     const f = x.bugFix;
     if (f?.outcome !== "fix") r.push("a BUG_FIX needs the bug's triage outcome fix");
-    if (!f?.effectiveSeverity) r.push("a BUG_FIX needs the bug's effective severity (a critical one is confirmed by a maintainer first)");
-    else if (f.budgetSeverity !== f.effectiveSeverity)
-      r.push(`the fix budget is priced at ${f.budgetSeverity ?? "no"} severity; the effective severity is ${f.effectiveSeverity}`);
+    // R09-6: the quote stands as issued; it must have been the effective severity AT ISSUANCE (pinned revision).
+    if (!f?.severityAtIssuance)
+      r.push("a BUG_FIX budget was issued at an effective severity (a critical one confirmed by a maintainer first)");
+    else if (f.budgetSeverity !== f.severityAtIssuance)
+      r.push(
+        `the fix budget is priced at ${f.budgetSeverity ?? "no"} severity; the severity effective at its issuance was ${f.severityAtIssuance}`,
+      );
     if (!f?.redGreen) r.push("a BUG_FIX needs its red-then-green evidence");
-    else r.push(...redGreenRefusals(f.redGreen));
+    else {
+      r.push(...redGreenRefusals(f.redGreen));
+      // R09-3: the evidence belongs to THIS accepted fix.
+      const e = f.expected;
+      const g = f.redGreen;
+      if (!e) r.push("the accepted fix's bug, feature, parent, head and regression test are required to bind the evidence");
+      else if (
+        g.bug !== e.bug ||
+        e.bug !== x.commission?.fixBug ||
+        g.feature !== e.feature ||
+        g.parent.sha !== e.parentSha ||
+        g.head.sha !== e.headSha ||
+        g.regressionTest !== e.regressionTest ||
+        g.testSha256 !== e.testSha256
+      )
+        r.push("the red-then-green evidence is not bound to this fix (bug, feature, parent, head and regression test must match)");
+    }
     if (f?.fixerTriagedIt) r.push("nobody both triages and fixes one bug (the fixer or a related account triaged it)");
     if (f?.fixerIsBarredIntroducer)
       r.push("the introducer (or a related account) does not fix a bug blamed on its receipt within the revert-offset window");
@@ -1262,12 +1315,21 @@ export function taskAllocationRefusals(x: {
   /** Each receipt with its contributor: the split's canonical key is the ACCOUNT id (review 06 R06-3). */
   receipts: ReadonlyArray<{ receiptId: string; accountId: string; shareBp: number; orgShareBp: number }>;
   lines: ReadonlyArray<{ receiptId: string; beneficiary: "person" | "organization"; amount: bigint }>;
+  /**
+   * Review 09 R09-2 (versioned path): the queue bonus of the reward policy the reservation was PINNED to (null or
+   * absent = frozen v1) and the task-level claim (taskClaimOf). The payable base is the engine's own derivation
+   * (taskPayableBase) from the REAL reservation; it is split with the same canonical rounding.
+   */
+  pinnedQueueBonusBp?: number | null;
+  claim?: { mode: "queue" | "self_pick"; queueBonusBp: number; bonusApplies: boolean };
 }): string[] {
   const sum = x.receipts.reduce((t, c) => t + c.shareBp, 0);
   if (sum !== 10_000) return ["declared shares of the task must sum to 10000 bp before allocation"];
   if (new Set(x.receipts.map((c) => c.accountId)).size !== x.receipts.length) return ["one receipt per contributor and task"];
+  const pay = taskPayableBase(x.reservedBase, x.pinnedQueueBonusBp ?? null, x.claim);
+  if ("refusal" in pay) return [pay.refusal];
   // R06-3: the engine's own split function — receipt ids never change an amount.
-  const split = splitTaskReservation(x.reservedBase, x.receipts);
+  const split = splitTaskReservation(pay.payable, x.receipts);
   const want = new Map<string, bigint>();
   for (const c of x.receipts) {
     const a = split.get(c.accountId)!;
@@ -1977,6 +2039,66 @@ export function bugReportOutcome(x: {
   };
 }
 
+/**
+ * Review 09 R09-4: a bug's fix is ACCEPTED only while a BUG_FIX receipt bound to that bug is live-countable (ACTIVE,
+ * RATIFIED, FINAL_BY_SILENCE) — never mere row existence. The same definition feeds `fixAccepted` everywhere.
+ */
+export function bugFixAccepted(
+  bugId: string,
+  receipts: ReadonlyArray<{ contributionType: string; subjectKind: string; subjectId: string; status: ReceiptStatus | null }>,
+): boolean {
+  return receipts.some(
+    (c) =>
+      c.contributionType === "BUG_FIX" &&
+      c.subjectKind === "bug" &&
+      c.subjectId === bugId &&
+      c.status !== null &&
+      receiptCountsIn("live", c.status),
+  );
+}
+
+/**
+ * Review 09 R09-4: when a bug's supporting fix stops being live-countable after its dependents were admitted, the
+ * receipts that relied on it — the paid first report, and a fix-outcome triage confirmed only by that fix (not
+ * ratified) — go through the EXISTING paths: before finalization the receipt is held or revoked by its admin action;
+ * after it, the allocation takes the free challenge (R07-2) and recovery uses the existing holdback confiscation /
+ * offsets path (D39, D40). No new penalty; the dependents are named here so the service raises them.
+ */
+export function fixRevocationDependents(x: {
+  bugId: string;
+  outcome: TriageOutcome;
+  ratified: boolean;
+  receipts: ReadonlyArray<{ id: string; contributionType: string; subjectKind: string; subjectId: string; status: ReceiptStatus | null }>;
+}): string[] {
+  if (bugFixAccepted(x.bugId, x.receipts)) return [];
+  return x.receipts
+    .filter((c) => c.subjectKind === "bug" && c.subjectId === x.bugId && c.status !== null && receiptCountsIn("live", c.status))
+    .filter((c) => c.contributionType === "BUG_REPORT" || (c.contributionType === "BUG_TRIAGE" && x.outcome === "fix" && !x.ratified))
+    .map((c) => c.id)
+    .sort();
+}
+
+/**
+ * Review 09 R09-6: a fix budget is issued at the severity effective AT ISSUANCE, and the decision revision it used
+ * (the confirmations then on record) is pinned with it. A later correction changes future commissions and the
+ * current ranking only; stopping work already quoted is an explicit authorized cancellation and re-issue.
+ */
+export function fixBudgetIssuanceRefusals(x: {
+  record: Pick<BugTriageRecord, "outcome" | "severity"> | null;
+  confirmationsAtIssuance: ReadonlyArray<Pick<BugTriageConfirmation, "kind" | "correctedSeverity">>;
+  basisSeverity: BugSeverity | null;
+  basisSeverityRevision: number | null;
+}): string[] {
+  if (!x.record || x.record.outcome !== "fix") return ["a fix budget is commissioned for a bug whose triage outcome is fix"];
+  const eff = effectiveBugSeverity(x.record, x.confirmationsAtIssuance);
+  const r: string[] = [];
+  if (!eff) r.push("the bug has no effective severity yet (a critical one is confirmed by a maintainer first)");
+  else if (x.basisSeverity !== eff)
+    r.push(`the fix budget must be priced at the effective severity ${eff}, not ${x.basisSeverity ?? "none"}`);
+  if (x.basisSeverityRevision !== x.confirmationsAtIssuance.length) r.push("the fix budget pins the decision revision it was priced at");
+  return r;
+}
+
 // ------------------------------------------------------------------------------------------------ D60 protocol delta
 
 const HOLD_LABEL = /^(architecture_hold:ADR-\d{3,}|bug_hold:BUG-\d{1,9})$/;
@@ -2181,4 +2303,46 @@ export function nextClaimTerms(x: {
     return { claim: null, refusals: [`cooldown: ${recent.length} assigned tasks released within ${x.declines.windowHours} h`] };
   const withheld = own.length > 0 && !x.claimedSinceLastRelease;
   return { claim: { mode: x.mode, queueBonusBp: x.queueBonusBp, bonusApplies: x.mode === "queue" && !withheld }, refusals: [] };
+}
+
+/**
+ * Review 09 R09-1: the claim terms of ONE lease, checked against the reward policy its task PINNED and the
+ * authoritative claim history (nextClaimTerms). Frozen v1 work carries no terms; v2 work carries complete terms with
+ * the pinned coefficient, and mode and bonus eligibility equal to the derived ones.
+ */
+export function claimTermsRefusals(x: {
+  pinnedQueueBonusBp: number | null;
+  claim: unknown;
+  derived: { mode: "queue" | "self_pick"; bonusApplies: boolean } | null;
+}): string[] {
+  if (x.pinnedQueueBonusBp === null) return x.claim === undefined ? [] : ["pinned v1 work carries no claim terms"];
+  const p = RunPolicySnapshot.shape.claim.unwrap().safeParse(x.claim);
+  if (!p.success) return ["v2 work needs complete, well-formed claim terms (mode, queueBonusBp, bonusApplies)"];
+  const r: string[] = [];
+  if (p.data.queueBonusBp !== x.pinnedQueueBonusBp)
+    r.push(`the claim's queue bonus ${p.data.queueBonusBp} bp differs from the pinned policy's ${x.pinnedQueueBonusBp} bp`);
+  if (!x.derived) r.push("the claim is checked against the authoritative claim history (nextClaimTerms)");
+  else if (p.data.mode !== x.derived.mode || p.data.bonusApplies !== x.derived.bonusApplies)
+    r.push("the claim's mode or bonus eligibility differs from the authoritative claim history");
+  return r;
+}
+
+/**
+ * Review 09 R09-1: ONE task-level entitlement. Every lease that contributed a receipt to the task must carry the SAME
+ * claim terms (the task is claimed once; collaborators join under its terms), or the task is refused. Returns the
+ * task's claim (undefined for v1 work).
+ */
+export function taskClaimOf(
+  pinnedQueueBonusBp: number | null,
+  leaseClaims: ReadonlyArray<unknown>,
+): { claim: { mode: "queue" | "self_pick"; queueBonusBp: number; bonusApplies: boolean } | undefined } | { refusal: string } {
+  if (leaseClaims.length === 0) return { refusal: "a task has at least one participating lease" };
+  if (pinnedQueueBonusBp === null)
+    return leaseClaims.every((c) => c === undefined) ? { claim: undefined } : { refusal: "pinned v1 work carries no claim terms" };
+  const parsed = leaseClaims.map((c) => RunPolicySnapshot.shape.claim.unwrap().safeParse(c));
+  if (parsed.some((p) => !p.success)) return { refusal: "every participating lease of v2 work carries complete claim terms" };
+  const keys = new Set(parsed.map((p) => (p.success ? JSON.stringify([p.data.mode, p.data.queueBonusBp, p.data.bonusApplies]) : "")));
+  if (keys.size !== 1) return { refusal: "one task-level entitlement: the participating leases carry different claim terms" };
+  const first = parsed[0]!;
+  return first.success ? { claim: first.data } : { refusal: "unreachable" };
 }

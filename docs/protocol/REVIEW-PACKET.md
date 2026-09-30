@@ -1,10 +1,10 @@
-# REVIEW-PACKET — Proof of Contribution design (FROZEN protocol v1 for devnet/shadow, D62; review 09: the versioned additions D61, D60 delta, D63)
+# REVIEW-PACKET — Proof of Contribution design (FROZEN protocol v1 for devnet/shadow, D62; review 10: confirm the review-09 fixes R09-1 to R09-6)
 
-Hand the bundle made by `tools/make-review-bundle.sh 09` to Astra (it contains this file, every file listed in §2 and the test output). Everything it references is on branch `ws/protocol` in `/Users/adventurini/waronsaas-protocol` (worktree of `waronsaas/wos`). The protocol is still NOT wired into authoritative reward accounting; scope stays devnet-first and mainnet stays prohibited.
+Hand the bundle made by `WOS_REVIEW_OUT=~/Documents/wos-protocol-review-10 tools/make-review-bundle.sh 10` to Astra (it contains this file, every file listed in §2 and the test output). Everything it references is on branch `ws/protocol` in `/Users/adventurini/waronsaas-protocol` (worktree of `waronsaas/wos`). The protocol is still NOT wired into authoritative reward accounting; scope stays devnet-first and mainnet stays prohibited.
 
 **Review history** (the files in `docs/protocol/reviews/`; the bundle script derives its list from them): 01 (Amendment 02), 02, 03, **04 (bundle 04, reviewed: 11 findings)** **05 (bundle 05, commit 12509a1: B1–B10 plus the carry-forward of review 04)** and **06 (bundle 06, commit 3cddbb1: R06-1 to R06-7)** and **07 (bundle 07, commit 4dddfe7: APPROVE WITH CHANGES; R07-1 to R07-7)**. *Correction:* earlier versions of this packet and of the bundle-05 prompt said bundle 04 "was never reviewed". That was wrong: the founder ran review 04, and Astra flagged the claim in review 05. Both reviews are now in the repository and every one of their findings has a status in §3f. Review 05 examined 12509a1, before the D51 simplification (e5e4930) and D52 (6385b27); every finding was re-run against the current code first (§3f).
 
-What to read first for review 09: **§3l (the versioned additions and what to check)**, then §3k. Earlier: **§3j (review 07: status, changed paths and regression of every finding; the exact races and the accounting trace)**, then **§0 (the V1 active path)**, **§3i (review 06: status, changed paths and regression of every finding, the lifecycle trace and the challenge/finality race)**, §3h (D57, D58), then §3f (reviews 04 and 05), §3g, §3e (D51), §3d (D49). §3c (review 03) is kept for history.
+What to read first for review 10: **§3m (review 09: status, changed paths and regression of every finding; the integration boundaries)**. For review 09: §3l, then §3k. Earlier: **§3j (review 07: status, changed paths and regression of every finding; the exact races and the accounting trace)**, then **§0 (the V1 active path)**, **§3i (review 06: status, changed paths and regression of every finding, the lifecycle trace and the challenge/finality race)**, §3h (D57, D58), then §3f (reviews 04 and 05), §3g, §3e (D51), §3d (D49). §3c (review 03) is kept for history.
 
 ## 0. The V1 active path (read first)
 
@@ -49,6 +49,8 @@ Artifacts: 19 design documents, draft contracts that typecheck with 89 engine/pr
 8. For context on what already exists: `docs/architecture/REVIEW-PROTOCOL.md`, `BUILD-PROTOCOL.md`, `SECURITY.md`, `packages/db/migrations/0001_init.sql`–`0006`.
 
 9. Review 09 (versioned additions): `packages/db/migrations/0010_bugs_and_maintenance.sql`, `packages/db/test/bugs-assertions.sql`, `packages/contracts/test/protocol-work-next.test.ts`, `packages/contracts/src/protocol/data/reward-policy.v2.json`, `packages/contracts/src/protocol/data/capability-policy.v2.json`; the planning side they bind to: `packages/contracts/src/bugs.ts`, `packages/contracts/src/data/bugs-policy.v1.json`, `packages/contracts/src/data/architecture-policy.v1.json`, and the architect's notes `docs/architecture/D60-PROTOCOL-DELTA.md`, `docs/architecture/D61-PROTOCOL-NOTES.md`.
+
+10. Review 10: `docs/protocol/reviews/ASTRA-REVIEW-09-additions.md`, `docs/protocol/reviews/ASTRA-REVIEW-09-repros-prefix.txt`, `tools/astra-09/probes.mjs`, `tools/astra-09/q1.sh`, `packages/db/test/accounting-trace-v2.mjs`.
 
 Reproduce: `source ~/.nvm/nvm.sh && nvm use 22 && npm run check && npm run db:test && npm run sim:tokenomics`.
 
@@ -280,7 +282,32 @@ R08-1 and R08-2 remain closed (§3k): their regressions ("R07-2 repro …" rules
 
 Not in SQL by design (D51 engine-first): the red-then-green evidence (CI data), the work-next ranking and eligibility, the decline rule. Open: the server must publish the ranking inputs and bug records (GAPS G-102); provisional values (queue bonus, decline window, bug factors, triage budget); founder decision F35 (introducer offset on, as the brief asked, or off, as the planning note recommends).
 
-## 4. Questions for review 09 (narrow)
+## 3m. Astra review 09: ACCEPT AFTER THE LISTED CHANGES — fix pass (for review 10)
+
+Probes re-run first on main c0db5ff (`reviews/ASTRA-REVIEW-09-repros-prefix.txt`: every Appendix A line reproduced with the adapted `tools/astra-09/probes.mjs` and `tools/astra-09/q1.sh`; R09-4 executed in SQL as a failing regression before its fix). Fixed on branch `ws/protocol-v2` from main; contracts 5.12.0; migration 0010 amended in place (never applied anywhere; excluded from production by its marker); no new migration.
+
+| Finding | Status | Changed paths | Regression |
+|---|---|---|---|
+| **R09-1** (HIGH) claim terms optional and unbound | **Resolved** | The queue bonus moved into the pinned REWARD policy (`reward-policy.v2` `queue.queueBonusBp`; the engine reads it per reservation from `EngineParams.queueBonusBpByPolicy`). Engine `taskPayableBase`: v2 work REQUIRES claim terms with exactly the pinned coefficient; pinned v1 work takes none. Rules `claimTermsRefusals` (complete terms, pinned coefficient, mode and eligibility equal to the authoritative history `nextClaimTerms`) and `taskClaimOf` (ONE task-level entitlement: every participating lease carries identical terms, else refused). 0010 Q1: `check_claim_snapshot` requires complete terms at the coefficient of the policy the lease's task budget pinned, none for v1; `check_queue_bonus` requires every participating receipt's lease snapshot and identical terms | work-next "R09-1 repro: omitted or tampered…", "R09-1: claim terms are complete…", "R09-1: one task-level entitlement…"; db "R09-1 repro: a v2 lease snapshot without claim terms", "…null…", "…malformed…", "…tampered queue-bonus coefficient", "…claim terms on pinned v1 work", "…different claim terms", "…no claim snapshot" |
+| **R09-2** (HIGH) the correct self-pick payment failed the allocation rule | **Resolved** | `taskAllocationRefusals` gains the versioned path (`pinnedQueueBonusBp`, `claim`): the payable base is `taskPayableBase` from the REAL reservation, split by the same canonical rounding; v1 unchanged. 0010 Q1 uses the same derivation | work-next "R09-2 repro…" (engine lines pass; full Q refused; awkward 1001/3333-6667 with an organization share); the v2 cross-layer trace |
+| **R09-3** (HIGH) bug routes not bound to commissioned work/evidence | **Resolved** | `receiptRouteRefusals`: `commission` (immutable budget basis) REQUIRED under policies with D61 routes; a fix task pays only BUG_FIX and BUG_FIX only on a fix task (abu_build/abu_revision); bug_triage both ways; `bugFix.expected` binds the red/green evidence to the accepted fix's bug, feature, parent, head, regression test and content hash. 0010: F1 `check_bug_budget` (fix and triage budgets carry `basis.taskKind`/`basis.bug`), B1 triage only on a bug_triage budget for that bug, B3 route backstop in both directions | work-next "R09-3 repro A/B/C…"; db "R09-3 repro B…", "R09-3 repro C…" ×2, "R09-3: BUG_FIX on a task that is not a commissioned fix", "…bug_triage task's receipt…", "…BUG_TRIAGE on a task…", "…fix budget of another commissioned kind", "…bug_triage budget commissioned for no bug" |
+| **R09-4** (HIGH) a revoked or provisional fix resolved the bug | **Resolved** | 0010 `receipt_live` (ACTIVE, RATIFIED, FINAL_BY_SILENCE); B3 `has_fix` requires a live-countable BUG_FIX of the bug; rules `bugFixAccepted` (same definition for every `fixAccepted`) and `fixRevocationDependents` (the report and a fix-confirmed, unratified triage are raised to the EXISTING paths: hold/revoke before finalization, the R07-2 free challenge after it, recovery through holdback confiscation and offsets; no new penalty) | work-next "R09-4 repro…"; db "R09-4 repro: a report admitted while the bug's only fix is revoked", "R09-4: live-countable = …" (all five statuses) |
+| **R09-5** (MEDIUM) v2 did not price abu_revision and architecture_author | **Resolved** | `capability-policy.v2` budgets: `abu_revision` = a build of its size (4 ACU/size point); `architecture_author` = 30 ACU (priced like a feature contract, provisional); schema admits the kind; `bug_sweep` stays unpaid | work-next "R09-5 repro…" |
+| **R09-6** (MEDIUM) a correction invalidated an issued quote | **Resolved** | The quote is pinned at issuance: 0010 F1 prices a fix budget at the severity effective then and server-sets `basis.severityRevision` (the confirmations on record); B3 no longer compares with the current severity. Rules `fixBudgetIssuanceRefusals`; `receiptRouteRefusals` compares the budget with `severityAtIssuance`. Corrections change future commissions and the ranking; stopping quoted work is an authorized cancellation and re-issue | work-next "R09-6 repro…"; db "R09-6 …" ×5 (before issuance, after the lease: the high quote stands after a downgrade; the critical budget waits for the maintainer) |
+| v2 cross-layer accounting trace | **Added** | `packages/db/test/accounting-trace-v2.mjs` (run by `db:test`): the real reward-policy.v2 stored and pinned; queue, self-pick, decline-withheld and a two-contributor task; awkward reservations 1001/707/997; claim terms derived from an authoritative history and persisted through the Q1 guard; exact allocations; the single Q−B reserve credit derived from the database's own records equals the engine's; replay refused in both layers; the bonus is never also released | 13 checks |
+| Review-08 gates | **Re-run** | `reviews/ASTRA-REVIEW-08-probes.mjs` unchanged: identical output except R08-1 now passing; the R08-1/R08-2 SQL regressions pass | prefix file |
+
+**Integration boundaries (review 09 §5), stated so they are not mistaken for executed guarantees:**
+- The **introducer offset** is an OBLIGATION the payment adapter must consume: `bugReportOutcome.introducerOffset` says one is owed; B4 validates an offset that is inserted (bug, receipt, introducer, once, equal to the report's recorded allocations) but does not create it. Equality is to the report's recorded allocations only: a reconciliation rule for a later challenge that reduces the report's payment is NOT implemented and is listed as open (GAPS G-102) — nothing here claims equality to final net pay. No new economics; F35 stays a switch.
+- The **introducer window is anchored at the triage decision** (server time `decided_at`) back to the introducing receipt's acceptance (`qualified_at`), not at report intake. A day-13 report triaged on day 15 falls outside. Regression: db "R09 section 5: the introducer window is anchored at the triage decision" (13 d 23 h inside, 14 d 1 h outside). If the founder wants timely reports protected, the intake time must be pinned instead (a later versioned change).
+- **Hold labels and decline history need authoritative cause records** in the service: H1 only enforces label syntax and `cancelled`; `nextClaimTerms` trusts the release causes it is given; the service must build both from its own lease/hold records, never from the contributor. The pure helpers are not evidence that a deployed service calls them (the protocol is not implemented yet).
+- Ranking inputs, limits and candidate metadata are built by the control plane from authoritative records (GAPS G-102).
+
+## 4. Questions for review 10 (narrow)
+
+Only: for each of R09-1 to R09-6 — resolved, partially resolved or not resolved, checked against §3m's changed paths and named regressions, and whether a nearby sequence still succeeds; and whether the v2 cross-layer trace tests what it claims.
+
+## 4a. Questions for review 09 (narrow, historical)
 
 Only: (1) the D61 economy delta, the D60 delta and D63 against §3l — does each rule and invariant do what the table says, does conservation hold with the queue bonus returned to R, and is any nearby sequence still paid that should not be (self-dealing, spam, severity inflation, cherry-picking through limits or declines)? (2) Are R08-1 and R08-2 still closed? (3) Can these additions join the frozen protocol for devnet/shadow implementation?
 
@@ -288,7 +315,15 @@ Only: (1) the D61 economy delta, the D60 delta and D63 against §3l — does eac
 
 Only: (1) verify R07-1 to R07-7 against §3j — changed paths and named regressions — and whether a nearby sequence still passes; (2) the strengthened races (exact winner, loser reason, final state, both orderings) and the accounting trace; (3) can the protocol now be FROZEN for devnet implementation (not mainnet, not value-bearing tokens)?
 
-## 5. How to run review 09
+## 5. How to run review 10
+
+```
+WOS_REVIEW_OUT=~/Documents/wos-protocol-review-10 bash tools/make-review-bundle.sh 10
+```
+
+The output directory defaults to `~/Downloads/wos-protocol-review-<n>`; `WOS_REVIEW_OUT` overrides it.
+
+Review 09 was run with:
 
 ```
 bash tools/make-review-bundle.sh 09

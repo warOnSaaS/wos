@@ -1,0 +1,49 @@
+Astra review 09 probes re-run on ws/protocol-v2 at 1b220f7 (main c0db5ff + the review file), BEFORE any fix.
+node tools/astra-09/probes.mjs (Appendix B probes.mjs, imports adapted to the built package):
+{"name":"self_pick","result":{"reserved":"1200000000","paid":"1000000000","returned":"200000000","refusals":["allocation t/person is 1000000000, the declared shares give 1200000000"],"conserved":true}}
+{"name":"queue","result":{"reserved":"1200000000","paid":"1200000000","returned":"0","refusals":[],"conserved":true}}
+{"name":"omitted","result":{"reserved":"1200000000","paid":"1200000000","returned":"0","refusals":[],"conserved":true}}
+{"name":"zero_bonus","result":{"reserved":"1200000000","paid":"1200000000","returned":"0","refusals":[],"conserved":true}}
+{"name":"budget_abu_build","result":{"modelMicro":"10000000"}}
+{"name":"budget_abu_revision","result":{"refusal":"no budget model for task kind abu_revision"}}
+{"name":"budget_architecture_author","result":{"refusal":"no budget model for task kind architecture_author"}}
+{"name":"unrelated_red_green","result":[]}
+{"name":"fix_disguised_as_implementation","result":[]}
+{"name":"correction_after_issue","result":["the fix budget is priced at high severity; the effective severity is low"]}
+{"name":"R08-1_ACTIVE","result":[]}
+{"name":"R08-1_RATIFIED","result":[]}
+{"name":"R08-1_FINAL_BY_SILENCE","result":[]}
+{"name":"R08-1_PROVISIONAL","result":["the free allocation challenge is for live-countable receipts (ACTIVE, RATIFIED, FINAL_BY_SILENCE)"]}
+{"name":"R08-1_REVOKED","result":["the free allocation challenge is for live-countable receipts (ACTIVE, RATIFIED, FINAL_BY_SILENCE)"]}
+{"name":"rounding","result":{"reserved":"0","base":"0","returned":"0"}}
+{"name":"rounding","result":{"reserved":"1","base":"0","returned":"1"}}
+{"name":"rounding","result":{"reserved":"5","base":"4","returned":"1"}}
+{"name":"rounding","result":{"reserved":"1001","base":"834","returned":"167"}}
+{"name":"rounding","result":{"reserved":"1200","base":"1000","returned":"200"}}
+{"name":"rounding","result":{"reserved":"999999999999999999","base":"833333333333333332","returned":"166666666666666667"}}
+
+bash tools/astra-09/q1.sh (Appendix B q1.mjs on Postgres 17 instead of PGlite; the 0010 Q1 functions extracted unchanged):
+{"i":1,"body":{"claim":{"mode":"self_pick","queueBonusBp":2000,"bonusApplies":false}},"amount":1200,"accepted":false,"error":"wos: a task claimed without the queue bonus is allocated at most its base price (the bonus stays in R)"}
+{"i":2,"body":{},"amount":1200,"accepted":true}
+{"i":3,"body":{"claim":{"mode":"self_pick","queueBonusBp":0,"bonusApplies":false}},"amount":1200,"accepted":true}
+{"i":4,"body":{"claim":{"mode":"self_pick","queueBonusBp":2000,"bonusApplies":false}},"amount":1000,"accepted":true}
+{"i":5,"body":{"claim":{"mode":"self_pick","queueBonusBp":2000,"bonusApplies":false}},"amount":999,"accepted":true}
+
+Result: every Appendix A line reproduces (self_pick refused by taskAllocationRefusals; omitted and zero_bonus pay Q; abu_revision and architecture_author unpriced; unrelated red/green and fix-as-IMPLEMENTATION pass; correction_after_issue refuses; R08-1 closed; rounding identical; Q1 accepts omitted, bonus 0, 1000 and 999). R09-3C and R09-4 are SQL paths reproduced as failing regressions in packages/db/test/bugs-assertions.sql before their fix (see the fix commit).
+
+SQL (executed, db:test on Postgres 17 with the R09-4 regression added before the fix): ERROR:  EXPECTED FAILURE did not happen: R09-4 repro: a report admitted while the bug's only fix is revoked
+
+Review-08 gates re-run on the fixed tree (docs/protocol/reviews/ASTRA-REVIEW-08-probes.mjs, unchanged): 12 probes; identical to ASTRA-REVIEW-08-probe-results.jsonl except R08-1 RATIFIED and FINAL_BY_SILENCE, which now pass (R08-1 closed). Output:
+{"name":"R07-1_valid_fallback","result":[]}
+{"name":"R07-1_unknown_risk_refused","result":["the ReviewPolicy has 0 rules for risk class unknown-risk (exactly one is required)"]}
+{"name":"R07-1_wrong_capability_version_refused","result":["the capability policy used is not the one the snapshot pinned"]}
+{"name":"R07-1_wrong_provider_refused","result":["claude_cli/gpt-6-astra is not a qualified (provider, model) for the astra seat"]}
+{"name":"R07-5_machine_endpoints_declared","result":[]}
+{"name":"R07-6_in_epoch_hold_and_release","result":{"holds":{},"claimable":{"alice":"100"},"consumed":["hold:h","hold-release:h"]}}
+{"name":"R08-1_allocation_challenge_ACTIVE","result":[]}
+{"name":"R08-1_allocation_challenge_RATIFIED","result":[]}
+{"name":"R08-1_allocation_challenge_FINAL_BY_SILENCE","result":[]}
+{"name":"R08-1_old_D54_window_already_closed","result":["the receipt is already final"]}
+{"name":"R07-7_confirmed_ruling_records","result":[{"rulingId":"r","findingId":"f","raisedByLab":"openai","resolvedByLab":"human","outcome":"upheld"}]}
+{"name":"R07-7_unconfirmed_ruling_refused","error":"ruling r is awaiting_maintainer, not confirmed"}
+The R08-1 and R08-2 SQL regressions (db-assertions 'R08-1 ...', 'R08-2 ...') pass in db:test on this tree.

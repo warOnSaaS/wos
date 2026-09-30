@@ -172,6 +172,12 @@ export interface EngineParams {
   bountyBpOfRecovered: bigint;
   /** At most this share of an epoch's budget absorbs unrecovered losses (D41); the rest carries forward. */
   lossAbsorptionMaxBp: bigint;
+  /**
+   * D63 / review 09 R09-1: the queue bonus (bp) of each reward-policy version that has one. A reservation pinned to a
+   * version listed here REQUIRES claim terms at acceptance, with exactly this coefficient; a reservation pinned to any
+   * other version (frozen v1) takes none. Callers processing reservations pinned to several versions merge the maps.
+   */
+  queueBonusBpByPolicy?: Readonly<Record<string, number>>;
 }
 
 export interface HoldbackTranche {
@@ -312,6 +318,28 @@ export function queueBasePrice(queuePrice: bigint, queueBonusBp: number): bigint
   if (!Number.isInteger(queueBonusBp) || queueBonusBp < 0 || queueBonusBp > 10_000)
     throw new EngineError(`queue bonus ${queueBonusBp} bp is outside 0..10000`);
   return (queuePrice * BP) / (BP + BigInt(queueBonusBp));
+}
+
+/**
+ * Review 09 R09-1/R09-2: the ONE payable-base derivation shared by the engine, the allocation rule and the database
+ * (0010 Q1). `pinnedQueueBonusBp` is the queue bonus of the reward policy the reservation was pinned to (null = frozen
+ * v1, which takes no claim terms and pays the whole reservation). For v2 work the claim is REQUIRED, its coefficient
+ * must equal the pinned one, only a queue claim earns the bonus, and without the bonus the base price is paid.
+ */
+export function taskPayableBase(
+  reservedBase: bigint,
+  pinnedQueueBonusBp: number | null,
+  claim: { mode: "queue" | "self_pick"; queueBonusBp: number; bonusApplies: boolean } | undefined,
+): { payable: bigint } | { refusal: string } {
+  if (pinnedQueueBonusBp === null)
+    return claim === undefined ? { payable: reservedBase } : { refusal: "pinned v1 work carries no claim terms" };
+  if (!claim) return { refusal: "v2 work needs its claim terms (mode, queue bonus, whether it applies)" };
+  if (claim.mode !== "queue" && claim.mode !== "self_pick") return { refusal: "claim mode is queue or self_pick" };
+  if (claim.queueBonusBp !== pinnedQueueBonusBp)
+    return { refusal: `the claim's queue bonus ${claim.queueBonusBp} bp differs from the pinned policy's ${pinnedQueueBonusBp} bp` };
+  if (typeof claim.bonusApplies !== "boolean") return { refusal: "bonusApplies is a boolean" };
+  if (claim.bonusApplies && claim.mode !== "queue") return { refusal: "only a queue claim earns the queue bonus" };
+  return { payable: claim.bonusApplies ? reservedBase : queueBasePrice(reservedBase, pinnedQueueBonusBp) };
 }
 
 export interface PoolPayout {
@@ -917,10 +945,11 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
       throw new EngineError(`declared shares of ${a.taskId} must be positive and sum to 10000`);
     const accounts = a.shares.map((x) => x.accountId);
     if (new Set(accounts).size !== accounts.length) throw new EngineError(`duplicate share line in ${a.taskId} (one line per contributor)`);
+    // D63 / R09-1: without the queue bonus a task is paid its base price; the bonus portion returns to R (once, here).
+    const pay = taskPayableBase(res.amount, p.queueBonusBpByPolicy?.[res.policyVersion] ?? null, a.claim);
+    if ("refusal" in pay) throw new EngineError(`${a.taskId}: ${pay.refusal}`);
     reserved.delete(a.taskId);
-    // D63: without the queue bonus a task is paid its base price; the bonus portion of the reservation returns to R.
-    if (a.claim?.bonusApplies && a.claim.mode !== "queue") throw new EngineError(`${a.taskId}: only a queue claim earns the queue bonus`);
-    const paid = a.claim && !a.claim.bonusApplies ? queueBasePrice(res.amount, a.claim.queueBonusBp) : res.amount;
+    const paid = pay.payable;
     R += res.amount - paid;
     returned += res.amount - paid;
     queueBonusReturned += res.amount - paid;
@@ -1215,6 +1244,7 @@ export function engineParamsFrom(
     holdback: { shareBp: number; epochs: number };
     budgets: { expiryEpochs: number; reviewGraceEpochs: number };
     losses: { bountyBpOfRecovered: number; absorptionMaxBp: number };
+    queue?: { queueBonusBp: number };
   },
   completion: { feature: Record<"implementersBp" | "contractAuthorsBp" | "roadmapAuthorsBp" | "reviewersBp" | "finderBp", number> },
 ): EngineParams {
@@ -1249,6 +1279,7 @@ export function engineParamsFrom(
     reviewGraceEpochs: reward.budgets.reviewGraceEpochs,
     bountyBpOfRecovered: BigInt(reward.losses.bountyBpOfRecovered),
     lossAbsorptionMaxBp: BigInt(reward.losses.absorptionMaxBp),
+    queueBonusBpByPolicy: reward.queue ? { [reward.policyVersion]: reward.queue.queueBonusBp } : {},
   };
 }
 

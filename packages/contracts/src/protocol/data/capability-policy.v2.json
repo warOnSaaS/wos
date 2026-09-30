@@ -300,6 +300,24 @@
         "minSamples": 30,
         "headroomBp": 12500
       }
+    },
+    {
+      "taskKind": "abu_revision",
+      "baseMicro": "0",
+      "perSizePointMicro": "4000000",
+      "peerBaseline": {
+        "minSamples": 30,
+        "headroomBp": 12500
+      }
+    },
+    {
+      "taskKind": "architecture_author",
+      "baseMicro": "30000000",
+      "perSizePointMicro": "0",
+      "peerBaseline": {
+        "minSamples": 10,
+        "headroomBp": 12500
+      }
     }
   ],
   "workNext": {
@@ -356,7 +374,6 @@
       "critical": 200000
     },
     "architectureMigration": 100000,
-    "queueBonusBp": 2000,
     "declines": {
       "windowHours": 168,
       "cooldownAfter": 3,

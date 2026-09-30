@@ -24,6 +24,12 @@
 --   Q1  (D63) a claim earns the queue bonus only in queue mode; a task whose lease snapshot withholds the bonus is
 --       allocated at most its base price floor(reserved x 10000 / (10000 + bonus)); the rest stays in R.
 -- Sweeps have no receipt type: they are paid only through confirmed reports.
+--
+-- Review 09 fix pass (R09-1..R09-6): the claim terms are REQUIRED for work pinned to a policy with a queue bonus and
+-- bound to that coefficient, one set of terms per task (Q1); the route follows the commissioned budget basis in both
+-- directions (`basis.taskKind`, `basis.bug`; B3) and a triage is decided only on a bug_triage budget for that bug (B1);
+-- a fix resolves a bug only while its BUG_FIX receipt is live-countable (B3); a fix budget is priced at the severity
+-- effective at issuance and pins the decision revision it used (F1); v2 prices abu_revision and architecture_author.
 
 -- ============================================================================================
 -- Types
@@ -38,6 +44,18 @@ alter table wos.contribution_receipts add constraint contribution_receipts_contr
 create or replace function wos.bug_rules(reward_version text) returns jsonb
 language sql stable security definer set search_path = wos, pg_temp as $$
   select d.body -> 'bugs' from wos.policy_documents d where d.kind = 'reward' and d.version = reward_version
+$$;
+
+-- Review 09 R09-1: the queue bonus of a pinned reward policy, or null (v1 has none: no claim terms).
+create or replace function wos.queue_bonus(reward_version text) returns integer
+language sql stable security definer set search_path = wos, pg_temp as $$
+  select (d.body -> 'queue' ->> 'queueBonusBp')::integer from wos.policy_documents d where d.kind = 'reward' and d.version = reward_version
+$$;
+
+-- Review 09 R09-4: a receipt counts only while live-countable (ACTIVE, RATIFIED, FINAL_BY_SILENCE).
+create or replace function wos.receipt_live(r uuid) returns boolean
+language sql stable security definer set search_path = wos, pg_temp as $$
+  select coalesce(wos.receipt_status(r) in ('ACTIVE', 'RATIFIED', 'FINAL_BY_SILENCE'), false)
 $$;
 
 create or replace function wos.bug_number(k text) returns integer
@@ -86,8 +104,9 @@ begin
   if new.decided_by = 'agent' then
     select * into b from wos.task_budgets where task_id = new.triage_task_id;
     select * into l from wos.leases where id = new.triage_lease_id;
-    if b.task_id is null or b.kind <> 'execution' or l.id is null or l.task_id <> b.task_id then
-      raise exception 'wos: an agent triage is made under the lease of its own bug_triage budget' using errcode = 'check_violation';
+    if b.task_id is null or b.kind <> 'execution' or l.id is null or l.task_id <> b.task_id
+       or b.basis ->> 'taskKind' is distinct from 'bug_triage' or b.basis ->> 'bug' is distinct from new.bug_key then
+      raise exception 'wos: an agent triage is made under the lease of a bug_triage budget commissioned for this bug' using errcode = 'check_violation';
     end if;
     if exists (select 1 from wos.task_budget_releases r where r.task_id = b.task_id) then
       raise exception 'wos: the triage task''s budget was released' using errcode = 'check_violation';
@@ -192,6 +211,16 @@ declare
   confirmed boolean;
   has_fix boolean;
 begin
+  -- Review 09 R09-3: the route follows the commissioned budget, in both directions.
+  if new.task_id is not null then
+    select * into b from wos.task_budgets where task_id = new.task_id;
+    if coalesce(b.basis ? 'bug' and b.basis ->> 'taskKind' in ('abu_build', 'abu_revision'), false) <> (new.contribution_type = 'BUG_FIX') then
+      raise exception 'wos: a fix task''s receipt is BUG_FIX, and BUG_FIX is paid only on a commissioned fix task' using errcode = 'check_violation';
+    end if;
+    if coalesce(b.basis ->> 'taskKind' = 'bug_triage', false) <> (new.contribution_type = 'BUG_TRIAGE') then
+      raise exception 'wos: a bug_triage task''s receipt is BUG_TRIAGE, and BUG_TRIAGE is paid only on a bug_triage task' using errcode = 'check_violation';
+    end if;
+  end if;
   if new.contribution_type not in ('BUG_REPORT', 'BUG_TRIAGE', 'BUG_FIX') then
     return new;
   end if;
@@ -204,7 +233,9 @@ begin
     raise exception 'wos: a % needs the bug''s triage record', new.contribution_type using errcode = 'check_violation';
   end if;
   eff := wos.bug_effective_severity(d.bug_id);
-  has_fix := exists (select 1 from wos.contribution_receipts f where f.contribution_type = 'BUG_FIX' and f.subject_kind = 'bug' and f.subject_id = d.bug_id);
+  -- Review 09 R09-4: a fix resolves the bug only while its BUG_FIX receipt is live-countable, never by row existence.
+  has_fix := exists (select 1 from wos.contribution_receipts f where f.contribution_type = 'BUG_FIX' and f.subject_kind = 'bug'
+                     and f.subject_id = d.bug_id and wos.receipt_live(f.id));
   if new.contribution_type = 'BUG_TRIAGE' then
     if d.decided_by <> 'agent' or d.triage_task_id is distinct from new.task_id or d.decider_account_id <> new.account_id
        or d.triage_lease_id is distinct from new.lease_id then
@@ -228,8 +259,8 @@ begin
       using errcode = 'check_violation';
   end if;
   if new.contribution_type = 'BUG_FIX' then
-    if d.outcome <> 'fix' or eff is null then
-      raise exception 'wos: a BUG_FIX needs outcome fix and an effective severity (a critical one confirmed by a maintainer)' using errcode = 'check_violation';
+    if d.outcome <> 'fix' then
+      raise exception 'wos: a BUG_FIX needs the bug''s triage outcome fix' using errcode = 'check_violation';
     end if;
     if wos.related_accounts(d.decider_account_id, new.account_id) then
       raise exception 'wos: nobody both triages and fixes one bug' using errcode = 'check_violation';
@@ -238,8 +269,10 @@ begin
     if b.task_id is null or b.kind <> 'execution' or new.lease_id is null then
       raise exception 'wos: a BUG_FIX is paid from an execution budget, under its lease' using errcode = 'check_violation';
     end if;
-    if b.basis ->> 'bug' is distinct from d.bug_key or b.basis ->> 'severity' is distinct from eff then
-      raise exception 'wos: the fix budget is bound to this bug and its effective severity (basis bug, severity)' using errcode = 'check_violation';
+    -- Review 09 R09-6: the quote pinned at issuance (F1 validated it and pinned the decision revision) stands; a later
+    -- correction affects future commissions and the ranking only.
+    if b.basis ->> 'bug' is distinct from d.bug_key or not (b.basis ? 'severityRevision') then
+      raise exception 'wos: the fix budget is commissioned for this bug at the severity effective at its issuance' using errcode = 'check_violation';
     end if;
     if wos.bug_rules(b.policy_version) is null then
       raise exception 'wos: the fix budget''s pinned reward policy (%) has no bug rules', nullif(b.policy_version, '') using errcode = 'check_violation';
@@ -279,6 +312,41 @@ begin
   return new;
 end $$;
 create trigger contribution_receipts_d61 before insert on wos.contribution_receipts for each row execute function wos.check_bug_receipt();
+
+-- ============================================================================================
+-- F1 (review 09 R09-3, R09-6): commissioning metadata of bug budgets
+-- ============================================================================================
+create or replace function wos.check_bug_budget() returns trigger
+language plpgsql security definer set search_path = wos, pg_temp as $$
+declare
+  d wos.bug_triage_decisions;
+begin
+  if new.basis ->> 'taskKind' = 'bug_triage' then
+    if new.kind <> 'execution' or not (new.basis ? 'bug') then
+      raise exception 'wos: a bug_triage budget is an execution budget commissioned for one bug (basis bug)' using errcode = 'check_violation';
+    end if;
+    return new;
+  end if;
+  if not (new.basis ? 'bug') then
+    return new;
+  end if;
+  if new.basis ->> 'taskKind' not in ('abu_build', 'abu_revision') or new.kind <> 'execution' then
+    raise exception 'wos: a fix budget is an abu_build or abu_revision execution budget' using errcode = 'check_violation';
+  end if;
+  perform pg_advisory_xact_lock(hashtext('wos.bug:' || (select bug_id from wos.bug_triage_decisions where bug_key = new.basis ->> 'bug')));
+  select * into d from wos.bug_triage_decisions where bug_key = new.basis ->> 'bug';
+  if d.bug_id is null or d.outcome <> 'fix' then
+    raise exception 'wos: a fix budget is commissioned for a bug whose triage outcome is fix' using errcode = 'check_violation';
+  end if;
+  if new.basis ->> 'severity' is distinct from wos.bug_effective_severity(d.bug_id) then
+    raise exception 'wos: a fix budget is priced at the severity effective at its issuance (%)', coalesce(wos.bug_effective_severity(d.bug_id), 'none: a critical severity is confirmed by a maintainer first')
+      using errcode = 'check_violation';
+  end if;
+  -- The decision revision the quote used: the confirmations on record at issuance (server-set).
+  new.basis := new.basis || jsonb_build_object('severityRevision', (select count(*) from wos.bug_triage_confirmations c where c.bug_id = d.bug_id));
+  return new;
+end $$;
+create trigger task_budgets_d61 before insert on wos.task_budgets for each row execute function wos.check_bug_budget();
 
 -- ============================================================================================
 -- B4: the introducer's offset
@@ -324,9 +392,27 @@ alter table wos.task_budget_releases add constraint task_budget_releases_hold_la
 -- Q1 (D63): the queue bonus
 -- ============================================================================================
 create or replace function wos.check_claim_snapshot() returns trigger
-language plpgsql as $$
+language plpgsql security definer set search_path = wos, pg_temp as $$
+declare
+  bonus integer;
+  c jsonb := new.body -> 'claim';
 begin
-  if new.body ? 'claim' and (new.body -> 'claim' ->> 'bonusApplies')::boolean and new.body -> 'claim' ->> 'mode' <> 'queue' then
+  -- Review 09 R09-1: the terms are bound to the reward policy the lease's task budget PINNED.
+  bonus := wos.queue_bonus((select b.policy_version from wos.leases l join wos.task_budgets b on b.task_id = l.task_id where l.id = new.lease_id));
+  if bonus is null then
+    if new.body ? 'claim' then
+      raise exception 'wos: pinned v1 work (or unbudgeted work) carries no claim terms' using errcode = 'check_violation';
+    end if;
+    return new;
+  end if;
+  if jsonb_typeof(c) is distinct from 'object' or c ->> 'mode' is null or c ->> 'mode' not in ('queue', 'self_pick')
+     or jsonb_typeof(c -> 'queueBonusBp') is distinct from 'number' or jsonb_typeof(c -> 'bonusApplies') is distinct from 'boolean' then
+    raise exception 'wos: v2 work needs complete claim terms (mode, queueBonusBp, bonusApplies)' using errcode = 'check_violation';
+  end if;
+  if (c ->> 'queueBonusBp')::numeric <> bonus then
+    raise exception 'wos: the claim''s queue bonus differs from the pinned policy''s (% bp)', bonus using errcode = 'check_violation';
+  end if;
+  if (c ->> 'bonusApplies')::boolean and c ->> 'mode' <> 'queue' then
     raise exception 'wos: only a queue claim earns the queue bonus' using errcode = 'check_violation';
   end if;
   return new;
@@ -337,18 +423,32 @@ create or replace function wos.check_queue_bonus() returns trigger
 language plpgsql security definer set search_path = wos, pg_temp as $$
 declare
   t uuid;
+  b wos.task_budgets;
   bonus integer;
+  terms jsonb;
+  payable numeric;
 begin
   select c.task_id into t from wos.contribution_receipts c where c.id = new.receipt_id;
   if t is null then
     return null;
   end if;
-  -- The smallest bonus withheld by any lease of the task's receipts caps the whole task at its base price.
-  select min((s.body -> 'claim' ->> 'queueBonusBp')::integer) into bonus
-    from wos.contribution_receipts c join wos.run_policy_snapshots s on s.lease_id = c.lease_id
-   where c.task_id = t and s.body ? 'claim' and not (s.body -> 'claim' ->> 'bonusApplies')::boolean;
-  if bonus is not null and (select sum(x.amount_base) from wos.allocations x join wos.contribution_receipts r on r.id = x.receipt_id where r.task_id = t)
-       > (select floor(b.reserved_base::numeric * 10000 / (10000 + bonus)) from wos.task_budgets b where b.task_id = t) then
+  select * into b from wos.task_budgets where task_id = t;
+  bonus := wos.queue_bonus(b.policy_version);
+  if bonus is null then
+    return null;   -- frozen v1 work: the whole reservation (0007 I8 bounds)
+  end if;
+  -- Review 09 R09-1: ONE task-level entitlement: every participating receipt's lease snapshot carries the same terms.
+  if exists (select 1 from wos.contribution_receipts c left join wos.run_policy_snapshots s on s.lease_id = c.lease_id
+              where c.task_id = t and (s.lease_id is null or not (s.body ? 'claim'))) then
+    raise exception 'wos: every receipt of v2 work carries its lease''s claim terms' using errcode = 'check_violation';
+  end if;
+  if (select count(distinct s.body -> 'claim') from wos.contribution_receipts c join wos.run_policy_snapshots s on s.lease_id = c.lease_id where c.task_id = t) <> 1 then
+    raise exception 'wos: one task-level entitlement: the participating leases carry different claim terms' using errcode = 'check_violation';
+  end if;
+  select s.body -> 'claim' into terms from wos.contribution_receipts c join wos.run_policy_snapshots s on s.lease_id = c.lease_id where c.task_id = t limit 1;
+  -- Review 09 R09-2: the engine's payable base (taskPayableBase) from the REAL reservation.
+  payable := case when (terms ->> 'bonusApplies')::boolean then b.reserved_base else floor(b.reserved_base::numeric * 10000 / (10000 + bonus)) end;
+  if (select sum(x.amount_base) from wos.allocations x join wos.contribution_receipts r on r.id = x.receipt_id where r.task_id = t) > payable then
     raise exception 'wos: a task claimed without the queue bonus is allocated at most its base price (the bonus stays in R)'
       using errcode = 'check_violation';
   end if;

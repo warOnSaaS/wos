@@ -39,4 +39,6 @@ echo "accounting-projection trace (engine vs database; reviews 06, 07)"
 node -e 'const [a,b]=process.versions.node.split(".").map(Number); process.exit(a>22||(a===22&&b>=18)?0:1)' \
   || { echo "the accounting trace needs Node >= 22.18 (nvm use 22)" >&2; exit 1; }
 node --experimental-strip-types --no-warnings "$HERE/test/accounting-trace.mjs" | docker exec -i "$NAME" psql -v ON_ERROR_STOP=1 -q -U postgres -d "$DB"
+echo "v2 cross-layer accounting trace (review 09)"
+node --experimental-strip-types --no-warnings "$HERE/test/accounting-trace-v2.mjs" | docker exec -i "$NAME" psql -v ON_ERROR_STOP=1 -q -U postgres -d "$DB"
 echo "db tests passed on $IMAGE"

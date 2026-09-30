@@ -346,3 +346,14 @@ MINOR, additive, plus production migration 0011.
 - Regenerated: the product template's vendored contracts, goldens.
 
 Affected workstreams: control-plane, mobile-runtime, suite-shell (vendored contracts).
+
+## 5.12.0 — 2026-09-30 (protocol: Astra review 09 fix pass, R09-1 to R09-6; branch `ws/protocol-v2`)
+
+MINOR, additive to the pending v2 additions (frozen v1 unchanged). Pending Astra review 10. Not wired into authoritative accounting; devnet only.
+- `reward-policy.v2` gains `queue.queueBonusBp` (2000); `capability-policy.v2` `workNext` loses `queueBonusBp` (pay lives in the pinned reward policy) and its budgets gain `abu_revision` and `architecture_author`. Schema: optional `RewardPolicy.queue`; budget `taskKind` admits `architecture_author`.
+- Engine: `EngineParams.queueBonusBpByPolicy` (from `engineParamsFrom`), `taskPayableBase`; an acceptance of v2 work without complete claim terms at the pinned coefficient is refused, v1 work takes none (validated before the reservation is consumed).
+- Rules: `taskAllocationRefusals` versioned path (`pinnedQueueBonusBp`, `claim`); `claimTermsRefusals`, `taskClaimOf`; `receiptRouteRefusals` `commission` (required under policies with D61 routes) and `bugFix.expected` / `severityAtIssuance` (replaces `effectiveSeverity`); `bugFixAccepted`, `fixRevocationDependents`, `fixBudgetIssuanceRefusals`.
+- Migration 0010 amended in place (never applied anywhere; excluded from production by its marker): `queue_bonus`, `receipt_live`, F1 `check_bug_budget`, B1/B3 route and live-fix checks, Q1 required and bound claim terms with one set per task.
+- Tests: work-next "Astra review 09" block; `bugs-assertions.sql` R09 regressions; `packages/db/test/accounting-trace-v2.mjs` (run by `db:test`); `tools/astra-09/` probes.
+- `tools/make-review-bundle.sh` honours `WOS_REVIEW_OUT`.
+- Regenerated: goldens, the context-engine snapshot, the vendored contracts.
