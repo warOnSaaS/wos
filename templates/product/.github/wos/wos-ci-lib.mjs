@@ -9304,7 +9304,8 @@ const Routes = {
 				"web",
 				"desktop",
 				"cli",
-				"web_app"
+				"web_app",
+				"mobile"
 			]),
 			deviceName: string().max(100).nullable(),
 			devicePublicKey: string().max(100).nullable()

@@ -46,8 +46,13 @@ client that started the flow (returned in the start response to Desktop/CLI; set
 else's sign-in. Desktop: the `wos://auth?r=...&t=...` deep link is handled by the main process, which
 pairs it with the poll secret it holds; if the deep link does not arrive (other machine, blocked
 handler) the user types the code. CLI: the user types the code. Web: link opened in the same browser
-completes; in another browser the page asks for the code on the original tab. Workstream:
-control-plane, desktop, cli, web. Test: redeem with the right token and a wrong poll secret fails.
+completes; in another browser the page asks for the code on the original tab.
+Mobile (clientKind `mobile`, contracts 5.11.0, B-0001-mobile-runtime): the poll secret comes back in the start response
+body to the app, which keeps it (in memory or expo-secure-store, S-4) until redeem. The email carries the code only,
+no link: a browser opening a link could never hold the app's poll secret. A code typed on any other device fails
+without that secret, which is the same binding PKCE gives, so no extra verifier is needed. Workstream:
+control-plane, desktop, cli, web, mobile-runtime. Tests: redeem with the right token and a wrong poll secret fails;
+a mobile code redeems only with the starting app's poll secret (`services/control-plane/test/mobile-signin.test.ts`).
 
 **S-3 No enumeration, rate limits.** The start response is identical (shape, status, timing budget) for
 known and unknown emails; accounts are created on first redeem. Limits in `rate_limits`: 5 starts per
@@ -59,6 +64,8 @@ Workstream: control-plane. Tests: response equality, limit boundaries.
 rotating: each refresh issues a new pair and marks the old refresh `rotated_at`; presenting a rotated
 refresh token revokes every session in the family (theft signal). Logout revokes the family.
 Desktop stores tokens with Electron `safeStorage`; CLI with `@napi-rs/keyring`; never plain files.
+wOS Mobile (5.11.0) stores its sessions, refresh tokens, environment tokens and any pending poll secret with
+`expo-secure-store` only (iOS Keychain, Android Keystore), never in AsyncStorage, MMKV, SQLite, files or logs.
 Suspension revokes all families and active leases. Workstream: control-plane, desktop, cli. Tests:
 refresh reuse revokes family; no token material written outside the keychain (CLI test inspects the
 config directory).

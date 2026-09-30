@@ -263,9 +263,24 @@ describe("mobile-runtime: environment discovery and sign-in inputs", () => {
     expect(checkDescriptor({ ...d, apiBase: "http://core.example.com" }, TRUSTED_CLOUD_ISSUERS)).toMatch(/https/);
   });
 
-  it("wOS Cloud sign-in stops at blocker B-0001-mobile-runtime without calling the control plane", async () => {
+  it("wOS Cloud sign-in starts as clientKind mobile, with no device key, and keeps the pollSecret from the body (B-0001 ruled)", async () => {
+    const answer = { requestId: "0192f000-0000-7000-8000-0000000000aa", pollSecret: "p".repeat(43), expiresAt: "2026-09-30T12:15:00.000Z" };
+    const f = scriptedFetch((r) => (r.path === "/v1/auth/email/start" ? { status: 202, body: answer } : undefined));
+    await expect(startCloudSignIn(f, ISSUER, " me@example.test ")).resolves.toEqual({ ok: true, ...answer });
+    expect(f.requests).toHaveLength(1);
+    expect(f.requests[0]).toMatchObject({
+      method: "POST",
+      path: "/v1/auth/email/start",
+      body: { email: "me@example.test", clientKind: "mobile", deviceName: "wOS Mobile", devicePublicKey: null },
+    });
+  });
+
+  it("a build without the mobile client kind still stops at the blocker without calling the control plane", async () => {
     const f = scriptedFetch();
-    await expect(startCloudSignIn(f, ISSUER, "me@example.test")).resolves.toMatchObject({ ok: false, blocker: "B-0001-mobile-runtime" });
+    await expect(startCloudSignIn(f, ISSUER, "me@example.test", null)).resolves.toMatchObject({
+      ok: false,
+      blocker: "B-0001-mobile-runtime",
+    });
     expect(f.requests).toEqual([]);
   });
 

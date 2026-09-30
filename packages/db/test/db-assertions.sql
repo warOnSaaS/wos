@@ -390,6 +390,20 @@ do $$ begin
   raise notice 'ok: 0009 bundle hash exactly with a package; web_app sign-ins and sessions, no web_app devices';
 end $$;
 
+-- 0011 (B-0001-mobile-runtime): mobile sign-ins and sessions; a phone registers no device.
+insert into wos.email_signin_requests (email_normalized, client_kind, link_token_hash, code_hash, poll_secret_hash, expires_at)
+values ('phone@example.com', 'mobile', '\x1101', '\x1102', '\x1103', now() + interval '15 minutes');
+insert into wos.sessions (family_id, account_id, client_kind, access_token_hash, access_expires_at, refresh_token_hash, refresh_expires_at)
+values (gen_random_uuid(), '00000000-0000-0000-0000-00000000000a', 'mobile', '\x1111', now() + interval '1 hour', '\x1112', now() + interval '30 days');
+select wos_test.expect_error($$insert into wos.devices (account_id, name, client_kind, public_key)
+  values ('00000000-0000-0000-0000-00000000000a', 'phone', 'mobile', repeat('C', 42) || 'A=')$$, 'a mobile device (a phone has no device key)');
+select wos_test.expect_error($$insert into wos.sessions (family_id, account_id, client_kind, access_token_hash, access_expires_at, refresh_token_hash, refresh_expires_at)
+  values (gen_random_uuid(), '00000000-0000-0000-0000-00000000000a', 'phone', '\x1113', now() + interval '1 hour', '\x1114', now() + interval '30 days')$$,
+  'an unknown session client kind (0011)');
+do $$ begin
+  raise notice 'ok: 0011 mobile sign-ins and sessions, no mobile devices';
+end $$;
+
 -- RLS: organizations and entitlements are visible to members only; the registry is public
 set role wos_app;
 select set_config('wos.actor_kind', 'contributor', false);

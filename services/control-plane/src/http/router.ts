@@ -28,7 +28,7 @@ export interface Caller {
   accountId: string;
   sessionId: string;
   familyId: string;
-  clientKind: "web" | "desktop" | "cli" | "web_app";
+  clientKind: "web" | "desktop" | "cli" | "web_app" | "mobile";
   deviceId: string | null;
   isMaintainer: boolean;
   githubUserId: number | null;

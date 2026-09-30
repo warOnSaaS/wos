@@ -326,8 +326,12 @@ export const Routes = {
        * authenticated wOS Web's SERVER at app.waronsaas.com, a first-party server-side client like desktop and cli:
        * `pollSecret` and tokens come in the body and never reach browser script (S-43); the emailed link opens
        * HOSTS.app + WEB_APP_SIGNIN_CODE_PATH + "?r=<requestId>&t=<linkToken>".
+       * mobile (contracts 5.11.0, B-0001-mobile-runtime): wOS Mobile on a phone. `pollSecret` and tokens come in the
+       * body, `devicePublicKey` must be null (no device is registered), and the email carries only the code, typed in
+       * the app that asked (no link). The pollSecret binds the code to that app (S-2); tokens live in
+       * expo-secure-store (S-4).
        */
-      clientKind: z.enum(["web", "desktop", "cli", "web_app"]),
+      clientKind: z.enum(["web", "desktop", "cli", "web_app", "mobile"]),
       deviceName: z.string().max(100).nullable(),
       /** Desktop/CLI only: Ed25519 public key as base64 of the raw 32 bytes (canonical.ts C-5), generated on first run; private key stays in the OS keychain. */
       devicePublicKey: z.string().max(100).nullable(),
@@ -336,8 +340,8 @@ export const Routes = {
      * Always 202 with the same shape whether or not the email has an account (no enumeration).
      * `pollSecret` is returned only here and never emailed: redeeming the email token also
      * requires it, which binds the sign-in to the client that started it (SECURITY.md S-2).
-     * For web the pollSecret is set as an HttpOnly cookie `wos_signin` instead of returned; desktop, cli and
-     * web_app receive it in the body.
+     * For web the pollSecret is set as an HttpOnly cookie `wos_signin` instead of returned; desktop, cli,
+     * web_app and mobile receive it in the body.
      */
     response: z.object({ requestId: Uuid, pollSecret: z.string().nullable(), expiresAt: Timestamp }),
     errors: ["VALIDATION_FAILED"],

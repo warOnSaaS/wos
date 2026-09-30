@@ -188,12 +188,14 @@ export class FakeMailer {
     this.sent.push(mail);
     return { providerId: `re_${this.sent.length}` };
   }
+  /** A mobile sign-in email carries no link (contracts 5.11.0): linkToken and requestId are then null. */
   lastTo(email: string): { code: string; linkToken: string; requestId: string } {
     const m = [...this.sent].reverse().find((x) => x.to.toLowerCase() === email.toLowerCase());
     if (!m) throw new Error(`no mail to ${email}`);
     const code = /code: ([A-Z2-9]{4}-[A-Z2-9]{4})/.exec(m.text)![1]!;
-    const url = new URL(/(https:\/\/\S+)/.exec(m.text)![1]!);
-    return { code, linkToken: url.searchParams.get("t")!, requestId: url.searchParams.get("r")! };
+    const href = /(https:\/\/\S+)/.exec(m.text)?.[1];
+    const url = href ? new URL(href) : null;
+    return { code, linkToken: url?.searchParams.get("t") ?? null!, requestId: url?.searchParams.get("r") ?? null! };
   }
 }
 

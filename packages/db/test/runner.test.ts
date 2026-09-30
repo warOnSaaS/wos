@@ -45,6 +45,8 @@ const ALL = [
   "0009_web_app_client",
   // 0010 is ws/protocol's versioned additions (D61 economy side, D60 delta, D63).
   "0010_bugs_and_maintenance",
+  // 0011 is B-0001-mobile-runtime (production).
+  "0011_mobile_client",
 ];
 
 /** The first number after the last real migration: the runner tests add throwaway files there. */

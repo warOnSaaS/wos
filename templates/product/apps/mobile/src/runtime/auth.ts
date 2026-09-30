@@ -3,11 +3,9 @@
  *
  * - `local` (a self-hosted Core): the Core's own email code, `CoreRoutes.localSignInStart` / `localSignInRedeem` /
  *   `logout` (contracts 5.6.0). The redeemed token is the Bearer on that Core. Fully built.
- * - `wos_cloud`: the wOS account at the control plane (D8 email code), then `AppRoutes.issueEnvironmentToken` for the
- *   environment. The control plane has no client kind for a phone: `startEmailSignIn.clientKind` is web, desktop, cli
- *   or web_app, and none of them fits (see blockers/B-0001-mobile-runtime.md). Until the architect rules, starting a
- *   wOS Cloud sign-in stops here and says why; redeem, refresh, organizations and environment tokens are built and
- *   tested, so the ruling only has to fill in `MOBILE_CLOUD_CLIENT_KIND`.
+ * - `wos_cloud`: the wOS account at the control plane (D8 email code) as `startEmailSignIn.clientKind` `mobile`
+ *   (contracts 5.11.0, B-0001-mobile-runtime ruled): pollSecret and tokens in bodies, no device key, the user types the
+ *   emailed code here (the email has no link). Then `AppRoutes.issueEnvironmentToken` for the environment.
  */
 import { AppRoutes, CoreRoutes, LocalSignInRedeemResponse, LocalSignInStartResponse, OrganizationView, Routes } from "../contracts.js";
 import { callParsed, type HttpFetch, joinUrl } from "./http.js";
@@ -50,15 +48,13 @@ export async function coreLogout(fetch: HttpFetch, apiBase: string, bearer: stri
 // wos_cloud (the wOS account at the control plane)
 // ---------------------------------------------------------------------------------------------------------------
 
-type ClientKind = "web" | "desktop" | "cli" | "web_app";
+type ClientKind = "web" | "desktop" | "cli" | "web_app" | "mobile";
 
 /**
- * The `startEmailSignIn.clientKind` wOS Mobile signs in as. null: the contract has none for a phone
- * (blockers/B-0001-mobile-runtime.md). Borrowing `desktop` or `cli` would register the phone as a device that holds
- * an Ed25519 key in an OS keychain, which it does not; borrowing `web_app` would email a link to app.waronsaas.com
- * that only a browser holding the sealed poll secret can redeem.
+ * The `startEmailSignIn.clientKind` wOS Mobile signs in as: `mobile` (contracts 5.11.0, B-0001-mobile-runtime).
+ * null would stop cloud sign-in with the blocker's message (kept for a build that must not reach wOS Cloud).
  */
-export const MOBILE_CLOUD_CLIENT_KIND: ClientKind | null = null;
+export const MOBILE_CLOUD_CLIENT_KIND: ClientKind | null = "mobile";
 export const CLOUD_SIGNIN_BLOCKER = "B-0001-mobile-runtime";
 
 export type CloudStart =

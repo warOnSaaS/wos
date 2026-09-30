@@ -328,3 +328,21 @@ MINOR, additive: frozen protocol v1 (5.9.0) is unchanged — its policy files ar
 - Regenerated: goldens, the context-engine snapshot, the product template's vendored contracts.
 
 Affected workstreams: protocol build waves (V1-active modules: bugs, work next), control-plane (serves the ranking inputs and bug records, G-102), cli and desktop (work-next claims, base price and "+20% queue bonus" copy).
+
+## 5.11.0 — 2026-09-30 (B-0001-mobile-runtime: a sign-in client kind for wOS Mobile)
+
+MINOR, additive, plus production migration 0011.
+- `api.ts`: `startEmailSignIn.clientKind` gains `mobile`. The pollSecret and tokens come in bodies, `devicePublicKey` must be null, and the email carries the code only.
+- Migration `0011_mobile_client.sql` (**production**): the `client_kind` checks of `wos.email_signin_requests` and `wos.sessions` accept `mobile`; db assertions added.
+- Control plane:
+  - accepts `mobile`, refuses a device key for it, and sends a code-only email;
+  - test `mobile-signin.test.ts`;
+  - the test mailer tolerates a mail without a link.
+- wOS Mobile: `MOBILE_CLOUD_CLIENT_KIND = "mobile"`, and the cloud sign-in test is flipped.
+- SECURITY:
+  - S-2: mobile binding through the pollSecret; no PKCE addition needed;
+  - S-4: expo-secure-store only on phones.
+- WORKSTREAMS: 12.4 mobile-runtime row (the account routes and local sign-in names), 16 (ruling; the template lockfile rule).
+- Regenerated: the product template's vendored contracts, goldens.
+
+Affected workstreams: control-plane, mobile-runtime, suite-shell (vendored contracts).

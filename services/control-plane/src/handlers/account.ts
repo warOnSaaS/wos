@@ -29,7 +29,7 @@ const asAccount = (c: Caller) => ({ kind: "contributor" as const, accountId: c.a
 export const normalizeEmail = (email: string) => email.trim().toLowerCase();
 
 /** web: the public site (cookies, S-5). desktop, cli, web_app (wOS Web's server, S-43): tokens in bodies. */
-type ClientKind = "web" | "desktop" | "cli" | "web_app";
+type ClientKind = "web" | "desktop" | "cli" | "web_app" | "mobile";
 
 interface SessionTokens {
   accessToken: string;
@@ -90,6 +90,21 @@ export function signinLink(deps: Deps, clientKind: ClientKind, requestId: string
 }
 
 function signinMail(deps: Deps, clientKind: ClientKind, requestId: string, linkToken: string, code: string) {
+  // mobile (contracts 5.11.0, B-0001-mobile-runtime): code only. A link would open a browser that holds no pollSecret
+  // (S-2), so it could never complete; the user types the code in the app that asked.
+  if (clientKind === "mobile") {
+    const text = [
+      "Sign in to warOnSaaS",
+      "",
+      "Type it in wOS Mobile, in the app where you started signing in.",
+      "",
+      `Your code: ${code}`,
+      "",
+      "The code works once and expires in 15 minutes. If you did not ask to sign in, ignore this email.",
+    ].join("\n");
+    const html = `<p>Sign in to warOnSaaS</p><p>Type it in wOS Mobile, in the app where you started signing in.</p><p>Your code: <strong>${code}</strong></p><p>The code works once and expires in 15 minutes. If you did not ask to sign in, ignore this email.</p>`;
+    return { subject: `Your warOnSaaS sign-in code: ${code}`, text, html };
+  }
   const link = signinLink(deps, clientKind, requestId, linkToken);
   const where = clientKind === "web_app" ? "in the browser where you started signing in" : "on the device where you started signing in";
   const text = [
@@ -186,6 +201,9 @@ export const accountHandlers: Pick<
     // web_app registers no device (S-43: wOS Web's server is not a contributor machine; the ruling says null).
     if (body.clientKind === "web_app" && body.devicePublicKey !== null)
       throw new ApiFailure("VALIDATION_FAILED", "web_app sign-in takes no devicePublicKey");
+    // mobile registers no device either (B-0001-mobile-runtime): its binding is the pollSecret it holds (S-2).
+    if (body.clientKind === "mobile" && body.devicePublicKey !== null)
+      throw new ApiFailure("VALIDATION_FAILED", "mobile sign-in takes no devicePublicKey");
     if ((body.clientKind === "desktop" || body.clientKind === "cli") && body.devicePublicKey !== null) {
       // Device keys are base64 of the raw 32 Ed25519 bytes only (canonical.ts C-5).
       try {
