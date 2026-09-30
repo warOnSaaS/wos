@@ -14,6 +14,7 @@ import { bumpRateLimit } from "../http/router.js";
 import { ipHash, randomToken, sha256Hex, signinCode, tokenHash, uuidv7 } from "../util/crypto.js";
 import { LIVE_ATTEMPT_STATES } from "../domain/work.js";
 import { attemptView, isoReq, leaseView, loadMe, queryTasks, taskView, type AttemptRow, type LeaseRow, loadAttempt } from "../views.js";
+import { trialsAvailable } from "../domain/trials.js";
 
 export const SIGNIN_TTL_MINUTES = 15;
 export const SIGNIN_MAX_ATTEMPTS = 5;
@@ -631,7 +632,11 @@ export const accountHandlers: Pick<
       const [d] =
         await tx`select id from wos.devices where id = ${ctx.body.deviceId} and account_id = ${caller.accountId} and revoked_at is null`;
       if (!d) throw new ApiFailure("FORBIDDEN", "unknown or revoked device");
+      // contracts 5.17.0: the opencode provider is storable once migration 0015 widened the provider check (the API
+      // deploys from main first); until then its attestation is not stored and opencode models stay unattested.
+      const opencodeOk = await trialsAvailable(tx);
       for (const p of ctx.body.providers) {
+        if (p.provider === "opencode_cli" && !opencodeOk) continue;
         await tx`insert into wos.provider_attestations (id, account_id, device_id, provider, installed, cli_version, signed_in, auth_method, models, checked_at)
                  values (${uuidv7()}, ${caller.accountId}, ${ctx.body.deviceId}, ${p.provider}, ${p.installed}, ${p.cliVersion}, ${p.signedIn},
                          ${p.authMethod}, ${p.models as string[]}, ${p.checkedAt})`;

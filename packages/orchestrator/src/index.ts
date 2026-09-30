@@ -5,13 +5,25 @@
  */
 import type { buildInvocation } from "@waronsaas/agent-policy";
 import type { buildContext } from "@waronsaas/context-engine";
-import type { AgentPolicyDocument, Orchestrator, RouteBody, RouteName, RouteParams, RouteQuery, RouteResponse } from "@waronsaas/contracts";
+import type {
+  AgentPolicyDocument,
+  LaunchDeclaration,
+  ModelRef,
+  Orchestrator,
+  RouteBody,
+  RouteName,
+  RouteParams,
+  RouteQuery,
+  RouteResponse,
+} from "@waronsaas/contracts";
 import type { parseBuildGraphYaml } from "@waronsaas/planning";
 import type { validateChangeset } from "@waronsaas/verification";
 import { OrchestratorImpl } from "./orchestrator.js";
 
 export { ApiCallError, createApiClient } from "./api-client.js";
+export { type AgentEvents, type AgentFetch, offAllowlist, parseAgentEvents } from "./agent-events.js";
 export { createNodeProcessRunner } from "./process-runner.js";
+export { resolveBinary } from "./resolve-binary.js";
 export {
   createSessionReader,
   idempotencyKey,
@@ -74,6 +86,10 @@ export interface OrchestratorDeps {
   platform?: "darwin" | "linux" | "win32";
   /** Additive, optional: environment passed to agent and verify processes. Default: PATH, HOME, USER, LANG, TMPDIR. */
   baseEnv?: Record<string, string>;
+  /** Additive, optional (contracts 5.17.0, D52/D69): the launch declared with claims and runs of these models. */
+  modelLaunch?: Partial<Record<ModelRef, LaunchDeclaration>>;
+  /** Additive, optional (contracts 5.17.0): finds a provider binary (tests); default: PATH, then the provider's search paths. */
+  resolveBinary?: (binary: string, searchPaths: readonly string[]) => string;
 }
 
 /** Typed client over the route map; the only way the orchestrator talks to the control plane. */

@@ -1,5 +1,14 @@
 import { z } from "zod";
-import { AgentRole, ModelRef, OutputSchemaId, ProviderId, ReasoningLevel, ReviewerSlot } from "./agent-policy.js";
+import {
+  AgentRole,
+  CandidateTrialLabel,
+  LaunchDeclaration,
+  ModelRef,
+  OutputSchemaId,
+  ProviderId,
+  ReasoningLevel,
+  ReviewerSlot,
+} from "./agent-policy.js";
 import {
   AbuKey,
   FeatureKey,
@@ -97,6 +106,16 @@ export const ContextPlan = z.object({
   outputSchema: OutputSchemaId,
   /** Shell commands the builder may run (become --allowedTools Bash(...) rules). */
   allowedCommands: z.array(z.array(z.string())).default([]),
+  /**
+   * contracts 5.17.0 (D70 network by role, agent-policy.v2): the web this run may read, issued by the server from the
+   * role's `web` and the policy's `targetDomains`: read-only fetches of `domains` (subdomains included) and, when
+   * `search`, the CLI's web search; `registry`: the only hosts an exclusive lockfile/dep unit may reach. Absent or null =
+   * offline.
+   */
+  web: z
+    .object({ domains: z.array(z.string()), search: z.boolean(), registry: z.array(z.string()).default([]) })
+    .nullable()
+    .optional(),
 });
 export type ContextPlan = z.infer<typeof ContextPlan>;
 
@@ -334,6 +353,30 @@ export const AgentRunRecord = z.object({
   transcriptSha256: Sha256,
   outputSha256: Sha256,
   usage: z.object({ inputTokens: z.number().int().nullable(), outputTokens: z.number().int().nullable() }),
+  /**
+   * contracts 5.17.0 (D52, D69): the launch AS DECLARED (e.g. the claude CLI pointed at Z.ai), and the sub-agents the run
+   * started (claude tool `Agent`, counted from its event stream). Optional: absent for runs on the CLI's default endpoint.
+   */
+  launch: LaunchDeclaration.optional(),
+  subagentCount: z.number().int().nonnegative().optional(),
+  /** The most sub-agents that ran at the same time (from their start and end times), when the CLI reports them. */
+  maxConcurrentSubagents: z.number().int().nonnegative().optional(),
+  /**
+   * contracts 5.17.0 (D70): every web access of the run, in order, from the CLI's event stream: a fetched URL (with the
+   * sha256 of the content the agent received) or a search query. Shown to the subject's reviewers. Optional.
+   */
+  fetches: z
+    .array(
+      z.object({
+        kind: z.enum(["fetch", "search"]),
+        /** The URL fetched, or the search query. */
+        target: z.string().max(4000),
+        at: Timestamp.nullable(),
+        contentSha256: Sha256.nullable(),
+        tool: z.string(),
+      }),
+    )
+    .optional(),
   /** Ed25519 signature, base64 of 64 bytes, over agentRunSigningPayload (canonical.ts C-4) with the device key (C-5). */
   signature: z.string(),
 });
@@ -430,6 +473,8 @@ export const ProvenanceRecord = z.object({
       independence: ReviewIndependence.optional(),
     })
     .optional(),
+  /** contracts 5.17.0 (D69): set when a candidate model did the work in a maintainer-designated trial. */
+  candidateTrial: z.object({ label: CandidateTrialLabel, candidate: z.string(), launch: LaunchDeclaration.nullable() }).optional(),
 });
 export type ProvenanceRecord = z.infer<typeof ProvenanceRecord>;
 
@@ -440,4 +485,6 @@ export const COMMIT_TRAILERS = {
   abu: "wOS-Abu",
   manifest: "wOS-Manifest",
   contributor: "wOS-Contributor",
+  /** contracts 5.17.0 (D69): `candidate_trial:<key>` on commits of a candidate trial. */
+  candidateTrial: "wOS-Candidate-Trial",
 } as const;

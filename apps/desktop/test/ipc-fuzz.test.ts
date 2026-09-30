@@ -2,7 +2,7 @@
  * S-29 "IPC fuzz": every channel validates its payload; hostile or malformed payloads never reach the
  * orchestrator, the public API, the settings store or the shell.
  */
-import { AGENT_POLICY_V1, type Orchestrator } from "@waronsaas/contracts";
+import { AGENT_POLICY, type Orchestrator } from "@waronsaas/contracts";
 import { describe, expect, it } from "vitest";
 import { createDesktopCore, type DesktopCore } from "../src/main/core.js";
 import { createHandlerRegistry } from "../src/main/handlers.js";
@@ -80,7 +80,7 @@ function trappedCore(t: ReturnType<typeof trap>, settings = memorySettingsStore(
     cloudCoreUrl: "https://core.waronsaas.com",
     installer: t.any as never,
     settings,
-    policy: AGENT_POLICY_V1,
+    policy: AGENT_POLICY,
     appInfo: APP_INFO,
     emit: () => undefined,
     openExternal: async (u) => {

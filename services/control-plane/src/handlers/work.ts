@@ -32,6 +32,7 @@ import {
 } from "../domain/documents.js";
 import { buildPlan, renderServerDocument } from "../domain/plans.js";
 import { createContribution } from "../domain/ledger.js";
+import { activeTrialFor, activeTrialsOf, candidateClaimRefusals, documentTrialLabel, recordTrialClaim } from "../domain/trials.js";
 import { agentSeatRefusals, revealRound, roundComplete, subjectAuthors } from "../domain/review.js";
 import {
   abuTransition,
@@ -427,11 +428,15 @@ export const workHandlers: Pick<
          order by t.created_at limit 200`,
         [kinds, caller.accountId],
       );
+      const trials = await activeTrialsOf(tx, rows);
       return {
         items: rows
           .filter((r) => !ctx.query.target || r.relevant_to.includes(ctx.query.target))
           .filter((r) => !ctx.query.feature || r.feature_key === ctx.query.feature)
-          .map(taskView),
+          .map((r) => {
+            const t = trials.get(r.id);
+            return t ? { ...taskView(r), candidateTrial: { candidate: t.candidate, label: t.label } } : taskView(r);
+          }),
       };
     });
   },
@@ -498,6 +503,11 @@ export const workHandlers: Pick<
       });
       if (!elig.eligible)
         throw new ApiFailure(eligibilityRouteError(elig) ?? "NOT_ELIGIBLE", "not eligible for this task", { reasons: elig.reasons });
+      // D52 + D69 (rule modelClaimRefusals, capability-policy.v3): a candidate model only on a task designated for it; a
+      // designated task only for its candidate; a candidate claim declares its launch (self-reported).
+      const trial = await activeTrialFor(tx, task);
+      const trialRefusals = candidateClaimRefusals(elig.model, { kind: task.kind, role }, trial, ctx.body.launch ?? null);
+      if (trialRefusals.length > 0) throw new ApiFailure("NOT_ELIGIBLE", "this model may not claim this task", { reasons: trialRefusals });
       if (task.kind === "abu_revision") await assertProviderCapacity(tx, deps, caller.accountId, elig.model.provider);
       let spec: AbuSpec | null = null;
       let attemptId: string | null = null;
@@ -582,6 +592,15 @@ export const workHandlers: Pick<
         plan,
       });
       await taskTransition(tx, task, "claim", by(caller));
+      // D69: a claim under a trial is recorded, public, with the launch as declared (D52).
+      if (trial)
+        await recordTrialClaim(tx, trial, {
+          leaseId: lease.id,
+          taskId: task.id,
+          accountId: caller.accountId,
+          modelId: plan.modelId,
+          launch: ctx.body.launch ?? null,
+        });
       return claimResponse(tx, deps, task.id, lease, plan, attemptId);
     });
   },
@@ -784,7 +803,8 @@ export const workHandlers: Pick<
         throw new ApiFailure("VALIDATION_FAILED", "answer every open material finding with fixed or disputed", { unanswered });
       const plan = l.context_plan as unknown as ContextPlan;
       const expectedParent = attempt ? (attempt.head_sha ?? attempt.base_sha) : (doc!.head_sha ?? plan.source.commit);
-      return { l, task, device, manifestOk: !!manifest, attempt, doc, spec, expectedParent };
+      const trial = doc ? await documentTrialLabel(tx, doc.id) : null;
+      return { l, task, device, manifestOk: !!manifest, attempt, doc, spec, expectedParent, trial };
     });
     const repo = pre.doc?.repo ?? pre.attempt!.repo;
     const repoManifest = await repoManifestAt(deps, repo, cs.parentCommit);
@@ -854,6 +874,8 @@ export const workHandlers: Pick<
       ...(pre.attempt ? { [COMMIT_TRAILERS.attempt]: pre.attempt.id, [COMMIT_TRAILERS.abu]: pre.attempt.abu_key } : {}),
       [COMMIT_TRAILERS.manifest]: cs.manifestSha256,
       [COMMIT_TRAILERS.contributor]: handle,
+      // D69: commits of a document under a candidate trial carry its label.
+      ...(pre.trial ? { [COMMIT_TRAILERS.candidateTrial]: pre.trial.label } : {}),
     };
     const coAuthor = coAuthoredBy(caller.githubUserId!, ghLogin?.github_login ?? handle);
     const commit = await withGithubRetries(deps, "commit", () =>

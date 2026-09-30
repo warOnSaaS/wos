@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { buildInvocation, checkEligibility, type EligibilityInput, getRolePolicy } from "@waronsaas/agent-policy";
 import { buildContext, type SnapshotReader } from "@waronsaas/context-engine";
 import {
-  AGENT_POLICY_V1,
+  AGENT_POLICY,
   type AgentRole,
   AgentRole as AgentRoleEnum,
   type ContextPlan,
@@ -27,7 +27,7 @@ import { implemented, implementedAsync, pendingReason } from "../../packages/ver
 // 5 s default was too short (Wave 2a gate: two files failed under load, passed alone).
 vi.setConfig({ testTimeout: 60_000, hookTimeout: 120_000 });
 
-const policy = AGENT_POLICY_V1;
+const policy = AGENT_POLICY;
 const provider = (id: string) => policy.providers.find((p) => p.id === id)!;
 const DAY = 86_400_000;
 const iso = (msAgo: number) => new Date(Date.now() - msAgo).toISOString();
@@ -41,7 +41,8 @@ describe("S-14: agent runtime restrictions are in the policy data", () => {
     for (const flag of ["-p", "--restricted", "--safe-mode", "--strict-mcp-config", "--no-session-persistence", "--tools"])
       expect(claude.baseArgs).toContain(flag);
     expect(claude.baseArgs.join(" ")).toContain("--permission-prompts none");
-    expect(claude.readOnlyArgs.join(" ")).toBe("--permission-mode dontAsk");
+    // agent-policy.v2 (D70): read-only roles may get WebFetch domain rules and WebSearch, never commands (the list is dropped when empty).
+    expect(claude.readOnlyArgs.join(" ")).toBe("--permission-mode dontAsk --allowedTools {allowedCommandRules}");
     expect(claude.workspaceWriteArgs.join(" ")).toContain("--allowedTools");
   });
 

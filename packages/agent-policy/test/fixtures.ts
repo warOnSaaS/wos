@@ -1,6 +1,6 @@
-import { AGENT_POLICY_V1, type AgentRole, type ContextPlan, type ReasoningLevel, type TaskKind } from "@waronsaas/contracts";
+import { AGENT_POLICY, type AgentRole, type ContextPlan, type ReasoningLevel, type TaskKind } from "@waronsaas/contracts";
 
-const policy = AGENT_POLICY_V1;
+const policy = AGENT_POLICY;
 
 export const TEMPLATE_BY_ROLE: Record<AgentRole, string> = {
   roadmap_author: "tpl.roadmap_author.v1",

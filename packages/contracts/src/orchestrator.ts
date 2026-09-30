@@ -1,4 +1,4 @@
-import type { AgentRole, ModelRef, ProviderId, ReasoningLevel, ReviewerSlot } from "./agent-policy.js";
+import type { AgentRole, LaunchDeclaration, ModelRef, ProviderId, ReasoningLevel, ReviewerSlot } from "./agent-policy.js";
 import type {
   AuthorSummary,
   BuildSummary,
@@ -93,6 +93,8 @@ export interface AuthorOptions {
   taskId: string;
   /** D15 (4.3.0): sent as claimTask `model` (authors, revisions; ignored by the server for conflict_resolution, which is Fable only). */
   model?: ModelRef;
+  /** contracts 5.17.0 (D52, D69): sent as claimTask `launch` (as declared); required with the candidate model `glm`. */
+  launch?: LaunchDeclaration;
   signal?: AbortSignal;
 }
 

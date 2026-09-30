@@ -10,7 +10,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { readFileSync } from "node:fs";
-import { AGENT_POLICY_V1, type AbuSummary, type Changeset, type Me, type OrgApps, type TargetDetail } from "@waronsaas/contracts";
+import { AGENT_POLICY, type AbuSummary, type Changeset, type Me, type OrgApps, type TargetDetail } from "@waronsaas/contracts";
 import { configureLocalGit } from "@waronsaas/github/local";
 import { createApiClient, createOrchestrator, createSessionReader } from "@waronsaas/orchestrator";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -196,7 +196,7 @@ describe.skipIf(!HAS_DB)("wOS Desktop main process against the real control plan
       installer: createModuleInstaller({ root: modulesDir, platform: "linux", pinnedKeys: {}, registry: platform }),
       onBuildGate: (open) => gate.push(open),
       settings,
-      policy: AGENT_POLICY_V1,
+      policy: AGENT_POLICY,
       appInfo: { ...APP_INFO, fakeControlPlane: false, apiBaseUrl: API },
       emit: (e) => events.push(e),
       openExternal: async () => undefined,

@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
-  AGENT_POLICY_V1,
+  AGENT_POLICY,
   BuildGraph,
   type AuthorSummary,
   type BuildSummary,
@@ -189,7 +189,7 @@ export class FakeProcesses implements ProcessRunner {
  * fixture with the contract's own zod schema.
  */
 export const testEngines: Partial<Engines> = {
-  policy: AGENT_POLICY_V1,
+  policy: AGENT_POLICY,
   parseBuildGraphYaml(text) {
     const r = BuildGraph.safeParse(JSON.parse(text));
     return r.success

@@ -535,7 +535,10 @@ export const AgentCapabilityPolicy = z.object({
   candidates: z.array(
     z.object({
       key: z.string().min(1),
-      provider: z.enum(["zai"]),
+      /** capability-policy.v3 (contracts 5.17.0): "opencode-go" (the opencode CLI on OpenCode Go) is the primary launch of glm. */
+      provider: z.enum(["zai", "opencode-go"]),
+      /** capability-policy.v3: other providers a claim may declare for this candidate (V1: zai, documented only). */
+      alternativeProviders: z.array(z.enum(["zai", "opencode-go"])).optional(),
       modelIdPattern: z.string().min(1),
       status: z.literal("candidate"),
       allowedRoles: z.array(z.string()).max(0),
@@ -543,8 +546,12 @@ export const AgentCapabilityPolicy = z.object({
       reviewerOrResolverRequiresSeparateQualification: z.literal(true),
       launchPaths: z.array(
         z.object({
-          kind: z.enum(["claude_cli_anthropic_compatible", "zcode_cli"]),
-          status: z.enum(["documented", "later"]),
+          kind: z.enum(["claude_cli_anthropic_compatible", "zcode_cli", "opencode_cli"]),
+          /** capability-policy.v3 (contracts 5.17.0): "verified" = the values were checked on the vendor's docs, cited in `sources`. */
+          status: z.enum(["documented", "verified", "later"]),
+          /** capability-policy.v3: the vendor documentation the values were verified against, and when. */
+          sources: z.array(z.url()).optional(),
+          verifiedOn: z.iso.date().optional(),
           /** Variables the orchestrator sets or detects; values are the contributor's (wOS never reads credentials). */
           env: z.record(z.string(), z.string()),
           /** A CLI pointed at another endpoint only self-reports its model: attestation records base URL and provider as DECLARED. */
@@ -553,6 +560,22 @@ export const AgentCapabilityPolicy = z.object({
         }),
       ),
       qualificationSuite: z.string().min(1),
+      /**
+       * capability-policy.v3 (contracts 5.17.0, D69): candidate TRIALS, the one exception to "eligible for nothing": a
+       * maintainer designates one open task of these kinds for the candidate (AdminAction assign_candidate_trial, public,
+       * revocable); the candidate claims only that task (and its document's later author tasks). The work is reviewed as
+       * normal and may merge; everything it produces carries `label` with the candidate key.
+       */
+      trials: z
+        .object({
+          taskKinds: z.array(z.literal("roadmap_author")).min(1),
+          designatedBy: z.literal("admin_action"),
+          label: z.string().regex(/^candidate_trial:[a-z][a-z0-9-]*$/),
+          mayMerge: z.boolean(),
+          /** Sub-agents the candidate may run at once in a trial (the lead run excluded); enforced where the CLI can. */
+          maxSubagents: z.number().int().min(0),
+        })
+        .optional(),
     }),
   ),
   /**

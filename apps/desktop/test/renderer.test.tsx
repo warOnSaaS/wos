@@ -4,7 +4,7 @@
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { AGENT_POLICY_V1, type LocalStatus, type Me, TOKEN_DISCLAIMER } from "@waronsaas/contracts";
+import { AGENT_POLICY, type LocalStatus, type Me, TOKEN_DISCLAIMER } from "@waronsaas/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { featureDetail, targetDetail, targets } from "../dev/fixtures.js";
@@ -186,7 +186,7 @@ describe("screens render real API shapes with honest empty states", () => {
       claimable: true,
       pr: null,
     },
-    models: builderModelChoices(AGENT_POLICY_V1, status(true, true)),
+    models: builderModelChoices(AGENT_POLICY, status(true, true)),
     model: "opus",
     onModel: noop,
     onBuild: noop,
@@ -199,7 +199,7 @@ describe("screens render real API shapes with honest empty states", () => {
 
   it("model picker: only models this device attested are offered; others are explained", () => {
     const html = renderToStaticMarkup(
-      <BuildPanelView {...panel({ models: builderModelChoices(AGENT_POLICY_V1, status(true, false)), model: "opus" })} />,
+      <BuildPanelView {...panel({ models: builderModelChoices(AGENT_POLICY, status(true, false)), model: "opus" })} />,
     );
     expect(html).toContain('data-testid="model-opus"');
     expect(html).not.toContain('data-testid="model-astra"');
@@ -214,7 +214,7 @@ describe("screens render real API shapes with honest empty states", () => {
     const noGithub = text(renderToStaticMarkup(<BuildPanelView {...panel({ me: { ...ME, github: null, canContribute: false } })} />));
     expect(noGithub).toContain("LINK GITHUB FIRST");
     const noModels = renderToStaticMarkup(
-      <BuildPanelView {...panel({ models: builderModelChoices(AGENT_POLICY_V1, status(false, false)), model: null })} />,
+      <BuildPanelView {...panel({ models: builderModelChoices(AGENT_POLICY, status(false, false)), model: null })} />,
     );
     expect(text(noModels)).toContain("NO BUILDER MODEL IS ATTESTED ON THIS DEVICE");
     expect(noModels).toMatch(/<button[^>]*disabled=""[^>]*data-testid="build"/);

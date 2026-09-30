@@ -40,11 +40,13 @@ export async function openRound(
     select coalesce(max(round_number), 0)::int + 1 as n from wos.rounds
      where ${subject.kind === "implementation" ? tx`attempt_id = ${subjectId}` : tx`document_id = ${subjectId}`}`;
   const roundId = uuidv7();
-  const [seats] = await tx<{ second_seat: "fable" | "human"; review_label: string | null; review_label_reason: string | null }[]>`
+  const [seats] = await tx<
+    { second_seat: "fable" | "human"; review_label: string | null; review_label_reason: string | null; trial_label: string | null }[]
+  >`
     insert into wos.rounds (id, subject_kind, document_id, attempt_id, round_number, head_sha, submission_sha256, state)
     values (${roundId}, ${subject.kind}, ${subject.kind === "implementation" ? null : subjectId},
             ${subject.kind === "implementation" ? subjectId : null}, ${n!.n}, ${headSha}, ${submissionSha256}, 'awaiting_reviews')
-    returning second_seat, review_label, review_label_reason`;
+    returning second_seat, review_label, review_label_reason, to_jsonb(rounds) ->> 'trial_label' as trial_label`;
   const agentSlots = seats!.second_seat === "human" ? (["astra"] as const) : (["astra", "fable"] as const);
   for (const slot of agentSlots) {
     await createTask(
@@ -81,6 +83,18 @@ export async function openRound(
       { aggregateKind: "round", aggregateId: roundId, actor: by.actor, actorAccountId: by.accountId },
     );
   }
+  // D69: the database pins a candidate trial's label on the round when it opens (migration 0015); make it public.
+  if (seats!.trial_label)
+    await insertEvent(
+      tx,
+      {
+        type: "round.candidate_trial",
+        v: 1,
+        visibility: "public",
+        payload: { roundId, subjectKind: subject.kind, subjectId, label: seats!.trial_label },
+      },
+      { aggregateKind: "round", aggregateId: roundId, actor: by.actor, actorAccountId: by.accountId },
+    );
   return { roundId, roundNumber: n!.n, secondSeat: seats!.second_seat };
 }
 

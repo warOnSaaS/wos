@@ -32,13 +32,15 @@ export async function roundCommentFor(
       independence: string | null;
       review_label: string | null;
       review_label_reason: string | null;
+      trial_label: string | null;
       state: string;
       repo: string | null;
       pr_number: number | null;
       kind: string | null;
     }[]
   >`
-    select r.round_number, r.head_sha, r.submission_sha256, r.outcome, r.independence, r.review_label, r.review_label_reason, r.state,
+    select r.round_number, r.head_sha, r.submission_sha256, r.outcome, r.independence, r.review_label, r.review_label_reason,
+           to_jsonb(r) ->> 'trial_label' as trial_label, r.state,
            d.repo_full_name as repo, d.pr_number, d.kind
       from wos.rounds r left join wos.documents d on d.id = r.document_id where r.id = ${roundId}`;
   if (r?.state !== "revealed" || !r.repo || r.pr_number === null) return null;
@@ -60,6 +62,12 @@ export async function roundCommentFor(
     "",
     `Head \`${r.head_sha}\`, submission \`${r.submission_sha256}\`. Independence: \`${r.independence ?? "unknown"}\`${r.independence === "bootstrap_self" ? " (Bootstrap review: not yet independently cross-reviewed)" : ""}.`,
     ...(label ? ["", label] : []),
+    ...(r.trial_label
+      ? [
+          "",
+          `**${r.trial_label}** (D69): a maintainer designated this work for the candidate model \`${r.trial_label.slice("candidate_trial:".length)}\` (identity self-reported, D52). It is reviewed and may merge like any other work.`,
+        ]
+      : []),
     ...(founderSeat
       ? [
           "",

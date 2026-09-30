@@ -1,4 +1,5 @@
 import policyJson from "./data/agent-policy.v1.json" with { type: "json" };
+import policyV2Json from "./data/agent-policy.v2.json" with { type: "json" };
 import scheduleJson from "./data/reward-schedule.v1.json" with { type: "json" };
 import architectureJson from "./data/architecture-policy.v1.json" with { type: "json" };
 import { AgentPolicyDocument } from "./agent-policy.js";
@@ -12,6 +13,13 @@ import { RewardSchedule } from "./rewards.js";
 
 /** The V1 Agent Policy document, parsed (throws at import if the data file is invalid). */
 export const AGENT_POLICY_V1: AgentPolicyDocument = AgentPolicyDocument.parse(policyJson);
+/**
+ * contracts 5.17.0: agent-policy.v2 = v1 plus D70 (network by role: read-only web for research roles, target domain
+ * allowlists, the registry exception), the opencode provider and the candidate model glm (D69). v1 is unchanged.
+ */
+export const AGENT_POLICY_V2: AgentPolicyDocument = AgentPolicyDocument.parse(policyV2Json);
+/** The agent policy in force (the control plane issues plans under it; clients build invocations with it). */
+export const AGENT_POLICY: AgentPolicyDocument = AGENT_POLICY_V2;
 
 /** The proposed V1 reward schedule (status "proposal" until the founder activates it). */
 export const REWARD_SCHEDULE_V1: RewardSchedule = RewardSchedule.parse(scheduleJson);

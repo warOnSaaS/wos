@@ -358,6 +358,11 @@ export const TaskView = z.object({
   documentId: Uuid.nullable(),
   roundId: Uuid.nullable(),
   createdAt: Timestamp,
+  /**
+   * contracts 5.17.0 (D69): set while the task is designated for a candidate model (AdminAction assign_candidate_trial):
+   * only that model may claim it. Optional.
+   */
+  candidateTrial: z.object({ candidate: z.string(), label: z.string() }).nullable().optional(),
 });
 export type TaskView = z.infer<typeof TaskView>;
 

@@ -70,8 +70,10 @@ const code = await runCli(
     version,
     hostname: hostname(),
     signal: controller.signal,
-    orchestrator: () =>
+    // contracts 5.17.0 (D52/D69): the launch a model's claims and runs declare (e.g. glm on OpenCode Go).
+    orchestrator: (opts) =>
       createOrchestrator({
+        ...(opts?.launch ? { modelLaunch: opts.launch } : {}),
         apiBaseUrl,
         workspaceRoot: process.env.WOS_HOME ?? join(homedir(), ".wos"),
         secrets,

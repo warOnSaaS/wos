@@ -7,7 +7,7 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:f
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { OrchestratorEvent } from "@waronsaas/contracts";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { createNodeProcessRunner, createOrchestrator } from "../src/index.js";
 import { ABU_KEY, TARGET } from "./support/fake-control-plane.js";
 import { type Harness, harness, testEngines } from "./support/harness.js";
@@ -48,18 +48,56 @@ process.stdin.on("end", () => {
   }
 });
 `;
+/**
+ * Fake `opencode` (1.18.31 shapes): --version, `providers list` (ANSI, names only), and `run` reading the task from stdin,
+ * writing ROADMAP.yaml and the output file, and printing json events: sub-agents (task), a fetch, a search, tokens.
+ * WOS_FAKE_OPENCODE (written into the fake itself by the test) picks the scenario.
+ */
+const OPENCODE = (scenario: "ok" | "off-allowlist" | "no-output") => `#!/usr/bin/env node
+const fs = require("node:fs");
+const argv = process.argv.slice(2);
+if (argv[0] === "--version") { console.log("1.18.31"); process.exit(0); }
+if (argv[0] === "providers" && argv[1] === "list") {
+  const esc = String.fromCharCode(27);
+  console.log([esc + "[0m", "┌  Credentials " + esc + "[90m~/.local/share/opencode/auth.json", "│", "●  OpenCode Go " + esc + "[90mapi", "│", "└  1 credentials"].join(String.fromCharCode(10)));
+  process.exit(0);
+}
+let prompt = "";
+process.stdin.on("data", (c) => (prompt += c));
+process.stdin.on("end", () => {
+  if (argv[0] !== "run" || prompt.length < 100) { console.error("no task on stdin"); process.exit(2); }
+  const config = JSON.parse(process.env.OPENCODE_CONFIG_CONTENT || "{}");
+  if (!process.env.XDG_CONFIG_HOME || fs.readdirSync(process.env.XDG_CONFIG_HOME).length !== 0) { console.error("config home"); process.exit(3); }
+  if (config.permission?.task !== "allow" || config.agent?.general?.permission?.webfetch !== "deny") { console.error("config"); process.exit(4); }
+  fs.mkdirSync("roadmaps/salesforce", { recursive: true });
+  fs.writeFileSync("roadmaps/salesforce/ROADMAP.yaml", ["schema: wos-roadmap.v1", "target: salesforce", ""].join(String.fromCharCode(10)));
+  const out = { schema: "author-summary.v1", summary: "drafted by fake opencode", responses: [], proposalsAddressed: [] };
+  if (${JSON.stringify(scenario)} !== "no-output") fs.writeFileSync(".wos-agent-output.json", JSON.stringify(out));
+  const ev = (type, part) => console.log(JSON.stringify({ type, timestamp: 1, sessionID: "ses_1", part }));
+  ev("step_start", { type: "step-start" });
+  for (const [i, s, e] of [[1, 1000, 5000], [2, 1100, 4000], [3, 1200, 3000], [4, 6000, 7000], [5, 6100, 6500]])
+    ev("tool_use", { type: "tool", tool: "task", state: { status: "completed", input: { description: "cluster " + i }, output: "done", time: { start: s, end: e } } });
+  const url = ${JSON.stringify(scenario)} === "off-allowlist" ? "https://example.org/salesforce" : "https://help.salesforce.com/s/articleView?id=sf.exporting_data.htm";
+  ev("tool_use", { type: "tool", tool: "webfetch", state: { status: "completed", input: { url }, output: "Data Export Service", time: { start: 8000, end: 9000 } } });
+  ev("tool_use", { type: "tool", tool: "websearch", state: { status: "completed", input: { query: "salesforce bulk api 2.0" }, output: "results", time: { start: 9100, end: 9200 } } });
+  ev("step_finish", { type: "step-finish", tokens: { input: 1200, output: 340, reasoning: 50, cache: { read: 0, write: 0 } }, cost: 0 });
+  ev("step_finish", { type: "step-finish", tokens: { input: 800, output: 60, reasoning: 0, cache: { read: 0, write: 0 } }, cost: 0 });
+});
+`;
+
 const FAKE_CHECK = `#!/bin/sh
 [ "$1" = install ] && exit 0
 grep -q BROKEN modules/contacts/list.ts && { echo "FAIL"; exit 1; }
 echo PASS
 `;
 
-function installBinaries(): string {
+function installBinaries(opencode: "ok" | "off-allowlist" | "no-output" = "ok"): string {
   const dir = mkdtempSync(join(tmpdir(), "wos-bin-"));
   mkdirSync(dir, { recursive: true });
   for (const [name, text] of [
     ["claude", AGENT("claude")],
     ["codex", AGENT("codex")],
+    ["opencode", OPENCODE(opencode)],
     ["wos-fake-check", FAKE_CHECK],
   ] as const) {
     writeFileSync(join(dir, name), text);
@@ -68,7 +106,7 @@ function installBinaries(): string {
   return dir;
 }
 
-function orchestrator(harnessed: Harness, binDir: string) {
+function orchestrator(harnessed: Harness, binDir: string, extra: Partial<Parameters<typeof createOrchestrator>[0]> = {}) {
   return createOrchestrator({
     apiBaseUrl: "https://api.waronsaas.test",
     workspaceRoot: harnessed.root,
@@ -84,6 +122,7 @@ function orchestrator(harnessed: Harness, binDir: string) {
     },
     pollIntervalMs: 0,
     baseEnv: { PATH: `${binDir}:${dirname(process.execPath)}:/usr/bin:/bin` },
+    ...extra,
   });
 }
 
@@ -125,5 +164,125 @@ it("status() probes the real fake binaries on PATH", async () => {
   expect(s.providers.map((p) => [p.provider, p.installed, p.signedIn, p.cliVersion, p.authMethod])).toEqual([
     ["claude_cli", true, true, "2.1.284", "claude.ai"],
     ["codex_cli", true, true, "0.155.0", "ChatGPT"],
+    // contracts 5.17.0: the opencode listing names the provider and method only; ANSI codes are stripped.
+    ["opencode_cli", true, true, "1.18.31", "opencode-go"],
   ]);
+  expect(s.providers.find((p) => p.provider === "opencode_cli")!.models).toEqual(["glm"]);
+});
+
+describe("glm on the opencode CLI (D69 candidate trial, D70 web), with a fake opencode", () => {
+  const WEB = {
+    domains: ["apps.apple.com", "force.com", "play.google.com", "salesforce.com", "salesforce.org"],
+    search: true,
+    registry: [],
+  };
+  const LAUNCH = { provider: "opencode-go", baseUrl: null, identity: "self_reported" } as const;
+  const recorded = () => {
+    const calls: Array<{ binary: string; argv: string[]; env: Record<string, string> }> = [];
+    const real = createNodeProcessRunner();
+    return {
+      calls,
+      runner: {
+        run(input: Parameters<ReturnType<typeof createNodeProcessRunner>["run"]>[0]) {
+          calls.push({ binary: input.binary, argv: input.argv, env: input.env });
+          return real.run(input);
+        },
+      },
+    };
+  };
+
+  it("runs `opencode run -m opencode-go/glm-5.3 --variant max`, reads and removes the output file, records launch, sub-agents, fetches, tokens", async () => {
+    h = harness();
+    h.server.authorWeb = WEB;
+    bin = installBinaries("ok");
+    const rec = recorded();
+    const o = orchestrator(h, bin, { processes: rec.runner, modelLaunch: { glm: LAUNCH } });
+    const t = h.server.openAuthorTask("roadmap_author");
+    const events: OrchestratorEvent[] = [];
+    const res = await o.author({ taskId: t.id, model: "glm" }, (e) => events.push(e));
+    expect(res, JSON.stringify(res)).toMatchObject({
+      ok: true,
+      output: { schema: "author-summary.v1", summary: "drafted by fake opencode" },
+    });
+    expect(h.server.claimBodies.at(-1)).toMatchObject({ model: "glm", launch: LAUNCH });
+    // The output file is not part of the changeset.
+    expect(h.server.submissions[0]!.files.map((f) => f.path)).toEqual(["roadmaps/salesforce/ROADMAP.yaml"]);
+    const run = rec.calls.find((c) => c.binary === "opencode")!;
+    expect(run.argv.slice(0, 11)).toEqual([
+      "run",
+      "-m",
+      "opencode-go/glm-5.3",
+      "--format",
+      "json",
+      "--pure",
+      "--dir",
+      run.argv[7],
+      "--title",
+      run.argv[9],
+      "--variant",
+    ]);
+    expect(run.argv[11]).toBe("max");
+    expect(run.argv.at(-1)).toMatch(
+      /write your final output.*author-summary\.v1.*\.wos-agent-output\.json.*at most 4 running at the same time/s,
+    );
+    const config = JSON.parse(run.env.OPENCODE_CONFIG_CONTENT!);
+    expect(config.permission).toMatchObject({
+      "*": "deny",
+      edit: "allow",
+      bash: "deny",
+      task: "allow",
+      websearch: "allow",
+      external_directory: "deny",
+    });
+    expect(Object.keys(config.permission)[0]).toBe("*");
+    expect(config.permission.webfetch).toBe("allow"); // opencode cannot limit domains: the allowlist is checked after the run (D70)
+    expect(config.agent.general.permission).toMatchObject({ webfetch: "deny", websearch: "deny", task: "deny", edit: "deny" });
+    expect(run.env.XDG_CONFIG_HOME).toContain("config-home");
+    expect(Object.keys(run.env).some((k) => /KEY|TOKEN|SECRET/.test(k))).toBe(false);
+    const agentRun = h.server.agentRuns.at(-1) as Record<string, unknown>;
+    expect(agentRun).toMatchObject({
+      provider: "opencode_cli",
+      modelIdRequested: "opencode-go/glm-5.3",
+      reasoningRequested: "max",
+      launch: LAUNCH,
+      subagentCount: 5,
+      maxConcurrentSubagents: 3,
+      usage: { inputTokens: 2000, outputTokens: 400 },
+    });
+    expect(agentRun.fetches).toEqual([
+      {
+        kind: "fetch",
+        target: "https://help.salesforce.com/s/articleView?id=sf.exporting_data.htm",
+        at: "1970-01-01T00:00:08.000Z",
+        contentSha256: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
+        tool: "webfetch",
+      },
+      { kind: "search", target: "salesforce bulk api 2.0", at: "1970-01-01T00:00:09.100Z", contentSha256: null, tool: "websearch" },
+    ]);
+    expect(events.some((e) => e.type === "warning" && e.code === "SUBAGENT_CAP_EXCEEDED")).toBe(false);
+  });
+
+  it("D70: a fetch off the plan's allowlist refuses the submission (after the run is recorded)", async () => {
+    h = harness();
+    h.server.authorWeb = WEB;
+    bin = installBinaries("off-allowlist");
+    const o = orchestrator(h, bin, { modelLaunch: { glm: LAUNCH } });
+    const t = h.server.openAuthorTask("roadmap_author");
+    const res = await o.author({ taskId: t.id, model: "glm" }, () => undefined);
+    expect(res).toMatchObject({ ok: false, code: "NETWORK_POLICY" });
+    expect((res as { message: string }).message).toContain("https://example.org/salesforce");
+    expect(h.server.agentRuns).toHaveLength(1);
+    expect(h.server.submissions).toHaveLength(0);
+  });
+
+  it("fails closed without the output file", async () => {
+    h = harness();
+    h.server.authorWeb = WEB;
+    bin = installBinaries("no-output");
+    const o = orchestrator(h, bin, { modelLaunch: { glm: LAUNCH } });
+    const t = h.server.openAuthorTask("roadmap_author");
+    const res = await o.author({ taskId: t.id, model: "glm" }, () => undefined);
+    expect(res).toMatchObject({ ok: false, code: "AGENT_OUTPUT_INVALID" });
+    expect(h.server.submissions).toHaveLength(0);
+  });
 });

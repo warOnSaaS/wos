@@ -6,7 +6,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AGENT_POLICY_V1, CONTRACTS_VERSION, type Orchestrator, TOKEN_DISCLAIMER } from "@waronsaas/contracts";
+import { AGENT_POLICY, CONTRACTS_VERSION, type Orchestrator, TOKEN_DISCLAIMER } from "@waronsaas/contracts";
 import { createApiClient, createOrchestrator, createSessionReader } from "@waronsaas/orchestrator";
 import { FAKE_CORE } from "../dev/fake-apps.js";
 import { createFakeBackend, FAKE_API, type FakeBackend, tempWorkspace } from "../dev/fake-backend.js";
@@ -144,7 +144,7 @@ export function rig(
     cloudCoreUrl: FAKE_CORE,
     installer,
     settings,
-    policy: AGENT_POLICY_V1,
+    policy: AGENT_POLICY,
     appInfo: APP_INFO,
     emit: (e) => events.push(e),
     openExternal: async (url) => {

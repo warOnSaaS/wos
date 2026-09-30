@@ -37,7 +37,9 @@ import { captureChanges, createWorktree, isBlockingRejection, removeWorktree, ty
 import { parseBuildGraphYaml } from "@waronsaas/planning";
 import { validateChangeset } from "@waronsaas/verification";
 import { ApiCallError, createApiClient } from "./api-client.js";
+import { offAllowlist, parseAgentEvents } from "./agent-events.js";
 import type { ApiClient, Engines, OrchestratorDeps } from "./index.js";
+import { resolveBinary } from "./resolve-binary.js";
 import {
   deviceKey,
   idempotencyKey,
@@ -50,6 +52,8 @@ import {
   writeSession,
 } from "./session.js";
 
+/** ANSI colour sequences (ESC [ ... m), stripped from CLI listings before matching. */
+const ANSI = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
 const TERMINAL = new Set(["merged", "expired", "abandoned", "failed", "closed_unmerged", "superseded"]);
 const OUTPUT_TAIL = 2000;
 
@@ -240,14 +244,21 @@ export class OrchestratorImpl {
     const gitV = await this.capture("git", ["--version"]);
     const providers: ProviderStatus[] = [];
     for (const p of this.engines.policy.providers) {
-      const v = await this.capture(p.binary, p.versionCommand.slice(1));
-      const auth = v.ok && p.authCheckCommand ? await this.capture(p.authCheckCommand[0]!, p.authCheckCommand.slice(1)) : null;
-      const signedIn = auth?.ok === true && /("loggedIn"\s*:\s*true|Logged in)/i.test(auth.out);
+      const bin = this.binaryFor(p);
+      const v = await this.capture(bin, p.versionCommand.slice(1));
+      const auth = v.ok && p.authCheckCommand ? await this.capture(bin, p.authCheckCommand.slice(1)) : null;
+      // contracts 5.17.0: a provider may say how its auth listing shows a sign-in (opencode: "OpenCode Go api"). The
+      // listing names providers and methods, never secrets; ANSI colour codes are stripped first.
+      const plain = auth?.out.replace(ANSI, "") ?? "";
+      const custom = p.authSignedIn ? new RegExp(p.authSignedIn.pattern).test(plain) : null;
+      const signedIn = auth?.ok === true && (custom ?? /("loggedIn"\s*:\s*true|Logged in)/i.test(auth.out));
       const authMethod = auth?.ok
-        ? (/"authMethod"\s*:\s*"([^"]+)"/.exec(auth.out)?.[1] ?? (/using (\w+)/i.exec(auth.out)?.[1] || null))
+        ? custom
+          ? p.authSignedIn!.method
+          : (/"authMethod"\s*:\s*"([^"]+)"/.exec(auth.out)?.[1] ?? (/using (\w+)/i.exec(auth.out)?.[1] || null))
         : null;
       const problems: string[] = [];
-      if (!v.ok) problems.push(`${p.binary} not installed`);
+      if (!v.ok && !p.optional) problems.push(`${p.binary} not installed`);
       else if (!signedIn) problems.push(`${p.binary} not signed in`);
       providers.push({
         provider: p.id,
@@ -313,6 +324,22 @@ export class OrchestratorImpl {
     await probe("android-sdk", "sdkmanager", ["--version"]);
     return { os, osVersion, tools, checkedAt: this.now().toISOString() };
   }
+
+  /**
+   * contracts 5.17.0: the binary to spawn for a provider. On PATH (the agent environment's PATH) it is the bare name;
+   * otherwise the first existing match of the provider's `binarySearchPaths` (e.g. opencode under another Node version's
+   * nvm tree), newest first; else the bare name (and the spawn fails as "not installed").
+   */
+  private binaryFor(p: { binary: string; binarySearchPaths?: string[] }): string {
+    const cached = this.binaries.get(p.binary);
+    if (cached) return cached;
+    const found = this.deps.resolveBinary
+      ? this.deps.resolveBinary(p.binary, p.binarySearchPaths ?? [])
+      : resolveBinary(p.binary, p.binarySearchPaths ?? [], this.baseEnv().PATH ?? "", this.baseEnv().HOME ?? null);
+    this.binaries.set(p.binary, found);
+    return found;
+  }
+  private readonly binaries = new Map<string, string>();
 
   private async capture(binary: string, argv: string[]): Promise<{ ok: boolean; out: string }> {
     await mkdir(this.deps.workspaceRoot, { recursive: true });
@@ -639,10 +666,19 @@ export class OrchestratorImpl {
     const tmp = join(this.deps.workspaceRoot, "tmp", leaseId);
     await mkdir(tmp, { recursive: true });
     const sessionId = crypto.randomUUID();
-    const paths = { cwd, schemaPath: join(tmp, "schema.json"), lastMessagePath: join(tmp, "last-message.json"), sessionId };
+    const paths = {
+      cwd,
+      schemaPath: join(tmp, "schema.json"),
+      lastMessagePath: join(tmp, "last-message.json"),
+      sessionId,
+      configHome: join(tmp, "config-home"),
+    };
     const inv = this.engines.buildInvocation(plan, paths, this.engines.policy);
     await writeFile(paths.schemaPath, inv.outputSchemaJson);
     await rm(paths.lastMessagePath, { force: true });
+    await rm(paths.configHome, { recursive: true, force: true });
+    await mkdir(paths.configHome, { recursive: true });
+    if (inv.outputFile) await rm(join(cwd, inv.outputFile), { force: true });
     let stdout = "";
     let stderr = "";
     const startedAt = this.now().toISOString();
@@ -653,8 +689,9 @@ export class OrchestratorImpl {
       started = true;
       emit({ type: "agent_started", role: plan.role, provider: plan.provider, model: plan.modelId, reasoning: plan.reasoning, pid });
     };
+    const spec = this.engines.policy.providers.find((p) => p.id === plan.provider);
     const res = await this.deps.processes.run({
-      binary: inv.binary,
+      binary: spec ? this.binaryFor(spec) : inv.binary,
       argv: inv.argv,
       cwd,
       env: { ...this.baseEnv(), ...inv.env },
@@ -680,6 +717,27 @@ export class OrchestratorImpl {
     emit({ type: "agent_exited", exitCode: res.exitCode, durationMs: res.durationMs });
     if (res.exitCode !== 0) throw new StepError("AGENT_FAILED", `${inv.binary} exited ${res.exitCode}: ${tail(stderr)}`, true);
     const parsed = await parseAgentOutput(plan.provider, stdout, paths.lastMessagePath);
+    // contracts 5.17.0: CLIs without a schema flag write their output to a file in the worktree; read it, then remove it
+    // before the changes are captured. Missing or unreadable = no output (the caller's schema check fails closed).
+    if (inv.outputFile) {
+      const file = join(cwd, inv.outputFile);
+      const raw = await readFile(file, "utf8").catch(() => null);
+      await rm(file, { force: true });
+      try {
+        parsed.output = raw === null ? null : JSON.parse(raw);
+      } catch {
+        parsed.output = null;
+      }
+    }
+    const events = parseAgentEvents(plan.provider, stdout);
+    const launch = this.deps.modelLaunch?.[plan.model];
+    const cap = this.engines.policy.models.find((m) => m.ref === plan.model)?.maxConcurrentSubagents;
+    if (cap !== undefined && events.subagents.maxConcurrent !== null && events.subagents.maxConcurrent > cap)
+      emit({
+        type: "warning",
+        code: "SUBAGENT_CAP_EXCEEDED",
+        message: `${events.subagents.maxConcurrent} sub-agents ran at once; the policy allows ${cap} (recorded in the run)`,
+      });
     const unsigned: Omit<AgentRunRecord, "signature"> = {
       schema: "wos-agent-run.v1",
       leaseId,
@@ -697,7 +755,15 @@ export class OrchestratorImpl {
       exitCode: res.exitCode,
       transcriptSha256: sha256Of(stdout),
       outputSha256: canonicalSha256(parsed.output ?? null),
-      usage: parsed.usage,
+      // opencode reports tokens per step (step_finish): summed as reported; claude and codex report them once.
+      usage: plan.provider === "opencode_cli" ? events.usage : parsed.usage,
+      // contracts 5.17.0: the launch as declared (D52), sub-agents (D69) and every web access (D70).
+      ...(launch ? { launch } : {}),
+      ...(events.subagents.count > 0 || cap !== undefined ? { subagentCount: events.subagents.count } : {}),
+      ...(events.subagents.maxConcurrent !== null && events.subagents.count > 0
+        ? { maxConcurrentSubagents: events.subagents.maxConcurrent }
+        : {}),
+      ...(events.fetches.length > 0 ? { fetches: events.fetches } : {}),
     };
     const record = await signAgentRunWithDevice(this.deps.secrets, unsigned);
     const posted = await this.api.call("postAgentRun", {
@@ -709,6 +775,16 @@ export class OrchestratorImpl {
     if (parsed.model !== null && parsed.model !== plan.modelId) {
       throw new StepError("MODEL_MISMATCH", `requested ${plan.modelId}, the CLI reported ${parsed.model}`);
     }
+    // D52: a claude endpoint that answers as another family (e.g. ANTHROPIC_BASE_URL in the claude settings pointing at
+    // another vendor) never passes as the requested model.
+    const fam = (m: string) => (/^claude-/i.test(m) ? "claude" : /(^|\/)glm-/i.test(m) ? "glm" : /^gpt-/i.test(m) ? "gpt" : "other");
+    const foreign = events.respondedModels.filter((m) => fam(m) !== fam(plan.modelId));
+    if (foreign.length > 0)
+      throw new StepError("MODEL_MISMATCH", `requested ${plan.modelId}, the endpoint answered as ${foreign.join(", ")}`);
+    // D70: every web access must be on the plan's allowlist (enforced after the fact where the CLI cannot restrict domains).
+    const off = offAllowlist(events.fetches, plan.web ?? null);
+    if (off.length > 0)
+      throw new StepError("NETWORK_POLICY", `the agent read outside this plan's allowlist (D70): ${off.slice(0, 5).join(", ")}`);
     return { output: parsed.output, manifestSha256, agentRunId: posted.agentRunId };
   }
 
@@ -1040,9 +1116,10 @@ export class OrchestratorImpl {
     let task: TaskView | null = null;
     try {
       const s = await this.session();
+      const launch = options.launch ?? (options.model ? this.deps.modelLaunch?.[options.model] : undefined);
       const claim = await this.api.call("claimTask", {
         params: { id: options.taskId },
-        body: { deviceId: s.deviceId, ...(options.model ? { model: options.model } : {}) },
+        body: { deviceId: s.deviceId, ...(options.model ? { model: options.model } : {}), ...(launch ? { launch } : {}) },
         idempotencyKey: idempotencyKey("claimTask", options.taskId, s.deviceId),
       });
       task = claim.task;

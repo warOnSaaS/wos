@@ -141,7 +141,7 @@ export function describeResult(r: RunResult): string {
 
 // ------------------------------------------------------------------------------------------ status
 
-const PROVIDER_LABEL: Record<string, string> = { claude_cli: "claude", codex_cli: "codex" };
+const PROVIDER_LABEL: Record<string, string> = { claude_cli: "claude", codex_cli: "codex", opencode_cli: "opencode" };
 
 export function renderStatus(s: LocalStatus, work: { leases: number; tasks: number; attempts: string[] } | null, style: Style): string {
   const { bold } = style;

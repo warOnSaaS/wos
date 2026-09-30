@@ -1,6 +1,7 @@
 /** DRAFT — V1 protocol policy documents, parsed at import (a malformed data file throws). All status "draft". */
 import capabilityJson from "./data/capability-policy.v1.json" with { type: "json" };
 import capabilityV2Json from "./data/capability-policy.v2.json" with { type: "json" };
+import capabilityV3Json from "./data/capability-policy.v3.json" with { type: "json" };
 import completionJson from "./data/completion-policy.v1.json" with { type: "json" };
 import genesisJson from "./data/genesis-policy.v1.json" with { type: "json" };
 import governanceJson from "./data/governance-policy.v1.json" with { type: "json" };
@@ -48,3 +49,10 @@ export const GOVERNANCE_POLICY_V1: GovernancePolicy = GovernancePolicy.parse(gov
  */
 export const REWARD_POLICY_V2: RewardPolicy = RewardPolicy.parse(rewardV2Json);
 export const CAPABILITY_POLICY_V2: AgentCapabilityPolicy = AgentCapabilityPolicy.parse(capabilityV2Json);
+
+/**
+ * contracts 5.17.0 (D52 launch verified, D69 candidate trials): v2 plus the verified Z.ai launch values of the `glm`
+ * candidate and its `trials` exception (a maintainer-designated roadmap_author task; reviewed as normal, may merge).
+ * The V1 control plane reads THIS version for candidate refusals (modelClaimRefusals).
+ */
+export const CAPABILITY_POLICY_V3: AgentCapabilityPolicy = AgentCapabilityPolicy.parse(capabilityV3Json);

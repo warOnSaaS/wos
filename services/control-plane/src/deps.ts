@@ -6,7 +6,7 @@
 import { checkEligibility } from "@waronsaas/agent-policy";
 import { checkManifestAgainstPlan } from "@waronsaas/context-engine";
 import {
-  AGENT_POLICY_V1,
+  AGENT_POLICY,
   type AgentPolicyDocument,
   type Changeset,
   HOSTS,
@@ -338,5 +338,5 @@ export function consoleLogger(): Logger {
 }
 
 export function defaultPolicyAndSchedule(): { policy: AgentPolicyDocument; schedule: RewardSchedule } {
-  return { policy: AGENT_POLICY_V1, schedule: REWARD_SCHEDULE_V1 };
+  return { policy: AGENT_POLICY, schedule: REWARD_SCHEDULE_V1 };
 }

@@ -30,13 +30,39 @@ export type AgentRole = z.infer<typeof AgentRole>;
 export const ReviewerSlot = z.enum(["astra", "fable"]);
 export type ReviewerSlot = z.infer<typeof ReviewerSlot>;
 
-export const ProviderId = z.enum(["claude_cli", "codex_cli"]);
+/** "opencode_cli" (contracts 5.17.0, D69): the opencode CLI (`opencode run`), for candidate models such as glm on OpenCode Go. */
+export const ProviderId = z.enum(["claude_cli", "codex_cli", "opencode_cli"]);
 export type ProviderId = z.infer<typeof ProviderId>;
 
 /** Stable model reference used everywhere in wOS; mapped to a provider model id in the policy. */
 /** "sol" (gpt-6-sol) is allowed for builders only (D15 addition); the per-role lists are policy data. */
-export const ModelRef = z.enum(["fable", "opus", "astra", "sol"]);
+/**
+ * "glm" (contracts 5.17.0, D52 + D69): GLM-5.3 run by the opencode CLI on the contributor's OpenCode Go subscription
+ * (model `opencode-go/glm-5.3`). A CANDIDATE model: the control plane refuses it for every claim except a task a
+ * maintainer designated for it (AdminAction `assign_candidate_trial`; capability-policy.v3 `candidates`, rule
+ * `modelClaimRefusals`).
+ */
+export const ModelRef = z.enum(["fable", "opus", "astra", "sol", "glm"]);
 export type ModelRef = z.infer<typeof ModelRef>;
+
+/**
+ * contracts 5.17.0 (D52, D69): how a contributor's CLI reaches a model, AS DECLARED by that CLI (identity is always
+ * self_reported: wOS cannot see which model an endpoint really runs). V1 knows one non-default launch: the claude CLI
+ * pointed at Z.ai's Anthropic-compatible endpoint (provider "zai"). Never carries a key.
+ */
+export const LaunchDeclaration = z.object({
+  /** "opencode-go": OpenCode's own subscription via the opencode CLI; "zai": the claude CLI pointed at Z.ai (documented alternative). */
+  provider: z.enum(["anthropic", "openai", "zai", "opencode-go"]),
+  /** The endpoint the CLI was given (e.g. ANTHROPIC_BASE_URL); null = the CLI's own default for that provider. */
+  baseUrl: z.url().nullable(),
+  identity: z.literal("self_reported"),
+});
+export type LaunchDeclaration = z.infer<typeof LaunchDeclaration>;
+
+/** contracts 5.17.0 (D69): the public label of a candidate trial's round, PR, commits and contributions. */
+export const CandidateTrialLabel = z.string().regex(/^candidate_trial:[a-z][a-z0-9-]{0,30}$/);
+export type CandidateTrialLabel = z.infer<typeof CandidateTrialLabel>;
+export const candidateTrialLabel = (candidate: string): string => `candidate_trial:${candidate}`;
 
 /**
  * Union of reasoning level names across providers. Each model lists which it supports, in
@@ -62,6 +88,19 @@ export const ModelSpec = z.object({
   /** Context window assumed for budget maths. Conservative; UNVERIFIED values are marked in notes. */
   contextWindowTokens: z.number().int().positive(),
   notes: z.string().default(""),
+  /**
+   * contracts 5.17.0 (D69): claude tools added to a role's `claudeTools` when THIS model runs it. Only a candidate model
+   * uses it (it runs only in a maintainer-designated candidate trial): e.g. glm may use the sub-agent tool `Agent` as
+   * roadmap author, within the same sandbox, permission mode and context budget. Absent = the role's tools only.
+   */
+  roleToolAdditions: z.partialRecord(AgentRole, z.array(z.string().min(1))).optional(),
+  /**
+   * contracts 5.17.0 (D69): the most sub-agents this model may run at once (the lead run excluded). Enforced where the
+   * CLI can; otherwise stated in the run's instructions and measured from its event stream (AgentRunRecord).
+   */
+  maxConcurrentSubagents: z.number().int().min(0).optional(),
+  /** contracts 5.17.0 (D69): extra instructions for this model in a role, passed with the run (hashed with its argv). */
+  roleInstructions: z.partialRecord(AgentRole, z.string().min(1)).optional(),
 });
 export type ModelSpec = z.infer<typeof ModelSpec>;
 
@@ -100,6 +139,46 @@ export const ProviderSpec = z.object({
   env: z.record(z.string(), z.string()).default({}),
   /** Flags verified present by running `--help` locally, vs assumed. */
   verification: z.object({ verifiedFlags: z.array(z.string()), unverified: z.array(z.string()) }),
+  /**
+   * contracts 5.17.0 (D69), opencode: where to look for the binary when it is not on PATH (`~` = the home directory,
+   * `*` = one path segment), e.g. an opencode installed under another Node version's nvm tree.
+   */
+  binarySearchPaths: z.array(z.string()).optional(),
+  /** contracts 5.17.0: a CLI only some contributors use (opencode, for candidate trials): its absence is not a problem. */
+  optional: z.boolean().optional(),
+  /** contracts 5.17.0: how `authCheckCommand` output says the CLI is signed in (a regex; ANSI codes stripped), and the method it names. */
+  authSignedIn: z.object({ pattern: z.string(), method: z.string() }).optional(),
+  /**
+   * contracts 5.17.0 (D69), for CLIs without a JSON-schema flag: the agent writes its final output (the role's output
+   * schema) to this worktree-relative file; the orchestrator reads it, removes it before capturing changes, and
+   * validates it (fail closed).
+   */
+  outputFile: z.string().optional(),
+  /**
+   * contracts 5.17.0 (D69), opencode: the per-run configuration passed in `envVar` (JSON): `base` merged with the
+   * permission set of the role's sandbox, plus `toolPermissions` for each tool a model adds to the role
+   * (`roleToolAdditions`), plus bash rules for the plan's allowed commands. Every permission is allow or deny (never
+   * ask), so a headless run never waits. `configHomeEnv` names the variable pointed at an empty per-run directory so the
+   * contributor's own global configuration (agents, plugins, MCP servers) is not loaded.
+   */
+  runConfig: z
+    .object({
+      envVar: z.string(),
+      configHomeEnv: z.string(),
+      base: z.record(z.string(), z.unknown()),
+      permission: z.object({
+        read_only: z.record(z.string(), z.enum(["allow", "deny"])),
+        workspace_write: z.record(z.string(), z.enum(["allow", "deny"])),
+      }),
+      toolPermissions: z.record(z.string(), z.record(z.string(), z.enum(["allow", "deny"]))),
+      /** The CLI's sub-agents (opencode: general, explore) and their permissions: read-only, no web, no nesting. */
+      subagents: z.object({ agents: z.array(z.string()), permission: z.record(z.string(), z.enum(["allow", "deny"])) }).optional(),
+    })
+    .optional(),
+  /** contracts 5.17.0 (D70): args that enable the CLI's web search for a research plan (codex). */
+  webSearchArgs: z.array(ArgTemplate).optional(),
+  /** contracts 5.17.0 (D70): args that open the network for a registry-exception build (codex). */
+  registryArgs: z.array(ArgTemplate).optional(),
 });
 export type ProviderSpec = z.infer<typeof ProviderSpec>;
 
@@ -138,8 +217,22 @@ export const RolePolicy = z.object({
   sandbox: SandboxMode,
   /** Claude Code built-in tool names made available (`--tools`). */
   claudeTools: z.array(z.string()),
-  /** Whether the agent may use the network (web fetch/search). V1: always false. */
+  /** Whether the agent's commands may use the network. Always false: research roles get `web` instead (D70). */
   network: z.literal(false),
+  /**
+   * contracts 5.17.0, agent-policy.v2 (D70 network by role): READ-ONLY web access for research roles (roadmap and feature
+   * authors and reviewers). `domains`: "target" = the plan's target vendor domains, "contract_targets" = the vendor
+   * domains of every target named in the contract; plus `sharedDomains` of the policy. `search`: the CLI's web search.
+   * Every fetch is logged in the agent run (URL, time, sha256 of what the agent received) and shown to the reviewers;
+   * a fetch off the plan's allowlist refuses the submission. Absent = offline (builder, implementation reviewers,
+   * resolver).
+   */
+  web: z.object({ access: z.literal("read_only"), domains: z.enum(["target", "contract_targets"]), search: z.boolean() }).optional(),
+  /**
+   * agent-policy.v2 (D70): a unit that claims one of these resource prefixes EXCLUSIVE (e.g. `lockfile:`, `dep:`) may
+   * reach only these hosts (the package registry). Absent = never.
+   */
+  registryException: z.object({ resourcePrefixes: z.array(z.string().min(1)).min(1), hosts: z.array(z.string().min(1)).min(1) }).optional(),
   outputSchema: OutputSchemaId,
   /**
    * Obligations rendered VERBATIM into the role's prompt template, in order (CONTEXT-PROTOCOL.md).
@@ -226,8 +319,24 @@ export const AgentPolicyDocument = z.object({
   bootstrap: BootstrapPolicy,
   /** Characters-per-token ratio for the deterministic token estimator (conservative). */
   tokenEstimator: z.object({ charsPerToken: z.number().positive(), perArtifactOverheadTokens: z.number().int().nonnegative() }),
+  /**
+   * agent-policy.v2 (D70): the public web domains of each target vendor, from docs/scans (a host matches a domain when it
+   * equals it or is a subdomain of it). Read-only; no login-walled content; robots.txt respected.
+   */
+  targetDomains: z.record(z.string(), z.array(z.string().min(3)).min(1)).optional(),
+  /** agent-policy.v2 (D70): domains every research role may read besides its targets' (app store listings: D13 surface evidence). */
+  sharedDomains: z.array(z.string().min(3)).optional(),
 });
 export type AgentPolicyDocument = z.infer<typeof AgentPolicyDocument>;
+
+/** D70: true when `host` equals `domain` or is a subdomain of it (case-insensitive). */
+export function hostInDomains(host: string, domains: readonly string[]): boolean {
+  const h = host.toLowerCase().replace(/\.$/, "");
+  return domains.some((d) => {
+    const x = d.toLowerCase();
+    return h === x || h.endsWith(`.${x}`);
+  });
+}
 
 /**
  * The ONE role-to-prompt-template map (contracts 4.2.0, B-0002-planning). Context-engine and the control plane

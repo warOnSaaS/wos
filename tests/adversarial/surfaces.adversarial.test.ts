@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { checkEligibility, ELIGIBILITY_REASONS, type EligibilityInput } from "@waronsaas/agent-policy";
 import {
-  AGENT_POLICY_V1,
+  AGENT_POLICY,
   type Browser,
   MINIMUM_BROWSERS,
   type ProviderAttestation,
@@ -174,10 +174,10 @@ function builderInput(models: string[], role: EligibilityInput["role"] = "builde
 
 describe("D15: a Sol builder can never take a reviewer slot or rule", () => {
   it("no reviewer or resolver role lists Sol in the policy data", () => {
-    for (const role of AGENT_POLICY_V1.roles.filter((r) => r.reviewerSlot || r.role === "conflict_resolver")) {
+    for (const role of AGENT_POLICY.roles.filter((r) => r.reviewerSlot || r.role === "conflict_resolver")) {
       expect(role.allowedModels, role.role).not.toContain("sol");
     }
-    expect(AGENT_POLICY_V1.roles.find((r) => r.role === "builder")?.allowedModels).toContain("sol");
+    expect(AGENT_POLICY.roles.find((r) => r.role === "builder")?.allowedModels).toContain("sol");
   });
   it.each(["implementation_reviewer_astra", "roadmap_reviewer_astra", "feature_reviewer_astra"] as const)(
     "a contributor attesting only Sol is not eligible for %s",
@@ -195,10 +195,10 @@ describe("D15: a Sol builder can never take a reviewer slot or rule", () => {
 
 // ---- S-36: no vendor trade dress ---------------------------------------------------------------------
 describe("S-36: every roadmap, contract and implementation reviewer treats vendor trade dress as material", () => {
-  const reviewers = AGENT_POLICY_V1.roles.filter((r) => r.reviewerSlot);
+  const reviewers = AGENT_POLICY.roles.filter((r) => r.reviewerSlot);
   it("covers all six reviewer roles", () => expect(reviewers).toHaveLength(6));
   it.each(reviewers.map((r) => [r.role]))("%s has a trade-dress material finding rule", (role) => {
-    const r = AGENT_POLICY_V1.roles.find((x) => x.role === role)!;
+    const r = AGENT_POLICY.roles.find((x) => x.role === role)!;
     expect(r.materialFindingRules.some((x) => /trade dress/i.test(x) && /logo|icon|visual/i.test(x))).toBe(true);
   });
 });

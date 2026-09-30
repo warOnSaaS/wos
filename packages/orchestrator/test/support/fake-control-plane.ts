@@ -12,7 +12,7 @@ import { getRolePolicy, resolveReasoning } from "@waronsaas/agent-policy";
 import { builderArtifactSelectors, PROMPT_TEMPLATE_BY_ROLE, renderPolicyDocument, SECRET_PATTERNS } from "@waronsaas/context-engine";
 import { sha256Of } from "@waronsaas/contracts/canonical";
 import {
-  AGENT_POLICY_V1,
+  AGENT_POLICY,
   type AbuSpec,
   type AgentRole,
   type ArtifactSelector,
@@ -137,7 +137,7 @@ export class FakeControlPlane {
   /** Every server document this fake serves, rendered deterministically so plan sha256s match. */
   renderDoc(ref: string): string {
     const policy = /^wos:policy\/([a-z_]+)@/.exec(ref);
-    if (policy) return renderPolicyDocument(policy[1] as AgentRole, AGENT_POLICY_V1);
+    if (policy) return renderPolicyDocument(policy[1] as AgentRole, AGENT_POLICY);
     const task = /^wos:task\/(.+)$/.exec(ref);
     if (task) return this.taskSpec(task[1]!);
     return `# ${ref}\n\nRendered by the fake control plane.\n`;
@@ -214,8 +214,8 @@ export class FakeControlPlane {
 
   private reviewPlan(t: (typeof this.reviewTasks)[number], leaseId: string, headSha: string): ContextPlan {
     const roleName = `implementation_reviewer_${t.slot}` as const;
-    const role = getRolePolicy(roleName, AGENT_POLICY_V1);
-    const model = AGENT_POLICY_V1.models.find((m) => m.ref === role.allowedModels[0])!;
+    const role = getRolePolicy(roleName, AGENT_POLICY);
+    const model = AGENT_POLICY.models.find((m) => m.ref === role.allowedModels[0])!;
     const p: ContextPlan = {
       schema: "wos-context-plan.v1",
       taskId: t.taskId,
@@ -226,7 +226,7 @@ export class FakeControlPlane {
       modelId: model.modelId,
       provider: model.provider,
       reasoning: resolveReasoning(role, model),
-      policyVersion: AGENT_POLICY_V1.policyVersion,
+      policyVersion: AGENT_POLICY.policyVersion,
       contextFormatVersion: CONTEXT_FORMAT_VERSION,
       target: null,
       feature: FEATURE,
@@ -235,7 +235,7 @@ export class FakeControlPlane {
       roundId: t.roundId,
       source: { repo: REPO, commit: headSha },
       artifacts: [
-        this.doc(`wos:policy/${roleName}@${AGENT_POLICY_V1.policyVersion}`),
+        this.doc(`wos:policy/${roleName}@${AGENT_POLICY.policyVersion}`),
         this.doc(`wos:task/${t.taskId}`),
         this.doc(`wos:diff/${t.attemptId}@${headSha}`),
         { kind: "repo_file", repo: REPO, path: "features/contacts/CONTRACT.yaml", required: true },
@@ -268,24 +268,23 @@ export class FakeControlPlane {
   }
 
   readonly rulings: unknown[] = [];
-  readonly claimBodies: Array<{ deviceId: string; model?: string }> = [];
+  readonly claimBodies: Array<{ deviceId: string; model?: string; launch?: unknown }> = [];
   /** Scripted claim refusals, e.g. the per-provider build-lease limit (D15). */
   readonly claimRefusals: Array<"LIMIT_REACHED" | "NOT_ELIGIBLE"> = [];
   /** Events served by listMyEvents (tests push contract-shaped DomainEvents). */
   readonly domainEvents: Array<{ id: number } & Record<string, unknown>> = [];
   /** D15: the model the server issues builder plans for (until the claim can name it, B-0010-github-build). */
   builderModel: "opus" | "astra" | "sol" | null = null;
+  /** D70: the web the server issues with author plans (research roles), when a test sets it. */
+  authorWeb: ContextPlan["web"] = null;
 
   private authorPlan(t: TaskView, leaseId: string): ContextPlan {
     const roleName = t.role;
-    const role = getRolePolicy(roleName, AGENT_POLICY_V1);
+    const role = getRolePolicy(roleName, AGENT_POLICY);
     const chosen = this.claimBodies.at(-1)?.model;
     const ref = chosen && role.allowedModels.includes(chosen as never) ? chosen : role.allowedModels[0];
-    const model = AGENT_POLICY_V1.models.find((m) => m.ref === ref)!;
-    const artifacts: ArtifactSelector[] = [
-      this.doc(`wos:policy/${roleName}@${AGENT_POLICY_V1.policyVersion}`),
-      this.doc(`wos:task/${t.id}`),
-    ];
+    const model = AGENT_POLICY.models.find((m) => m.ref === ref)!;
+    const artifacts: ArtifactSelector[] = [this.doc(`wos:policy/${roleName}@${AGENT_POLICY.policyVersion}`), this.doc(`wos:task/${t.id}`)];
     if (t.kind === "roadmap_author")
       artifacts.push({ kind: "repo_file", repo: REPO, path: "roadmaps/salesforce/ROADMAP.yaml", required: false });
     if (t.kind === "feature_author")
@@ -301,7 +300,7 @@ export class FakeControlPlane {
       modelId: model.modelId,
       provider: model.provider,
       reasoning: resolveReasoning(role, model),
-      policyVersion: AGENT_POLICY_V1.policyVersion,
+      policyVersion: AGENT_POLICY.policyVersion,
       contextFormatVersion: CONTEXT_FORMAT_VERSION,
       target: t.target,
       feature: t.feature,
@@ -315,6 +314,7 @@ export class FakeControlPlane {
       budgetTokens: role.budgetOverrides.find((o) => o.model === model.ref)?.contextBudgetTokens ?? role.contextBudgetTokens,
       outputSchema: role.outputSchema,
       allowedCommands: [],
+      ...(this.authorWeb ? { web: this.authorWeb } : {}),
     };
     this.plans.set(leaseId, p);
     return p;
@@ -327,9 +327,9 @@ export class FakeControlPlane {
     attemptId: string,
     commit: string,
   ): ContextPlan {
-    const role = getRolePolicy("builder", AGENT_POLICY_V1);
-    const model = AGENT_POLICY_V1.models.find((m) => m.ref === (this.builderModel ?? role.allowedModels[0]))!;
-    const policyText = renderPolicyDocument("builder", AGENT_POLICY_V1);
+    const role = getRolePolicy("builder", AGENT_POLICY);
+    const model = AGENT_POLICY.models.find((m) => m.ref === (this.builderModel ?? role.allowedModels[0]))!;
+    const policyText = renderPolicyDocument("builder", AGENT_POLICY);
     return {
       schema: "wos-context-plan.v1",
       taskId,
@@ -340,7 +340,7 @@ export class FakeControlPlane {
       modelId: model.modelId,
       provider: model.provider,
       reasoning: resolveReasoning(role, model),
-      policyVersion: AGENT_POLICY_V1.policyVersion,
+      policyVersion: AGENT_POLICY.policyVersion,
       contextFormatVersion: CONTEXT_FORMAT_VERSION,
       target: null,
       feature: FEATURE,
@@ -352,7 +352,7 @@ export class FakeControlPlane {
         repo: REPO,
         feature: FEATURE,
         abu: ABU_SPEC,
-        policyDocument: { ref: `wos:policy/builder@${AGENT_POLICY_V1.policyVersion}`, sha256: sha256Of(policyText) },
+        policyDocument: { ref: `wos:policy/builder@${AGENT_POLICY.policyVersion}`, sha256: sha256Of(policyText) },
         taskDocument: { ref: `wos:task/${taskId}`, sha256: sha256Of(this.renderDoc(`wos:task/${taskId}`)) },
         localVerificationOutput: true,
       }),
@@ -509,7 +509,7 @@ export class FakeControlPlane {
         const refusal = this.claimRefusals.shift();
         if (refusal) throw new HttpErr(refusal === "LIMIT_REACHED" ? 409 : 403, refusal, `${refusal}: fake refusal`);
         if (body?.model) {
-          if (!getRolePolicy("builder", AGENT_POLICY_V1).allowedModels.includes(body.model as never)) {
+          if (!getRolePolicy("builder", AGENT_POLICY).allowedModels.includes(body.model as never)) {
             throw new HttpErr(403, "NOT_ELIGIBLE", `model ${String(body.model)} is not allowed for builder`);
           }
           this.builderModel = body.model as "opus" | "astra" | "sol";

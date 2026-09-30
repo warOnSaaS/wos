@@ -53,6 +53,8 @@ const ALL = [
   "0013_review_fallback_and_first_run",
   // 0014 is D67 (production): the bootstrap founder's human seat under review-policy.v2.
   "0014_bootstrap_founder_human_seat",
+  // 0015 is D69 candidate trials and the opencode provider (production).
+  "0015_candidate_trials",
 ];
 
 /** The first number after the last real migration: the runner tests add throwaway files there. */

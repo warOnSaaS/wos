@@ -1,4 +1,4 @@
-import { AGENT_POLICY_V1, type AgentRole, type ProviderAttestation, type ToolchainAttestation } from "@waronsaas/contracts";
+import { AGENT_POLICY, type AgentRole, type ProviderAttestation, type ToolchainAttestation } from "@waronsaas/contracts";
 import { describe, expect, it } from "vitest";
 import {
   checkEligibility,
@@ -12,7 +12,7 @@ import {
   scopeCanTouchGlob,
 } from "../src/index.js";
 
-const policy = AGENT_POLICY_V1;
+const policy = AGENT_POLICY;
 // Fixture times are relative to one fixed instant passed as `now` (D7: never pin dates that pass "now").
 const NOW = "2026-10-01T12:00:00Z";
 const daysBefore = (days: number) => new Date(Date.parse(NOW) - days * 86_400_000).toISOString();

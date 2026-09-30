@@ -122,12 +122,17 @@ export async function authorRevision(
   acct: Account,
   taskId: string,
   files: Array<{ path: string; content: string }>,
-  opts: { model?: string; summary?: Summary } = {},
+  opts: {
+    model?: string;
+    summary?: Summary;
+    launch?: { provider: string; baseUrl: string | null; identity: "self_reported" };
+    run?: Record<string, unknown>;
+  } = {},
 ) {
   const claim = await h.call("POST", `/v1/tasks/${taskId}/claim`, {
     token: acct.token,
     idem: true,
-    body: { deviceId: acct.deviceId, ...(opts.model ? { model: opts.model } : {}) },
+    body: { deviceId: acct.deviceId, ...(opts.model ? { model: opts.model } : {}), ...(opts.launch ? { launch: opts.launch } : {}) },
   });
   expect(claim.status, JSON.stringify(claim.body)).toBe(200);
   const plan = claim.body.contextPlan;
@@ -136,7 +141,7 @@ export async function authorRevision(
   await h.call("POST", `/v1/leases/${claim.body.lease.id}/agent-runs`, {
     token: acct.token,
     idem: true,
-    body: signedRun(acct.key, plan, claim.body.lease.id, acct.deviceId, m.manifestSha256),
+    body: signedRun(acct.key, plan, claim.body.lease.id, acct.deviceId, m.manifestSha256, opts.run ?? {}),
   });
   const [doc] = await h.owner<{ head_sha: string | null }[]>`select head_sha from wos.documents where id = ${claim.body.task.documentId}`;
   const cs = signedChangeset(acct.key, {

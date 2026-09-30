@@ -5,7 +5,7 @@
  */
 import { createHash, createHmac, generateKeyPairSync, type KeyObject, randomUUID, sign } from "node:crypto";
 import {
-  AGENT_POLICY_V1,
+  AGENT_POLICY,
   type AbuSpec,
   BuildGraph,
   CatalogEntry,
@@ -234,7 +234,7 @@ export class FakeMailer {
 
 /** Stand-in for context-policy's checkEligibility (AGENT-POLICY.md section 5, simplified). */
 export function fakeCheckEligibility(input: EligibilityInput): EligibilityResult {
-  const role = AGENT_POLICY_V1.roles.find((r) => r.role === input.role)!;
+  const role = AGENT_POLICY.roles.find((r) => r.role === input.role)!;
   const reasons: string[] = [];
   if (input.account.suspended) reasons.push("account suspended");
   const ageDays = (Date.now() - Date.parse(input.account.githubAccountCreatedAt)) / 86_400_000;
@@ -243,15 +243,14 @@ export function fakeCheckEligibility(input: EligibilityInput): EligibilityResult
   if (!waive && input.account.acceptedContributions < role.eligibility.minAcceptedContributions)
     reasons.push("not enough accepted contributions");
   const model = role.allowedModels
-    .map((ref) => AGENT_POLICY_V1.models.find((m) => m.ref === ref)!)
+    .map((ref) => AGENT_POLICY.models.find((m) => m.ref === ref)!)
     .find((m) => input.attestations.some((a) => a.provider === m.provider && a.installed && a.signedIn && a.models.includes(m.ref)));
   if (!model) reasons.push("no attested CLI for an allowed model");
   let independence: "independent" | "bootstrap_maintainer" | "bootstrap_self" = "independent";
   if (role.independence) {
     if (input.otherSlotReviewerId === input.account.id) reasons.push("already reviewing the other slot");
     if (input.subjectAuthorIds.includes(input.account.id)) {
-      const self =
-        input.bootstrapMode && input.account.isMaintainer && input.taskOpenHours >= AGENT_POLICY_V1.bootstrap.selfReviewAfterHours;
+      const self = input.bootstrapMode && input.account.isMaintainer && input.taskOpenHours >= AGENT_POLICY.bootstrap.selfReviewAfterHours;
       if (self) independence = "bootstrap_self";
       else reasons.push("author of the subject");
     } else if (input.bootstrapMode && input.account.isMaintainer) independence = "bootstrap_maintainer";
@@ -470,7 +469,7 @@ export async function createHarness(overrides: Partial<Logic> = {}, options: Har
     mailer,
     // Every package that exists runs for real; FAKE_LOGIC only fills what a test overrides.
     logic: { ...FAKE_LOGIC, ...REAL_WAVE1_LOGIC, ...overrides },
-    policy: AGENT_POLICY_V1,
+    policy: AGENT_POLICY,
     schedule: REWARD_SCHEDULE_V1,
     log: (level, message, fields) => {
       if (level === "error" && process.env.WOS_TEST_LOG) console.error(message, fields);
@@ -709,7 +708,15 @@ export async function manifestFor(h: Harness, plan: ContextPlan, _kind?: string)
   return built.manifest;
 }
 
-export function signedRun(key: KeyObject, plan: ContextPlan, leaseId: string, deviceId: string, manifestSha256: string) {
+export function signedRun(
+  key: KeyObject,
+  plan: ContextPlan,
+  leaseId: string,
+  deviceId: string,
+  manifestSha256: string,
+  /** contracts 5.17.0: optional run fields (launch, subagentCount, fetches), signed with the rest. */
+  extra: Record<string, unknown> = {},
+) {
   const now = new Date().toISOString();
   const rec = {
     schema: "wos-agent-run.v1" as const,
@@ -729,6 +736,7 @@ export function signedRun(key: KeyObject, plan: ContextPlan, leaseId: string, de
     transcriptSha256: sha256("transcript"),
     outputSha256: sha256("output"),
     usage: { inputTokens: 1, outputTokens: 1 },
+    ...extra,
     signature: "",
   };
   return { ...rec, signature: sign(null, agentRunSigningPayload(rec), key).toString("base64") };

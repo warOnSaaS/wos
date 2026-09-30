@@ -1287,12 +1287,32 @@ export function genesisDedupRefusals(x: { dedupSource: "receipt" | "genesis" | n
 export function modelClaimRefusals(
   policy: {
     classes: ReadonlyArray<{ id: string; qualified: ReadonlyArray<{ provider: string; modelId: string }> }>;
-    candidates: ReadonlyArray<{ key: string; provider: string; modelIdPattern: string; allowedRoles: readonly string[] }>;
+    candidates: ReadonlyArray<{
+      key: string;
+      provider: string;
+      modelIdPattern: string;
+      allowedRoles: readonly string[];
+      trials?: { taskKinds: readonly string[] };
+    }>;
   },
   claim: { provider: string; modelId: string; requiredClass: string; role: string },
+  /**
+   * contracts 5.17.0 (D69): the candidate trial designated on the claimed task, if any (AdminAction
+   * assign_candidate_trial). The named candidate may claim ONLY a designated task of a kind its `trials` allow; a
+   * designated task refuses every other model. Omitted or null = no trial: the V1-candidate rule above applies.
+   */
+  trial?: { candidate: string; taskKind: string } | null,
 ): string[] {
   const glob = (p: string) => new RegExp(`^${p.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*")}$`);
   const candidate = policy.candidates.find((c) => c.provider === claim.provider || glob(c.modelIdPattern).test(claim.modelId));
+  if (trial) {
+    if (!candidate || candidate.key !== trial.candidate)
+      return [`this task is designated for the candidate ${trial.candidate}: only that model claims it while the trial stands (D69)`];
+    const kinds = candidate.trials?.taskKinds ?? [];
+    return kinds.includes(trial.taskKind)
+      ? []
+      : [`${candidate.key} trials cover ${kinds.join(", ") || "no task kind"}, not ${trial.taskKind} (D69)`];
+  }
   const cls = policy.classes.find((c) => c.id === claim.requiredClass);
   const qualified = cls?.qualified.some((q) => q.provider === claim.provider && q.modelId === claim.modelId) ?? false;
   const r: string[] = [];

@@ -28,6 +28,7 @@ import {
   type ActorRef,
   taskTransition,
 } from "../domain/work.js";
+import { assignCandidateTrial, revokeCandidateTrial } from "../domain/trials.js";
 
 const asMaintainerTx = (c: Caller) => ({ kind: "maintainer" as const, accountId: c.accountId });
 const maintainer = (c: Caller): ActorRef => ({ actor: "maintainer", accountId: c.accountId });
@@ -418,6 +419,19 @@ export const adminHandlers: Pick<
               },
               { aggregateKind: "review_policy", aggregateId: String(seq), actor: "maintainer", actorAccountId: caller.accountId },
             );
+          return;
+        }
+        // D69: designate one open task for a candidate model (public, forward-only), or end that trial.
+        case "assign_candidate_trial": {
+          await assignCandidateTrial(
+            tx,
+            { taskId: a.taskId, candidate: a.candidate, reason: a.reason },
+            { actor: "maintainer", accountId: caller.accountId },
+          );
+          return;
+        }
+        case "revoke_candidate_trial": {
+          await revokeCandidateTrial(tx, { taskId: a.taskId, reason: a.reason }, { actor: "maintainer", accountId: caller.accountId });
           return;
         }
         case "end_bootstrap": {

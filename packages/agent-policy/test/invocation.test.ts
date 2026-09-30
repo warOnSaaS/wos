@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
-import { AGENT_POLICY_V1, AgentRole, ReviewVerdict } from "@waronsaas/contracts";
+import { AGENT_POLICY, AgentRole, ReviewVerdict } from "@waronsaas/contracts";
 import { describe, expect, it } from "vitest";
 import { allowedCommandRule, buildInvocation, checkPlanAgainstPolicy, outputJsonSchema, PolicyViolationError } from "../src/index.js";
 import { planFor, planForModel } from "./fixtures.js";
 
-const policy = AGENT_POLICY_V1;
+const policy = AGENT_POLICY;
 const paths = {
   cwd: "/work/wos/attempt-3",
   schemaPath: "/tmp/wos/schema.json",

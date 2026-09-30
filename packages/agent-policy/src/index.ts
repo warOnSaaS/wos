@@ -6,7 +6,7 @@
  * check) and in the local orchestrator (building the CLI invocation), so they cannot disagree.
  */
 import {
-  AGENT_POLICY_V1,
+  AGENT_POLICY,
   AuthorSummary,
   BuildSummary,
   ReviewVerdict,
@@ -30,7 +30,7 @@ import picomatch from "picomatch";
 
 export { canonicalJson } from "@waronsaas/contracts/canonical";
 
-export const DEFAULT_POLICY: AgentPolicyDocument = AGENT_POLICY_V1;
+export const DEFAULT_POLICY: AgentPolicyDocument = AGENT_POLICY;
 
 /** Thrown when a plan or a request contradicts the policy. `reasons` are stable machine codes with detail. */
 export class PolicyViolationError extends Error {
@@ -188,7 +188,23 @@ export function checkPlanAgainstPolicy(plan: ContextPlan, policy: AgentPolicyDoc
   if (plan.allowedCommands.length > 0 && !role.claudeTools.includes("Bash")) {
     reasons.push(`COMMANDS_NOT_ALLOWED: ${role.role} may not run commands`);
   }
+  reasons.push(...webPlanProblems(plan, role, policy));
   return reasons;
+}
+
+/** D70: the plan's web must be what the role allows: research roles read allowlisted vendor domains; others are offline. */
+function webPlanProblems(plan: ContextPlan, role: RolePolicy, policy: AgentPolicyDocument): string[] {
+  const web = plan.web ?? null;
+  if (!web) return [];
+  const out: string[] = [];
+  const known = new Set([...Object.values(policy.targetDomains ?? {}).flat(), ...(policy.sharedDomains ?? [])]);
+  if (!role.web && web.domains.length + (web.search ? 1 : 0) > 0) out.push(`WEB_NOT_ALLOWED: ${role.role} runs offline (D70)`);
+  if (role.web && web.search && !role.web.search) out.push(`WEB_SEARCH_NOT_ALLOWED: ${role.role} has no web search (D70)`);
+  for (const d of web.domains)
+    if (!known.has(d)) out.push(`WEB_DOMAIN_UNKNOWN: ${d} is not a target or shared domain of ${policy.policyVersion}`);
+  const hosts = new Set(role.registryException?.hosts ?? []);
+  for (const h of web.registry) if (!hosts.has(h)) out.push(`REGISTRY_NOT_ALLOWED: ${h} is not a registry host of ${role.role} (D70)`);
+  return out;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -585,6 +601,8 @@ export interface Invocation {
   env: Record<string, string>;
   /** Written by the orchestrator to a temp file when the provider needs a schema path. */
   outputSchemaJson: string;
+  /** contracts 5.17.0: the worktree-relative file the agent writes its output to (providers without a schema flag). */
+  outputFile?: string;
 }
 
 const PLACEHOLDER = /\{([A-Za-z]+)\}/g;
@@ -598,6 +616,10 @@ const KNOWN_PLACEHOLDERS = new Set([
   "schemaPath",
   "lastMessagePath",
   "cwd",
+  // contracts 5.17.0 (opencode): output file, output schema id, and the model's role instructions.
+  "outputFile",
+  "outputSchema",
+  "modelInstructions",
 ]);
 
 /** Control characters (C0, DEL) and parentheses would let one argument end a rule early or start another. */
@@ -635,7 +657,8 @@ export function allowedCommandRule(command: string[]): string {
  */
 export function buildInvocation(
   plan: ContextPlan,
-  paths: { cwd: string; schemaPath: string; lastMessagePath: string; sessionId: string },
+  /** `configHome` (contracts 5.17.0): an empty per-run directory, required by providers with a `runConfig` (opencode). */
+  paths: { cwd: string; schemaPath: string; lastMessagePath: string; sessionId: string; configHome?: string },
   policy: AgentPolicyDocument = DEFAULT_POLICY,
 ): Invocation {
   const problems = checkPlanAgainstPolicy(plan, policy);
@@ -645,20 +668,44 @@ export function buildInvocation(
   const provider = getProviderSpec(plan.provider, policy);
 
   const schemaJson = outputJsonSchema(plan.outputSchema);
+  const web = plan.web ?? null;
+  // contracts 5.17.0 (D69): a model's role tool additions (policy data; glm's sub-agents as roadmap author).
+  const addedTools = model.roleToolAdditions?.[role.role] ?? [];
+  // D70: research plans read the web: claude's WebFetch (domain rules below) and WebSearch.
+  const webTools = web ? [...(web.domains.length > 0 ? ["WebFetch"] : []), ...(web.search ? ["WebSearch"] : [])] : [];
   const scalars: Record<string, string> = {
     modelId: model.modelId,
     reasoning: plan.reasoning,
     sessionId: paths.sessionId,
-    tools: role.claudeTools.join(","),
+    tools: [...new Set([...role.claudeTools, ...addedTools, ...webTools])].join(","),
     schemaJson,
     schemaPath: paths.schemaPath,
     lastMessagePath: paths.lastMessagePath,
     cwd: paths.cwd,
+    outputFile: provider.outputFile ?? "",
+    outputSchema: plan.outputSchema,
+    modelInstructions: model.roleInstructions?.[role.role] ?? "",
   };
   const commandRules = plan.allowedCommands.map(allowedCommandRule);
+  // D70 (claude): WebFetch limited to the plan's domains (and their subdomains), WebSearch when allowed.
+  if (web) {
+    for (const d of web.domains) commandRules.push(`WebFetch(domain:${d})`, `WebFetch(domain:*.${d})`);
+    if (web.search) commandRules.push("WebSearch");
+  }
 
   const modeArgs = role.sandbox === "read_only" ? provider.readOnlyArgs : provider.workspaceWriteArgs;
-  const templates = [...provider.baseArgs, ...modeArgs, ...provider.reasoningArgs, ...provider.outputSchemaArgs, ...provider.trailingArgs];
+  const webArgs = [
+    ...(web?.search ? (provider.webSearchArgs ?? []) : []),
+    ...(web && web.registry.length > 0 ? (provider.registryArgs ?? []) : []),
+  ];
+  const templates = [
+    ...provider.baseArgs,
+    ...modeArgs,
+    ...webArgs,
+    ...provider.reasoningArgs,
+    ...provider.outputSchemaArgs,
+    ...provider.trailingArgs,
+  ];
 
   const argv: string[] = [];
   for (const template of templates) {
@@ -681,5 +728,45 @@ export function buildInvocation(
     );
   }
 
-  return { binary: provider.binary, argv, env: { ...provider.env }, outputSchemaJson: schemaJson };
+  const env = { ...provider.env };
+  if (provider.runConfig) {
+    if (!paths.configHome)
+      throw new PolicyViolationError("buildInvocation", [`CONFIG_HOME_REQUIRED: ${provider.id} needs a per-run config home`]);
+    env[provider.runConfig.envVar] = runConfigJson(provider, role, plan, addedTools);
+    env[provider.runConfig.configHomeEnv] = paths.configHome;
+  }
+  return {
+    binary: provider.binary,
+    argv: argv.map((a) => a.trim()),
+    env,
+    outputSchemaJson: schemaJson,
+    ...(provider.outputFile ? { outputFile: provider.outputFile } : {}),
+  };
+}
+
+/**
+ * contracts 5.17.0 (opencode): the per-run configuration. Permissions: the role's sandbox set, the added tools' grants
+ * (e.g. sub-agents), the plan's web (D70: webfetch and websearch only for research plans), exact bash rules for the
+ * plan's allowed commands, and write access to the output file even for read-only roles. Sub-agents get the read-only
+ * set with no web and no nesting. Every value is allow or deny: nothing asks, so a headless run never waits.
+ */
+function runConfigJson(provider: ProviderSpec, role: RolePolicy, plan: ContextPlan, addedTools: readonly string[]): string {
+  const rc = provider.runConfig!;
+  const permission: Record<string, unknown> = { ...rc.permission[role.sandbox] };
+  for (const t of addedTools) Object.assign(permission, rc.toolPermissions[t] ?? {});
+  const web = plan.web ?? null;
+  if (web) {
+    // D70: opencode 1.18.31 accepts only an action for webfetch (a URL pattern map is refused as invalid config, checked
+    // with `opencode debug config`), so the allowlist is enforced after the run: the orchestrator checks every fetched URL.
+    permission.webfetch = web.domains.length > 0 ? "allow" : "deny";
+    permission.websearch = web.search ? "allow" : "deny";
+  }
+  if (plan.allowedCommands.length > 0)
+    permission.bash = { "*": "deny", ...Object.fromEntries(plan.allowedCommands.map((c) => [c.join(" "), "allow"])) };
+  if (provider.outputFile && role.sandbox === "read_only") permission.edit = { "*": "deny", [provider.outputFile]: "allow" };
+  const config: Record<string, unknown> = { ...rc.base, permission };
+  if (rc.subagents && permission.task === "allow")
+    config.agent = Object.fromEntries(rc.subagents.agents.map((a) => [a, { permission: { ...rc.subagents!.permission } }]));
+  // Plain JSON.stringify, not canonical JSON: sorting keys would reorder the rules, and the last matching rule wins.
+  return JSON.stringify(config);
 }

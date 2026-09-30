@@ -7,9 +7,10 @@
  */
 import { readFile } from "node:fs/promises";
 import {
-  AGENT_POLICY_V1,
+  AGENT_POLICY,
   BUILD_APP_ID,
   CONTRACTS_VERSION,
+  type LaunchDeclaration,
   type ModelRef,
   type Orchestrator,
   type ReviewerSlot,
@@ -43,8 +44,11 @@ export interface CliIo {
 }
 
 export interface CliDeps {
-  /** Built lazily so `--help` and usage errors never touch the keychain or network. */
-  orchestrator(): Orchestrator;
+  /**
+   * Built lazily so `--help` and usage errors never touch the keychain or network. `launch` (contracts 5.17.0, D52/D69):
+   * the launch declared for claims and runs of these models (e.g. glm on OpenCode Go).
+   */
+  orchestrator(opts?: { launch?: Partial<Record<ModelRef, LaunchDeclaration>> }): Orchestrator;
   /** Organizations and app entitlements (AppRoutes); built lazily like the orchestrator. */
   apps(): AppsApi;
   version: string;
@@ -80,14 +84,25 @@ class Exit extends Error {
 
 /** Models a role may run on (policy data, D15). The server re-checks them against this device's attestation. */
 const modelsFor = (...roles: string[]): ModelRef[] => [
-  ...new Set(AGENT_POLICY_V1.roles.filter((r) => roles.includes(r.role)).flatMap((r) => r.allowedModels)),
+  ...new Set(AGENT_POLICY.roles.filter((r) => roles.includes(r.role)).flatMap((r) => r.allowedModels)),
 ];
 const BUILDER_MODELS = modelsFor("builder");
 const AUTHOR_MODELS = modelsFor("roadmap_author", "feature_author");
 const RESOLVER_MODELS = modelsFor("conflict_resolver");
-const MODEL_LABEL: Record<ModelRef, string> = { opus: "Opus", astra: "Astra", sol: "Sol", fable: "Fable" };
-const PROVIDER_OF = Object.fromEntries(AGENT_POLICY_V1.models.map((m) => [m.ref, m.provider])) as Record<ModelRef, string>;
-const CLI_OF: Record<string, string> = { claude_cli: "claude", codex_cli: "codex" };
+const MODEL_LABEL: Record<ModelRef, string> = { opus: "Opus", astra: "Astra", sol: "Sol", fable: "Fable", glm: "GLM" };
+const PROVIDER_OF = Object.fromEntries(AGENT_POLICY.models.map((m) => [m.ref, m.provider])) as Record<ModelRef, string>;
+const CLI_OF: Record<string, string> = { claude_cli: "claude", codex_cli: "codex", opencode_cli: "opencode" };
+
+/**
+ * contracts 5.17.0: `--model` takes a policy model ref (opus, glm) or its model id, with or without the provider prefix
+ * (`glm-5.3`, `opencode-go/glm-5.3`). Null when the policy has no such model.
+ */
+export function modelRefFor(value: string): ModelRef | null {
+  const m = AGENT_POLICY.models.find((x) => x.ref === value || x.modelId === value || x.modelId.endsWith(`/${value}`));
+  return m ? m.ref : null;
+}
+/** The launch the opencode CLI declares for a model (D52: self-reported), from its model id's provider prefix. */
+const OPENCODE_LAUNCH = { provider: "opencode-go", baseUrl: null, identity: "self_reported" } as const;
 
 interface HintContext {
   model?: ModelRef;
@@ -401,33 +416,69 @@ export async function runCli(argv: string[], io: CliIo, deps: CliDeps): Promise<
     program
       .command(name)
       .argument("[task]", `task id (${kinds.join(" or ")}); omitted: pick from your open tasks`)
-      .addOption(new Option("--model <model>", `model (D15), default ${models[0]}`).choices(models))
+      .option("--model <model>", `model (D15): ${models.join(", ")} (or a model id such as glm-5.3); default ${models[0]}`)
+      .addOption(
+        new Option(
+          "--provider <provider>",
+          "opencode: run through your opencode CLI login (the candidate model glm on OpenCode Go; only a task a maintainer designated for it, D69)",
+        ).choices(["opencode"]),
+      )
       .option("--target <slug>", "only tasks for this target")
       .option("--feature <key>", "only tasks for this feature")
       .description(description)
-      .action(async (taskArg: string | undefined, opts: { target?: string; feature?: string; model?: ModelRef }, cmd: Command) => {
-        const c = ctx(cmd);
-        let taskId = taskArg;
-        if (!taskId) {
-          const open: TaskView[] = [];
-          for (const kind of kinds) open.push(...(await o().listOpenTasks({ kind, target: opts.target, feature: opts.feature })));
-          if (open.length === 0) {
-            if (c.json) printJson({ type: "result", tasks: [] });
-            else io.stdout.write(`no open ${kinds.join(" or ")} tasks\n`);
-            return;
+      .action(
+        async (
+          taskArg: string | undefined,
+          raw: { target?: string; feature?: string; model?: string; provider?: "opencode" },
+          cmd: Command,
+        ) => {
+          const c = ctx(cmd);
+          const ref = raw.model === undefined ? undefined : modelRefFor(raw.model);
+          if (ref === null || (ref !== undefined && !models.includes(ref)))
+            throw new UsageError(
+              `option '--model <model>' argument '${raw.model}' is invalid. Allowed choices are ${models.join(", ")} (or a model id such as glm-5.3).`,
+            );
+          const opts = { ...raw, model: ref };
+          // D69: the opencode provider runs policy models whose provider is opencode_cli (glm); it declares its launch.
+          const viaOpencode = raw.provider === "opencode" || (ref !== undefined && PROVIDER_OF[ref] === "opencode_cli");
+          if (viaOpencode) {
+            if (ref !== undefined && PROVIDER_OF[ref] !== "opencode_cli")
+              throw new UsageError(
+                `--provider opencode runs ${models.filter((m) => PROVIDER_OF[m] === "opencode_cli").join(", ")}, not ${ref}`,
+              );
+            opts.model = ref ?? models.find((m) => PROVIDER_OF[m] === "opencode_cli");
+            if (!opts.model) throw new UsageError(`wos ${name} has no opencode model`);
           }
-          if (open.length > 1) {
-            if (c.json) printJson({ type: "result", tasks: open });
-            else io.stdout.write(tasksTable(open, c.style));
-            throw new UsageError(`${open.length} open tasks: pick one, wos ${name} <task>`);
+          const orchestrator = viaOpencode ? deps.orchestrator({ launch: { [opts.model!]: OPENCODE_LAUNCH } }) : o();
+          let taskId = taskArg;
+          if (!taskId) {
+            const open: TaskView[] = [];
+            for (const kind of kinds)
+              open.push(...(await orchestrator.listOpenTasks({ kind, target: opts.target, feature: opts.feature })));
+            // A candidate model claims only tasks designated for it (D69).
+            if (viaOpencode) open.splice(0, open.length, ...open.filter((t) => t.candidateTrial?.candidate === opts.model));
+            if (open.length === 0) {
+              if (c.json) printJson({ type: "result", tasks: [] });
+              else io.stdout.write(`no open ${kinds.join(" or ")} tasks\n`);
+              return;
+            }
+            if (open.length > 1) {
+              if (c.json) printJson({ type: "result", tasks: open });
+              else io.stdout.write(tasksTable(open, c.style));
+              throw new UsageError(`${open.length} open tasks: pick one, wos ${name} <task>`);
+            }
+            taskId = open[0]!.id;
           }
-          taskId = open[0]!.id;
-        }
-        finish(await o().author({ taskId, model: opts.model, signal: deps.signal }, c.printer.observe), c, {
-          model: opts.model,
-          lease: "task",
-        });
-      });
+          finish(
+            await orchestrator.author(
+              { taskId, model: opts.model, ...(viaOpencode ? { launch: OPENCODE_LAUNCH } : {}), signal: deps.signal },
+              c.printer.observe,
+            ),
+            c,
+            { model: opts.model, lease: "task" },
+          );
+        },
+      );
 
   authorCommand("roadmap", ROADMAP_KINDS, AUTHOR_MODELS, "Author a target's canonical roadmap or a Feature Contract");
   authorCommand("resolve", RESOLVE_KINDS, RESOLVER_MODELS, "Rule on an escalated dispute or architecture blocker");

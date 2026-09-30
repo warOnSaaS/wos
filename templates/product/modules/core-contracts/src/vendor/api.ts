@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ModelRef, ReviewerSlot } from "./agent-policy.js";
+import { LaunchDeclaration, ModelRef, ReviewerSlot } from "./agent-policy.js";
 import {
   AgentRunRecord,
   Changeset,
@@ -671,6 +671,12 @@ export const Routes = {
        * provider, reasoning and budget are those of the chosen model; the manifest must match the plan.
        */
       model: ModelRef.optional(),
+      /**
+       * contracts 5.17.0 (D52, D69): how the contributor's CLI reaches the model, AS DECLARED (identity self_reported).
+       * Required with a candidate model (`glm`: provider "zai" and Z.ai's base URL); recorded with the claim, the agent
+       * run and the trial. Omitted = the CLI's own endpoint.
+       */
+      launch: LaunchDeclaration.optional(),
     }),
     response: ClaimResponse,
     errors: ["NOT_FOUND", "NOT_ELIGIBLE", "NOT_ENTITLED", "LIMIT_REACHED", "CONFLICT", "UPSTREAM_GITHUB"],
@@ -941,6 +947,21 @@ export const Routes = {
       z.object({ action: z.literal("suspend_account"), handleOrEmail: z.string().min(3), reason: z.string().min(5) }),
       z.object({ action: z.literal("set_hosting"), target: TargetSlug, hostedUrl: z.url().nullable(), selfHostable: z.boolean() }),
       z.object({ action: z.literal("end_bootstrap"), reason: z.string().min(5) }),
+      /**
+       * contracts 5.17.0 (D69): designates ONE open task (V1: a roadmap_author task) for a candidate model of
+       * capability-policy.v3 (V1: "glm"). Public and forward-only; the designation covers that task and the later author
+       * tasks of the same document (its revisions) until revoked. While it stands, only the candidate claims those tasks,
+       * and the candidate claims nothing else. The work is reviewed as normal and may merge; its round, PR, commits and
+       * contributions carry the label `candidate_trial:<candidate>`.
+       */
+      z.object({
+        action: z.literal("assign_candidate_trial"),
+        taskId: Uuid,
+        candidate: z.string().regex(/^[a-z][a-z0-9-]{0,30}$/),
+        reason: z.string().min(5),
+      }),
+      /** contracts 5.17.0 (D69): ends the task's candidate trial (public); later claims follow the normal rules (e.g. Opus). */
+      z.object({ action: z.literal("revoke_candidate_trial"), taskId: Uuid, reason: z.string().min(5) }),
       /** D53 (contracts 5.15.0): forward-only, public; refused while a round is awaiting reviews. */
       /**
        * D67 (contracts 5.16.0): also moves the review policy version forward (`review-policy.v2`, naming the bootstrap

@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 import { homedir, hostname } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { AGENT_POLICY_V1, CONTRACTS_VERSION, HOSTS, TOKEN_DISCLAIMER } from "@waronsaas/contracts";
+import { AGENT_POLICY, CONTRACTS_VERSION, HOSTS, TOKEN_DISCLAIMER } from "@waronsaas/contracts";
 import {
   createApiClient,
   createNodeProcessRunner,
@@ -245,7 +245,7 @@ export function startDesktop(opts: StartOptions): void {
       cloudCoreUrl,
       installer,
       settings,
-      policy: AGENT_POLICY_V1,
+      policy: AGENT_POLICY,
       appInfo,
       emit,
       openExternal: opts.openExternal ?? ((url) => shell.openExternal(url)),

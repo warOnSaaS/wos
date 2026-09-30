@@ -1,5 +1,6 @@
 /** Row -> API read-model mappers and the queries behind them. Nothing here exposes sealed verdicts or secrets. */
 import type { AgentPolicyDocument, AgentRole, AttemptView, LeaseView, Me, ProviderAttestation, TaskView } from "@waronsaas/contracts";
+import { ModelRef } from "@waronsaas/contracts";
 import type { Tx } from "@waronsaas/db";
 
 export const iso = (d: Date | string | null | undefined): string | null => (d == null ? null : new Date(d).toISOString());
@@ -214,7 +215,8 @@ export async function latestAttestations(tx: Tx, accountId: string, deviceId: st
     cliVersion: r.cli_version,
     signedIn: r.signed_in,
     authMethod: r.auth_method,
-    models: r.models.filter((m): m is ProviderAttestation["models"][number] => m === "fable" || m === "opus" || m === "astra"),
+    // Every policy model ref (contracts 5.17.0: glm too; sol was missing from the earlier literal list).
+    models: r.models.filter((m): m is ProviderAttestation["models"][number] => ModelRef.safeParse(m).success),
     checkedAt: isoReq(r.checked_at),
   }));
 }

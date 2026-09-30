@@ -6,8 +6,8 @@
 import type { AgentPolicyDocument, LocalStatus, ModelRef } from "@waronsaas/contracts";
 import type { BuilderModelChoice } from "../../../shared/ipc.js";
 
-const LABELS: Record<ModelRef, string> = { opus: "OPUS", astra: "ASTRA", sol: "SOL", fable: "FABLE" };
-const CLI: Record<string, string> = { claude_cli: "claude", codex_cli: "codex" };
+const LABELS: Record<ModelRef, string> = { opus: "OPUS", astra: "ASTRA", sol: "SOL", fable: "FABLE", glm: "GLM" };
+const CLI: Record<string, string> = { claude_cli: "claude", codex_cli: "codex", opencode_cli: "opencode" };
 
 export function builderModelChoices(policy: AgentPolicyDocument, status: LocalStatus | null): BuilderModelChoice[] {
   const role = policy.roles.find((r) => r.role === "builder");

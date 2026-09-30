@@ -74,6 +74,31 @@ export const DomainEventBody = z.discriminatedUnion("type", [
     reason: z.string(),
   }),
   e("round.human_review_sealed", "private", { roundId: Uuid, humanReviewId: Uuid }),
+  // contracts 5.17.0 (D69): candidate trials, public: which task a maintainer designated for which candidate model, the
+  // claim with its launch as declared (D52), and the label pinned on each round of the trial's document.
+  e("task.candidate_trial_assigned", "public", {
+    taskId: Uuid,
+    documentId: Uuid.nullable(),
+    candidate: z.string(),
+    label: z.string(),
+    reason: z.string(),
+  }),
+  e("task.candidate_trial_revoked", "public", { taskId: Uuid, documentId: Uuid.nullable(), candidate: z.string(), reason: z.string() }),
+  e("lease.candidate_trial_claimed", "public", {
+    taskId: Uuid,
+    leaseId: Uuid,
+    candidate: z.string(),
+    modelId: z.string(),
+    provider: z.string(),
+    baseUrl: z.string().nullable(),
+    identity: z.literal("self_reported"),
+  }),
+  e("round.candidate_trial", "public", {
+    roundId: Uuid,
+    subjectKind: z.enum(["roadmap", "feature_contract", "implementation"]),
+    subjectId: Uuid,
+    label: z.string(),
+  }),
   e("finding.ruled", "public", { findingId: Uuid, decision: z.enum(["upheld", "overruled"]), confirmedBy: Uuid }),
 
   e("catalog.feature_added", "public", { feature: FeatureKey, proposedBy: TargetSlug }),

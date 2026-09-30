@@ -121,6 +121,11 @@ const COVERAGE: Record<string, { status: Status; where: string }> = {
   "S-44": { status: "none", where: "Wave 3b: GitHub sign-in never merges (control-plane route tests, adversarial)" },
   "S-45": { status: "none", where: "Wave 3b: member management through the API; db assertions 0012 cover the database half" },
   "S-46": { status: "none", where: "Wave 3b: DNS TXT verification cron; one verified organization per domain (db 0012)" },
+  "S-47": {
+    status: "now",
+    where:
+      "agent-policy web.test (web only for research roles, allowlist rules per CLI); orchestrator binaries.test (a fetch off the allowlist refuses the submission); control-plane candidate-trials.test (plans' web, wos:fetches for reviewers)",
+  },
 };
 
 describe("security-hardening: every SECURITY.md control is mapped", () => {

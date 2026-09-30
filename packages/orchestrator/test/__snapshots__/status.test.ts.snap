@@ -70,6 +70,20 @@ exports[`status() and the toolchain attestation (D13) > Linux: kernel from uname
       "provider": "codex_cli",
       "signedIn": true,
     },
+    {
+      "authMethod": null,
+      "checkedAt": "2026-09-29T12:00:00.000Z",
+      "cliVersion": null,
+      "installed": false,
+      "models": [
+        "glm",
+      ],
+      "problems": [
+        "opencode not signed in",
+      ],
+      "provider": "opencode_cli",
+      "signedIn": false,
+    },
   ],
   "signedIn": true,
   "toolchain": {
@@ -117,6 +131,17 @@ exports[`status() and the toolchain attestation (D13) > Linux: kernel from uname
       ],
       "provider": "codex_cli",
       "signedIn": true,
+    },
+    {
+      "authMethod": null,
+      "checkedAt": "2026-09-29T12:00:00.000Z",
+      "cliVersion": null,
+      "installed": false,
+      "models": [
+        "glm",
+      ],
+      "provider": "opencode_cli",
+      "signedIn": false,
     },
   ],
   "toolchain": {
@@ -207,6 +232,20 @@ exports[`status() and the toolchain attestation (D13) > macOS: os version from s
       "provider": "codex_cli",
       "signedIn": true,
     },
+    {
+      "authMethod": null,
+      "checkedAt": "2026-09-29T12:00:00.000Z",
+      "cliVersion": null,
+      "installed": false,
+      "models": [
+        "glm",
+      ],
+      "problems": [
+        "opencode not signed in",
+      ],
+      "provider": "opencode_cli",
+      "signedIn": false,
+    },
   ],
   "signedIn": true,
   "toolchain": {
@@ -254,6 +293,17 @@ exports[`status() and the toolchain attestation (D13) > macOS: os version from s
       ],
       "provider": "codex_cli",
       "signedIn": true,
+    },
+    {
+      "authMethod": null,
+      "checkedAt": "2026-09-29T12:00:00.000Z",
+      "cliVersion": null,
+      "installed": false,
+      "models": [
+        "glm",
+      ],
+      "provider": "opencode_cli",
+      "signedIn": false,
     },
   ],
   "toolchain": {
