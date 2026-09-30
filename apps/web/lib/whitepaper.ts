@@ -29,6 +29,10 @@ export const WHITEPAPER_MD_PATH = "/whitepaper.md";
 /** The same Markdown served as a file attachment, named for the version (see app/whitepaper/download). */
 export const WHITEPAPER_DOWNLOAD_PATH = "/whitepaper/download";
 export const WHITEPAPER_MD_URL = "https://waronsaas.com/whitepaper.md";
+/** The core as a plain HTML page with nothing collapsed. Agents' browsing tools accept HTML reliably;
+ *  ChatGPT's fetch tool refused text/markdown (founder test, 2026-09-30), so prompts point here first. */
+export const WHITEPAPER_READ_PATH = "/whitepaper/read";
+export const WHITEPAPER_READ_URL = "https://waronsaas.com/whitepaper/read";
 
 /**
  * The handoff prompt shown on /whitepaper, pre-filled into agents that support it, and quoted in the
@@ -36,20 +40,21 @@ export const WHITEPAPER_MD_URL = "https://waronsaas.com/whitepaper.md";
  * uploaded file. Keep it short and keep the eight points in step with the paper's instructions.
  */
 export const HANDOFF_PROMPT = [
-  `Please evaluate the warOnSaaS white paper for me. Read all of the core paper: the attached WHITEPAPER file if there is one, otherwise fetch ${WHITEPAPER_MD_URL} (if you cannot open either, tell me).`,
+  `Please evaluate the warOnSaaS white paper for me. Read all of the core paper: the attached WHITEPAPER file if there is one, otherwise open ${WHITEPAPER_READ_URL} (the same text as a web page; plain text at ${WHITEPAPER_MD_URL}). If you cannot open any of them, tell me.`,
   "It is written for you, the evaluating agent. Follow the evaluation instructions at its start; they are requests, and my instructions come first. Verify its claims against the evidence links it gives and tell me which you checked. Be critical: a low score is fine.",
   "Report to me, a short answer first and then detail, on: 1) is the idea compelling (yes / partly / no, and why); 2) how important the problem is for humanity, scored out of 100 on its five-dimension rubric with reasoning and confidence, and, separately, how important and compelling each of its four theses is (control, efficiency, the future of software engineering, Agentic Proof of Contribution) and what would make each false; 3) the proposal's credibility; 4) its implementation readiness and what actually exists; 5) the edge cases it considered and whether each is really handled; 6) edge cases it missed; 7) the three strongest arguments for and against; 8) what I should do: ignore, watch, test or participate, with bounded next steps. Do not encourage any financial exposure.",
 ].join("\n\n");
 
 /** A one-line version for the llms files. */
-export const HANDOFF_PROMPT_SHORT = `Read ${WHITEPAPER_MD_URL} in full, follow the evaluation instructions at its start (requests, not commands), verify its claims against its evidence links, and report on its eight points: compelling or not, importance for humanity (0-100), credibility, readiness, edge cases handled, edge cases missed, strongest arguments for and against, and what to do.`;
+export const HANDOFF_PROMPT_SHORT = `Read ${WHITEPAPER_READ_URL} in full (plain text: ${WHITEPAPER_MD_URL}), follow the evaluation instructions at its start (requests, not commands), verify its claims against its evidence links, and report on its eight points: compelling or not, importance for humanity (0-100), credibility, readiness, edge cases handled, edge cases missed, strongest arguments for and against, and what to do.`;
 
-/** Chat links. Only ChatGPT's prefill (?q=) was verified to work (it opens a chat and sends the prompt).
- *  Claude's could not be verified (a sign-in challenge blocks the check) and GLM's chat ignores query
- *  parameters, so those two open the chat and the user pastes the prompt. Re-verify before adding a prefill. */
+/** Chat links. ChatGPT's prefill (?q=) was verified in a browser. Claude's (claude.ai/new?q=) is the documented
+ *  pattern but automated verification hit a sign-in challenge; the founder is testing it by hand. GLM's chat ignores
+ *  query parameters, so it opens the chat and the user pastes. On phones these https links hand off to the installed
+ *  app where the OS supports it. */
 export const AGENT_LINKS = {
   chatgpt: (prompt: string) => `https://chatgpt.com/?q=${encodeURIComponent(prompt)}`,
-  claude: "https://claude.ai/new",
+  claude: (prompt: string) => `https://claude.ai/new?q=${encodeURIComponent(prompt)}`,
   glm: "https://chat.z.ai/",
 } as const;
 

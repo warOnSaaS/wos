@@ -66,15 +66,17 @@ export default function WhitepaperPage() {
           <a className="cmd cmd--big" href={AGENT_LINKS.chatgpt(HANDOFF_PROMPT)} target="_blank" rel="noopener noreferrer">
             OPEN IN CHATGPT
           </a>
+          <a className="cmd cmd--big" href={AGENT_LINKS.claude(HANDOFF_PROMPT)} target="_blank" rel="noopener noreferrer">
+            OPEN IN CLAUDE
+          </a>
         </div>
         <p className="fine">
           {FILE}: the core paper, one Markdown file your agent can read in full. For depth, also{" "}
           <a href={WHITEPAPER_PACK_PATH} download={PACK}>download the full pack</a> ({PACK}: the core plus four companion
-          files). OPEN IN CHATGPT starts a new chat with the prompt already sent; ChatGPT fetches the paper
-          itself. Claude and GLM do not accept a pre-filled prompt from a link we could verify, so open them and
-          paste: <a href={AGENT_LINKS.claude} target="_blank" rel="noopener noreferrer">open Claude (paste the prompt)</a>
-          {" · "}
-          <a href={AGENT_LINKS.glm} target="_blank" rel="noopener noreferrer">open GLM (paste the prompt)</a>.
+          files). OPEN IN CHATGPT and OPEN IN CLAUDE start a new chat with the prompt filled in; the agent opens
+          the paper itself. GLM does not accept a pre-filled prompt, so{" "}
+          <a href={AGENT_LINKS.glm} target="_blank" rel="noopener noreferrer">open GLM and paste the prompt</a>. On a phone,
+          these links open the installed app where your phone supports it.
         </p>
 
         <label className="label" htmlFor="wp-prompt">

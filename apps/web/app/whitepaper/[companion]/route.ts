@@ -12,5 +12,5 @@ export async function GET(_req: Request, { params }: { params: Promise<{ compani
   const { companion } = await params;
   const c = COMPANIONS.find((x) => `${x.slug}.md` === companion);
   if (!c) return new Response("Not found", { status: 404 });
-  return new Response(companionMarkdown(c.file), { headers: { "Content-Type": "text/markdown; charset=utf-8" } });
+  return new Response(companionMarkdown(c.file), { headers: { "Content-Type": "text/plain; charset=utf-8" } });
 }
