@@ -246,7 +246,10 @@ export const RewardPolicy = z.object({
   execution: z.object({
     /** The execution cap (AgentCapabilityPolicy) stops a run; it includes repairs. It is not a payout (D49). */
     capIncludesRepairs: z.literal(true),
-    /** Agent reviewer bonus per upheld/resolved material finding, as bp of the review task's budget. */
+    /**
+     * Agent reviewer bonus per upheld/resolved material finding, as bp of the review task's budget. 0 in V1 (review 05
+     * obsolete item 3): the engine never pays above a reserved quote; a finding bounty needs its own reservation (F27).
+     */
     upheldFindingBonusBp: Bp,
     maxPaidFindingsPerReview: z.number().int().nonnegative(),
     /** Reviews of an attempt that never merged are paid only if they raised a material finding that was upheld. */
@@ -258,7 +261,7 @@ export const RewardPolicy = z.object({
      * budget and of any usage. Reserved at issuance from the human_review slice like every other task.
      */
     weightAcuEqMicro: z.record(RiskClassId, U64String),
-    /** Per material finding the reviewer raised that was upheld or fixed. */
+    /** Per material finding the reviewer raised that was upheld or fixed. "0" in V1: never paid above the quote (F27). */
     upheldFindingBonusMicro: U64String,
     maxPaidFindings: z.number().int().nonnegative(),
     /** Ratification reviews of PROVISIONAL founder receipts are paid like any human review. */
@@ -359,7 +362,7 @@ export const ReviewPolicy = z.object({
     unmetDutyCarryEpochs: z.number().int().positive(),
     /** An auditor whose "plausible" is contradicted by an upheld finding or a later revocation loses that duty credit. */
     contradictedJudgmentRevokesCredit: z.literal(true),
-    /** Bonus weight (ACU-equivalent, execution slice) per upheld inflation finding: this share of the clipped amount. */
+    /** Bonus per upheld inflation finding as a share of the clip. 0 in V1: no weight bonus above a quote (F27; dormant with disputes). */
     upheldInflationBonusBp: Bp,
     /** Inflation findings overruled this many times in 30 days raise false_inflation_findings. */
     falseFindingsSignalAfter: z.number().int().positive(),

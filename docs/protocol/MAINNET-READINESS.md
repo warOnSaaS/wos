@@ -13,7 +13,7 @@ Mainnet is a separate, deliberate milestone (A5). Every item below needs evidenc
 | G-7 | Wallet security | binding, re-binding cooldown, e-mail confirmation, no key in Desktop main process (IPC fuzz), phishing-resistant copy | desktop, web |
 | G-8 | Governance locks | lock program chosen (TOKENOMICS-REVIEW §6), Token-2022 support verified, snapshot-by-slot tested | protocol-chain |
 | G-9 | Epoch finality | 26 consecutive devnet epochs CLOSED with reconciliation; windows never violated (DB-enforced); at least one dispute resolved each way | protocol-engine |
-| G-10 | Oracle integrity | oracle rates `verified: true` from providers' price pages; damping and ceiling re-basing exercised | architect |
+| G-10 | Oracle integrity | oracle rates `verified: true` from providers' price pages (telemetry and calibration only since D49); ceiling re-basing exercised (the trailing-rate damping was removed by D49) | architect |
 | G-11 | Budget model validated (D49; replaces the F1 evidence gate) | devnet data shows budgets track accepted work: calibration error by task class, budget-inflation findings rate, splitting findings, peer-ranking false positives; calibration robust to fabricated telemetry (G-91) | protocol-engine, founder |
 | G-12 | Genesis | retro roadmap PR merged; computation reviewed by ≥ 2 independent humans; `record_genesis` two-person action | founder, reviewers |
 | G-13 | Receipt integrity | every devnet receipt recomputes to its hash; admin-actions chain verifies; roots match Memo anchors | protocol-engine |

@@ -97,7 +97,7 @@ Eligibility for a receipt: valid lease generation at submission acceptance (not 
 
 **Finality window (bounded):** admin holds and revocations are possible only in CALCULATING (48 h), a receipt can be deferred at most twice, disputes only in PROPOSED (48 h). No indefinite discretionary hold exists. After FINALIZED, a defect is corrected by an **offset** against future allocations (recovered at most 50% of each later allocation), never by an on-chain reversal.
 
-**Epoch admission:** a receipt enters the epoch that is OPEN when it becomes countable: at merge for ACTIVE receipts, at ratification for PROVISIONAL ones (the original `qualifiedAt` stays on the receipt). Its ACU uses the oracle pinned at lease issue.
+**Epoch admission:** a receipt enters the epoch that is OPEN when it becomes countable: at merge for ACTIVE receipts, when their challenge window closes in silence (or the review gate accepts them) for PROVISIONAL ones (D54; the original `qualifiedAt` stays on the receipt). Its telemetry uses the oracle pinned at lease issue; nothing about its payout depends on the oracle (D49).
 
 ### 4.2 Receipt status (`ReceiptStatusMachine`; DB `check_receipt_status_event`)
 
@@ -212,17 +212,41 @@ A contributor may contribute on behalf of an organization: they request, an org 
 
 ## 12. What the database guarantees, and what the service must call (D51)
 
-Migration 0007 v5 stores the outputs of the deterministic engine and rules, append-only, and enforces **only the invariants that must hold even if the application is buggy**:
+Migration 0007 v6 (v5 plus the review-04/05 fix pass) stores the outputs of the deterministic engine and rules, append-only, and enforces **only the invariants that must hold even if the application is buggy**:
 
 - **I1 append-only:** no UPDATE, DELETE or TRUNCATE on receipts, status events, allocations, entitlements, claims, settlements, admin actions, budgets, disputes, confiscations and every other protocol record; the only set-once fields are a quorum's outcome and a gate's bounty priority; run-log bodies may be deleted only after expiry.
 - **I2 server time:** every time the rules read (announcements, submissions, replies, appeals, decisions, votes, notices, executions, pauses) is stamped by the database clock.
-- **I3 admin actions:** hash-chained, by a maintainer, two-person derived from the action kind with a named second maintainer; each action consumed once (`admin_action_uses` key); approvals only from the approver's own session (RLS).
-- **I4 uniqueness:** one entitlement per (source, kind); at most one confirmed settlement per leaf; one wallet per beneficiary per cluster (privileged registry); one lease generation per task; one terminal duty event; one terminal pool event; one usage receipt per run and one attribution per provider response id; one Genesis claim per commit; dedup keys shared by receipts and Genesis.
-- **I5 fencing:** lease generations assigned under a lock and immutable; a budget cannot be created once a lease exists; the budget's proposer (or a related account) cannot take the lease; the reservation and expiry of a budget are computed by the database from the epoch's pinned rate.
+- **I3 admin actions:** hash-chained, by a maintainer, two-person derived from the action kind with a named second maintainer — except in bootstrap, where a two-person action without a co-signer is recorded `bootstrap_single_signer` in the public chain (D54); each action consumed once (`admin_action_uses` key); approvals only from the approver's own session (RLS).
+- **I4 uniqueness:** one entitlement per (source, kind, release sequence) — a tranche or withheld release may come in numbered parts around a lifted hold (R04-2); one acceptance objective per (kind, ref) (B1); one human review per assignment (B6); at most one confirmed settlement per leaf; one wallet per beneficiary per cluster (privileged registry); one lease generation per task; one terminal duty event; one terminal pool event; one usage receipt per run and one attribution per provider response id; one Genesis claim per commit; dedup keys shared by receipts and Genesis.
+- **I5 fencing:** lease generations assigned under a lock and immutable; a budget cannot be created once a lease exists; the budget's proposer (or a related account) cannot take the lease; the reservation (floored, as the engine; a zero reservation is refused — B9) and expiry of a budget are computed by the database from the epoch's pinned rate; an epoch pins its rate and capacity together with the reserve snapshot and demand forecast they came from (B3).
 - **I6 independence:** no self-review and no related reviewer, for agent seats, human reviews (both insertion orders) and audit seats.
 - **I7 serialized epoch publication:** the epoch state machine with its windows; manifest entries, allocations and anomaly metrics only while CALCULATING; entitlements only from FINALIZED.
-- **I8 conservation at commit:** one deferred, serialized check: no allocation, entitlement, tranche or settlement bounty over-consumed (entitlements + holds + live claims + matured releases); confiscation holds within the proven excess; task reservations within the epoch's capacity and objective budgets; a task's allocations within its reservation; declared shares exactly 10,000 bp; dispute stakes within the disputer's pending allocations; the epoch funding equation R + P + S + Q + I = reserve with non-negative balances and holdback + claimable ≤ issued (CHECK on `epoch_balances`).
-- **I9 settlement finality:** leaves only to the bound wallet in the current adapter generation, devnet only; signed attempts persisted before broadcast, one unresolved at a time, contiguous; expiry only by an observed block height past the last valid height with the historical lookup; confirmation only at finalized commitment with a slot; no void of a confirmed leaf or of one whose attempt may still land; a shared/exclusive fence between attempts and pauses/snapshots; `may_broadcast` for the broadcaster.
+- **I8 conservation at commit:** one deferred, serialized check: no allocation, entitlement, tranche or settlement bounty over-consumed (entitlements + holds + live claims + matured releases); confiscation holds within the proven excess; task reservations within the epoch's capacity and objective budgets; a task's allocations within its reservation, across epochs, and no receipt above ceil(reservation × its share) (B2); declared shares exactly 10,000 bp; dispute stakes within the disputer's pending allocations; the epoch funding equation R + P + S + Q + I = reserve with non-negative balances and holdback + claimable ≤ issued (CHECK on `epoch_balances`).
+- **I9 settlement finality:** leaves only to the bound wallet in the current adapter generation, devnet only; signed attempts persisted before broadcast, one unresolved at a time, contiguous; expiry only by an observed block height past the last valid height and a typed historical status response for the attempt's own signature on its cluster that found nothing; confirmation only at finalized commitment with a slot and a response showing it finalized without error (R04-8); a confiscation hold is finite and ends once — executed or released, serialized, by server time (R04-4); no void of a confirmed leaf or of one whose attempt may still land; a shared/exclusive fence between attempts and pauses/snapshots; `may_broadcast` for the broadcaster.
 
 **Everything else moved to pure functions** in `packages/contracts/src/protocol/` — `rules.ts` (admin authorization bound to the exact operation, approval and single use; the qualification chain; receipt admission; budget bounds; dispute opening, replies, appeals, resolutions, adjudication and derived settlements; entitlement planning and claims; confiscation notice, appeal, decision, holds and execution; audit assignments and verdicts; human-review scope; wallet binding and consent; votes; pools; Genesis manifests, contributions and commit claims; sponsorships; usage telemetry; clips, exclusions, adapter switches, duty events, manifest admission, allocation attribution), `engine.ts` (amounts), `machines.ts` (status transitions), `governance.ts` (tallies), `policies.ts` (activations). **The service layer is contractually required** to read the rows a rule needs, call it inside the writing transaction, and write nothing when it returns a refusal. Where a rule protects money (over-issuance, double claims, over-recovery, capacity), the database invariant I8 is the backstop even if the service forgets. `docs/protocol/GUARANTEES.md` lists every assertion of 0007 v4 and the guard that rejects it now (45 in SQL, 73 by a rule or engine test, none dropped).
 
+
+## 13. V1-ACTIVE and DORMANT modules (D55)
+
+V1 runs with a solo founder on devnet/shadow with valueless tokens. The build plan (WORKSTREAMS-PROTOCOL §3) and review 06 cover only the ACTIVE modules. DORMANT modules keep their design, contracts and tests, are refused by `moduleRefusals` until a forward-only policy switch (AdminAction, public) after their trigger, and are not built in V1 waves. Triggers are policy data (`reward-policy.v1.json` `modules.dormant[]`), provisional (F33).
+
+| Module | Status | V1 stub | Activation trigger | Precondition (open findings) |
+|---|---|---|---|---|
+| Accounting correctness (conservation, single payment, reservation lifecycle, expiry, no stranded balances) | ACTIVE | — | — | — |
+| Budgets with bounds and the per-objective cap | ACTIVE | — | — | G-92 peer view, recalibration |
+| Acceptance review (Astra + human; D53 fallback) | ACTIVE | — | — | — |
+| Optimistic challenge window and publication | ACTIVE | a challenge is a free flag sending one receipt to the review gate | — | — |
+| Provisional receipts, optimistic finalization (D54) | ACTIVE | — | — | — |
+| Append-only audit trail and AdminActions | ACTIVE | — | — | G-86 prior state |
+| Shadow-mode epoch pipeline | ACTIVE | — | — | G-90 completeness |
+| Simple bounded hold, holdback | ACTIVE | — | — | — |
+| Build next (D56) | ACTIVE | — | — | — |
+| Dispute stakes and bounties | DORMANT | no stake, no bounty | first value-bearing token or first outside disputer | R04-3 shared collateral (G-98) |
+| Multi-allocation disputes and appeals | DORMANT | reply and one decision | first outside contributor with a disputed allocation | R04-5 appeal/finality lock (G-98) |
+| Payout canaries | DORMANT | none | ≥ 10 active outside payout auditors | — |
+| Organization caps and beneficiary splits | DORMANT | the beneficiary is the contributor | first sponsoring organization approved | — |
+| Governance voting | DORMANT | the founder sets policy by public AdminAction | ≥ 25 eligible outside voters | F20 |
+| Collusion/Sybil detection beyond basics | DORMANT | related-account independence, anomaly metrics | ≥ 10 outside contributors | — |
+| Confiscation beyond a simple hold | DORMANT | a bounded hold and release | first value-bearing token | F17 |
+| Genesis calibration population | DORMANT | Genesis records only | Genesis finalization (mainnet) | F21 |

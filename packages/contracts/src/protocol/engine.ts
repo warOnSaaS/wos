@@ -85,7 +85,10 @@ export function acuMicroFromUsage(
   return t / MICRO;
 }
 
-/** min(observed, cap): the execution-stop check on telemetry (D49: usage never sets a payout). */
+/**
+ * min(observed, cap): the execution-stop check on telemetry. An execution-cap and telemetry control only (D49; review 05
+ * obsolete item 4): never part of a payout or a qualification.
+ */
 export function clipToCap(attestedMicro: bigint, capMicro: bigint): bigint {
   return attestedMicro < capMicro ? attestedMicro : capMicro;
 }

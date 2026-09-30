@@ -408,7 +408,7 @@ Those capabilities are spawning the claude, codex and git processes, worktrees a
 
 ## 6. Proof of Contribution: database invariants vs engine rules (DRAFT, D51)
 
-The protocol database (migration 0007 v5, not applied to production) no longer encodes the protocol's procedure in triggers. It keeps the hard invariants below; every other rule is a pure, tested function the control plane must call before writing (docs/protocol/PROTOCOL.md §12, docs/protocol/GUARANTEES.md).
+The protocol database (migration 0007 v6, not applied to production; v6 adds the review-04/05 invariants listed in docs/protocol/PROTOCOL.md §12: floored reservations, one objective per work identity, a per-receipt share bound, numbered partial releases, finite holds that end once, typed settlement observations, envelope columns, and the D54 bootstrap single-signer label) no longer encodes the protocol's procedure in triggers. It keeps the hard invariants below; every other rule is a pure, tested function the control plane must call before writing (docs/protocol/PROTOCOL.md §12, docs/protocol/GUARANTEES.md).
 
 - **I1 append-only:** no UPDATE, DELETE or TRUNCATE on receipts, status events, allocations, entitlements, claims, settlements, admin actions, budgets, disputes, confiscations and every other protocol record; the only set-once fields are a quorum's outcome and a gate's bounty priority; run-log bodies may be deleted only after expiry.
 - **I2 server time:** every time the rules read (announcements, submissions, replies, appeals, decisions, votes, notices, executions, pauses) is stamped by the database clock.

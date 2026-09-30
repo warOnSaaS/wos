@@ -229,7 +229,7 @@
     "sealedUntilAllSubmit": true,
     "unmetDutyCarryEpochs": 8,
     "contradictedJudgmentRevokesCredit": true,
-    "upheldInflationBonusBp": 1000,
+    "upheldInflationBonusBp": 0,
     "falseFindingsSignalAfter": 3,
     "publishUsageAfterFinalization": true
   }

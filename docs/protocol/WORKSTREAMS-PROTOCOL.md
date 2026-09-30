@@ -18,12 +18,19 @@ Promote the drafts: `@waronsaas/contracts/protocol` → contracts **6.0.0** (MAJ
 | **protocol-ux** | `apps/web` (web workstream), `apps/desktop` Build app, `apps/cli` | epoch view, allocation permalinks, anomaly-ranked challenge list, dispute flow, claim flow with duty, admin panels, disclosure copy (SUPERSESSION §3) | no |
 | **orgs** | control-plane org routes | sponsorship requests/approvals, beneficiary split on receipts, related-account checks in assignment | no |
 
-## 3. Waves
+## 3. Waves (V1 builds ACTIVE modules only — D55, PROTOCOL §13)
 
 - **P0** contracts 6.0.0 + migration (architect).
-- **P1** (parallel): usage-proof, protocol-engine (receipts, epochs, engine, explanations, test epochs), protocol-review (ReviewPolicy evaluator, human review, bootstrap merge + provisional receipts), protocol-chain (devnet mint, push adapter, memo, reconciliation), wallet.
-- **P2**: disputes + gates + duty + canaries + anomaly UI (protocol-review, protocol-engine, protocol-ux), orgs, governance rehearsal (off chain), off-ramp adapters and drill.
+- **P1** (parallel): usage-proof (telemetry only), protocol-engine (receipts, budgets and the budget-model evaluator, epochs with one frozen envelope, engine, explanations, shadow/test epochs, simple bounded hold, holdback), protocol-review (ReviewPolicy evaluator with the D53 `fable_unavailable` fallback, human review with server-owned assignments, bootstrap merge + provisional receipts with D54 optimistic finalization), protocol-chain (devnet mint, push adapter, memo, reconciliation), wallet, **build next** (below).
+- **P2**: the V1 challenge path (a free flag → review gate with reply and one decision), anomaly UI (protocol-review, protocol-engine, protocol-ux).
 - **P3**: devnet E2E proof (section 4), 26 devnet epochs toward MAINNET-READINESS.
+- **Not in V1 waves (DORMANT):** dispute stakes and bounties, multi-allocation disputes and appeals, duty and payout canaries, organizations (caps and beneficiary splits), governance voting, advanced collusion detection, confiscation execution, Genesis calibration. Each is built when its trigger is met (POLICIES §0), after its G-98 preconditions.
+
+### Build next (D56) — orchestrator, CLI and Desktop interface
+
+- **CLI:** `wos build --next [--continuous] [--max-units N] [--max-minutes M] [--max-acu X] [--provider P --max-units-per-provider N] [--model REF]`. Without `--next`, `wos build <abu-id>` is self-pick as today.
+- **Desktop:** Build app button **BUILD NEXT** with a continuous toggle and the same limits; a STOP control that finishes the current unit (checkpoint) and takes no further one.
+- **Orchestrator:** calls `POST /v1/builds/next` (`protocol/assignment.ts`) with the device, model and limits; the server filters by `nextUnitEligibilityRefusals`, ranks with `rankNextUnits` (policy `capability-policy.v1.json` `assignment`, published), and leases the first atomically with claimBuild's fencing; the response shows the score components. The build then runs exactly as a self-picked one (same lease, budget, checkpoint and stop semantics). In continuous mode the orchestrator asks again after each unit until `continuousNextStop` returns a reason. Budgets are identical in both modes; the optional assigned-only window (`assignedOnlyWindowMinutes`, default 0) hides fresh units from self-pick.
 
 ## 4. The devnet E2E test (automated)
 

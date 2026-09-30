@@ -131,3 +131,7 @@ Flat reward per completed review of an accepted subject plus a bonus per materia
 
 - `computeRoundOutcome.priorOpenFindingIds` contains MATERIAL findings only. A minor finding never blocks consensus. The control plane's query filters `severity = 'material'` (this was a real bug: minor findings blocked consensus forever; fixed at the gate).
 - Overruled findings: consensus is reached iff neither verdict has a new material finding and no non-overruled prior material finding is still open. A prior material finding counts as open if it is in `priorOpenFindingIds` or a verdict marks it `still_open`. A reviewer holding an overruled finding open cannot block, because the maintainer-confirmed ruling is final.
+
+## D53 — Fable unavailable (protocol draft)
+
+While the ReviewPolicy fallback `fable_unavailable` is active a round has two independent checks: **Astra** (agent, a different lab from the Opus builder) and the **required human review** (the founder or an authorized reviewer), which replaces the Fable slot; the consensus rule reads "both NO_MATERIAL_GAPS" over those two. A Fable verdict submitted while the fallback is active is refused as a seat (a later optional pass is recorded, never counted, never blocking). A reviewer whose model built the subject is refused (no same-model self-review). Each such round and its receipts carry `single_lab_review` with the reason (devnet/shadow accounting only). Conflicts go to the human instead of the Fable resolver. Policy: docs/protocol/POLICIES.md §5 `fallbacks`; decision D53.

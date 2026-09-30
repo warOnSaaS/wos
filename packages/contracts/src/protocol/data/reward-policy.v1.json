@@ -148,7 +148,7 @@
   },
   "execution": {
     "capIncludesRepairs": true,
-    "upheldFindingBonusBp": 1000,
+    "upheldFindingBonusBp": 0,
     "maxPaidFindingsPerReview": 5,
     "payReviewsOfFailedAttemptsWithUpheldFindings": true
   },
@@ -160,7 +160,7 @@
       "accounting": "2000000",
       "protocol": "2000000"
     },
-    "upheldFindingBonusMicro": "500000",
+    "upheldFindingBonusMicro": "0",
     "maxPaidFindings": 3,
     "payRatificationReviews": true
   },

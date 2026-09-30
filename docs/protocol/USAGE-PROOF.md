@@ -90,3 +90,6 @@ Peer baselines per comparable key (task kind, capability class, model, size poin
 
 ## Model identity through a redirected CLI (D52)
 A `claude` CLI run with `ANTHROPIC_BASE_URL` pointed at another provider (for example Z.ai for GLM) reports whatever model name that endpoint returns: identity is self-reported. The orchestrator records the base URL (from env or claude settings) and the provider as declared; a non-Anthropic base URL is never recorded or qualified as an Anthropic model. Candidate models earn nothing until qualified (POLICIES §4, `modelClaimRefusals`).
+
+## Telemetry never blocks a receipt (review 05 B10)
+Usage receipts offered with a contribution are linked only when `telemetryLinkStatus` says `valid` (the contributor's own, of this lease, not already linked). Anything else is excluded from the link and from budget calibration and raises a signal; the receipt itself is admitted or refused only by its acceptance route (`receiptRouteRefusals`) and the receipt rule, never by its telemetry. A missing transcript is a low-severity signal, never reward evidence.

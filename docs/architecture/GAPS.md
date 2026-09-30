@@ -363,21 +363,35 @@ Founder decisions raised by review 03 are listed separately in ADR-001 §6 (F17�
 ### G-91 Calibration poisoning by fabricated telemetry
 - Usage no longer pays, but the budget model recalibrates from the telemetry of accepted tasks; a ring could report low usage to drag budgets down for others, or high usage to raise its own next budgets. Mitigation to validate on devnet: calibrate only from accepted tasks, use robust statistics (trimmed medians per key), require ≥ 20 samples, move ≤ 20% per step, weight by independent accounts, exclude telemetry flagged anomalous.
 
-### G-92 The budget model is bounds and data, not yet code
-- Policy bounds, DB checks and the engine exist; the budget-model function (size points → ACU with multipliers), the peer-comparison view shown to consensus reviewers and the recalibration job are not implemented. Build them before any task is issued with a budget.
+### G-92 The budget model: evaluator done; peer view and recalibration not yet code
+- Review 05 B1: the evaluator exists (`budgetModelMicro`: size points → ACU with bounded multipliers, risk-class weights for human reviews) and `budgetRefusals` refuses a supplied model that differs and an objective without its revealed consensus round. Still missing: the peer-comparison view shown to consensus reviewers, the scope/budget binding of the consensus round itself (the rule takes `coversBudget` from the round) and the recalibration job. Build them before any task is issued with a budget.
 
 ### G-93 Issuance priority and demand spikes
 - The engine issues in the scheduler's priority order and leaves tasks that do not fit unfunded; the rate is set ex ante from queued demand. The scheduler's priority rule (age, dependency, shared value) and what an unfunded contributor sees are not specified; a spike above the forecast defers tasks to the next epoch.
 
-### G-94 Human-review budgets have no task row
-- `task_budgets` of kind `human_review` name a commissioned review id that is not a `wos.tasks` row; bind them to the review assignment when human reviews are commissioned through the control plane.
+### G-94 Human-review commissioning in the control plane
+- Review 05 B6: a human_review budget is now bound to a server-owned `human_review_assignments` row (reviewer, subject, risk class) and a HUMAN_REVIEW receipt is admitted only with the account's sealed review under it (`receiptRouteRefusals`; one review per assignment in SQL). The control-plane route that creates assignments (and who may be assigned, D54) is still to build.
 
-### G-95 Budget expiry is exercised in the engine only
-- The DB refuses acceptance after `expires_epoch` but the db assertions do not reach an epoch past expiry; add a fixture when epoch fixtures can be advanced cheaply.
+### G-95 Budget expiry: one rule, no sweeper job yet
+- Review 05 B4: one expiry rule (live while epoch < expiry; review grace after an on-time submission) in the engine and the receipt/release/lease rules, with tests before, at and after expiry. The database does not know the "current" epoch (D51), so expiry of stored budgets is recorded by a scheduled sweeper that writes `task_budget_releases` with reason `expired` through `budgetReleaseRefusals`; that job is not built.
 
 ### G-96 Integrations and connections: Amendment 03 (D50) after the protocol rework
 - Integrations/connections will be designed Cloud-first (wOS-registered OAuth apps; credentials read from settings so self-hosters can supply their own) as Amendment 03, after the current rework. Nothing in the protocol may assume first-class self-hosting; completion definitions now require an exit-rights check (standard Postgres, settings/env configuration, data export), not a self-host check. Stage 2/3 self-host work (Docker Compose, SSO, BYO OAuth, relays, LTS, environment switcher) is deferred per D50.
 
 ### G-97 Rules moved to the engine rely on the service calling them (D51)
 - The database no longer refuses procedurally wrong rows that do not break a money invariant (a qualification without its round, a confiscation decision before the reply window, an unapproved admin action consumed). Before any service writes protocol records: one write module holding the insert grants, a contract test per write path that it calls its rule and refuses on any refusal, and a nightly audit job that re-evaluates every stored row against the rules and raises a signal on a mismatch.
+
+## O. Found in the review-04/05 fix pass (D52–D56)
+
+### G-98 Dormant modules carry open findings that gate their activation (D55)
+- R04-3: dispute stakes must reserve NAMED source balances under the same lock and remaining-balance rule as holds and entitlements (both insertion orders and a concurrent test; the pre-fix sequences and race are in `reviews/ASTRA-REVIEW-04-05-repros-prefix.txt`); define how a later clip changes collateral already staked (F34). R04-5: appeal admission and finalization (entitlement, settlement, revocation) must take one allocation lock with a persisted final transition, stamped after the lock. Neither module is active in V1; `moduleRefusals` refuses them until activated, and activation is blocked until these are fixed and tested.
+
+### G-99 Bootstrap single-signer weakens two-person actions during bootstrap (D54)
+- So that a solo founder is never blocked, a two-person AdminAction without a co-signer is accepted in bootstrap and recorded `bootstrap_single_signer` (public, still operation-bound and single-use). Outside bootstrap the co-signer is required again. Founder decision F32 confirms or narrows the list of actions this covers.
+
+### G-100 GLM qualification suite not frozen (D52)
+- The unit manifest (hash null), pass thresholds (placeholders) and the Z.ai endpoint value are open (F30); until then GLM is eligible for nothing.
+
+### G-101 Build-next ranking inputs are server data not yet produced (D56)
+- `targetsServed`, `dependentsWaiting` and the focus list come from the catalog and the dependency graph; the control plane must compute and publish them per unit. Weights and focus are provisional (F29).
 

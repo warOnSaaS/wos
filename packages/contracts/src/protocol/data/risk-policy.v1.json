@@ -14,7 +14,7 @@
     { "id": "model-mismatch", "signal": "model_mismatch", "params": {}, "severity": "high" },
     { "id": "duplicate-provider-ids", "signal": "duplicate_provider_ids", "params": {}, "severity": "high" },
     { "id": "audit-divergence", "signal": "audit_divergence", "params": { "factorBp": 30000 }, "severity": "medium" },
-    { "id": "transcript-missing", "signal": "transcript_missing_on_audit", "params": { "graceDays": 7 }, "severity": "high" },
+    { "id": "transcript-missing", "signal": "transcript_missing_on_audit", "params": { "graceDays": 7 }, "severity": "low" },
     {
       "id": "review-pairs",
       "signal": "collusive_review_pattern",

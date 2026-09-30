@@ -110,6 +110,10 @@ Every finding was reproduced on the pre-fix code before any change (`reviews/AST
 
 The database keeps only the hard invariants I1–I9 (PROTOCOL §12); procedure moves to pure, tested rules the service must call (`rules.ts`); migration 0007 shrinks from about 2,900 to about 1,720 lines. Every v4 assertion is mapped to its new guard in GUARANTEES.md; money invariants (conservation at commit, uniqueness, finality) stay in SQL as the backstop. Residual: G-97.
 
+## 11. Astra reviews 04 and 05 — the fix pass, and D52–D56
+
+Every finding of both reviews was re-run on the current code first (`reviews/ASTRA-REVIEW-04-05-repros-prefix.txt`), fixed with a regression test or given a status with evidence (REVIEW-PACKET §3f). The engine now tracks ownership exactly (I = delivered + claimable + holdback; disputes name owner and source), computes one envelope per epoch when it opens, applies one expiry rule with a review grace, reserves ancillary accrual with each task, and never consumes an unfunded issuance. Rules compute the budget model, derive allocations, route receipts by type, parse typed snapshots and settlement observations, bound holds and bind canonical operations. SQL adds floor reservations, unique objectives, a per-receipt share bound, numbered partial releases, finite holds that end once, typed observations, envelope columns and human-review assignments. Founder decisions recorded with this pass: D52 (GLM candidate), D53 (Fable unavailable fallback), D54 (optimistic provisional receipts; bootstrap single-signer), D55 (V1-active and dormant modules; R04-3 and R04-5 deferred to activation, G-98), D56 (build next).
+
 ## 5. Open questions
 
 1. Is ATTESTED usage acceptable as the basis of value-bearing WOS at all (3.4)? The contracts say no until decided.
@@ -152,7 +156,7 @@ The database keeps only the hard invariants I1–I9 (PROTOCOL §12); procedure m
 | F21 | The finalized Genesis reference population and its independent approvers (GENESIS-POLICY says ≥ 2 non-founder humans; the DB checks two maintainers over the manifest hash) | no manifest approved; Genesis stays mainnet-only |
 | F1 (restated) | Answered by D49: value-bearing rewards follow accepted budgets, not usage | — |
 
-### Founder decisions raised by D49 (the architect recommends; the founder decides)
+### Founder decisions raised by D49 and by the review-04/05 fix pass (the architect recommends; the founder decides)
 
 | # | Decision | Recommendation (draft default) |
 |---|---|---|
@@ -160,6 +164,16 @@ The database keeps only the hard invariants I1–I9 (PROTOCOL §12); procedure m
 | F23 | The epoch contract: reservation at issuance (a task that does not fit is not issued) vs proportional scaling of accepted budgets | **reservation at issuance**, with the issuance rate set ex ante from queued demand (implemented; never mix the two) |
 | F24 | Budget-model bounds: difficulty 0.5–2.0, importance/shared-dependency 1.0–1.5, human approval above 1.25× the model, hard maximum 2×, per-objective caps, expiry 4 epochs, recalibration every 13 epochs ≤ 20% per step | as drafted; tighten after devnet data |
 | F25 | Who may propose budgets (the decomposer/contract author, excluded from building the unit) and whether a budget proposal is itself a paid planning contribution | proposer = the decomposition/contract author; proposing is part of the planning task, not separately paid |
+| F26 | Should any ancillary reserve (completion pools, security) accrue for issued work that FAILS? (review 05 B5) | **no** (implemented: the accrual is reserved with the task and returned on release or expiry); a separately capped issuance-funded security budget would be a new policy |
+| F27 | Reviewer-finding and inflation-finding bonuses: delete, or fund as a separately reserved finding bounty (review 05 obsolete item 3) | set to **0** in V1 so nothing is paid above a reserved quote; decide before any bounty is reintroduced |
+| F28 | Review grace after an on-time submission (review 05 B4) | 2 epochs (provisional) |
+| F29 | Build-next ranking weights, focus list and the assigned-only window (D56) | reuse 100, unlock 60, ageing 25/epoch capped at 8, focus Salesforce; window OFF (provisional) |
+| F30 | GLM qualification: pass thresholds, the frozen unit manifest, the Z.ai endpoint value (D52) | thresholds are placeholders; no units invented; GLM eligible for nothing until decided |
+| F31 | When bootstrap ends (D54) | 3 outside contributors with an accepted receipt (provisional) |
+| F32 | Two-person AdminActions single-signed during bootstrap (D54) | accept for devnet/shadow; narrow the list if some action must always wait for a second person |
+| F33 | Activation triggers of the dormant modules (D55) | as in POLICIES §0 (provisional) |
+| F34 | Dispute collateral after a later clip (review 04, adjacent to F18; dormant) | decide before stakes activate (G-98) |
+| F17 (restated) | Confiscation maxima from notice: reply 336 h, appeal 720 h, lapse 336 h after the appeal (review 04 finding 4) | provisional values; finite under any F17 choice |
 | F6/F7 (restated) | Mainnet escrow/program selection, cryptographic wallet verification and off-ramp drills stay separate gates; nothing here authorizes a mainnet launch or an ICO | closed |
 
 Decided in this pass (no longer open): Astra-02's eight missing decisions → D39–D48 (confiscation, holdback, unrecoverable losses, audit capacity, dispute burden, cap promise, organization obligations, multisig custody and resumption, publication and retention, Genesis calibration).

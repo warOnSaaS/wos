@@ -135,6 +135,33 @@ Totals: 118 v4 assertions; 45 still refused in SQL (some also by a rule); 73 mov
 | M14 duty ended twice | SQL I4 (unique terminal event) | race: 'M14 (review 02): a duty offer ended twice concurrently' |
 | D49 two issuances for the last capacity | SQL I8 | race: 'D49: two task issuances racing for the last epoch capacity' |
 
+## Reviews 04 and 05 (0007 v6 and the fix pass)
+
+| Finding | Guard now | Test |
+|---|---|---|
+| R04-1 / B7 disputes consume delivered tokens | engine (sourced recoveries; I = delivered + claimable + holdback) | unit: 'R04-1a/B7…', 'R04-1b/B7…', 'R04-1: issuance is always owned…' |
+| R04-2 partial matured release strands the remainder | SQL I4 (`release_seq` key) + I8 + rule `entitlementRefusals` | db: 'R04-2 repro…', 'R04-2: a third release…', 'R04-2: only matured and withheld releases come in parts'; unit (rules): 'R04-2…' |
+| R04-3 stake and hold on one allocation | DORMANT (D55) — activation precondition G-98 | prefix file |
+| R04-4 unbounded hold; execution vs lapse | SQL CHECK (finite, ordered) + I9 (one end, serialized, server time) + rule `confiscationNoticeRefusals` | db: 'R04-4a repro…', 'R04-4b repro…' ×2; race: 'R04-4…'; unit (rules): 'R04-4…' |
+| R04-5 appeal vs finalization | DORMANT (D55) — activation precondition G-98 | prefix file |
+| R04-6 typed snapshot | rule `qualificationRefusals` (typed parse, fail closed) | unit (rules): 'R04-6…' |
+| R04-7 oracle change | obsolete (no oracle input) | unit (rules): 'R04-7 (obsolete under D49)…' |
+| R04-8 contradictory settlement observation | SQL I9 + rule `settlementObservationRefusals` | db: 'R04-8 repro…' ×2, 'R04-8: … another signature', 'R04-8: … finalized WITH an error…'; unit (rules): 'R04-8…' |
+| R04-9 incomplete approved payloads | rule `adminAuthorizationRefusals` with `consumer` | unit (rules): 'R04-9 repro…' |
+| R04-10 replay state at runtime | engine | unit: 'R04-10…' |
+| R04-11 asserted Genesis hash | rule `genesisReferenceManifestRefusals` | unit (rules): 'R04-11 repro…' |
+| B1 budgets against supplied inputs | rule `budgetModelMicro` + `budgetRefusals`; SQL I4 `unique (kind, ref)` | unit (rules): 'B1…' ×3; db: 'B1b repro…' |
+| B2 allocations ignore shares | rule `taskAllocationRefusals`; SQL I8 per-receipt bound + cross-epoch aggregate | unit (rules): 'B2 repro…'; race: 'B2 (review 05)…' |
+| B3 within-epoch lifecycle | engine (`openEpoch`, `lastEpoch`, order); SQL CHECK (envelope columns together); rule `epochEnvelopeRefusals` | unit: 'B3a…', 'B3b…', 'B3: the envelope…'; unit (rules): 'B3…'; db: 'B3: a pinned rate and capacity without…' |
+| B4 expiry and cancellation | engine; rules `receiptRefusals`, `budgetReleaseRefusals`, `leaseBudgetRefusals` | unit: 'B4…' ×2; unit (rules): 'B4…' ×2 |
+| B5 failed tasks fund pools | engine (ancillary reserved in Q) | unit: 'B5…', 'pools accrue only on ACCEPTANCE…'; sim Q |
+| B6 receipt routes | rule `receiptRouteRefusals`; SQL I4 one review per assignment | unit (rules): 'B6…' ×2; db: 'B6: a second human review…' |
+| B8 unfunded retry | engine | unit: 'B8…' |
+| B9 rounding across layers | SQL floor + zero refused; engine floor | unit: 'B9…'; db: 'B9 repro…', 'B9 cross-language vector' |
+| B10 telemetry blocks admission | rule (`receiptRefusals` has no telemetry; `telemetryLinkStatus`) | unit (rules): 'A3-5 (telemetry, B10)…' |
+| B1/I5 budget vs proposer's lease (race) | SQL I5 (shared `lease_gen` lock) — held before the fix too | race: 'B1/I5 (review 05)…' |
+| D54 bootstrap two-person actions | SQL I3 (`bootstrap_single_signer`, derived) | db: 'D54 a two-person action in bootstrap is single-signed…' |
+
 ## Rules without a v4 assertion that also moved (no silent loss)
 
 Clip never raises a weight, audit outcomes only for revealed real quorums, duty events for the offered account, permanent exclusion needs governance, adapter switches need governance, Genesis dedup keys are Genesis keys, manifest admission, sponsorship approval, usage-receipt lease/run/snapshot binding: each is a function in `rules.ts` with a test in 'further write rules moved from 0007 v4 (no guarantee silently dropped)'.

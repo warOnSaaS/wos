@@ -44,4 +44,4 @@ A protocol-class review of the retro roadmap PR and of the computation by **at l
 
 ## 6. The founder's post-cutoff work
 
-Merged under bootstrap authority → PROVISIONAL receipts (D23). They are counted in test epochs only; when an independent auditor quorum or non-founder human ratifies them they enter the live epoch then OPEN, with their original timestamps, like anyone's work. They never count toward Genesis (table H, second part).
+Merged under bootstrap authority → PROVISIONAL receipts (D23). They are counted in test epochs only. **D54:** when bootstrap ends each is published with a challenge window; silence finalizes it — it becomes qualifying and Genesis-eligible with its original timestamp and enters the live epoch then OPEN, like anyone's work; a challenge sends it to the review gate. (Before D54 they needed an independent ratification and never counted toward Genesis — table H, second part, models that older rule.)

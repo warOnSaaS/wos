@@ -240,7 +240,10 @@ export function parseCodexRollout(lines: string | readonly string[]): AdapterRes
   });
 }
 
-/** Relative mismatch between two usage reports, in basis points of the larger total (0 when both are zero). */
+/**
+ * Relative mismatch between two usage reports, in basis points of the larger total (0 when both are zero). A telemetry
+ * integrity signal only (D49; review 05 obsolete item 4): never an input to a payout or a qualification.
+ */
 export function usageMismatchBp(a: ProviderUsage, b: ProviderUsage): number {
   const keys = ["inputTokens", "cachedInputTokens", "cacheWriteInputTokens", "outputTokens"] as const;
   let worst = 0;
