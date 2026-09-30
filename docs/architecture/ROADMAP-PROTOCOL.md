@@ -95,7 +95,7 @@ Parity means features AND experience, on every surface the rented product ships.
 
 ### Migration: getting customers off the target (D59, contracts 5.4.0)
 
-Parity is not enough if a customer cannot leave. Every target roadmap has a `migration` section (`RoadmapMigration` in `artifacts.ts`) that plans how the target's customers bring their data into wOS. The input facts are `docs/scans/<target>.md`, section "Getting data out". Those scans are on branch `ws/scans` and not merged yet.
+Parity is not enough if a customer cannot leave. Every target roadmap has a `migration` section (`RoadmapMigration` in `artifacts.ts`) that plans how the target's customers bring their data into wOS. The input facts are `docs/scans/<target>.md`, section "Getting data out". The scans are on main, from the `ws/scans` merge.
 
 - **`engine`** is always `import-engine`, the shared catalog feature every importer is built on (below).
 - **`classes[]`** has exactly one entry per data class (`MIGRATION_DATA_CLASSES`):

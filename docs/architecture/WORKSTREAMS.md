@@ -404,4 +404,4 @@ The web workstream (public site) also uses `TargetSummary.apps` and `getApplicat
 - **context-policy**: the MIGRATION and IMPORTERS obligations and the D59 material rules are policy data, so prompts pick them up with no code change.
 - **The first CRM catalog build** is the first proof. It creates `catalog/import-engine.yaml` in the product repo and a `salesforce-import` connector that imports Salesforce contacts and accounts, with a dry run and a verification report.
 - Credentials for connectors wait for Amendment 03 (connections). Until then an importer's contract states that it uses the customer's own organization-scoped OAuth grant and designs nothing further.
-- Input facts: `docs/scans/<target>.md` "Getting data out" (branch `ws/scans`).
+- Input facts: `docs/scans/<target>.md` "Getting data out" (on main).

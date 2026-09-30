@@ -149,5 +149,5 @@ These override `docs/V1-SPEC.md` where they differ. Date: 2026-09-29.
   - a verification report with per-object counts and checksums, in which nothing is silently dropped.
 - **Built once.** `import-engine` is a shared catalog feature: mapping, dry run, verification report, idempotency and delta sync. It is built once and stewarded by TGT-00 warOnSaaS as shared infrastructure. Per-target connectors are small catalog features that depend on it. The first proof is importing Salesforce contacts and accounts in the first CRM catalog build.
 - **Credentials.** An importer signs in to the CUSTOMER's own account with the customer's OAuth tokens, held encrypted and scoped per organization, never with wOS's own credentials. The detailed design belongs to Amendment 03 (connections) and is not decided here.
-- **Input facts.** They come from `docs/scans/<target>.md`, section "Getting data out" (branch `ws/scans`, not merged yet).
+- **Input facts.** They come from `docs/scans/<target>.md`, section "Getting data out", on main since the `ws/scans` merge.
 - Protocol text: ROADMAP-PROTOCOL.md "Migration: getting customers off the target (D59)".
