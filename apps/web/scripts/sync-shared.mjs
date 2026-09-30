@@ -9,7 +9,7 @@
  *                                           type-only import, re-pointed at the contracts source)
  *   docs/whitepaper/WHITEPAPER.md        -> generated/WHITEPAPER.md          (byte-identical; the /whitepaper
  *                                           page and /whitepaper.md render it; its date comes from gen-log.mjs)
- *   docs/whitepaper/{EDGE-CASES,DESIGN,APPENDICES,SOURCES}.md -> generated/whitepaper/  (byte-identical companions)
+ *   docs/whitepaper/{MATERIALITY,EDGE-CASES,DESIGN,APPENDICES,SOURCES}.md -> generated/whitepaper/  (byte-identical companions)
  *
  * With the repo present (local builds): writes the copies, or with --check fails if they differ.
  * Without the repo (Vercel): checks the committed copies exist and exits 0.
@@ -28,7 +28,7 @@ const files = [
   { from: join(repo, "docs/roadmap/waronsaas.roadmap.json"), to: join(web, "generated/waronsaas.roadmap.json"), map: (s) => s },
   { from: join(repo, "docs/whitepaper/WHITEPAPER.md"), to: join(web, "generated/WHITEPAPER.md"), map: (s) => s },
   // The white paper's companion files (optional depth), served at /whitepaper/<name>.md and in the full pack.
-  ...["EDGE-CASES", "DESIGN", "APPENDICES", "SOURCES"].map((n) => ({
+  ...["MATERIALITY", "EDGE-CASES", "DESIGN", "APPENDICES", "SOURCES"].map((n) => ({
     from: join(repo, `docs/whitepaper/${n}.md`),
     to: join(web, `generated/whitepaper/${n}.md`),
     map: (s) => s,

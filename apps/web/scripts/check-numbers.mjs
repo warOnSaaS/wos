@@ -40,6 +40,9 @@ const files = [];
 // are explanations with their sources given in the text, not progress read from the data source.
 // This exclusion does not relax the gate for any data page: the list below is an allowlist of data
 // pages, and the assertion after it fails the build if the white paper is ever classified as one.
+// The other white paper routes are prose too and are never data pages: /whitepaper/read (HTML, not under
+// targets/ or drilldown/) and the companion bodies, including /whitepaper/materiality.md, whose estimates are
+// labelled ranges with sources (they are .md.body files, which this gate does not scan).
 const PROSE_PAGES = new Set(["whitepaper.html"]);
 const dataPages = files.filter((f) => {
   const r = relative(app, f);

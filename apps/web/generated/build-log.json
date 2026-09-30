@@ -1,9 +1,41 @@
 {
   "ref": "main",
-  "head": "c51b3eb3815650084358946188ae2b4aa34988c4",
+  "head": "1c11d6fdbe5e037774ce26cacd552dba55c3f9ea",
   "complete": true,
-  "count": 59,
+  "count": 63,
   "commits": [
+    {
+      "sha": "1c11d6fdbe5e037774ce26cacd552dba55c3f9ea",
+      "short": "1c11d6f",
+      "date": "2026-09-30T10:42:23-04:00",
+      "day": "2026-09-30",
+      "subject": "White paper handoff buttons: one line, vertically centred, 4/2/1 grid",
+      "url": "https://github.com/warOnSaaS/wos/commit/1c11d6fdbe5e037774ce26cacd552dba55c3f9ea"
+    },
+    {
+      "sha": "7b1e8f0a0fb5df07466256841467461fe1921fd8",
+      "short": "7b1e8f0",
+      "date": "2026-09-30T10:39:08-04:00",
+      "day": "2026-09-30",
+      "subject": "White paper: HTML read page for browsing agents, text/plain for .md, OPEN IN CLAUDE",
+      "url": "https://github.com/warOnSaaS/wos/commit/7b1e8f0a0fb5df07466256841467461fe1921fd8"
+    },
+    {
+      "sha": "5857c3ec7a3cd5de71a95f1fbf60c44e9ecd59bf",
+      "short": "5857c3e",
+      "date": "2026-09-30T10:32:53-04:00",
+      "day": "2026-09-30",
+      "subject": "Website: v0.5 core download, full pack zip, companion files for agents",
+      "url": "https://github.com/warOnSaaS/wos/commit/5857c3ec7a3cd5de71a95f1fbf60c44e9ecd59bf"
+    },
+    {
+      "sha": "2316262d767eace5d1b6085a552cb9a43de8b4ea",
+      "short": "2316262",
+      "date": "2026-09-30T10:32:10-04:00",
+      "day": "2026-09-30",
+      "subject": "White paper v0.5: an eight-thousand-word core plus companion files; closed to open models",
+      "url": "https://github.com/warOnSaaS/wos/commit/2316262d767eace5d1b6085a552cb9a43de8b4ea"
+    },
     {
       "sha": "c51b3eb3815650084358946188ae2b4aa34988c4",
       "short": "c51b3eb",

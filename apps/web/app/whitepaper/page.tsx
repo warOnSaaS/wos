@@ -50,8 +50,9 @@ export default function WhitepaperPage() {
         <p className="label">WHITE PAPER // v{wp.version} // FOR AI AGENTS</p>
         <h1>This document is written for your AI agent.</h1>
         <p className="lead">
-          Give it to your agent. It asks the agent to verify our claims, judge us critically and tell you, in eight
-          points, whether the idea is compelling, how important it is, what actually exists and what we missed.
+          Give it to your agent. It asks the agent to verify our claims and judge us critically in two stages: first
+          the problem on its own (is it real, how big in money, compute and power, how important), then our approach
+          against it (does it attack the problem well, what actually exists, what we missed).
         </p>
       </div>
 
@@ -72,7 +73,7 @@ export default function WhitepaperPage() {
         </div>
         <p className="fine">
           {FILE}: the core paper, one Markdown file your agent can read in full. For depth, also{" "}
-          <a href={WHITEPAPER_PACK_PATH} download={PACK}>download the full pack</a> ({PACK}: the core plus four companion
+          <a href={WHITEPAPER_PACK_PATH} download={PACK}>download the full pack</a> ({PACK}: the core plus five companion
           files). OPEN IN CHATGPT and OPEN IN CLAUDE start a new chat with the prompt filled in; the agent opens
           the paper itself. GLM does not accept a pre-filled prompt, so{" "}
           <a href={AGENT_LINKS.glm} target="_blank" rel="noopener noreferrer">open GLM and paste the prompt</a>. On a phone,
@@ -82,7 +83,7 @@ export default function WhitepaperPage() {
         <label className="label" htmlFor="wp-prompt">
           THE PROMPT
         </label>
-        <textarea id="wp-prompt" className="prompt" readOnly rows={12} defaultValue={HANDOFF_PROMPT} />
+        <textarea id="wp-prompt" className="prompt" readOnly rows={16} defaultValue={HANDOFF_PROMPT} />
         <p className="fine">
           Works pasted alone if your agent can browse (it fetches <a href={WHITEPAPER_MD_PATH}>waronsaas.com/whitepaper.md</a>),
           or together with the downloaded file.

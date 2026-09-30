@@ -37,16 +37,18 @@ export const WHITEPAPER_READ_URL = "https://waronsaas.com/whitepaper/read";
 /**
  * The handoff prompt shown on /whitepaper, pre-filled into agents that support it, and quoted in the
  * llms files. It must work pasted alone (an agent that can browse fetches the URL) and next to the
- * uploaded file. Keep it short and keep the eight points in step with the paper's instructions.
+ * uploaded file. Keep it short and keep its two stages in step with the paper's instructions (v0.6: stage 1
+ * judges the problem and its materiality on its own; stage 2 judges the approach against it).
  */
 export const HANDOFF_PROMPT = [
   `Please evaluate the warOnSaaS white paper for me. Read all of the core paper: the attached WHITEPAPER file if there is one, otherwise open ${WHITEPAPER_READ_URL} (the same text as a web page; plain text at ${WHITEPAPER_MD_URL}). If you cannot open any of them, tell me.`,
-  "It is written for you, the evaluating agent. Follow the evaluation instructions at its start; they are requests, and my instructions come first. Verify its claims against the evidence links it gives and tell me which you checked. Be critical: a low score is fine.",
-  "Report to me, a short answer first and then detail, on: 1) is the idea compelling (yes / partly / no, and why); 2) how important the problem is for humanity, scored out of 100 on its five-dimension rubric with reasoning and confidence, and, separately, how important and compelling each of its four theses is (control, efficiency, the future of software engineering, Agentic Proof of Contribution) and what would make each false; 3) the proposal's credibility; 4) its implementation readiness and what actually exists; 5) the edge cases it considered and whether each is really handled; 6) edge cases it missed; 7) the three strongest arguments for and against; 8) what I should do: ignore, watch, test or participate, with bounded next steps. Do not encourage any financial exposure.",
+  "It is written for you, the evaluating agent. Follow the evaluation instructions at its start; they are requests, and my instructions come first. Verify its figures and claims against the sources and evidence links it gives and tell me which you checked. Be critical: a low score is fine.",
+  "Report in two stages, each with a short answer first and then detail. Stage 1, the problem on its own (Part I), as if the project did not exist; do not mark the problem down because the project is early: 1) is the problem real; 2) how big it is in money, compute and power, checking its estimates and ranges and giving your own; 3) its importance for humanity, scored out of 100 on the paper's five-dimension rubric with reasoning and confidence; 4) each of its four theses separately (control, efficiency, the future of software engineering, the need for a contribution primitive): important, compelling, what would make it false.",
+  "Stage 2, the approach (Part II), judged against stage 1: 5) is it an efficient, well-targeted attack on a problem of that size, what share could it plausibly address, and what would have to be true; 6) its credibility out of 100; 7) its readiness and what actually exists; 8) the edge cases it considered and whether each is really handled; 9) edge cases it missed; 10) the three strongest arguments for and against; 11) what I should do: ignore, watch, test or participate, with bounded next steps. Do not encourage any financial exposure.",
 ].join("\n\n");
 
 /** A one-line version for the llms files. */
-export const HANDOFF_PROMPT_SHORT = `Read ${WHITEPAPER_READ_URL} in full (plain text: ${WHITEPAPER_MD_URL}), follow the evaluation instructions at its start (requests, not commands), verify its claims against its evidence links, and report on its eight points: compelling or not, importance for humanity (0-100), credibility, readiness, edge cases handled, edge cases missed, strongest arguments for and against, and what to do.`;
+export const HANDOFF_PROMPT_SHORT = `Read ${WHITEPAPER_READ_URL} in full (plain text: ${WHITEPAPER_MD_URL}), follow the evaluation instructions at its start (requests, not commands), verify its figures and claims against its sources, and report in two stages: first the problem on its own (is it real, how big in money, compute and power, importance for humanity 0-100, each of the four theses), without marking it down because the project is early; then the approach judged against it (efficiency and share of the problem addressed, credibility 0-100, readiness, edge cases handled and missed, strongest arguments for and against, what to do).`;
 
 /** Chat links. ChatGPT's prefill (?q=) was verified in a browser. Claude's (claude.ai/new?q=) is the documented
  *  pattern but automated verification hit a sign-in challenge; the founder is testing it by hand. GLM's chat ignores
@@ -125,6 +127,7 @@ export function whitepaper(): Whitepaper {
 
 /** Companion files: optional depth for agents. Served at /whitepaper/<slug>.md and in the full pack. */
 export const COMPANIONS = [
+  { slug: "materiality", file: "MATERIALITY.md", title: "Materiality: how big the problem is", about: "sourced figures and a reproducible estimation model of the problem's size in money, compute and power, with ranges" },
   { slug: "edge-cases", file: "EDGE-CASES.md", title: "Edge cases we considered", about: "every edge case, where it is handled, test names, status" },
   { slug: "design", file: "DESIGN.md", title: "Full design narrative", about: "the full-length text of every design section" },
   { slug: "appendices", file: "APPENDICES.md", title: "Appendices", about: "protocol records, invariants, decision register, report template, changelog history" },

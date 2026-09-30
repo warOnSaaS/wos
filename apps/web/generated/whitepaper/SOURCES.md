@@ -1,6 +1,6 @@
 # warOnSaaS white paper: sources and evidence boundaries
 
-Companion file to the warOnSaaS white paper (`WHITEPAPER.md`, the core; its header gives the version and last-updated date). It holds the external sources R1 to R10 with what each supports and does not support, and the project evidence links. It is optional depth: an evaluating agent can reach a full assessment from the core alone and should open this file only to check a detail.
+Companion file to the warOnSaaS white paper (`WHITEPAPER.md`, the core; its header gives the version and last-updated date). It holds the external sources R1 to R10 with what each supports and does not support, and the project evidence links. Sources for Part I's materiality figures (M1 onwards) are in `MATERIALITY.md`, not here. It is optional depth: an evaluating agent can reach a full assessment from the core alone and should open this file only to check a detail.
 
 Section numbers in this file ("section 16", "section 33") refer to the full design narrative in `DESIGN.md`, which keeps the v0.4 numbering. History: https://github.com/warOnSaaS/wos/commits/main/docs/whitepaper
 

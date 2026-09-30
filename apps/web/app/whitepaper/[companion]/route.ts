@@ -1,6 +1,6 @@
 import { COMPANIONS, companionMarkdown } from "@/lib/whitepaper";
 
-// Companion files of the white paper as plain Markdown: /whitepaper/edge-cases.md, /design.md, /appendices.md, /sources.md.
+// Companion files of the white paper as plain Markdown: /whitepaper/materiality.md, /edge-cases.md, /design.md, /appendices.md, /sources.md.
 export const dynamic = "force-static";
 export const dynamicParams = false;
 

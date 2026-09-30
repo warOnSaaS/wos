@@ -81,6 +81,7 @@ const TOKEN_SYMBOL_PAGES = new Set([
   "whitepaper/read.html",
   "whitepaper.md.body",
   "whitepaper/download.body",
+  "whitepaper/materiality.md.body",
   "whitepaper/edge-cases.md.body",
   "whitepaper/design.md.body",
   "whitepaper/appendices.md.body",
