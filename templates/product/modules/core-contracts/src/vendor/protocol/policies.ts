@@ -447,8 +447,10 @@ export const ReviewPolicy = z.object({
      * re-review after bootstrap ends. Refused once bootstrap ends. Absent (v1): never.
      */
     bootstrapFounderMayHoldHumanSeatOnOwnWork: z.boolean().optional(),
-    /** D67: whether that founder may ALSO hold the agent seat of the same round. v2: false (independence rule unchanged). */
+    /** D67: whether that founder may ALSO hold the agent seat of the same round. v2: false; v3 (D71 solo bootstrap): true. */
     bootstrapFounderMayHoldBothSeats: z.boolean().optional(),
+    /** D71 (review-policy.v3): the founder's agent seat on own work skips the selfReviewAfterHours wait. */
+    bootstrapFounderSkipsSelfReviewWait: z.boolean().optional(),
     /** D67: the independence label of such a seat. */
     founderOwnWorkLabel: z.literal("bootstrap_self").optional(),
   }),

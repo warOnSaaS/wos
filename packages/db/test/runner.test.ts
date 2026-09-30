@@ -55,6 +55,8 @@ const ALL = [
   "0014_bootstrap_founder_human_seat",
   // 0015 is D69 candidate trials and the opencode provider (production).
   "0015_candidate_trials",
+  // 0016 is D71 (production): solo bootstrap under review-policy.v3.
+  "0016_solo_bootstrap",
 ];
 
 /** The first number after the last real migration: the runner tests add throwaway files there. */

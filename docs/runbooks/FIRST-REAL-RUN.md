@@ -149,6 +149,21 @@ The founder decided D67, so the ruling below now has an exception. Under `review
 6. **Human seat** by the founder after the Astra verdict: `wos review --human` (it says `seat bootstrap_self (D67)`).
 7. **Merge** (4.7): the founder's approval counts as the Code Owner review (see "Merge by the founder" below).
 
+### D71: solo bootstrap (contracts 5.18.0) — the exact steps
+
+Production state before this section, as reported by the coordinator: 0013 and 0014 are applied, the fallback is `fable_unavailable` (switch 1), and the policy is `review-policy.v2` with bootstrap founder `adventurini` (switch 2). D71 lets the founder hold both seats of his own roadmap: Astra on his own Codex, then the human seat. There is no 24-hour wait. Everything is labelled `bootstrap_self` with `single_lab_review`, and the work stays PROVISIONAL.
+
+1. **Migrations (coordinator):** apply `0016_solo_bootstrap.sql` (and ws/glm's 0015 when it lands; the two commute). Run `--check` first.
+2. **Switch to v3** (maintainer, no round awaiting reviews; step 4.3 snippet, a new Idempotency-Key, `POST https://api.waronsaas.com/v1/admin/actions`):
+   ```json
+   {"action": "switch_review_policy", "policyVersion": "review-policy.v3", "reason": "D71: solo bootstrap; the founder may hold the Astra seat and the human seat of his own work, bootstrap_self, PROVISIONAL"}
+   ```
+   The founder named by v2 carries over. Check: `/v1/public/status` shows `"policyVersion": "review-policy.v3", "bootstrapFounder": "adventurini", "fallback": "fable_unavailable"`.
+3. **Author run:** `wos roadmap <taskId> --model opus`. The round pins switch 3.
+4. **Astra by the founder, at once:** `wos review --slot astra --kind roadmap_review` (gpt-6-astra, max). It is labelled `bootstrap_self`.
+5. **Human seat by the founder:** `wos review --human`.
+6. **Merge:** see "Merge by the founder" below.
+
 ### Merge by the founder (ruleset 24267950)
 
 The `main` ruleset requires Code Owner review with 0 required approvals, no bypass actors, and has `require_extra_approval_for_unattributed_changes: true` (GitHub's newer default). The PR author is `waronsaas-wos[bot]` (checked on PR #2), not the founder, so GitHub's "you cannot approve your own pull request" does not apply. The founder is an active maintainer of `@waronsaas/maintainers`, which owns `/roadmaps/` and `/catalog/`, so his approval satisfies the Code Owner review. That one approval also covers the extra approval an unattributed commit would need, because the founder has write access. Before 5.16.0 the App authored commits as `waronsaas-wos[bot]@users.noreply.github.com`, a form GitHub may not attribute to the bot account. Since 5.16.0 it uses `335681065+waronsaas-wos[bot]@users.noreply.github.com`, the form PR #2's commit shows as attributed and verified. `dismiss_stale_reviews_on_push` is on, so approve after the App's last commit. NOT VERIFIED on a real document PR yet; confirm on the first one.

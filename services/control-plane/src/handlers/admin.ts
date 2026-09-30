@@ -378,8 +378,8 @@ export const adminHandlers: Pick<
             );
           let founderId: string | null = null;
           if (a.bootstrapFounder !== undefined) {
-            if (policyVersion !== "review-policy.v2")
-              throw new ApiFailure("VALIDATION_FAILED", "bootstrapFounder goes with review-policy.v2");
+            if (policyVersion === "review-policy.v1")
+              throw new ApiFailure("VALIDATION_FAILED", "bootstrapFounder goes with review-policy.v2 or later");
             const [f] = await tx<{ id: string; maintainer: boolean }[]>`
               select a.id, exists (select 1 from wos.account_roles r where r.account_id = a.id and r.role = 'maintainer') as maintainer
                 from wos.accounts a where lower(a.handle) = lower(${a.bootstrapFounder})`;
@@ -389,12 +389,13 @@ export const adminHandlers: Pick<
               throw new ApiFailure("CONFLICT", `the bootstrap founder is already ${current.bootstrapFounder}`);
             founderId = f.id;
           }
-          if (policyVersion === "review-policy.v2" && fromVersion !== "review-policy.v2") {
-            if (founderId === null)
-              throw new ApiFailure("VALIDATION_FAILED", "review-policy.v2 names the bootstrap founder (bootstrapFounder)");
+          if (policyVersion !== "review-policy.v1" && policyVersion !== fromVersion) {
+            // v2 (D67) and v3 (D71) are bootstrap exceptions naming the bootstrap founder (named once, then inherited).
+            if (founderId === null && !current.bootstrapFounder)
+              throw new ApiFailure("VALIDATION_FAILED", `${policyVersion} names the bootstrap founder (bootstrapFounder)`);
             const [b] = await tx<{ on: boolean }[]>`
               select coalesce((value ->> 'enabled')::boolean, false) as on from wos.platform_settings where key = 'bootstrap_mode'`;
-            if (!b?.on) throw new ApiFailure("CONFLICT", "review-policy.v2 is a bootstrap exception (D67) and bootstrap has ended");
+            if (!b?.on) throw new ApiFailure("CONFLICT", `${policyVersion} is a bootstrap exception (D67, D71) and bootstrap has ended`);
           }
           const seq = (current.switchSeq ?? 0) + 1;
           if (policyVersion === fromVersion && founderId === null)

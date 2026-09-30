@@ -1507,4 +1507,13 @@ select wos_test.expect_error($$insert into wos.review_policy_switches (seq, fall
   values (1, 'none', 'unknown version', '00000000-0000-0000-0000-00000000000c', 'review-policy.v9')$$, 'D67: an unknown policy version');
 do $$ begin raise notice 'ok: 0014 review policy versions'; end $$;
 
+-- 0016 (D71): review-policy.v3 ---------------------------------------------------------------------------------------------
+select wos_test.expect_error($$insert into wos.review_policy_switches (seq, fallback, reason, switched_by, policy_version)
+  values (1, 'none', 'v3 without a founder', '00000000-0000-0000-0000-00000000000c', 'review-policy.v3')$$,
+  'D71: review-policy.v3 without the bootstrap founder', 'names the bootstrap founder');
+select wos_test.expect_error($$insert into wos.review_policy_switches (seq, fallback, reason, switched_by, policy_version, bootstrap_founder_id)
+  values (1, 'none', 'after bootstrap', '00000000-0000-0000-0000-00000000000c', 'review-policy.v3', '00000000-0000-0000-0000-00000000000c')$$,
+  'D71: review-policy.v3 after bootstrap has ended', 'bootstrap has ended');
+do $$ begin raise notice 'ok: 0016 review-policy.v3'; end $$;
+
 \echo 'all db assertions passed'

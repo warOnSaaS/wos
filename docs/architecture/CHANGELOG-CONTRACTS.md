@@ -474,3 +474,15 @@ MINOR, additive, plus production migration 0015.
 - Orchestrator: opencode runs (binary resolution, output file, events: sub-agents with measured concurrency, fetches, tokens), the launch in claims and runs, `NETWORK_POLICY` after the fact, `MODEL_MISMATCH` when a claude endpoint answers as another model family. CLI: `wos roadmap <task> --provider opencode --model glm-5.3`.
 
 Affected workstreams: context-policy, github-build (orchestrator), control-plane, cli, desktop (labels), verification.
+## 5.18.0 — 2026-09-30 (D71: solo bootstrap)
+
+MINOR, additive, plus production migration 0016. 5.17.0 and migration 0015 are ws/glm's (D69 candidate trials), which are not on main yet; the two commute.
+- `review-policy.v3` (protocol data; v1 and v2 byte-identical): v2 plus `bootstrap.bootstrapFounderMayHoldBothSeats: true` and `bootstrapFounderSkipsSelfReviewWait: true`. The schema gains the optional `bootstrapFounderSkipsSelfReviewWait`; `REVIEW_POLICY_V3` is exported.
+- `ReviewPolicyVersion` gains `review-policy.v3`. `switch_review_policy` moves to it, inheriting the founder named by v2 (or naming one with `bootstrapFounder`).
+- Migration `0016_solo_bootstrap.sql` (**production**):
+  - `review_policy_switches` accepts v3 (forward-only; names the founder; refused after bootstrap ends);
+  - the human seat guard lets the founder named by the round's pinned v3 hold the human seat even though he holds the agent seat of the same round, on own work, while bootstrap is on.
+- Control plane:
+  - under a round pinned to v3, the named founder can claim the agent seat of his own subject: the author exclusion and the self-review wait are waived for him only. The agent-policy evaluator labels that review `bootstrap_self`, and the 0002 guard accepts it only in bootstrap and only for a maintainer;
+  - same-model refusal, Astra-first ordering and the labels are unchanged;
+  - reads stay tolerant: without 0016, the database refuses a v3 switch, so nothing changes.

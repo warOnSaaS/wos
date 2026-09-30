@@ -455,3 +455,14 @@ These override `docs/V1-SPEC.md` where they differ. Date: 2026-09-29.
 - Everything that writes or judges code stays offline: builder, implementation reviewers, resolver (and triage and sweeps when they exist; sweeps local-only). The one exception: a build unit that claims `lockfile:` or `dep:` exclusive may reach the package registry only (`registry.npmjs.org`).
 - Enforcement per adapter: claude natively (WebFetch domain rules, WebSearch, only for research plans); opencode after the fact (webfetch and websearch allowed only for research plans; opencode 1.18.31 refuses a URL pattern map for webfetch, checked with `opencode debug config`; sub-agents denied web); codex only after the fact (web search cannot be limited to domains and its result URLs are not observable; queries are logged). For every adapter the orchestrator checks each fetched URL against the plan's allowlist after the run and refuses the submission if one is off the list; the control plane and agent-policy refuse a plan whose web the role does not allow.
 - Encoded as agent-policy.v2 (v1 unchanged); AGENT-POLICY.md section 9; SECURITY.md S-47. Contracts 5.17.0.
+## D71. Solo bootstrap: the founder may hold both seats of a round on the founder's own work (coordinator ruling for the founder, 2026-09-30)
+- The founder: "there is no way I am set up for other reviewers yet … that cannot be baked in this early". So while bootstrap is on (D23/D54, F31), the bootstrap founder named by the review policy may:
+  - (a) run the agent seat (Astra, on the founder's own Codex) AND hold the D53 human seat of the same round, on work the founder's account authored;
+  - (b) do so without the 24-hour self-review wait (`selfReviewAfterHours`).
+- What still holds:
+  - the agent seat's model is never the author's model (Astra for Opus- or GLM-authored work; a candidate-trial author under D69 is matched by the model id its run recorded);
+  - the human seat opens only after the agent verdict is sealed;
+  - everything is labelled `bootstrap_self` and `single_lab_review` in public (round, `round.revealed`, PR comment, provenance);
+  - the work stays PROVISIONAL (D23) and gets the independent re-review of REVIEW-PROTOCOL section 9 "After exit";
+  - it is refused for anyone except the named founder, and for everyone once bootstrap ends.
+- Encoded as `review-policy.v3` (`bootstrapFounderMayHoldBothSeats: true`, `bootstrapFounderSkipsSelfReviewWait: true`). v1 and v2 are unchanged. It is activated by the same forward-only `switch_review_policy`, and a round follows the policy in force when it opened. Contracts 5.18.0, migration 0016.

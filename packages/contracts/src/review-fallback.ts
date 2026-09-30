@@ -28,8 +28,9 @@ export type SecondSeat = z.infer<typeof SecondSeat>;
 /**
  * Review policy versions of the V1 control plane, in order (switches only move forward). v2 = D67: while bootstrap is on,
  * the bootstrap founder may hold the D53 human seat on the founder's own work (labelled bootstrap_self, PROVISIONAL).
+ * v3 = D71 (solo bootstrap): the founder may also hold the agent seat of the same round, without the self-review wait.
  */
-export const ReviewPolicyVersion = z.enum(["review-policy.v1", "review-policy.v2"]);
+export const ReviewPolicyVersion = z.enum(["review-policy.v1", "review-policy.v2", "review-policy.v3"]);
 export type ReviewPolicyVersion = z.infer<typeof ReviewPolicyVersion>;
 export const REVIEW_POLICY_VERSIONS: readonly ReviewPolicyVersion[] = ReviewPolicyVersion.options;
 

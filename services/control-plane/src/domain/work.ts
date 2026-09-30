@@ -304,6 +304,11 @@ export interface EligibilityFacts {
   claimedModel?: ModelRef | null;
   /** Builder claims (D13): the ABU's write scopes and the repository manifest at the source commit. */
   builder?: { writeScopes: string[]; manifest: RepoManifest | null };
+  /**
+   * D71 (review-policy.v3, solo bootstrap): the named bootstrap founder's agent seat on own work skips the
+   * selfReviewAfterHours wait. The caller decides it from the round's pinned policy (founderException).
+   */
+  selfReviewWaitWaived?: boolean;
 }
 
 export async function evaluateEligibility(tx: Tx, deps: Deps, f: EligibilityFacts): Promise<EligibilityResult> {
@@ -320,6 +325,7 @@ export async function evaluateEligibility(tx: Tx, deps: Deps, f: EligibilityFact
     const [h] = await tx<{ h: number }[]>`select extract(epoch from now() - ${f.task.created_at}::timestamptz)::float8 / 3600 as h`;
     taskOpenHours = h?.h ?? 0;
   }
+  if (f.selfReviewWaitWaived) taskOpenHours = Math.max(taskOpenHours, deps.policy.bootstrap.selfReviewAfterHours);
   const [clock] = await tx<{ now: Date }[]>`select now() as now`;
   // Builder facts the evaluator requires (context-policy Wave 2b): active build leases per provider and the toolchain.
   let builderFacts: {

@@ -34,6 +34,7 @@ import { buildPlan, renderServerDocument } from "../domain/plans.js";
 import { createContribution } from "../domain/ledger.js";
 import { activeTrialFor, activeTrialsOf, candidateClaimRefusals, documentTrialLabel, recordTrialClaim } from "../domain/trials.js";
 import { agentSeatRefusals, revealRound, roundComplete, subjectAuthors } from "../domain/review.js";
+import { founderException } from "../domain/human-review.js";
 import {
   abuTransition,
   acquireLocks,
@@ -341,17 +342,33 @@ export const workHandlers: Pick<
     return inTransaction(deps.sql, SYSTEM_TX, async (tx) => {
       const candidates = await queryTasks(
         tx,
-        `where t.kind = any($1::text[]) and t.reviewer_slot = $2 and t.state = 'open' and not ($3::uuid = any(t.excluded_account_ids))
+        `where t.kind = any($1::text[]) and t.reviewer_slot = $2 and t.state = 'open'
+           and (not ($3::uuid = any(t.excluded_account_ids))
+                -- D71 (review-policy.v3, solo bootstrap): the founder it names may take the agent seat of own work; the
+                -- eligibility below re-checks bootstrap and authorship.
+                or exists (select 1 from wos.rounds r join wos.review_policy_switches s on s.seq = r.review_policy_seq
+                            where r.id = t.round_id and to_jsonb(s) ->> 'policy_version' = 'review-policy.v3'
+                              and to_jsonb(s) ->> 'bootstrap_founder_id' = $3::text))
          order by t.created_at, random() limit 50`,
         [kinds, slot, caller.accountId],
       );
       for (const task of candidates) {
         const [round] = await tx<
-          { id: string; attempt_id: string | null; document_id: string | null; round_number: number; head_sha: string; state: string }[]
+          {
+            id: string;
+            attempt_id: string | null;
+            document_id: string | null;
+            round_number: number;
+            head_sha: string;
+            state: string;
+            review_policy_seq: number | null;
+          }[]
         >`
-          select id, attempt_id, document_id, round_number, head_sha, state from wos.rounds where id = ${task.round_id}`;
+          select id, attempt_id, document_id, round_number, head_sha, state, review_policy_seq from wos.rounds where id = ${task.round_id}`;
         if (round?.state !== "awaiting_reviews") continue;
         const authors = await subjectAuthors(tx, round);
+        // D71: the solo-bootstrap founder on own work (bootstrap on, v3 pinned): no exclusion, no self-review wait.
+        const solo = authors.includes(caller.accountId) && (await founderException(tx, round.review_policy_seq, caller.accountId)).skipWait;
         const [other] = await tx<{ account_id: string }[]>`
           select l.account_id from wos.tasks t2 join wos.leases l on l.task_id = t2.id
            where t2.round_id = ${round.id} and t2.reviewer_slot <> ${slot} and l.state in ('active', 'completed')
@@ -365,7 +382,8 @@ export const workHandlers: Pick<
           accountId: caller.accountId,
           deviceId,
           role: roleForTask(task.kind, slot as ReviewerSlot),
-          task,
+          task: solo ? { ...task, excluded_account_ids: task.excluded_account_ids.filter((x) => x !== caller.accountId) } : task,
+          ...(solo ? { selfReviewWaitWaived: true } : {}),
           subjectAuthorIds: authors,
           otherSlotReviewerId: other?.account_id ?? null,
           reviewsOfSameAuthorLast7d: same?.n ?? 0,
@@ -974,6 +992,9 @@ export const workHandlers: Pick<
       if (!run) throw new ApiFailure("VALIDATION_FAILED", "agentRunId is not a run recorded for this lease");
       if (!run.signature_valid) throw new ApiFailure("VALIDATION_FAILED", "the agent run's device signature is not valid");
       const authors = await subjectAuthors(tx, round);
+      const [pin] = await tx<{ review_policy_seq: number | null }[]>`select review_policy_seq from wos.rounds where id = ${round.id}`;
+      const solo =
+        authors.includes(caller.accountId) && (await founderException(tx, pin?.review_policy_seq ?? null, caller.accountId)).skipWait;
       const [other] = await tx<
         { account_id: string }[]
       >`select account_id from wos.reviews where round_id = ${round.id} and slot <> ${task.reviewer_slot}`;
@@ -982,6 +1003,7 @@ export const workHandlers: Pick<
         deviceId: l.device_id,
         role: roleForTask(task.kind, task.reviewer_slot),
         task: { ...task, excluded_account_ids: task.excluded_account_ids.filter((x) => x !== caller.accountId) },
+        ...(solo ? { selfReviewWaitWaived: true } : {}),
         subjectAuthorIds: authors,
         otherSlotReviewerId: other?.account_id ?? null,
         reviewsOfSameAuthorLast7d: 0,

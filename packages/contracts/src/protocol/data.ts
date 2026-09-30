@@ -9,6 +9,7 @@ import mergeJson from "./data/merge-policy.v1.json" with { type: "json" };
 import oracleJson from "./data/model-rate-oracle.v1.json" with { type: "json" };
 import reviewJson from "./data/review-policy.v1.json" with { type: "json" };
 import reviewV2Json from "./data/review-policy.v2.json" with { type: "json" };
+import reviewV3Json from "./data/review-policy.v3.json" with { type: "json" };
 import rewardJson from "./data/reward-policy.v1.json" with { type: "json" };
 import rewardV2Json from "./data/reward-policy.v2.json" with { type: "json" };
 import riskJson from "./data/risk-policy.v1.json" with { type: "json" };
@@ -34,6 +35,11 @@ export const REVIEW_POLICY_V1: ReviewPolicy = ReviewPolicy.parse(reviewJson);
  * founder may hold it on the founder's own work, labelled bootstrap_self, PROVISIONAL, refused once bootstrap ends).
  */
 export const REVIEW_POLICY_V2: ReviewPolicy = ReviewPolicy.parse(reviewV2Json);
+/**
+ * D71 (contracts 5.18.0), solo bootstrap: v2 plus the founder may also hold the agent seat of the same round on own work,
+ * without the self-review wait; everything labelled bootstrap_self, PROVISIONAL, refused once bootstrap ends.
+ */
+export const REVIEW_POLICY_V3: ReviewPolicy = ReviewPolicy.parse(reviewV3Json);
 export const CAPABILITY_POLICY_V1: AgentCapabilityPolicy = AgentCapabilityPolicy.parse(capabilityJson);
 export const USAGE_PROOF_POLICY_V1: UsageProofPolicy = UsageProofPolicy.parse(usageJson);
 export const RISK_POLICY_V1: RiskPolicy = RiskPolicy.parse(riskJson);
