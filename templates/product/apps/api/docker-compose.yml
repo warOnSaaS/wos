@@ -1,0 +1,69 @@
+# Self-hosted wOS: Postgres, wOS Core (WOS_APPS decides what runs) and wOS Web.
+#   cp .env.example .env   (fill in the secrets and the owner's email)
+#   (cd ../web && npm run build) && npm run build
+#   docker compose up -d --build
+# Then open http://localhost:3000 and sign in; with no SMTP set up, the code is in `docker compose logs core`.
+# Postgres sits on an internal network (no route out). Core never calls warOnSaaS, whatever the network allows (S-41).
+name: wos
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: wos
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: wos
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wos -d wos"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  core:
+    build: .
+    environment:
+      WOS_MODE: self_hosted
+      WOS_APPS: ${WOS_APPS:-crm}
+      WOS_ENVIRONMENT_NAME: ${WOS_ENVIRONMENT_NAME:-Self-hosted wOS}
+      WOS_ORG_NAME: ${WOS_ORG_NAME:-Organization}
+      WOS_PUBLIC_URL: ${WOS_PUBLIC_URL:-http://localhost:8080}
+      WOS_CORE_SECRET: ${WOS_CORE_SECRET:?set WOS_CORE_SECRET in .env (32+ characters)}
+      WOS_OWNER_EMAIL: ${WOS_OWNER_EMAIL:?set WOS_OWNER_EMAIL in .env}
+      WOS_ALLOWED_EMAILS: ${WOS_ALLOWED_EMAILS:-}
+      WOS_MIGRATE_ON_START: "true"
+      CORE_DATABASE_URL: postgres://wos:${POSTGRES_PASSWORD}@postgres:5432/wos
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [backend, edge]
+    ports: ["${WOS_CORE_PORT:-8080}:8080"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/v1/core/health"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  web:
+    build: ../web
+    environment:
+      WOS_CORE_URL: http://core:8080
+      WOS_WEB_SESSION_SECRET: ${WOS_WEB_SESSION_SECRET:?set WOS_WEB_SESSION_SECRET in .env (32+ characters)}
+      WOS_WEB_PUBLIC_URL: ${WOS_WEB_PUBLIC_URL:-http://localhost:3000}
+    depends_on:
+      core:
+        condition: service_healthy
+    networks: [edge]
+    ports: ["${WOS_WEB_PORT:-3000}:3000"]
+    restart: unless-stopped
+
+networks:
+  backend:
+    internal: true
+  edge: {}
+
+volumes:
+  pgdata: {}

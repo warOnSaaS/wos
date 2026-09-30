@@ -1,20 +1,9 @@
 /**
- * Serves `Routes` (packages/contracts/src/api.ts) exactly: one Hono route per entry, with the route's
+ * Serves `{ ...Routes, ...AppRoutes }` (packages/contracts/src/api.ts) exactly: one Hono route per entry, with the route's
  * auth mode, zod validation of params/query/body, idempotency, write rate limits, and validation of
  * every response against the route's response schema before it is sent.
  */
-import {
-  type ApiErrorCode,
-  type AuthMode,
-  CONTRACTS_VERSION,
-  type RouteBody,
-  type RouteDef,
-  type RouteName,
-  type RouteParams,
-  type RouteQuery,
-  type RouteResponse,
-  Routes,
-} from "@waronsaas/contracts";
+import { type ApiErrorCode, AppRoutes, type AuthMode, CONTRACTS_VERSION, type RouteDef, Routes } from "@waronsaas/contracts";
 import { inTransaction } from "@waronsaas/db";
 import { Hono, type Context } from "hono";
 import { generateCookie, getCookie } from "hono/cookie";
@@ -23,6 +12,17 @@ import type { Deps } from "../deps.js";
 import { ApiFailure, HTTP_STATUS, isConflictPgError } from "../errors.js";
 import { constantTimeEqual, tokenHash, uuidv7 } from "../util/crypto.js";
 import { sha256Of } from "@waronsaas/contracts/canonical";
+
+/** Every route the control plane serves: the platform routes and, from Wave 3, the one-product routes (WORKSTREAMS 12). */
+export const AllRoutes = { ...Routes, ...AppRoutes } as const;
+/** A route of `Routes` or `AppRoutes`. */
+export type AnyRouteName = keyof typeof AllRoutes;
+type RouteOfAny<N extends AnyRouteName> = (typeof AllRoutes)[N];
+/** zod v4 output types of a route's schemas (the same types `z.infer` gives, without a direct zod dependency). */
+export type AnyRouteResponse<N extends AnyRouteName> = RouteOfAny<N>["response"]["_output"];
+export type AnyRouteBody<N extends AnyRouteName> = RouteOfAny<N>["body"]["_output"];
+export type AnyRouteParams<N extends AnyRouteName> = RouteOfAny<N>["params"]["_output"];
+export type AnyRouteQuery<N extends AnyRouteName> = RouteOfAny<N>["query"]["_output"];
 
 export interface Caller {
   accountId: string;
@@ -44,11 +44,11 @@ export interface CookieSpec {
   path?: string;
 }
 
-export interface HandlerCtx<N extends RouteName> {
+export interface HandlerCtx<N extends AnyRouteName> {
   name: N;
-  params: RouteParams<N>;
-  query: RouteQuery<N>;
-  body: RouteBody<N>;
+  params: AnyRouteParams<N>;
+  query: AnyRouteQuery<N>;
+  body: AnyRouteBody<N>;
   /** Raw request body text (webhook signatures). */
   rawBody: string;
   /** Set for account/contributor/maintainer routes. */
@@ -65,9 +65,9 @@ export interface HandlerCtx<N extends RouteName> {
   redirectTo: string | null;
 }
 
-export type Handler<N extends RouteName> = (ctx: HandlerCtx<N>) => Promise<RouteResponse<N>>;
+export type Handler<N extends AnyRouteName> = (ctx: HandlerCtx<N>) => Promise<AnyRouteResponse<N>>;
 /** Every route of the contract must have a handler: a missing one is a compile error. */
-export type Handlers = { [N in RouteName]: Handler<N> };
+export type Handlers = { [N in AnyRouteName]: Handler<N> };
 
 /** Error codes every route may return in addition to its own `errors` list. */
 const IMPLICIT: Record<AuthMode, readonly ApiErrorCode[]> = {
@@ -95,9 +95,9 @@ export function createApp(deps: Deps, handlers: Handlers): Hono {
     }),
   );
   app.get("/v1/health", (c) => c.json({ ok: true, contractsVersion: CONTRACTS_VERSION, policyVersion: deps.policy.policyVersion }));
-  for (const name of Object.keys(Routes) as RouteName[]) {
-    const route = Routes[name] as RouteDef;
-    app.on(route.method, route.path, (c) => dispatch(c, name, route, handlers[name] as unknown as Handler<RouteName>, deps));
+  for (const name of Object.keys(AllRoutes) as AnyRouteName[]) {
+    const route = AllRoutes[name] as RouteDef;
+    app.on(route.method, route.path, (c) => dispatch(c, name, route, handlers[name] as unknown as Handler<AnyRouteName>, deps));
   }
   app.notFound((c) => c.json(envelope("NOT_FOUND", "no such route", uuidv7()), 404));
   app.onError((err, c) => {
@@ -117,7 +117,7 @@ function clientIp(c: Context): string {
   return c.req.header("x-real-ip") ?? "0.0.0.0";
 }
 
-async function dispatch(c: Context, name: RouteName, route: RouteDef, handler: Handler<RouteName>, deps: Deps): Promise<Response> {
+async function dispatch(c: Context, name: AnyRouteName, route: RouteDef, handler: Handler<AnyRouteName>, deps: Deps): Promise<Response> {
   const requestId = uuidv7();
   const cookiesOut: string[] = [];
   // api.ts: every idempotent route may answer 422 IDEMPOTENCY_MISMATCH (header rule, not in each route's list).
@@ -204,7 +204,7 @@ async function dispatch(c: Context, name: RouteName, route: RouteDef, handler: H
     }
 
     // ---- handler
-    const ctx: HandlerCtx<RouteName> = {
+    const ctx: HandlerCtx<AnyRouteName> = {
       name,
       params: params.data as never,
       query: query.data as never,

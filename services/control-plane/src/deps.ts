@@ -33,6 +33,7 @@ import {
 import { computeLedgerDrafts, computeReleaseDrafts } from "@waronsaas/rewards";
 import { validateChangeset } from "@waronsaas/verification";
 import { ApiFailure } from "./errors.js";
+import type { AppKeys } from "./domain/app-keys.js";
 
 export type GithubUserIdentity = githubApp.GithubUserIdentity;
 export type CommitIdentity = githubApp.CommitIdentity;
@@ -192,6 +193,13 @@ export interface Deps {
   policy: AgentPolicyDocument;
   schedule: RewardSchedule;
   log: Logger;
+  /**
+   * Wave 3 (Amendment 01): the environment-token signing keys and the module-signing public keys the registry
+   * re-verifies releases with (`appKeysFromEnv`). Absent: no token can be minted and no desktop package published.
+   */
+  appKeys?: AppKeys;
+  /** Downloads a module bundle for publish verification and its registry sha256 (default: global fetch, https only). */
+  fetchBytes?: (url: string) => Promise<Uint8Array>;
   /**
    * Test hook: when set, the router reports every error code a handler returns that the route's
    * contract does not list, instead of silently sending it.
