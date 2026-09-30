@@ -1,0 +1,296 @@
+{
+  "policyVersion": "capability-policy.v1",
+  "status": "draft",
+  "classes": [
+    {
+      "id": "BUILD_L4",
+      "description": "Builds any ABU size",
+      "qualified": [
+        {
+          "provider": "claude_cli",
+          "modelId": "claude-opus-5-5",
+          "minReasoning": "high",
+          "qualifiedBy": "founder_bootstrap",
+          "evalSuiteVersion": null
+        },
+        {
+          "provider": "codex_cli",
+          "modelId": "gpt-6-astra",
+          "minReasoning": "high",
+          "qualifiedBy": "founder_bootstrap",
+          "evalSuiteVersion": null
+        }
+      ]
+    },
+    {
+      "id": "BUILD_L3",
+      "description": "Builds ABUs of size 1-2",
+      "qualified": [
+        {
+          "provider": "codex_cli",
+          "modelId": "gpt-6-sol",
+          "minReasoning": "high",
+          "qualifiedBy": "founder_bootstrap",
+          "evalSuiteVersion": null
+        }
+      ]
+    },
+    {
+      "id": "PLAN_L1",
+      "description": "Authors roadmaps and feature contracts",
+      "qualified": [
+        {
+          "provider": "claude_cli",
+          "modelId": "claude-fable-5-1",
+          "minReasoning": "max",
+          "qualifiedBy": "founder_bootstrap",
+          "evalSuiteVersion": null
+        },
+        {
+          "provider": "claude_cli",
+          "modelId": "claude-opus-5-5",
+          "minReasoning": "max",
+          "qualifiedBy": "founder_bootstrap",
+          "evalSuiteVersion": null
+        },
+        {
+          "provider": "codex_cli",
+          "modelId": "gpt-6-astra",
+          "minReasoning": "max",
+          "qualifiedBy": "founder_bootstrap",
+          "evalSuiteVersion": null
+        }
+      ]
+    },
+    {
+      "id": "REVIEW_A",
+      "description": "Required agent review slot A (V1: Astra)",
+      "qualified": [
+        {
+          "provider": "codex_cli",
+          "modelId": "gpt-6-astra",
+          "minReasoning": "max",
+          "qualifiedBy": "founder_bootstrap",
+          "evalSuiteVersion": null
+        }
+      ]
+    },
+    {
+      "id": "REVIEW_B",
+      "description": "Required agent review slot B (V1: Fable)",
+      "qualified": [
+        {
+          "provider": "claude_cli",
+          "modelId": "claude-fable-5-1",
+          "minReasoning": "max",
+          "qualifiedBy": "founder_bootstrap",
+          "evalSuiteVersion": null
+        }
+      ]
+    },
+    {
+      "id": "ARCHITECT_L1",
+      "description": "Architecture conflict resolution",
+      "qualified": [
+        {
+          "provider": "claude_cli",
+          "modelId": "claude-fable-5-1",
+          "minReasoning": "max",
+          "qualifiedBy": "founder_bootstrap",
+          "evalSuiteVersion": null
+        }
+      ]
+    }
+  ],
+  "taskRequirements": [
+    {
+      "taskKind": "abu_build",
+      "capability": "BUILD_L3",
+      "minSizePointsForL4": 3
+    },
+    {
+      "taskKind": "abu_revision",
+      "capability": "BUILD_L3",
+      "minSizePointsForL4": 3
+    },
+    {
+      "taskKind": "roadmap_author",
+      "capability": "PLAN_L1",
+      "minSizePointsForL4": null
+    },
+    {
+      "taskKind": "feature_author",
+      "capability": "PLAN_L1",
+      "minSizePointsForL4": null
+    },
+    {
+      "taskKind": "implementation_review",
+      "capability": "REVIEW_A",
+      "minSizePointsForL4": null
+    },
+    {
+      "taskKind": "roadmap_review",
+      "capability": "REVIEW_A",
+      "minSizePointsForL4": null
+    },
+    {
+      "taskKind": "feature_review",
+      "capability": "REVIEW_A",
+      "minSizePointsForL4": null
+    },
+    {
+      "taskKind": "conflict_resolution",
+      "capability": "ARCHITECT_L1",
+      "minSizePointsForL4": null
+    }
+  ],
+  "candidates": [
+    {
+      "key": "glm",
+      "provider": "zai",
+      "modelIdPattern": "glm-5.*",
+      "status": "candidate",
+      "allowedRoles": [],
+      "targetClasses": ["BUILD_L1", "BUILD_L2"],
+      "reviewerOrResolverRequiresSeparateQualification": true,
+      "launchPaths": [
+        {
+          "kind": "claude_cli_anthropic_compatible",
+          "status": "documented",
+          "env": {
+            "ANTHROPIC_BASE_URL": "the contributor's Z.ai Anthropic-compatible endpoint (value UNVERIFIED until checked on Z.ai's docs)",
+            "ANTHROPIC_AUTH_TOKEN": "the contributor's own GLM Coding Plan key; never read or stored by wOS",
+            "ANTHROPIC_MODEL": "the GLM model id (glm-5.x)"
+          },
+          "identity": "self_reported",
+          "notes": "claude CLI pointed at Z.ai's Anthropic-compatible endpoint (how most GLM Coding Plan users run it). The orchestrator detects ANTHROPIC_BASE_URL (env or claude settings) and records base URL and provider as declared in the run record; a non-Anthropic base URL never passes as an Anthropic model."
+        },
+        {
+          "kind": "zcode_cli",
+          "status": "later",
+          "env": {},
+          "identity": "self_reported",
+          "notes": "Z.ai's open-source ZCode CLI (zcode, Sept 2026): an adapter is noted for later, not built."
+        }
+      ],
+      "qualificationSuite": "model-qualification.build-l1-l2.v1"
+    }
+  ],
+  "assignment": {
+    "rankingPolicyVersion": "build-next-ranking.v1",
+    "modes": ["self_pick", "assigned_next"],
+    "weights": {
+      "reuse": 100,
+      "unlock": 60,
+      "ageingPerEpoch": 25
+    },
+    "ageingCapEpochs": 8,
+    "focus": [
+      {
+        "target": "salesforce",
+        "capabilityClass": null,
+        "priority": 200
+      },
+      {
+        "target": "salesforce",
+        "capabilityClass": "BUILD_L3",
+        "priority": 50
+      }
+    ],
+    "tieBreak": "unit_id_ascending",
+    "assignedOnlyWindowMinutes": 0
+  },
+  "qualificationSuites": [
+    {
+      "suiteVersion": "model-qualification.build-l1-l2.v1",
+      "targetClass": "BUILD_L1",
+      "mode": "devnet_shadow",
+      "unitsManifestSha256": null,
+      "passThresholds": {
+        "minUnits": 20,
+        "minAcceptedOfAcceptableBp": 8000,
+        "maxAcceptedOfRejectedBp": 500
+      },
+      "recordedPer": "model_version",
+      "affectsBudgets": false
+    },
+    {
+      "suiteVersion": "model-qualification.build-l1-l2.v1",
+      "targetClass": "BUILD_L2",
+      "mode": "devnet_shadow",
+      "unitsManifestSha256": null,
+      "passThresholds": {
+        "minUnits": 20,
+        "minAcceptedOfAcceptableBp": 8000,
+        "maxAcceptedOfRejectedBp": 500
+      },
+      "recordedPer": "model_version",
+      "affectsBudgets": false
+    }
+  ],
+  "budgets": [
+    {
+      "taskKind": "abu_build",
+      "baseMicro": "0",
+      "perSizePointMicro": "4000000",
+      "peerBaseline": {
+        "minSamples": 30,
+        "headroomBp": 12500
+      }
+    },
+    {
+      "taskKind": "implementation_review",
+      "baseMicro": "3000000",
+      "perSizePointMicro": "1000000",
+      "peerBaseline": {
+        "minSamples": 30,
+        "headroomBp": 12500
+      }
+    },
+    {
+      "taskKind": "roadmap_author",
+      "baseMicro": "60000000",
+      "perSizePointMicro": "0",
+      "peerBaseline": {
+        "minSamples": 10,
+        "headroomBp": 12500
+      }
+    },
+    {
+      "taskKind": "roadmap_review",
+      "baseMicro": "15000000",
+      "perSizePointMicro": "0",
+      "peerBaseline": {
+        "minSamples": 10,
+        "headroomBp": 12500
+      }
+    },
+    {
+      "taskKind": "feature_author",
+      "baseMicro": "30000000",
+      "perSizePointMicro": "0",
+      "peerBaseline": {
+        "minSamples": 10,
+        "headroomBp": 12500
+      }
+    },
+    {
+      "taskKind": "feature_review",
+      "baseMicro": "10000000",
+      "perSizePointMicro": "0",
+      "peerBaseline": {
+        "minSamples": 10,
+        "headroomBp": 12500
+      }
+    },
+    {
+      "taskKind": "conflict_resolution",
+      "baseMicro": "10000000",
+      "perSizePointMicro": "0",
+      "peerBaseline": {
+        "minSamples": 10,
+        "headroomBp": 12500
+      }
+    }
+  ]
+}

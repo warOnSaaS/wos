@@ -1,0 +1,55 @@
+{
+  "policyVersion": "governance-policy.v1",
+  "status": "draft",
+  "mode": "founder",
+  "activation": {
+    "minEligibleVoters": 50,
+    "minLockedBase": "10000000000000",
+    "maxSingleVoterShareBp": 2000
+  },
+  "lock": {
+    "minRemainingDays": 365,
+    "weightRule": "full_while_remaining_at_least_min",
+    "perWalletCapBp": 500,
+    "seasoningEpochs": 1
+  },
+  "contribution": {
+    "windowEpochs": 26,
+    "decay": "linear_age_out"
+  },
+  "lockedVoterMustHaveContributed": true,
+  "votingHours": 168,
+  "timelockEpochs": 1,
+  "limits": {
+    "maxSliceChangeBp": 500,
+    "maxOracleChangeBp": 3000
+  },
+  "emergency": {
+    "multisigThreshold": "3-of-5",
+    "pauseMaxHours": 336
+  },
+  "tiers": {
+    "routine": {
+      "thresholdBp": 6000,
+      "turnoutLockedBp": 2000,
+      "turnoutContributionBp": 2000
+    },
+    "structural": {
+      "thresholdBp": 7000,
+      "turnoutLockedBp": 3000,
+      "turnoutContributionBp": 3000
+    },
+    "governance": {
+      "thresholdBp": 7500,
+      "turnoutLockedBp": 4000,
+      "turnoutContributionBp": 4000
+    },
+    "emergency_ratification": {
+      "thresholdBp": 5001,
+      "turnoutLockedBp": 1000,
+      "turnoutContributionBp": 1000
+    }
+  },
+  "orgCapBp": 1000,
+  "beneficialOwner": "organization_or_person_with_all_controlled_accounts_and_wallets"
+}

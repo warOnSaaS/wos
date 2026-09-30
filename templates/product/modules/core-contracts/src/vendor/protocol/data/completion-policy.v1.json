@@ -1,0 +1,23 @@
+{
+  "policyVersion": "completion-policy.v1",
+  "status": "draft",
+  "feature": {
+    "implementersBp": 7500,
+    "contractAuthorsBp": 1000,
+    "roadmapAuthorsBp": 500,
+    "reviewersBp": 800,
+    "finderBp": 200
+  },
+  "application": {
+    "basis": "lifetime_weight_on_target"
+  },
+  "completeness": {
+    "requireEverySurfaceInProfile": true,
+    "requireAcceptanceSuite": true,
+    "requireSecurityReview": true,
+    "requireExitRightsCheck": true
+  },
+  "definitionChange": "append_new_version",
+  "sharedFeatureAccrual": "equal_split_across_referencing_targets",
+  "returnAfterEpochs": 52
+}

@@ -1,0 +1,35 @@
+{
+  "policyVersion": "genesis-policy.v1",
+  "status": "draft",
+  "capBase": "5000000000000",
+  "cutoff": {
+    "description": "Work merged to waronsaas/wos main before the first ContributionReceipt of epoch 1",
+    "lastPreProtocolCommit": null
+  },
+  "valuation": {
+    "method": "accepted_output_reference",
+    "referenceEpochs": {
+      "from": 1,
+      "to": 12
+    },
+    "minReferenceReceipts": 30,
+    "referencePopulation": "frozen_list_reviewed_independently_excluding_genesis_beneficiaries_and_related_parties",
+    "fallbackBasePerSizePoint": "400000000"
+  },
+  "vesting": {
+    "startsAt": "mainnet_launch",
+    "durationDays": 730,
+    "cliffDays": 0
+  },
+  "review": {
+    "riskClass": "protocol",
+    "founderMayReview": false,
+    "minIndependentHumans": 2
+  },
+  "mintOnDevnet": false,
+  "excludes": {
+    "provisionalReceipts": true,
+    "testEpochs": true
+  },
+  "canonicalMapping": "each_commit_maps_to_exactly_one_retro_unit"
+}

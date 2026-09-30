@@ -1,0 +1,49 @@
+{
+  "oracleVersion": "oracle.v1",
+  "status": "draft",
+  "effectiveEpoch": 1,
+  "calibration": "1 ACU = the provider's published standard API list price of USD 1 for the same tokens, as captured in this version. ACU is a unit of compute, never shown as money. Rates are micro-ACU per million tokens.",
+  "maxChangePerVersionBp": 3000,
+  "rates": [
+    {
+      "provider": "claude_cli",
+      "modelId": "claude-opus-5-5",
+      "inputPerM": 4000000,
+      "cachedInputPerM": 200000,
+      "cacheWritePerM": 5000000,
+      "outputPerM": 20000000,
+      "source": "Anthropic model table in the claude-api reference (cached 2026-09-25): $4 in, $20 out, cache reads $0.20; cache write = 1.25x input (5-minute TTL). 1-hour cache writes (observed in Claude Code transcripts) are priced as 5-minute writes here: UNVERIFIED. Check platform.claude.com pricing before activation.",
+      "verified": false
+    },
+    {
+      "provider": "claude_cli",
+      "modelId": "claude-fable-5-1",
+      "inputPerM": 10000000,
+      "cachedInputPerM": 250000,
+      "cacheWritePerM": 12500000,
+      "outputPerM": 50000000,
+      "source": "Anthropic model table in the claude-api reference (cached 2026-09-25): $10 in, $50 out, 'cache reads at $0.25/MTok'. The cache-read figure is unusually low (0.025x input vs 0.1x elsewhere): SUSPECT, verify before activation.",
+      "verified": false
+    },
+    {
+      "provider": "codex_cli",
+      "modelId": "gpt-6-astra",
+      "inputPerM": 10000000,
+      "cachedInputPerM": 1000000,
+      "cacheWritePerM": 12500000,
+      "outputPerM": 50000000,
+      "source": "Third-party summaries of OpenAI standard API pricing found by web search 2026-09-29 ($10 in, $50 out, cached $1, cache write $12.50; >272K-token prompts priced higher, ignored here). UNVERIFIED against openai.com.",
+      "verified": false
+    },
+    {
+      "provider": "codex_cli",
+      "modelId": "gpt-6-sol",
+      "inputPerM": 2000000,
+      "cachedInputPerM": 200000,
+      "cacheWritePerM": 2500000,
+      "outputPerM": 10000000,
+      "source": "Third-party summaries of OpenAI standard API pricing found by web search 2026-09-29 ($2 in, $10 out, cached $0.20, cache write $2.50). UNVERIFIED against openai.com.",
+      "verified": false
+    }
+  ]
+}

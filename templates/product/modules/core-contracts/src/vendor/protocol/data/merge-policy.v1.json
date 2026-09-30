@@ -1,0 +1,15 @@
+{
+  "policyVersion": "merge-policy.v1",
+  "status": "draft",
+  "requireQualified": true,
+  "requireReviewPolicySatisfied": true,
+  "mergeMethod": "merge_queue",
+  "maintainerApprovalPathGlobs": [
+    "wos.json",
+    "package.json",
+    "package-lock.json",
+    "packages/contracts/**",
+    "packages/db/migrations/**",
+    "docs/protocol/**"
+  ]
+}

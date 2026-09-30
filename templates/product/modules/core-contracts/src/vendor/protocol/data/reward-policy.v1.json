@@ -1,0 +1,313 @@
+{
+  "policyVersion": "reward-policy.v1",
+  "status": "draft",
+  "units": {
+    "decimals": 6,
+    "acuMicroPerAcu": 1000000
+  },
+  "epoch": {
+    "lengthDays": 7,
+    "riskReviewHours": 48,
+    "challengeHours": 48,
+    "maxDeferrals": 2,
+    "revertOffsetDays": 14
+  },
+  "emission": {
+    "maxSupplyBase": "1000000000000000",
+    "emissionReserveBase": "995000000000000",
+    "budgetPpmOfRemaining": 3327,
+    "rateCeiling": {
+      "initialBasePerAcu": "100000000",
+      "decayPpmPerEpoch": 3327
+    }
+  },
+  "slicesBp": {
+    "execution": 6000,
+    "planning": 1000,
+    "human_review": 500,
+    "outcomes": 500,
+    "completion_accrual": 1500,
+    "security_reserve": 500
+  },
+  "eligibility": {
+    "acceptedEvidenceClasses": {
+      "devnet": ["accepted_budget", "outcome"],
+      "mainnet": []
+    },
+    "requireReviewPolicySatisfied": true,
+    "requireWalletForClaim": true
+  },
+  "acceptance": [
+    {
+      "contributionType": "IMPLEMENTATION",
+      "event": "pr_merged",
+      "acceptedBy": "github merge of the qualified PR",
+      "slice": "execution",
+      "weightBasis": "task_budget",
+      "needsLease": true,
+      "needsUsageReceipt": true
+    },
+    {
+      "contributionType": "AGENT_REVIEW",
+      "event": "subject_merged_or_finding_upheld",
+      "acceptedBy": "the subject's merge, or a material finding resolved/upheld",
+      "slice": "execution",
+      "weightBasis": "task_budget",
+      "needsLease": true,
+      "needsUsageReceipt": true
+    },
+    {
+      "contributionType": "ARCHITECTURE_RESOLUTION",
+      "event": "ruling_confirmed_by_maintainer",
+      "acceptedBy": "maintainer confirmation of the ruling",
+      "slice": "execution",
+      "weightBasis": "task_budget",
+      "needsLease": true,
+      "needsUsageReceipt": true
+    },
+    {
+      "contributionType": "APPLICATION_ROADMAP",
+      "event": "document_merged",
+      "acceptedBy": "merge of the roadmap version containing the revision",
+      "slice": "planning",
+      "weightBasis": "task_budget",
+      "needsLease": true,
+      "needsUsageReceipt": true
+    },
+    {
+      "contributionType": "FEATURE_SPECIFICATION",
+      "event": "document_merged",
+      "acceptedBy": "merge of the contract version containing the revision",
+      "slice": "planning",
+      "weightBasis": "task_budget",
+      "needsLease": true,
+      "needsUsageReceipt": true
+    },
+    {
+      "contributionType": "HUMAN_REVIEW",
+      "event": "subject_merged_or_finding_upheld",
+      "acceptedBy": "the subject's merge (PASS) or an upheld material finding (FAIL); no review of reviews, audits sample instead",
+      "slice": "human_review",
+      "weightBasis": "task_budget",
+      "needsLease": false,
+      "needsUsageReceipt": false
+    },
+    {
+      "contributionType": "PROPOSAL",
+      "event": "proposal_incorporated",
+      "acceptedBy": "merge of a roadmap or contract version that incorporates it",
+      "slice": "outcomes",
+      "weightBasis": "acu_equivalent",
+      "needsLease": false,
+      "needsUsageReceipt": false
+    },
+    {
+      "contributionType": "BUG_REPORT",
+      "event": "bug_fix_merged",
+      "acceptedBy": "merge of the fix referencing it, severity confirmed by a maintainer",
+      "slice": "outcomes",
+      "weightBasis": "acu_equivalent",
+      "needsLease": false,
+      "needsUsageReceipt": false
+    },
+    {
+      "contributionType": "SECURITY",
+      "event": "security_confirmed_and_fix_merged",
+      "acceptedBy": "a security-qualified human (not the reporter) confirms severity and the fix merges",
+      "slice": "security_reserve",
+      "weightBasis": "acu_equivalent",
+      "needsLease": false,
+      "needsUsageReceipt": false
+    },
+    {
+      "contributionType": "AUDIT_RERUN",
+      "event": "audit_report_accepted",
+      "acceptedBy": "schema-valid audit report on the assigned lease, whatever it concludes",
+      "slice": "execution",
+      "weightBasis": "task_budget",
+      "needsLease": true,
+      "needsUsageReceipt": true
+    },
+    {
+      "contributionType": "GENESIS",
+      "event": "genesis_approved",
+      "acceptedBy": "protocol-class review by independent humans, never the founder",
+      "slice": "none",
+      "weightBasis": "none",
+      "needsLease": false,
+      "needsUsageReceipt": false
+    }
+  ],
+  "settlement": {
+    "unboundCarryEpochs": 52,
+    "mechanism": {
+      "devnet": "push_transfer",
+      "mainnet": "undecided"
+    },
+    "maxOffsetRecoveryBp": 5000
+  },
+  "execution": {
+    "capIncludesRepairs": true,
+    "upheldFindingBonusBp": 0,
+    "maxPaidFindingsPerReview": 5,
+    "payReviewsOfFailedAttemptsWithUpheldFindings": true
+  },
+  "humanReview": {
+    "weightAcuEqMicro": {
+      "low_risk": "500000",
+      "standard": "1000000",
+      "security": "2000000",
+      "accounting": "2000000",
+      "protocol": "2000000"
+    },
+    "upheldFindingBonusMicro": "0",
+    "maxPaidFindings": 3,
+    "payRatificationReviews": true
+  },
+  "outcomes": {
+    "proposalIncorporatedAcuEq": 10,
+    "bugAcuEq": {
+      "low": 2,
+      "medium": 6,
+      "high": 20,
+      "critical": 50
+    },
+    "maxProposalsPaidPerAccountPerEpoch": 5
+  },
+  "security": {
+    "severityAcuEq": {
+      "low": 25,
+      "medium": 100,
+      "high": 300,
+      "critical": 1000
+    },
+    "maxShareOfReserveBp": 2500
+  },
+  "completion": {
+    "featurePoolsBp": 6667,
+    "applicationPoolsBp": 3333
+  },
+  "challenge": {
+    "windowHours": 48,
+    "replyHours": 24,
+    "gateEscalateAfterHours": 120,
+    "standing": "epoch_participants",
+    "stakePerItemBp": 200,
+    "maxStakeBp": 1000,
+    "minStakeBase": "1000000",
+    "joinerStake": "min",
+    "maxItemsPerDispute": 25,
+    "maxDisputesPerAccountPerEpoch": 3,
+    "sampledAuditRateBp": 500,
+    "rejectedDisputesSignalAfter": 3,
+    "publicAllocations": true,
+    "appealHours": 72,
+    "relatedPartyBountyPriority": false
+  },
+  "holdback": {
+    "shareBp": 2000,
+    "epochs": 6,
+    "forfeitOnExclusion": true
+  },
+  "budgets": {
+    "denomination": "acu",
+    "funding": "reserve_at_issuance",
+    "acceptance": "binary",
+    "qualityFactor": "none",
+    "sharesSumBp": 10000,
+    "model": {
+      "difficultyBp": {
+        "min": 5000,
+        "max": 20000
+      },
+      "importanceBp": {
+        "min": 10000,
+        "max": 15000
+      },
+      "maxWithoutHumanBp": 12500,
+      "hardMaxBp": 20000,
+      "objectiveCap": true,
+      "proposerMayNotBuild": true
+    },
+    "expiryEpochs": 4,
+    "reviewGraceEpochs": 2,
+    "recalibration": {
+      "everyEpochs": 13,
+      "maxChangeBp": 2000,
+      "minSamples": 20
+    }
+  },
+  "losses": {
+    "bountyBpOfRecovered": 2000,
+    "absorptionMaxBp": 1000,
+    "publish": true
+  },
+  "confiscation": {
+    "replyHours": 72,
+    "appealHours": 168,
+    "maxReplyHours": 336,
+    "maxAppealHours": 720,
+    "maxHoldAfterAppealHours": 336,
+    "maxTimeBoxedExclusionEpochs": 52,
+    "permanentExclusionTier": "structural"
+  },
+  "modules": {
+    "active": [
+      "accounting_correctness",
+      "budgets_with_bounds_and_objective_cap",
+      "acceptance_review",
+      "optimistic_challenge_and_publication",
+      "provisional_optimistic_finalization",
+      "append_only_audit_and_admin_actions",
+      "shadow_epoch_pipeline",
+      "simple_hold",
+      "holdback"
+    ],
+    "dormant": [
+      {
+        "module": "dispute_stakes_and_bounties",
+        "activationTrigger": "first value-bearing token (mainnet readiness) or first outside disputer",
+        "v1Stub": "a challenge is a free flag for review; no stake, no bounty"
+      },
+      {
+        "module": "multi_allocation_disputes_and_appeals",
+        "activationTrigger": "first outside contributor with a disputed allocation",
+        "v1Stub": "one flagged receipt goes to the review gate: reply, one decision"
+      },
+      {
+        "module": "payout_canaries",
+        "activationTrigger": "at least 10 active outside payout auditors",
+        "v1Stub": "none (no payout audit duty in V1)"
+      },
+      {
+        "module": "organization_caps_and_beneficiary_splits",
+        "activationTrigger": "first sponsoring organization approved",
+        "v1Stub": "every beneficiary is the contributor (person); no organization cap"
+      },
+      {
+        "module": "governance_voting",
+        "activationTrigger": "at least 25 eligible outside voters",
+        "v1Stub": "the founder sets policy by public AdminAction"
+      },
+      {
+        "module": "collusion_and_sybil_detection_beyond_basics",
+        "activationTrigger": "at least 10 outside contributors",
+        "v1Stub": "related-account independence and anomaly metrics only"
+      },
+      {
+        "module": "confiscation_beyond_simple_hold",
+        "activationTrigger": "first value-bearing token (mainnet readiness)",
+        "v1Stub": "a bounded simple hold and release; no confiscation execution"
+      },
+      {
+        "module": "genesis_calibration_population",
+        "activationTrigger": "Genesis finalization (mainnet only)",
+        "v1Stub": "Genesis records only; no reference manifest"
+      }
+    ]
+  },
+  "auditCapacity": {
+    "unauditedRelease": true,
+    "penalizeContributor": false
+  }
+}

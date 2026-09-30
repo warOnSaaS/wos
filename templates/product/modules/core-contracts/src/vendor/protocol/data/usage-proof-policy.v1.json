@@ -1,0 +1,41 @@
+{
+  "policyVersion": "usage-proof-policy.v1",
+  "status": "draft",
+  "providers": [
+    {
+      "provider": "claude_cli",
+      "minCliVersion": "2.1.284",
+      "primarySource": "cli_result_event",
+      "crossCheckSource": "cli_stream_sum",
+      "notes": "claude -p --output-format stream-json --verbose: per-message usage on assistant events, run totals on the result event. Shapes: USAGE-PROOF.md section 2.1."
+    },
+    {
+      "provider": "codex_cli",
+      "minCliVersion": "0.155.0",
+      "primarySource": "transcript",
+      "crossCheckSource": "cli_stream_sum",
+      "notes": "Authoritative: the session rollout (token_usage_record per response_id, deduplicated). The codex exec --json stream (turn.completed usage, no response ids) is a cross-check only (Astra-02 M15)."
+    }
+  ],
+  "plausibility": {
+    "maxOutputTokensPerSecond": 400,
+    "maxTotalTokensPerSecond": 200000,
+    "maxSourceMismatchBp": 200,
+    "requireProviderIdsHash": true,
+    "requireTranscriptHash": true,
+    "requireModelMatch": true
+  },
+  "audit": {
+    "randomRerunBp": 0,
+    "transcriptRequestBp": 500,
+    "transcriptRetentionDays": 60,
+    "divergenceFactorBp": 30000
+  },
+  "logs": {
+    "required": false,
+    "maxBytes": 1048576,
+    "maxTurns": 2000,
+    "retentionDays": 365,
+    "requireExactTotals": true
+  }
+}

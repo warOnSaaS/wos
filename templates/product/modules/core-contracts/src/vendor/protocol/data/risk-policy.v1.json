@@ -1,0 +1,35 @@
+{
+  "policyVersion": "risk-policy.v1",
+  "status": "draft",
+  "detectors": [
+    { "id": "peer-outlier", "signal": "usage_outlier_vs_peers", "params": { "minPeers": 30, "maxLogZ": 2.5 }, "severity": "medium" },
+    {
+      "id": "cap-saturation",
+      "signal": "cap_saturation_pattern",
+      "params": { "saturationBp": 9500, "maxShareBp": 5000, "minRuns": 10 },
+      "severity": "medium"
+    },
+    { "id": "throughput", "signal": "impossible_throughput", "params": {}, "severity": "high" },
+    { "id": "source-mismatch", "signal": "usage_fields_inconsistent", "params": {}, "severity": "medium" },
+    { "id": "model-mismatch", "signal": "model_mismatch", "params": {}, "severity": "high" },
+    { "id": "duplicate-provider-ids", "signal": "duplicate_provider_ids", "params": {}, "severity": "high" },
+    { "id": "audit-divergence", "signal": "audit_divergence", "params": { "factorBp": 30000 }, "severity": "medium" },
+    { "id": "transcript-missing", "signal": "transcript_missing_on_audit", "params": { "graceDays": 7 }, "severity": "low" },
+    {
+      "id": "review-pairs",
+      "signal": "collusive_review_pattern",
+      "params": { "minPairReviews": 5, "maxPairShareBp": 5000 },
+      "severity": "medium"
+    },
+    {
+      "id": "rubber-stamp",
+      "signal": "rubber_stamp_pattern",
+      "params": { "minReviews": 20, "minPassBp": 9800, "maxMedianDurationSec": 120 },
+      "severity": "low"
+    },
+    { "id": "wallet-rebind", "signal": "wallet_rebind_after_signal", "params": { "windowDays": 30 }, "severity": "medium" }
+  ],
+  "effects": { "info": "none", "low": "none", "medium": "hold", "high": "exclude_pending_review" },
+  "twoPersonActions": ["invalidate_receipt", "suspend_account", "record_offset", "activate_policy", "activate_oracle", "record_genesis"],
+  "walletRebindCooldownDays": 7
+}
