@@ -8613,7 +8613,11 @@ const RewardSchedule = object({
 const ReviewFallback = _enum(["none", "fable_unavailable"]);
 const SINGLE_LAB_REVIEW_LABEL = "single_lab_review";
 const SecondSeat = _enum(["fable", "human"]);
-const ReviewPolicyVersion = _enum(["review-policy.v1", "review-policy.v2"]);
+const ReviewPolicyVersion = _enum([
+	"review-policy.v1",
+	"review-policy.v2",
+	"review-policy.v3"
+]);
 const REVIEW_POLICY_VERSIONS = ReviewPolicyVersion.options;
 const ReviewPolicyState = object({
 	fallback: ReviewFallback,
