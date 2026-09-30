@@ -1,0 +1,40 @@
+{
+  "protocol": "wos-app/v1",
+  "app": {
+    "id": "crm",
+    "name": "wOS CRM",
+    "version": "0.1.0",
+    "kind": "app",
+    "billing": "addon",
+    "summary": "Customer relationship management on wOS, the app that answers Salesforce on the Sniper List. Its features are whatever the roadmap has built."
+  },
+  "requires": { "wos": "^0.1.0", "apps": [{ "id": "contacts", "version": "^0.1.0" }] },
+  "provides": [],
+  "features": [],
+  "replaces": ["salesforce", "hubspot"],
+  "surfaces": {
+    "web": { "supported": true, "entry": "./web" },
+    "desktop": { "supported": true, "entry": "./desktop" },
+    "ios": { "supported": true },
+    "android": { "supported": true },
+    "api": { "supported": true }
+  },
+  "mobile": { "screens": "./mobile/screens" },
+  "data": { "schema": "app_crm", "migrations": null, "owns": [] },
+  "permissions": [
+    { "key": "crm.status.read", "description": "See which CRM features this version ships", "grantedTo": ["owner", "admin", "member"] }
+  ],
+  "events": { "publishes": [], "consumes": [] },
+  "routes": { "ui": "/crm", "api": "/apps/crm" },
+  "navigation": [
+    {
+      "id": "crm.home",
+      "title": "CRM",
+      "route": "/crm",
+      "surfaces": ["web", "desktop", "ios", "android"],
+      "permission": "crm.status.read",
+      "order": 100
+    }
+  ],
+  "hosting": { "selfHost": { "supported": true, "services": ["postgres"] }, "hosted": { "supported": true } }
+}

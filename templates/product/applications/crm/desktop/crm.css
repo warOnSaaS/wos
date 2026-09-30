@@ -1,0 +1,27 @@
+/* wOS CRM desktop module: monochrome, one monospace face, square corners. */
+:root {
+  --bg: #0b0b0b;
+  --fg: #ededea;
+  --dim: #a8a8a5;
+}
+body {
+  margin: 0;
+  padding: 2rem;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+}
+h1 {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-weight: 700;
+}
+.dim,
+.label {
+  color: var(--dim);
+}
+.big {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 3rem;
+  font-weight: 700;
+  margin: 0.25rem 0;
+}
