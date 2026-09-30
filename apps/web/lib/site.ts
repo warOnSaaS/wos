@@ -57,6 +57,7 @@ export const PREREQUISITES: { name: string; href: string | null }[] = [
 export const NAV = [
   { href: "/#targets", label: "TARGETS" },
   { href: "/briefing", label: "BRIEFING" },
+  { href: "/whitepaper", label: "WHITE PAPER" },
   { href: "/how-it-works", label: "PROCEDURE" },
   { href: "/tokens", label: "TOKENS" },
   { href: "/leaderboard", label: "LEADERBOARD" },

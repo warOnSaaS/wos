@@ -6,6 +6,9 @@
  * Allowed exceptions:
  *   - lowercase in URLs, the domain, the npm scope and route slugs (waronsaas.com, @waronsaas/cli, /targets/waronsaas)
  *   - "WOS" only in "WOS token(s)" (required legal wording)
+ *   - on the white paper only (whitepaper.html and the /whitepaper.md body), "WOS" alone, because the
+ *     paper defines it once as the token's working symbol and uses it as a symbol ("100 WOS per ACU").
+ *     Exactly "WOS": mis-cased forms (Wos, wos, WoS) still fail there.
  *   - "wos" only as the CLI command (wos build|login|…, "the wos command"), the Postgres schema ("wos Postgres")
  *     or a branch/check (wos/...); repository names waronsaas/wos and waronsaas/product
  * Also fails if any built CSS uses text-transform, because CSS re-casing would
@@ -71,8 +74,12 @@ function context(text, i) {
   return text.slice(Math.max(0, i - 40), i + 50).replace(/\s+/g, " ");
 }
 
+// Pages where "WOS" is the defined token symbol (see the header comment).
+const TOKEN_SYMBOL_PAGES = new Set(["whitepaper.html", "whitepaper.md.body"]);
+
 for (const f of pages) {
   const raw = readFileSync(f, "utf8");
+  const symbolOk = TOKEN_SYMBOL_PAGES.has(relative(join(root, "server", "app"), f));
   const text = scrub(f.endsWith(".html") ? renderedText(raw) : raw);
   for (const m of text.matchAll(/waronsaas/gi)) {
     if (m[0] !== "warOnSaaS") errors.push(`${relative(process.cwd(), f)}: "${m[0]}" in …${context(text, m.index)}…`);
@@ -81,7 +88,7 @@ for (const f of pages) {
     const after = text.slice(m.index + 3, m.index + 20);
     const ok =
       m[0] === "wOS" ||
-      (m[0] === "WOS" && /^\s+tokens?\b/.test(after)) ||
+      (m[0] === "WOS" && (symbolOk || /^\s+tokens?\b/.test(after))) ||
       (m[0] === "wos" && CLI_SUB.test(after));
     if (!ok) errors.push(`${relative(process.cwd(), f)}: "${m[0]}" in …${context(text, m.index)}…`);
   }

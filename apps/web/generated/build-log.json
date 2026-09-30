@@ -1,9 +1,73 @@
 {
   "ref": "main",
-  "head": "a08523ff67d12cf36b56ecdedec4a97aa6c48db3",
+  "head": "725b7e53c221067fcd82a7ab7d43ea50e95506e3",
   "complete": true,
-  "count": 44,
+  "count": 52,
   "commits": [
+    {
+      "sha": "725b7e53c221067fcd82a7ab7d43ea50e95506e3",
+      "short": "725b7e5",
+      "date": "2026-09-30T02:05:41-04:00",
+      "day": "2026-09-30",
+      "subject": "License wOS under Apache-2.0",
+      "url": "https://github.com/warOnSaaS/wos/commit/725b7e53c221067fcd82a7ab7d43ea50e95506e3"
+    },
+    {
+      "sha": "7adec0a3ccb2598753a2eee569b096a13a326d8d",
+      "short": "7adec0a",
+      "date": "2026-09-30T01:48:56-04:00",
+      "day": "2026-09-30",
+      "subject": "AGENTS.md: hosted-first product direction",
+      "url": "https://github.com/warOnSaaS/wos/commit/7adec0a3ccb2598753a2eee569b096a13a326d8d"
+    },
+    {
+      "sha": "cb72f230a87dfcd0e40f29403c639f08a89c5e0a",
+      "short": "cb72f23",
+      "date": "2026-09-29T20:28:06-04:00",
+      "day": "2026-09-29",
+      "subject": "AGENTS.md: protocol design in progress, economy first",
+      "url": "https://github.com/warOnSaaS/wos/commit/cb72f230a87dfcd0e40f29403c639f08a89c5e0a"
+    },
+    {
+      "sha": "b9b51b2c266af7ad4e9acb65cdb718190f97890a",
+      "short": "b9b51b2",
+      "date": "2026-09-29T20:00:23-04:00",
+      "day": "2026-09-29",
+      "subject": "Add Amendment 02: Proof of Contribution (founder decisions + proposal)",
+      "url": "https://github.com/warOnSaaS/wos/commit/b9b51b2c266af7ad4e9acb65cdb718190f97890a"
+    },
+    {
+      "sha": "435545ddc286416c473514a58da172e763ad3662",
+      "short": "435545d",
+      "date": "2026-09-29T18:56:40-04:00",
+      "day": "2026-09-29",
+      "subject": "Integrate Amendment 01 (contracts 5.0.0): site surfaces, AGENTS.md state",
+      "url": "https://github.com/warOnSaaS/wos/commit/435545ddc286416c473514a58da172e763ad3662"
+    },
+    {
+      "sha": "5e8825d566e4ef8dee5e76ea9141512bcf0c55f2",
+      "short": "5e8825d",
+      "date": "2026-09-29T18:55:27-04:00",
+      "day": "2026-09-29",
+      "subject": "Merge branch 'architect'",
+      "url": "https://github.com/warOnSaaS/wos/commit/5e8825d566e4ef8dee5e76ea9141512bcf0c55f2"
+    },
+    {
+      "sha": "7143e3007e98b86f70641bf85eef77b8ba4f6eb7",
+      "short": "7143e30",
+      "date": "2026-09-29T18:52:34-04:00",
+      "day": "2026-09-29",
+      "subject": "AGENTS.md: site sync is on main",
+      "url": "https://github.com/warOnSaaS/wos/commit/7143e3007e98b86f70641bf85eef77b8ba4f6eb7"
+    },
+    {
+      "sha": "38e4ad8202145fe10a3159f0e850b459c93ad2c0",
+      "short": "38e4ad8",
+      "date": "2026-09-29T18:52:34-04:00",
+      "day": "2026-09-29",
+      "subject": "Merge branch 'ws/sitesync'",
+      "url": "https://github.com/warOnSaaS/wos/commit/38e4ad8202145fe10a3159f0e850b459c93ad2c0"
+    },
     {
       "sha": "a08523ff67d12cf36b56ecdedec4a97aa6c48db3",
       "short": "a08523f",

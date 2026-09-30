@@ -807,3 +807,59 @@ footer {
 .foot-fine p {
   margin-bottom: 0.4rem;
 }
+
+/* White paper (/whitepaper): long-form prose rendered from docs/whitepaper/WHITEPAPER.md. */
+.wp .sec-b > h3 {
+  margin-top: 2.5rem;
+  scroll-margin-top: 1.5rem;
+}
+.wp .sec-b > h4 {
+  margin-top: 2rem;
+  font-size: 0.9375rem;
+  color: var(--fg);
+}
+.wp .sec-b > h3 + *,
+.wp .sec-b > h4 + * {
+  margin-top: 0.75rem;
+}
+.wp-ol li + li {
+  margin-top: 0.5rem;
+}
+.wp .dash,
+.wp-ol {
+  max-width: var(--measure);
+}
+.wp-ol {
+  counter-reset: wp-ol;
+}
+.wp-ol li {
+  counter-increment: wp-ol;
+  display: grid;
+  grid-template-columns: 2.5rem minmax(0, 1fr);
+}
+.wp-ol li::before {
+  content: counter(wp-ol) ".";
+  color: var(--dim);
+}
+.wp-table {
+  max-width: 100%;
+}
+.wp .tbl th,
+.wp .tbl td {
+  white-space: normal;
+}
+.wp-pre {
+  margin: 0;
+  padding: 1rem;
+  background: var(--cell);
+  border: 1px solid var(--rule);
+  font-size: 0.875rem;
+  overflow-x: auto;
+  max-width: 100%;
+}
+.wp code {
+  overflow-wrap: anywhere;
+}
+.wp a {
+  overflow-wrap: anywhere;
+}

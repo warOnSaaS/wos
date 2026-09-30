@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 /**
- * Copies the two shared files the site needs from the monorepo into apps/web/generated/,
+ * Copies the shared files the site needs from the monorepo into apps/web/generated/,
  * because the Vercel deploy uploads apps/web only (apps/web is not yet a workspace; see
  * blockers/B-0001-web.md). The copies are committed so the Vercel build has them.
  *
  *   docs/roadmap/waronsaas.roadmap.json  -> generated/waronsaas.roadmap.json   (byte-identical)
  *   packages/contracts/src/progress.ts   -> generated/contracts-progress.ts   (identical except its one
  *                                           type-only import, re-pointed at the contracts source)
+ *   docs/whitepaper/WHITEPAPER.md        -> generated/WHITEPAPER.md          (byte-identical; the /whitepaper
+ *                                           page and /whitepaper.md render it; its date comes from gen-log.mjs)
  *
  * With the repo present (local builds): writes the copies, or with --check fails if they differ.
  * Without the repo (Vercel): checks the committed copies exist and exits 0.
@@ -23,6 +25,7 @@ const IMPORT_TO = 'from "@contracts/primitives";';
 
 const files = [
   { from: join(repo, "docs/roadmap/waronsaas.roadmap.json"), to: join(web, "generated/waronsaas.roadmap.json"), map: (s) => s },
+  { from: join(repo, "docs/whitepaper/WHITEPAPER.md"), to: join(web, "generated/WHITEPAPER.md"), map: (s) => s },
   {
     from: join(repo, "packages/contracts/src/progress.ts"),
     to: join(web, "generated/contracts-progress.ts"),

@@ -7,7 +7,8 @@
  * snapshotted at build as /data-source.json, from the same fetches the pages used. Every
  * percentage on a data page must equal formatPercent(n) (the contracts' own function) for some
  * number n in that snapshot, and every "N bp" figure must be a number in it. Data pages: the home
- * page, every target dossier and every drilldown page.
+ * page, every target dossier and every drilldown page. The white paper (/whitepaper) is prose and is
+ * excluded explicitly; see PROSE_PAGES below.
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -34,10 +35,18 @@ const files = [];
     else if (p.endsWith(".html")) files.push(p);
   }
 })(app);
+// /whitepaper is excluded on purpose, and by name: it is prose, not data. Its numbers (provisional
+// policy values, simulation illustrations, worked arithmetic, test counts quoted from the repository)
+// are explanations with their sources given in the text, not progress read from the data source.
+// This exclusion does not relax the gate for any data page: the list below is an allowlist of data
+// pages, and the assertion after it fails the build if the white paper is ever classified as one.
+const PROSE_PAGES = new Set(["whitepaper.html"]);
 const dataPages = files.filter((f) => {
   const r = relative(app, f);
+  if (PROSE_PAGES.has(r)) return false;
   return r === "index.html" || r.startsWith("targets/") || r.startsWith("drilldown/") || r.startsWith(`targets${"\\"}`) || r.startsWith(`drilldown${"\\"}`);
 });
+if (dataPages.some((f) => PROSE_PAGES.has(relative(app, f)))) throw new Error("check-numbers: a prose page was classified as a data page");
 
 function text(html) {
   const body = html.replace(/<script[\s\S]*?<\/script>/g, " ").replace(/<style[\s\S]*?<\/style>/g, " ");
