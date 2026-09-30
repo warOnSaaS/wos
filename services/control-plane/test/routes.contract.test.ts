@@ -372,7 +372,7 @@ describe.skipIf(!HAS_DB)("every route: existence, auth mode, input validation, r
     });
     await call("GET", "/v1/cron/sweep", { headers: cron });
 
-    // D53 human seat (contracts 5.14.0): the fallback, a round with Astra + the human, then the human's own ruling.
+    // D53 human seat (contracts 5.15.0): the fallback, a round with Astra + the human, then the human's own ruling.
     await call("POST", "/v1/admin/actions", {
       token: maint.token,
       idem: true,

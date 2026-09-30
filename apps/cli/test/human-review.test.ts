@@ -1,5 +1,5 @@
 /**
- * `wos review --human` and `wos human-ruling` (contracts 5.14.0, D53) against a fake of the four maintainer routes.
+ * `wos review --human` and `wos human-ruling` (contracts 5.15.0, D53) against a fake of the four maintainer routes.
  * No agent runs: the human seat is a person, and nothing here touches the orchestrator.
  */
 import { mkdtempSync, writeFileSync } from "node:fs";

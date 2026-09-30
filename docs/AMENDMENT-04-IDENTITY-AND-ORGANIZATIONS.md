@@ -160,3 +160,55 @@ Contributors use the same wOS account.
 4. **Account deletion and email change.** Both are needed eventually (GDPR); this amendment does not design them. Should they come before Wave 3b?
 5. **The GitHub App's account permission "Email addresses: read".** GitHub sign-in needs `/user/emails` to find verified addresses. The founder enables it in the App's settings; existing installations then accept the new permission. No repository permission changes.
 6. **GitHub sign-in on the public site.** The site would offer "Sign in with GitHub" next to the email code. This is a copy and brand decision.
+
+## 11. Decisions on section 10 (D66, 2026-09-30)
+
+The founder said "do what you think"; the coordinator decided:
+1. **"Email addresses: read"** on the GitHub App: the founder enables it (FOUNDER-CHECKLIST); GitHub sign-in waits for it.
+2. **Plan quotas.** The `free` quotas are accepted as drafted. A paid plan stays undecided until one is sold.
+3. **Blocklists.** Maintained open lists are pinned by commit hash and refreshed only by a reviewed PR, never fetched live.
+   - Disposable domains: `disposable-email-domains/disposable-email-domains` (CC0-1.0, licence checked), committed as `data/disposable-email-domains.v1.json` with its commit and source sha256. `node tools/domain-lists/refresh-disposable.mjs <sha>` refreshes it.
+   - Public mail providers: the curated list committed in `identity-policy.v1.json`.
+4. **SSO break-glass.** An email code plus a second owner's approval. Where an organization has only one owner, a wOS maintainer AdminAction with a public label is the fallback.
+5. **Account deletion and email change** are designed before Wave 3b: addendum A below.
+6. **The public site** shows "Sign in with GitHub" next to the email code once the routes are live.
+
+## Addendum A. Data export, account deletion, email change (D66, contracts 5.13.0)
+
+Designed now so Wave 3b builds them with the rest of Amendment 04. The contracts are in `identity.ts` (`DataExportRequest`, `AccountDeletionRequest`, `RETENTION_RULES`, `accountDeletionRefusals`, `EmailChangeRequest`, `emailChangeComplete`), `AccountDeletionMachine`, and eight `IdentityRoutes`.
+
+**A1. Export (GDPR access and portability).**
+- `POST /v1/me/export` emails a confirmation code, at most once per 24 hours.
+- Once confirmed, the export is built asynchronously as one JSON document (`wos-account-export.v1`) with the sections in `DATA_EXPORT_SECTIONS`: account, email, GitHub link, devices, session metadata (never tokens), organizations and roles, invites, join requests, tasks and leases, attempts, reviews, authored documents, contributions, ledger entries, bug reports, and events where the account is the actor.
+- It is delivered as a signed URL valid for 24 hours, and `account.export_ready` is emitted.
+- Organization data belongs to the organization and is not in a member's personal export. Exporting it is the dormant audit export's job.
+
+**A2. Deletion (GDPR erasure).**
+- **Steps:**
+  1. Request; a code is emailed.
+  2. Confirm; deletion is scheduled for 14 days later. The person can cancel until then and can still sign in.
+  3. Completion is carried out by the system in one transaction (`AccountDeletionMachine`).
+- **Blocked** (`DELETION_BLOCKED`) while:
+  - the account is the sole owner of a team organization that has other members (transfer ownership or delete that organization first);
+  - it holds active leases (release or finish them);
+  - it is a maintainer (another maintainer removes the role first).
+- **What happens to each record** (`RETENTION_RULES`):
+  - **Deleted:** profile (name, avatar, handle, preferences), the email, sign-in requests, sessions, devices, attestations, memberships, join requests, and pending invites to the address.
+  - **Pseudonymised, kept:**
+    - contribution records (attempts, reviews, documents, PR provenance);
+    - the ledger and protocol receipts, which are append-only, hashed and public;
+    - the event log's actor ids.
+
+    They are shown under `former-contributor-<10 hex>`, an HMAC of the account id with a server secret: stable, and not reversible without the secret. The account id is a random UUID with no personal data. Balances have no cash value (D3) and are forfeited by a ledger entry.
+  - **Retained hashed:** an HMAC of the GitHub user id for 90 days (the existing reservation), so deletion cannot be used to reset a GitHub link. Then it is deleted.
+  - **Retained:** git history in public repositories. Commits are authored by the wOS GitHub App (D9); co-author trailers name the GitHub login, and published history is not rewritten. The deletion notice says so. Also retained: already-hashed security and email logs, which expire on their own schedule.
+- **Protocol:** live-money receipts and entitlements (P2+) need the protocol's own rule for a deleted beneficiary. Devnet is not live, so V1 forfeits. That is a note for the protocol architect.
+
+**A3. Email change.**
+- `POST /v1/me/email` emails a code to the new address and a separate code to the current address. The change completes when the new address is proven AND either the current address confirms or a fresh GitHub sign-in by the linked GitHub account does (within 10 minutes; for a lost mailbox).
+- **No linked GitHub and a lost mailbox:** a maintainer AdminAction with a public label, after a 7-day wait, is the only path.
+- **The new address:**
+  - must not belong to another account (`CONFLICT`);
+  - is re-checked against the disposable list;
+  - does not change organization memberships. Domain joins are evaluated at the next sign-in, and exclusions stay.
+- Both addresses are notified when the change completes. Sessions stay; `account.email_changed` is emitted.

@@ -4,7 +4,7 @@ lease    active   0192ab3c-0000-7000-8000-000000000009 expires 2026-09-29T12:30:
 LEASE    passed   review lease 0192ab3c-0000-7000-8000-000000000009
 worktree ready    <reviewers>/worktrees/r-0192ab3c0000 @ dcaa56d5feea
 REVIEW   started  reviewing contacts#04 at dcaa56d5feea
-context  built    7 artifacts, 1849/150000 tokens, manifest 1ed27b7d4763
+context  built    7 artifacts, 1849/150000 tokens, manifest ce146505ae7b
 agent    started  implementation_reviewer_astra on gpt-6-astra (codex_cli, reasoning max) pid 4343
 agent    exited   code 0 after 7ms
 REVIEW   passed   NO_MATERIAL_GAPS (sealed until the other slot is in)
@@ -16,7 +16,7 @@ lease    active   0192ab3c-0000-7000-8000-000000000014 expires 2026-09-29T12:30:
 LEASE    passed   review lease 0192ab3c-0000-7000-8000-000000000014
 worktree ready    <reviewers>/worktrees/r-0192ab3c0000 @ dcaa56d5feea
 REVIEW   started  reviewing contacts#04 at dcaa56d5feea
-context  built    7 artifacts, 1849/150000 tokens, manifest d6405203f66b
+context  built    7 artifacts, 1849/150000 tokens, manifest 6a75a29d7019
 agent    started  implementation_reviewer_fable on claude-fable-5-1 (claude_cli, reasoning max) pid 4343
 agent    exited   code 0 after 7ms
 REVIEW   passed   NO_MATERIAL_GAPS (sealed until the other slot is in)

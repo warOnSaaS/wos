@@ -1,5 +1,5 @@
 /**
- * D53 in the V1 control plane (contracts 5.14.0): the ReviewPolicy fallback `fable_unavailable`.
+ * D53 in the V1 control plane (contracts 5.15.0): the ReviewPolicy fallback `fable_unavailable`.
  *
  * While it is active every round opens with the Astra agent seat and the REQUIRED HUMAN REVIEW in place of the Fable
  * seat; consensus is both NO_MATERIAL_GAPS on the same head sha and submission hash; the round (and every output of it)

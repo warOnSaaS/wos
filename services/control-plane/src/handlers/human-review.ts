@@ -1,5 +1,5 @@
 /**
- * D53 human review seat (contracts 5.14.0): the queue, the subject view, the sealed human verdict and the human's own
+ * D53 human review seat (contracts 5.15.0): the queue, the subject view, the sealed human verdict and the human's own
  * ruling on escalated documents under the `fable_unavailable` fallback. Eligibility: domain/human-review.ts.
  */
 import { ARTIFACT_PATHS, type HumanReviewFinding, type HumanReviewQueueItem, type ReviewVerdict } from "@waronsaas/contracts";

@@ -383,9 +383,37 @@ MINOR, additive, plus production migration 0012.
 
 Affected workstreams: control-plane, suite-shell, desktop, cli, mobile-runtime, web, verification (section 17).
 
-## 5.14.0 — 2026-09-30 (first real run: the Salesforce roadmap v1 blockers)
+## 5.13.0 — 2026-09-30 (D66: Amendment 04 decisions and addendum A, account lifecycle)
 
-MINOR, additive, plus production migration 0013. The fixes for `docs/runbooks/FIRST-REAL-RUN.md` section 2 (B1–B4), by the control-plane workstream holding the architect role for exactly these changes. 5.13.0 is taken by the Amendment 04 decisions (D66, `integration-5.13`), so this is the next free version.
+MINOR, additive. No migration yet: the build's migration comes in Wave 3b (WORKSTREAMS 18).
+- `identity.ts`:
+  - domain lists: `DomainList`, `isDisposableDomain`;
+  - addendum A: `DataExportRequest`, `DATA_EXPORT_SECTIONS`, `AccountDeletionRequest`, `ACCOUNT_DELETION_GRACE_DAYS`, `RETENTION_RULES`, `deletedContributorPseudonym`, `accountDeletionRefusals`, `EmailChangeRequest`, `emailChangeComplete`;
+  - `IdentityPolicy.lists` and `ssoBreakGlass` (optional).
+- Data:
+  - `disposable-email-domains.v1.json` (`DISPOSABLE_EMAIL_DOMAINS`): 9189 domains from `disposable-email-domains` at 51fafcd878e7e67b82f8184c21134fa079f8609f, CC0-1.0, with the source sha256; refreshed by `tools/domain-lists/refresh-disposable.mjs` through a reviewed PR;
+  - `identity-policy.v1` gains `lists` and `ssoBreakGlass`.
+- `IdentityRoutes` gains `requestDataExport`, `confirmDataExport`, `getDataExport`, `requestAccountDeletion`, `confirmAccountDeletion`, `cancelAccountDeletion`, `startEmailChange` and `confirmEmailChange`. `ApiErrorCode` gains `DELETION_BLOCKED` (mapped to 409).
+- `AccountDeletionMachine`. Events `account.email_changed`, `account.deletion_changed` and `account.export_ready` (private).
+- Docs: DECISIONS D66; Amendment 04 sections 11 and addendum A; WORKSTREAMS 18.
+- `biome.json` skips the pinned list (and its vendored copy).
+
+Affected workstreams: control-plane, suite-shell, desktop, cli, mobile-runtime, web, verification, protocol (a note).
+
+## 5.14.0 — 2026-09-30 (protocol: Astra review 09 fix pass, R09-1 to R09-6; branch `ws/protocol-v2`)
+
+MINOR, additive to the pending v2 additions (frozen v1 unchanged). Pending Astra review 10. Not wired into authoritative accounting; devnet only.
+- `reward-policy.v2` gains `queue.queueBonusBp` (2000); `capability-policy.v2` `workNext` loses `queueBonusBp` (pay lives in the pinned reward policy) and its budgets gain `abu_revision` and `architecture_author`. Schema: optional `RewardPolicy.queue`; budget `taskKind` admits `architecture_author`.
+- Engine: `EngineParams.queueBonusBpByPolicy` (from `engineParamsFrom`), `taskPayableBase`; an acceptance of v2 work without complete claim terms at the pinned coefficient is refused, v1 work takes none (validated before the reservation is consumed).
+- Rules: `taskAllocationRefusals` versioned path (`pinnedQueueBonusBp`, `claim`); `claimTermsRefusals`, `taskClaimOf`; `receiptRouteRefusals` `commission` (required under policies with D61 routes) and `bugFix.expected` / `severityAtIssuance` (replaces `effectiveSeverity`); `bugFixAccepted`, `fixRevocationDependents`, `fixBudgetIssuanceRefusals`.
+- Migration 0010 amended in place (never applied anywhere; excluded from production by its marker): `queue_bonus`, `receipt_live`, F1 `check_bug_budget`, B1/B3 route and live-fix checks, Q1 required and bound claim terms with one set per task.
+- Tests: work-next "Astra review 09" block; `bugs-assertions.sql` R09 regressions; `packages/db/test/accounting-trace-v2.mjs` (run by `db:test`); `tools/astra-09/` probes.
+- `tools/make-review-bundle.sh` honours `WOS_REVIEW_OUT`.
+- Regenerated: goldens, the context-engine snapshot, the vendored contracts.
+
+## 5.15.0 — 2026-09-30 (first real run: the Salesforce roadmap v1 blockers)
+
+MINOR, additive, plus production migration 0013. The fixes for `docs/runbooks/FIRST-REAL-RUN.md` section 2 (B1–B4), by the control-plane workstream holding the architect role for exactly these changes. 5.13.0 (D66) and 5.14.0 (protocol review-09 fix pass) came first, so this is the next free version.
 - D53 in the V1 control plane (B1). New module `review-fallback.ts`:
   - `ReviewFallback`, `ReviewPolicyState`, `SecondSeat`, `RoundSeats`, `SINGLE_LAB_REVIEW_LABEL` / `_REASON`;
   - the human seat: `HumanReviewQueueItem`, `HumanReviewSubject`, `HumanSeatEligibility`, `HumanReviewFinding`, `SubmitHumanReviewBody` / `Response`;

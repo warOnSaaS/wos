@@ -56,7 +56,10 @@ import {
   WosAppManifest,
 } from "./wos-app.js";
 import {
+  AccountDeletionRequest,
   AuditExportRequest,
+  DataExportRequest,
+  EmailChangeRequest,
   DomainName,
   GithubSignInPollBody,
   GithubSignInStartBody,
@@ -134,6 +137,8 @@ export const ApiErrorCode = z.enum([
   "INVITE_EMAIL_MISMATCH",
   "QUOTA_EXCEEDED",
   "MODULE_DORMANT",
+  // contracts 5.13.0 (Amendment 04 addendum A, D66)
+  "DELETION_BLOCKED",
 ]);
 export type ApiErrorCode = z.infer<typeof ApiErrorCode>;
 
@@ -789,7 +794,7 @@ export const Routes = {
     errors: ["LEASE_NOT_HELD", "VALIDATION_FAILED"],
     summary: "Conflict resolver output; needs maintainer confirmation in V1.",
   }),
-  // ------------------------------------------------------------------ D53 human review seat (contracts 5.14.0)
+  // ------------------------------------------------------------------ D53 human review seat (contracts 5.15.0)
   listHumanReviews: route({
     method: "GET",
     path: "/v1/human-reviews",
@@ -935,7 +940,7 @@ export const Routes = {
       z.object({ action: z.literal("suspend_account"), handleOrEmail: z.string().min(3), reason: z.string().min(5) }),
       z.object({ action: z.literal("set_hosting"), target: TargetSlug, hostedUrl: z.url().nullable(), selfHostable: z.boolean() }),
       z.object({ action: z.literal("end_bootstrap"), reason: z.string().min(5) }),
-      /** D53 (contracts 5.14.0): forward-only, public; refused while a round is awaiting reviews. */
+      /** D53 (contracts 5.15.0): forward-only, public; refused while a round is awaiting reviews. */
       z.object({ action: z.literal("switch_review_policy"), fallback: ReviewFallback, reason: z.string().min(5) }),
       z.object({
         action: z.literal("ledger_adjustment"),
@@ -1509,6 +1514,109 @@ export const IdentityRoutes = {
     response: AuditExportRequest,
     errors: ["NOT_FOUND", "FORBIDDEN", "MODULE_DORMANT", "VALIDATION_FAILED"],
     summary: "DORMANT (D50): a JSONL export of the organization's audit events.",
+  }),
+
+  // --- Amendment 04 addendum A (D66, contracts 5.13.0): export, deletion, email change ---
+  requestDataExport: route({
+    method: "POST",
+    path: "/v1/me/export",
+    auth: "account",
+    idempotent: true,
+    params: None,
+    query: None,
+    body: None,
+    response: DataExportRequest,
+    errors: ["RATE_LIMITED"],
+    summary: "Starts a data export (one per 24 hours); a code is emailed to confirm; the result is a signed URL for 24 hours.",
+  }),
+  confirmDataExport: route({
+    method: "POST",
+    path: "/v1/me/export/:id/confirm",
+    auth: "account",
+    idempotent: true,
+    params: IdParams,
+    query: None,
+    body: z.object({ code: z.string().regex(/^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/) }),
+    response: DataExportRequest,
+    errors: ["NOT_FOUND", "UNAUTHENTICATED"],
+    summary: "Confirms the export with the emailed code; the export is built asynchronously.",
+  }),
+  getDataExport: route({
+    method: "GET",
+    path: "/v1/me/export/:id",
+    auth: "account",
+    idempotent: false,
+    params: IdParams,
+    query: None,
+    body: None,
+    response: DataExportRequest,
+    errors: ["NOT_FOUND"],
+    summary: "The export's state and, when ready, its download URL.",
+  }),
+  requestAccountDeletion: route({
+    method: "POST",
+    path: "/v1/me/deletion",
+    auth: "account",
+    idempotent: true,
+    params: None,
+    query: None,
+    body: None,
+    response: AccountDeletionRequest,
+    errors: ["DELETION_BLOCKED", "RATE_LIMITED"],
+    summary: "Starts deletion; a code is emailed; accountDeletionRefusals must be empty.",
+  }),
+  confirmAccountDeletion: route({
+    method: "POST",
+    path: "/v1/me/deletion/:id/confirm",
+    auth: "account",
+    idempotent: true,
+    params: IdParams,
+    query: None,
+    body: z.object({ code: z.string().regex(/^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/) }),
+    response: AccountDeletionRequest,
+    errors: ["NOT_FOUND", "UNAUTHENTICATED", "DELETION_BLOCKED"],
+    summary: "Schedules deletion for confirmation + 14 days; sessions stay until then; RETENTION_RULES apply on completion.",
+  }),
+  cancelAccountDeletion: route({
+    method: "POST",
+    path: "/v1/me/deletion/:id/cancel",
+    auth: "account",
+    idempotent: true,
+    params: IdParams,
+    query: None,
+    body: None,
+    response: AccountDeletionRequest,
+    errors: ["NOT_FOUND", "CONFLICT"],
+    summary: "Cancels a scheduled deletion during the grace period.",
+  }),
+  startEmailChange: route({
+    method: "POST",
+    path: "/v1/me/email",
+    auth: "account",
+    idempotent: true,
+    params: None,
+    query: None,
+    body: z.object({ newEmail: z.email().max(254) }),
+    response: EmailChangeRequest,
+    errors: ["CONFLICT", "VALIDATION_FAILED", "RATE_LIMITED"],
+    summary: "Emails a code to the new address and a code to the current one; CONFLICT if the new address belongs to an account.",
+  }),
+  confirmEmailChange: route({
+    method: "POST",
+    path: "/v1/me/email/:id/confirm",
+    auth: "account",
+    idempotent: true,
+    params: IdParams,
+    query: None,
+    body: z.discriminatedUnion("proof", [
+      z.object({ proof: z.literal("new_address"), code: z.string().regex(/^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/) }),
+      z.object({ proof: z.literal("old_address"), code: z.string().regex(/^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/) }),
+      /** The old mailbox is lost: a GitHub sign-in completed within 10 minutes, by the linked GitHub account. */
+      z.object({ proof: z.literal("github"), githubSignInId: Uuid }),
+    ]),
+    response: EmailChangeRequest,
+    errors: ["NOT_FOUND", "UNAUTHENTICATED", "CONFLICT"],
+    summary: "Records a proof; the change completes when emailChangeComplete holds (new address, plus old address or GitHub).",
   }),
 } as const;
 export type IdentityRouteName = keyof typeof IdentityRoutes;

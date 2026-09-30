@@ -1,5 +1,5 @@
 /**
- * First real run fixes (contracts 5.14.0, migration 0013; docs/runbooks/FIRST-REAL-RUN.md section 2):
+ * First real run fixes (contracts 5.15.0, migration 0013; docs/runbooks/FIRST-REAL-RUN.md section 2):
  *  B1  D53: the fable_unavailable fallback (Astra + the required human review, single_lab_review, Fable refused as a seat,
  *      no same-model review, conflicts to the human), switched by a public forward-only maintainer action;
  *  B2  repository names compared case-insensitively (webhooks carry warOnSaaS/product);

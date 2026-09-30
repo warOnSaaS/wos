@@ -1,4 +1,4 @@
--- 0013_review_fallback_and_first_run.sql — contracts 5.14.0 (first real run fixes). Owner: Lead Architect.
+-- 0013_review_fallback_and_first_run.sql — contracts 5.15.0 (first real run fixes). Owner: Lead Architect.
 -- PRODUCTION MIGRATION: the coordinator applies it through the runner (list with --check first) BEFORE the control plane
 -- built from the same commit is deployed (the control plane reads the new columns). No data migration: every production
 -- repository name was already lowercase when this was written (checked read-only on 2026-09-30).

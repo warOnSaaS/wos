@@ -101,9 +101,9 @@ export interface GithubPort {
   compareDiff(repo: string, base: string, head: string): Promise<string>;
   /** contracts 3.1.0 (B-0005-control-plane): request review from an org team, e.g. "maintainers". */
   requestTeamReview(repo: string, prNumber: number, teamSlug: string): Promise<void>;
-  /** contracts 5.14.0 (first run): a document PR leaves draft at consensus (ROADMAP-PROTOCOL section 3). */
+  /** contracts 5.15.0 (first run): a document PR leaves draft at consensus (ROADMAP-PROTOCOL section 3). */
   markPullRequestReadyForReview(repo: string, prNumber: number): Promise<void>;
-  /** contracts 5.14.0 (first run): one PR review with event COMMENT per revealed round (REVIEW-PROTOCOL section 6 step 5). */
+  /** contracts 5.15.0 (first run): one PR review with event COMMENT per revealed round (REVIEW-PROTOCOL section 6 step 5). */
   createPullRequestReview(repo: string, prNumber: number, input: { body: string; commitId: string }): Promise<void>;
 }
 

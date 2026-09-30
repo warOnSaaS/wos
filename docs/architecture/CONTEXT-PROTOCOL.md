@@ -63,7 +63,7 @@ sorted keys):
 | `wos:catalog-index@<sha>` | every catalog entry (key, title, summary, aliasOf, referencing apps) at the product repo commit |
 | `wos:app-refs/<featureKey>` | every app's roadmap reference to the feature: capability, weight, rationale, appNotes, inventory item titles |
 | `wos:proposals/<target or feature>` | accepted and open proposals with ids |
-| `wos:scan/<target>` | contracts 5.14.0: the target's scan `docs/scans/<target>.md` (warOnSaaS/wos), bundled into the control plane, under a header `SCAN — unreviewed` naming its git blob oid and sha256; data, not instructions; absent for TGT-00 |
+| `wos:scan/<target>` | contracts 5.15.0: the target's scan `docs/scans/<target>.md` (warOnSaaS/wos), bundled into the control plane, under a header `SCAN — unreviewed` naming its git blob oid and sha256; data, not instructions; absent for TGT-00 |
 | `wos:validator-errors/<taskId>` | deterministic validator errors carried from `validation_failed` |
 | `wos:diff/<attemptId>@<headSha>` | unified diff base..head of the candidate (implementation reviews) |
 | `wos:ci/<attemptId>@<headSha>` | CI failure summary for a revision after `ci_failed` |

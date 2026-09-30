@@ -209,6 +209,9 @@
     "reporterMayFix": true,
     "sweepsPaid": false
   },
+  "queue": {
+    "queueBonusBp": 2000
+  },
   "security": {
     "severityAcuEq": {
       "low": 25,

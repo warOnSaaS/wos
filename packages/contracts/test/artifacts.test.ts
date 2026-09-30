@@ -251,7 +251,7 @@ describe("other contracts", () => {
   it("every contributor/maintainer route that creates work requires GitHub (D8): no 'account' auth on claims", () => {
     for (const [name, r] of Object.entries(Routes)) {
       if (/^claim|^submit|^create(Proposal|Blocker)|^post(Manifest|AgentRun|Attestation)/.test(name))
-        // contracts 5.14.0: the D53 human seat routes are maintainer routes; both modes require a linked GitHub account.
+        // contracts 5.15.0: the D53 human seat routes are maintainer routes; both modes require a linked GitHub account.
         expect(["contributor", "maintainer"], name).toContain(r.auth);
     }
   });

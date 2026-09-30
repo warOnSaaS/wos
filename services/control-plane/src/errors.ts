@@ -43,6 +43,7 @@ export const HTTP_STATUS: Record<ApiErrorCode, number> = {
   INVITE_EMAIL_MISMATCH: 403,
   QUOTA_EXCEEDED: 403,
   MODULE_DORMANT: 404,
+  DELETION_BLOCKED: 409,
 };
 
 export const fail = (code: ApiErrorCode, message: string, details?: unknown): never => {

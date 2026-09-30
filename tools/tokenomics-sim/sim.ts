@@ -1179,7 +1179,7 @@ Per planted bug the no-consequence column pays the pair the full report weight (
 
 /** S (D63): the queue bonus. Base price = floor(budget / 1.2); what self-picking a task costs its picker. */
 export function queueBonusTable(): string {
-  const bonus = CAPABILITY_POLICY_V2.workNext!.queueBonusBp;
+  const bonus = REWARD_POLICY_V2.queue!.queueBonusBp;
   const rows = [8, 12, 30, 60].map((acu) => {
     const q = BigInt(acu) * MICRO;
     const b = basePriceAcuMicro(q, bonus);

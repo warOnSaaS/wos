@@ -329,6 +329,21 @@ export const IdentityPolicy = z.object({
     lapseAfterFailingDays: PosInt,
   }),
   invites: z.object({ ttlDays: z.literal(INVITE_TTL_DAYS) }),
+  /**
+   * D66 (5.13.0): where the domain lists come from. Disposable: a pinned maintained list
+   * (data/disposable-email-domains.v1.json) plus `abuse.disposableDomains`. Public mail providers: the curated,
+   * committed `domains.publicEmailDomains`. Never fetched live; refreshed by a reviewed PR.
+   */
+  lists: z
+    .object({
+      disposable: z.object({ file: z.literal("disposable-email-domains.v1.json"), refreshedBy: z.literal("reviewed_pr") }),
+      publicEmailProviders: z.object({ source: z.literal("curated"), refreshedBy: z.literal("reviewed_pr") }),
+    })
+    .optional(),
+  /** D66: SSO break-glass (dormant with SSO): email code + a second owner's approval; with one owner, a maintainer AdminAction with a public label. */
+  ssoBreakGlass: z
+    .object({ rule: z.literal("email_code_and_second_owner"), singleOwnerFallback: z.literal("maintainer_admin_action_public_label") })
+    .optional(),
   /** D50: hosted modules dormant until a paying enterprise's order; activated by a public AdminAction. */
   modules: z.record(
     DormantModuleName,
@@ -403,3 +418,145 @@ export const AUDIT_EVENT_TYPES = [
   "organization.permission_override_changed",
   "entitlement.changed",
 ] as const;
+
+// ---------------------------------------------------------------------------------------------
+// D66 (contracts 5.13.0): pinned domain lists (never fetched live)
+// ---------------------------------------------------------------------------------------------
+
+/** A maintained open list, committed at a pinned source commit and refreshed only by a reviewed PR. */
+export const DomainList = z.object({
+  schema: z.literal("wos-domain-list.v1"),
+  name: z.string().min(1),
+  source: z.url(),
+  path: z.string().min(1),
+  commit: z.string().regex(/^[0-9a-f]{40}$/),
+  sourceSha256: z.string().regex(/^sha256:[0-9a-f]{64}$/),
+  license: z.string().min(1),
+  domains: z.array(z.string().regex(/^[a-z0-9.-]+$/)).min(1),
+});
+export type DomainList = z.infer<typeof DomainList>;
+
+/** A disposable address (the pinned list plus the policy's own additions); subdomains of a listed domain count. */
+export function isDisposableDomain(domain: string, list: ReadonlySet<string>, extra: readonly string[] = []): boolean {
+  const d = domain.toLowerCase();
+  const parts = d.split(".");
+  for (let i = 0; i < parts.length - 1; i++) if (list.has(parts.slice(i).join("."))) return true;
+  return extra.some((e) => d === e || d.endsWith(`.${e}`));
+}
+
+// ---------------------------------------------------------------------------------------------
+// Amendment 04 addendum A (D66, contracts 5.13.0): data export, account deletion, email change
+// ---------------------------------------------------------------------------------------------
+
+/** GDPR access and portability: one JSON document of everything wOS holds about the account. */
+export const DataExportRequest = z.object({
+  id: Uuid,
+  state: z.enum(["requested", "confirmed", "ready", "expired", "failed"]),
+  requestedAt: Timestamp,
+  /** A signed URL valid for 24 hours once ready. */
+  downloadUrl: z.url().nullable(),
+  expiresAt: Timestamp.nullable(),
+});
+export type DataExportRequest = z.infer<typeof DataExportRequest>;
+
+/** The sections of an export (`wos-account-export.v1`), each a JSON array or object. */
+export const DATA_EXPORT_SECTIONS = [
+  "account",
+  "email",
+  "github",
+  "devices",
+  "sessions",
+  "organizations",
+  "invites",
+  "join_requests",
+  "entitlements_changed",
+  "tasks_and_leases",
+  "attempts",
+  "reviews",
+  "documents_authored",
+  "contributions",
+  "ledger",
+  "bug_reports",
+  "events_as_actor",
+] as const;
+
+/** Deletion: requested, confirmed by an email code, a 14-day grace (cancelable), then carried out. */
+export const ACCOUNT_DELETION_GRACE_DAYS = 14 as const;
+
+export const AccountDeletionRequest = z.object({
+  id: Uuid,
+  state: z.enum(["requested", "scheduled", "cancelled", "completed", "blocked"]),
+  requestedAt: Timestamp,
+  /** When deletion is carried out (confirmation + 14 days); null until confirmed. */
+  scheduledFor: Timestamp.nullable(),
+  /** Why it cannot proceed yet (DELETION_BLOCKED): e.g. sole owner of a team organization with other members. */
+  blockers: z.array(z.string()),
+});
+export type AccountDeletionRequest = z.infer<typeof AccountDeletionRequest>;
+
+/**
+ * What deletion does to each kind of record (the retention exceptions are the lawful ones: public ledger and receipt
+ * integrity, abuse prevention, legal obligations). `pseudonymise` keeps the record and replaces every personal field
+ * with the account's pseudonym (`deletedContributorPseudonym`); the account id is a random UUID with no personal data.
+ */
+export const RETENTION_RULES = {
+  account_profile: { action: "delete", note: "display name, avatar, handle, preferences" },
+  email: { action: "delete", note: "account_emails row; sign-in requests" },
+  sessions_devices: { action: "delete", note: "sessions, devices, attestations" },
+  memberships: { action: "delete", note: "every organization membership; join requests; pending invites to the address" },
+  github_identity: {
+    action: "retain_hashed",
+    note: "an HMAC of the GitHub user id for 90 days (the existing reservation), then deleted: stops link-reset abuse",
+  },
+  contributions: {
+    action: "pseudonymise",
+    note: "attempts, reviews, documents, PR provenance: public, reviewed history of the codebase; the author becomes the pseudonym",
+  },
+  ledger_and_receipts: {
+    action: "pseudonymise",
+    note: "ledger entries and protocol receipts are append-only and hashed; kept for integrity, shown under the pseudonym; balances with no cash value (D3) are forfeited by a ledger entry",
+  },
+  git_history: {
+    action: "retain",
+    note: "commits in public repositories are authored by the wOS GitHub App (D9); co-author trailers name the GitHub login, which wOS cannot rewrite in published history",
+  },
+  events: { action: "pseudonymise", note: "actor ids in the event log stay; personal payload fields are removed" },
+  outbound_emails: { action: "retain", note: "already hashed recipients (to_hash), no address" },
+  security_logs: { action: "retain", note: "rate-limit buckets and abuse records hold hashes only; they expire on their own schedule" },
+} as const satisfies Record<string, { action: "delete" | "retain" | "retain_hashed" | "pseudonymise"; note: string }>;
+
+/** The public name a deleted account's retained records show: stable per account, not reversible without the secret. */
+export const deletedContributorPseudonym = (hmacHex: string): string => `former-contributor-${hmacHex.slice(0, 10)}`;
+
+/** Why a deletion cannot be scheduled yet; empty when it can. */
+export function accountDeletionRefusals(x: {
+  soleOwnerOfTeamOrgsWithOtherMembers: number;
+  activeLeases: number;
+  maintainer: boolean;
+}): string[] {
+  const r: string[] = [];
+  if (x.soleOwnerOfTeamOrgsWithOtherMembers > 0)
+    r.push("DELETION_BLOCKED: transfer ownership of (or delete) every team organization you solely own that has other members");
+  if (x.activeLeases > 0) r.push("DELETION_BLOCKED: release or finish your active leases first");
+  if (x.maintainer) r.push("DELETION_BLOCKED: a maintainer's role must be removed by another maintainer first");
+  return r;
+}
+
+/**
+ * Email change: the new address proves itself with a code, and the old address confirms with its own code. If the old
+ * mailbox is unreachable, a fresh GitHub sign-in of the linked GitHub account replaces the old address's code; without
+ * a linked GitHub, a maintainer AdminAction with a public label after a 7-day wait is the only path.
+ */
+export const EmailChangeRequest = z.object({
+  id: Uuid,
+  newEmail: z.email(),
+  state: z.enum(["pending", "completed", "cancelled", "expired"]),
+  /** Which proofs are in: both the new address and one of (old address, GitHub) are needed. */
+  proofs: z.object({ newAddress: z.boolean(), oldAddress: z.boolean(), github: z.boolean() }),
+  expiresAt: Timestamp,
+});
+export type EmailChangeRequest = z.infer<typeof EmailChangeRequest>;
+
+export function emailChangeComplete(p: { newAddress: boolean; oldAddress: boolean; github: boolean }): boolean {
+  return p.newAddress && (p.oldAddress || p.github);
+}

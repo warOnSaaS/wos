@@ -314,6 +314,12 @@ export const RewardPolicy = z.object({
       sweepsPaid: z.literal(false),
     })
     .optional(),
+  /**
+   * D63 / review 09 R09-1: the queue bonus is PAY, so it lives in the reward policy the reservation pins (from
+   * reward-policy.v2): provisional 2000 bp (+20%), tunable only by a new policy version (public AdminAction). Work
+   * pinned to a version with this block must carry claim terms with exactly this coefficient; v1 work carries none.
+   */
+  queue: z.object({ queueBonusBp: z.number().int().min(0).max(10_000) }).optional(),
   security: z.object({
     /** Security payouts debit the security reserve balance: weight x the epoch's issuance rate, at most maxShareBp of the balance. */
     severityAcuEq: z.object({ low: z.number().int(), medium: z.number().int(), high: z.number().int(), critical: z.number().int() }),
@@ -570,7 +576,8 @@ export const AgentCapabilityPolicy = z.object({
    * kindBase is DERIVED, never set by hand: kindBase[k] = weights.unlock x structuralUnlock[k], where structuralUnlock
    * is the number of merges a task of that kind unblocks by construction (a review unblocks its subject's merge, a
    * triage unblocks its fix); documents rank high through their measured unlock value (dependents waiting).
-   * Held units are never offered. Pay: every task has a published BASE price; the queue pays base + queueBonusBp
+   * Held units are never offered. Pay: every task has a published BASE price; the queue pays base + the reward
+   * policy's `queue.queueBonusBp`
    * (the "+20% queue bonus"); the reservation at issuance is the queue price, and a claim without the bonus returns
    * the bonus portion to R at acceptance. The v1 assignedOnlyWindow is not carried over (the bonus replaces it).
    */
@@ -596,8 +603,6 @@ export const AgentCapabilityPolicy = z.object({
         critical: z.number().int().nonnegative(),
       }),
       architectureMigration: z.number().int().nonnegative(),
-      /** Provisional 2000 bp (+20%); tunable by public AdminAction, pinned per lease. */
-      queueBonusBp: z.number().int().min(0).max(10_000),
       /** Releasing an assigned task before submission: the next claim gets no queue bonus; repeated, a cooldown. */
       declines: z.object({
         windowHours: z.number().int().positive(),
@@ -636,7 +641,12 @@ export const AgentCapabilityPolicy = z.object({
   budgets: z.array(
     z.object({
       /** D61: bug_triage joins from capability-policy.v2 (bug_sweep has no budget: sweeps are paid only through confirmed bugs). */
-      taskKind: z.union([TaskKind, BugTaskKind.extract(["bug_triage"])]),
+      /**
+       * v2 adds: bug_triage (flat), abu_revision (a revision is priced as a build of its size; review 09 R09-5) and
+       * architecture_author (priced like a feature contract; D60 records). bug_sweep has no budget: sweeps are paid only
+       * through confirmed reports.
+       */
+      taskKind: z.union([TaskKind, BugTaskKind.extract(["bug_triage"]), z.literal("architecture_author")]),
       baseMicro: U64String,
       perSizePointMicro: U64String,
       /** Once >= minSamples merged peers exist, cap = P75(peer eligible ACU per size point) x size x headroomBp/1e4. */

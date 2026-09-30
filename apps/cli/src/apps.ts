@@ -51,7 +51,7 @@ export interface AppsApi {
   listOrgApps(orgId: string): Promise<OrgApps>;
   enableApp(orgId: string, app: string, expectedRowVersion: number | null): Promise<OrgAppView>;
   disableApp(orgId: string, app: string, expectedRowVersion: number | null): Promise<OrgAppView>;
-  /** D53 human review seat (contracts 5.14.0, maintainer routes; not in the frozen Orchestrator interface). */
+  /** D53 human review seat (contracts 5.15.0, maintainer routes; not in the frozen Orchestrator interface). */
   listHumanReviews(): Promise<CoreRes<"listHumanReviews">["items"]>;
   getHumanReview(roundId: string): Promise<CoreRes<"getHumanReview">>;
   submitHumanReview(roundId: string, body: CoreBody<"submitHumanReview">): Promise<CoreRes<"submitHumanReview">>;

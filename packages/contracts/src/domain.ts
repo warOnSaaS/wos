@@ -403,7 +403,7 @@ export const PlatformStatus = z.object({
   contractsVersion: z.string(),
   policyVersion: z.string(),
   rewardScheduleVersion: z.string(),
-  /** contracts 5.14.0 (D53): the review policy fallback in force; public. Optional for older producers. */
+  /** contracts 5.15.0 (D53): the review policy fallback in force; public. Optional for older producers. */
   reviewPolicy: ReviewPolicyState.optional(),
 });
 export type PlatformStatus = z.infer<typeof PlatformStatus>;

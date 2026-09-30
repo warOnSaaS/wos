@@ -205,3 +205,9 @@ Tell the verification workstream which option you chose. The workflow refuses to
 7. **Prices (G-59).** Decide them only when wOS Cloud is to charge; nothing blocks on it now.
 8. **Migration 0006.** It is applied to production by the coordinator through the runner (not by any workstream).
 9. **Migrations 0008 and 0009, then Build's release (contracts 5.6.0/5.7.0).** The coordinator applies them through the runner (`--check` first, AGENTS.md). Then a maintainer account publishes Build: `npm run build -w @waronsaas/contracts`, `node tools/registry/publish-build-release.mjs --email <maintainer email> --dry-run`, then without `--dry-run` (it emails a code and asks for it). No new Vercel variable is required on `waronsaas-api`; `APP_ORIGIN` exists only to point wOS Web sign-in links at a preview host (default `https://app.waronsaas.com`).
+
+## 14. GitHub App: "Email addresses: read" (Amendment 04, D66; blocks Sign in with GitHub)
+
+1. GitHub → Settings → Developer settings → GitHub Apps → warOnSaaS wOS → Permissions & events → **Account permissions → Email addresses: Read-only**. Save.
+2. Accept the new permission on the installation (Settings → Applications → Installed GitHub Apps → warOnSaaS wOS → review and accept).
+3. Nothing else changes: no repository permission, no new callback URL (the web flow's callback stays `/v1/github/oauth/callback`).

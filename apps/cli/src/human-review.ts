@@ -1,5 +1,5 @@
 /**
- * `wos review --human` (contracts 5.14.0, D53): the required human review that holds the second seat of a round while
+ * `wos review --human` (contracts 5.15.0, D53): the required human review that holds the second seat of a round while
  * the review policy fallback `fable_unavailable` is active. It shows the round's subject, the sealed Astra verdict and
  * the prior findings, then records the human's verdict (review-verdict.v1) bound to the round's head sha and submission
  * hash. The human seat is never the subject's author nor the Astra reviewer of the same round (the server refuses both).

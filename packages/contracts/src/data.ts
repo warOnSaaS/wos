@@ -6,7 +6,8 @@ import bugsJson from "./data/bugs-policy.v1.json" with { type: "json" };
 import { ArchitecturePolicy } from "./architecture.js";
 import { BugsPolicy } from "./bugs.js";
 import identityJson from "./data/identity-policy.v1.json" with { type: "json" };
-import { IdentityPolicy } from "./identity.js";
+import disposableJson from "./data/disposable-email-domains.v1.json" with { type: "json" };
+import { DomainList, IdentityPolicy } from "./identity.js";
 import { RewardSchedule } from "./rewards.js";
 
 /** The V1 Agent Policy document, parsed (throws at import if the data file is invalid). */
@@ -23,3 +24,6 @@ export const BUGS_POLICY_V1: BugsPolicy = BugsPolicy.parse(bugsJson);
 
 /** Amendment 04 (contracts 5.12.0): rate limits, plan quotas, abuse guards, domain rules, dormant enterprise modules. */
 export const IDENTITY_POLICY_V1: IdentityPolicy = IdentityPolicy.parse(identityJson);
+
+/** D66 (contracts 5.13.0): the pinned disposable-email-domain list (CC0-1.0), refreshed only by a reviewed PR. */
+export const DISPOSABLE_EMAIL_DOMAINS: DomainList = DomainList.parse(disposableJson);

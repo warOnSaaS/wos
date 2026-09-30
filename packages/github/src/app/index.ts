@@ -435,7 +435,7 @@ export async function setCommitStatus(
 }
 
 /**
- * First-run fix (contracts 5.14.0, ROADMAP-PROTOCOL section 3): marks a draft PR ready for review (GraphQL
+ * First-run fix (contracts 5.15.0, ROADMAP-PROTOCOL section 3): marks a draft PR ready for review (GraphQL
  * `markPullRequestReadyForReview`) once its document reached consensus. A PR that is not a draft is left as it is.
  */
 export async function markPullRequestReadyForReview(creds: AppCredentials, repo: string, prNumber: number): Promise<{ changed: boolean }> {

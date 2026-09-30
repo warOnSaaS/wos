@@ -488,3 +488,16 @@ The architect wrote the contracts, the migration and the rulings; the workstream
 | mobile-runtime | "Sign in with GitHub" (device flow, clientKind mobile); pending invites; leave. Tokens in expo-secure-store (S-4). | `startGithubSignIn`, `pollGithubSignIn`, `listMyInvites`, `respondToInvite`, `leaveOrganization` |
 | web (public site) | `/auth/github` landing for clientKind web (cookie pollSecret, S-5); "Sign in with GitHub" beside the email code (copy is a founder decision, amendment section 10). | `startGithubSignIn`, `pollGithubSignIn` |
 | verification | adversarial tests: an unverified GitHub email never links; a forwarded invite fails for another account; a domain claimed twice; an admin managing owners; rate limits and quotas. | S-44..S-46 |
+
+## 18. Amendment 04 addendum A: export, deletion, email change (contracts 5.13.0)
+
+Built in Wave 3b with section 17. The build needs one migration, numbered by the architect when the control plane starts. It adds `data_export_requests`, `account_deletion_requests`, `email_change_requests`, `deleted` in the `accounts.status` check, and the pseudonym column.
+
+| Workstream | Implements | Uses |
+|---|---|---|
+| control-plane | the eight routes; the export builder (`DATA_EXPORT_SECTIONS`, signed URL 24 h); the deletion job (`AccountDeletionMachine`, `accountDeletionRefusals`, every `RETENTION_RULES` action in one transaction, the forfeiture ledger entry, public views showing `deletedContributorPseudonym`); email change (`emailChangeComplete`, codes to both addresses, the GitHub proof, notices); the disposable check with `DISPOSABLE_EMAIL_DOMAINS`; the three events | `identity.ts`, `IdentityRoutes` |
+| suite-shell (wOS Web) | Account settings: export, delete (with the retention notice), change email | the same routes |
+| desktop, cli, mobile-runtime | links into wOS Web account settings (desktop, mobile); `wos account export`, `wos account delete`, `wos account email` (cli) | the same routes |
+| web (public site) | the retention notice in the privacy page; "Sign in with GitHub" once the routes are live | `RETENTION_RULES` |
+| verification | a deleted account's personal fields are absent from every public view, export sections are complete, and an email change without both proofs fails | |
+| protocol (ws/protocol) | a rule for a deleted beneficiary once receipts carry value (P2+) | `RETENTION_RULES.ledger_and_receipts` |
