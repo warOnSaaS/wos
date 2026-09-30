@@ -15,7 +15,7 @@ import {
   stakeForfeited,
   allocationTree,
   assertConserved,
-  applyWeightCaps,
+  governanceWeights,
   capGroupShares,
   CAPABILITY_POLICY_V1,
   contributionWeight,
@@ -75,7 +75,19 @@ function receipt(i: number, account: number, weightAcu: number, slice: EngineRec
   };
 }
 
-const fresh = (state: EngineState = initialState(RESERVE), epochNumber = 1) => ({ epochNumber, state, receipts: [] as EngineReceipt[] });
+const fresh = (state: EngineState = initialState(RESERVE), epochNumber = 1) => ({
+  epochNumber,
+  state,
+  consumedIds: new Set<string>() as ReadonlySet<string>,
+  receipts: [] as EngineReceipt[],
+});
+const tranche = (beneficiaryId: string, epochNumber: number, amount: bigint, maturesAtEpoch = epochNumber + 13) => ({
+  beneficiaryId,
+  epochNumber,
+  amount,
+  maturesAtEpoch,
+  policyVersion: "reward-policy.v1",
+});
 const net = (r: ReturnType<typeof computeEpoch>, b: string) => {
   const e = r.entitlements.get(b)!;
   return e.releasedNow + e.heldBack;
@@ -87,7 +99,8 @@ const smallState = (over: Partial<EngineState> = {}): EngineState => ({
   poolBalances: new Map(),
   securityReserve: 0n,
   cumulativeIssued: 100n,
-  holdback: [{ beneficiaryId: "a", epochNumber: 1, amount: 100n }],
+  holdback: [tranche("a", 1, 100n)],
+  claimable: new Map(),
   offsets: new Map(),
   lossCarry: 0n,
   ...over,
@@ -242,16 +255,22 @@ describe("computeEpoch", () => {
   it("H1: a return must name its source; returning without debiting issuance can no longer create funds", () => {
     // Conserved start: R=900, I=100. The old engine turned a bare 100-unit return into a total of 1,100.
     const ok = computeEpoch(
-      { ...fresh(smallState({ holdback: [] })), returns: [{ id: "ret-1", kind: "unbound_expiry", beneficiaryId: "a", amount: 100n }] },
+      {
+        ...fresh(smallState({ holdback: [], claimable: new Map([["a", 100n]]) })),
+        returns: [{ id: "ret-1", kind: "unbound_expiry", beneficiaryId: "a", amount: 100n }],
+      },
       small,
     );
     expect(ok.state.remainingReserve + ok.state.cumulativeIssued).toBe(1000n);
     expect(() =>
       computeEpoch(
-        { ...fresh(smallState({ holdback: [] })), returns: [{ id: "ret-2", kind: "unbound_expiry", beneficiaryId: "a", amount: 101n }] },
+        {
+          ...fresh(smallState({ holdback: [], claimable: new Map([["a", 100n]]) })),
+          returns: [{ id: "ret-2", kind: "unbound_expiry", beneficiaryId: "a", amount: 101n }],
+        },
         small,
       ),
-    ).toThrow(/exceeds issuance/);
+    ).toThrow(/claimable/);
     expect(() => assertConserved(1000n, { ...smallState(), remainingReserve: 1000n })).toThrow(/funding equation/);
   });
   it("H1: the same dispute settlement cannot be consumed twice (old result: I = -60 and conservation passed)", () => {
@@ -370,6 +389,180 @@ describe("computeEpoch", () => {
   });
 });
 
+describe("Astra review 03 probes (docs/protocol/reviews/ASTRA-REVIEW-03-probe-results.jsonl) and regressions", () => {
+  const tiny = { ...small, budgetPpm: 0n, holdbackBp: 0n };
+  it("A3-10 probe return_identified_only_by_event_not_entitlement: a return needs a claimable balance of its owner", () => {
+    // Old: R=900, I=100 and two unbound_expiry events (80 + 20) naming a beneficiary with no entitlement gave R=1000, I=0.
+    const st = smallState({ holdback: [] });
+    expect(() =>
+      computeEpoch(
+        {
+          ...fresh(st),
+          returns: [
+            { id: "x1", kind: "unbound_expiry", beneficiaryId: "nobody", amount: 80n },
+            { id: "x2", kind: "unbound_expiry", beneficiaryId: "nobody", amount: 20n },
+          ],
+        },
+        tiny,
+      ),
+    ).toThrow(/claimable/);
+    expect(() => assertConserved(1000n, { ...st, claimable: new Map([["a", 101n]]) })).toThrow(/exceed issuance/);
+  });
+  it("A3-10 probe negative_security_payout: still refused by the funding equation", () => {
+    expect(() => assertConserved(1000n, { ...smallState(), securityReserve: 50n })).toThrow(/funding equation broken: 1050 != 1000/);
+  });
+  it("A3-10/A3-4 probe confiscation_exceeds_proven_excess: recovery is compensatory, capped at the proven excess", () => {
+    const st = smallState({ holdback: [], claimable: new Map([["a", 100n]]) });
+    expect(() =>
+      computeEpoch(
+        {
+          ...fresh(st),
+          confiscations: [{ id: "c", beneficiaryId: "a", holdbackBase: 0n, unclaimedBase: 100n, provenExcessBase: 1n, bounties: [] }],
+        },
+        tiny,
+      ),
+    ).toThrow(/compensatory/);
+    const ok = computeEpoch(
+      {
+        ...fresh(st),
+        confiscations: [{ id: "c", beneficiaryId: "a", holdbackBase: 0n, unclaimedBase: 1n, provenExcessBase: 1n, bounties: [] }],
+      },
+      tiny,
+    );
+    expect(ok.state.claimable.get("a")).toBe(99n);
+  });
+  it("A3-10 probe holdback_policy_changes_old_tranches: a tranche keeps the maturity pinned when it was created", () => {
+    // Old: a 13-epoch tranche from epoch 1 matured at epoch 2 once holdbackEpochs changed to 1.
+    const st = smallState({ remainingReserve: 950n, cumulativeIssued: 50n, holdback: [tranche("a", 1, 50n, 14)] });
+    const r = computeEpoch({ ...fresh(st, 2) }, { ...tiny, holdbackEpochs: 1 });
+    expect(r.entitlements.get("a")?.maturedHoldback ?? 0n).toBe(0n);
+    expect(r.state.holdback).toEqual([tranche("a", 1, 50n, 14)]);
+    const later = computeEpoch({ ...fresh(st, 14) }, { ...tiny, holdbackEpochs: 1 });
+    expect(later.entitlements.get("a")!.maturedHoldback).toBe(50n);
+    expect(later.state.claimable.get("a")).toBe(50n);
+    // New tranches carry the policy that created them.
+    const r1 = computeEpoch({ ...fresh(), receipts: [receipt(1, 1, 10)] }, params);
+    expect(r1.state.holdback[0]).toMatchObject({ maturesAtEpoch: 14, policyVersion: REWARD_POLICY_V1.policyVersion });
+  });
+  it("A3-10: released amounts become claimable; settled claims leave it once; replay state is required", () => {
+    const r1 = computeEpoch({ ...fresh(), receipts: [receipt(1, 1, 10)] }, params);
+    const e = r1.entitlements.get(u(1))!;
+    expect(r1.state.claimable.get(u(1))).toBe(e.releasedNow);
+    const claim = { id: "leaf-1", beneficiaryId: u(1), amount: e.releasedNow };
+    const r2 = computeEpoch({ ...fresh(r1.state, 2), consumedIds: new Set(r1.consumedIds), claims: [claim] }, params);
+    expect(r2.state.claimable.has(u(1))).toBe(false);
+    expect(() =>
+      computeEpoch({ ...fresh(r2.state, 3), consumedIds: new Set([...r1.consumedIds, ...r2.consumedIds]), claims: [claim] }, params),
+    ).toThrow(/consumed twice/);
+    expect(() => computeEpoch({ ...fresh(r1.state, 2), claims: [{ ...claim, amount: e.releasedNow + 1n }] }, params)).toThrow(/claimable/);
+  });
+  it("A3-15: a completion correction after the pool paid becomes beneficiary offsets instead of blocking the epoch", () => {
+    const st = smallState({ holdback: [], remainingReserve: 800n, poolBalances: new Map([["pool", 100n]]) });
+    // Before payout: returned from the pool.
+    const before = computeEpoch({ ...fresh(st), accrualCorrections: [{ id: "k1", poolKey: "pool", amount: 40n }] }, tiny);
+    expect(before.state.poolBalances.get("pool")).toBe(60n);
+    // After payout (pool empty): the old engine threw; now the paid part is attributed and becomes offsets.
+    const paid = smallState({ holdback: [] });
+    expect(() => computeEpoch({ ...fresh(paid), accrualCorrections: [{ id: "k2", poolKey: "pool", amount: 5n }] }, tiny)).toThrow(
+      /recoverFromPaid/,
+    );
+    const after = computeEpoch(
+      {
+        ...fresh(paid),
+        accrualCorrections: [
+          {
+            id: "k3",
+            poolKey: "pool",
+            amount: 0n,
+            recoverFromPaid: [
+              { beneficiaryId: "a", amount: 3n },
+              { beneficiaryId: "b", amount: 2n },
+            ],
+          },
+        ],
+      },
+      tiny,
+    );
+    expect(after.state.offsets.get("a")).toBe(3n);
+    expect(after.state.offsets.get("b")).toBe(2n);
+    // Partial: part still in the pool, part already paid.
+    const part = computeEpoch(
+      {
+        ...fresh(st),
+        accrualCorrections: [{ id: "k4", poolKey: "pool", amount: 100n, recoverFromPaid: [{ beneficiaryId: "a", amount: 7n }] }],
+      },
+      tiny,
+    );
+    expect(part.state.poolBalances.has("pool")).toBe(false);
+    expect(part.state.offsets.get("a")).toBe(7n);
+  });
+  it("A3-16 probe split_sponsored_rounding: splitting a sponsored receipt cannot move units between beneficiaries", () => {
+    const pr = { ...params, emissionReserve: RESERVE, budgetPpm: 1000n, holdbackBp: 0n, rateCeilingInitialBasePerAcu: 10n ** 14n };
+    const one = (id: string, w: bigint, shares: [number, number] = [5000, 5000]): EngineReceipt => ({
+      receiptId: id,
+      accountId: "a",
+      beneficiaries: [
+        { beneficiaryId: "a", shareBp: shares[0] },
+        { beneficiaryId: "b", shareBp: shares[1] },
+      ],
+      slice: "execution",
+      weightMicro: w,
+      featurePoolKeys: [],
+      applicationPoolKeys: [],
+    });
+    const whole = computeEpoch({ ...fresh(), receipts: [one("r", 2n)] }, pr);
+    const split = computeEpoch({ ...fresh(), receipts: [one("r1", 1n), one("r2", 1n)] }, pr);
+    expect(net(split, "a")).toBe(net(whole, "a"));
+    expect(net(split, "b")).toBe(net(whole, "b"));
+    expect(net(whole, "a")).toBe(net(whole, "b"));
+    // Partition invariance with an uneven split and a third, unsponsored contributor.
+    const c: EngineReceipt = { ...receipt(9, 9, 0), receiptId: "c", accountId: "c", weightMicro: 3n };
+    const w2 = computeEpoch({ ...fresh(), receipts: [one("r", 7n, [7000, 3000]), c] }, pr);
+    const s2 = computeEpoch({ ...fresh(), receipts: [one("r1", 3n, [7000, 3000]), one("r2", 4n, [7000, 3000]), c] }, pr);
+    for (const b of ["a", "b", "c"]) expect(net(s2, b)).toBe(net(w2, b));
+  });
+  it("A3-14 probe trailing_rate_not_previous_epoch_bound: the Q3 ceiling smooths; it does not bound against the last epoch", () => {
+    // Documented behaviour (founder decision F19 on whether to strengthen it): 1.5 x mean(100,100,100,1) = 112.9 caps
+    // nothing below the absolute ceiling, so one quiet ACU after a 1 WOS/ACU epoch earns about 98.7 WOS.
+    const r = computeEpoch(
+      { ...fresh(initialState(RESERVE), 5), trailingRateBasePerAcu: 75_250_000n, receipts: [receipt(1, 1, 1)] },
+      params,
+    );
+    expect(r.rateCeilingBasePerAcu).toBe(98_675_825n);
+    const alternating = computeEpoch(
+      { ...fresh(initialState(RESERVE), 5), trailingRateBasePerAcu: 50_500_000n, receipts: [receipt(1, 1, 1)] },
+      params,
+    );
+    expect(alternating.rateCeilingBasePerAcu).toBe(75_750_000n);
+  });
+});
+
+describe("usage adapters: Astra review 03 probes (A3-11)", () => {
+  it("aggregate_usage_overflow: two individually safe counters whose sum is unsafe fail the run", () => {
+    const big = Number.MAX_SAFE_INTEGER;
+    const r = parseClaudeStream([
+      JSON.stringify({ type: "assistant", message: { id: "m1", usage: { input_tokens: big } } }),
+      JSON.stringify({ type: "assistant", message: { id: "m2", usage: { input_tokens: big } } }),
+    ]);
+    expect(r.ok).toBe(false);
+    expect(r.errors.join(" ")).toMatch(/safe-integer/);
+  });
+  it("missing_rollout_response_id: a usage-bearing record without its id is an error, not zero usage", () => {
+    const r = parseCodexRollout([
+      JSON.stringify({ type: "token_usage_record", payload: { usage: { input_tokens: 10, output_tokens: 5 } } }),
+    ]);
+    expect(r.ok).toBe(false);
+    expect(r.errors.join(" ")).toMatch(/without response_id/);
+  });
+  it("empty_adapter: an empty or foreign log is a parse failure, distinct from a legitimate zero-usage session", () => {
+    expect(parseClaudeStream([]).ok).toBe(false);
+    expect(parseCodexRollout([]).ok).toBe(false);
+    expect(parseCodexExecStream([JSON.stringify({ type: "thread.started" })]).ok).toBe(false);
+    const zeroButReal = parseClaudeStream([JSON.stringify({ type: "result", usage: { input_tokens: 0, output_tokens: 0 } })]);
+    expect(zeroButReal.ok).toBe(true);
+  });
+});
+
 describe("optimistic payouts, disputes, anomalies, activation (D28–D33, D43)", () => {
   it("allocates per receipt so any single allocation can be disputed", () => {
     const r = computeEpoch({ ...fresh(), receipts: [receipt(1, 1, 5), receipt(2, 1, 7)] }, params);
@@ -440,10 +633,27 @@ describe("optimistic payouts, disputes, anomalies, activation (D28–D33, D43)",
 });
 
 describe("governance and off-ramp (D34, D35)", () => {
-  const w = (id: number, locked: bigint, contribution: bigint) => ({ accountId: u(id), locked, contribution });
   const p = GOVERNANCE_POLICY_V1;
+  /** Uncapped weights for threshold tests (caps of 100%): still built by governanceWeights, as the tally requires. */
+  const gw = (
+    ws: readonly { id: number | string; locked: bigint; contribution: bigint; org?: string }[],
+    caps = { person: 10_000, org: 10_000 },
+  ) =>
+    governanceWeights(
+      ws.map((x) => ({
+        accountId: typeof x.id === "number" ? u(x.id) : x.id,
+        organizationId: x.org ?? null,
+        locked: x.locked,
+        contribution: x.contribution,
+      })),
+      { perWalletCapBp: caps.person, orgCapBp: caps.org, lockedVoterMustHaveContributed: p.lockedVoterMustHaveContributed },
+    );
   it("needs a majority of BOTH weights and turnout in each", () => {
-    const weights = [w(1, 900n, 10n), w(2, 50n, 60n), w(3, 50n, 30n)];
+    const weights = gw([
+      { id: 1, locked: 900n, contribution: 10n },
+      { id: 2, locked: 50n, contribution: 60n },
+      { id: 3, locked: 50n, contribution: 30n },
+    ]);
     const whale = tallyDualMajority(
       [
         { accountId: u(1), choice: "yes" },
@@ -465,7 +675,12 @@ describe("governance and off-ramp (D34, D35)", () => {
     expect(both.passes).toBe(true);
   });
   it("uses tiered supermajorities: 55% passes nothing, 70% passes routine and structural but not governance (D36)", () => {
-    const weights = [w(1, 55n, 55n), w(2, 45n, 45n), w(3, 70n, 70n), w(4, 30n, 30n)];
+    const weights = gw([
+      { id: 1, locked: 55n, contribution: 55n },
+      { id: 2, locked: 45n, contribution: 45n },
+      { id: 3, locked: 70n, contribution: 70n },
+      { id: 4, locked: 30n, contribution: 30n },
+    ]);
     const v = (a: number, b: number) => [
       { accountId: u(a), choice: "yes" as const },
       { accountId: u(b), choice: "no" as const },
@@ -486,64 +701,109 @@ describe("governance and off-ramp (D34, D35)", () => {
   });
   it("H5: an organization holding 90% ends at <= 10% FINAL share and cannot pass anything alone (old: 50%, passed governance)", () => {
     const ws = [
-      ...Array.from({ length: 5 }, (_, i) => ({ accountId: `o${i}`, organizationId: "org", locked: 180n, contribution: 180n })),
-      ...Array.from({ length: 50 }, (_, i) => ({ accountId: `p${i}`, organizationId: null, locked: 2n, contribution: 2n })),
+      ...Array.from({ length: 5 }, (_, i) => ({ id: `o${i}`, org: "org", locked: 180n, contribution: 180n })),
+      ...Array.from({ length: 50 }, (_, i) => ({ id: `p${i}`, locked: 2n, contribution: 2n })),
     ];
-    const capped = applyWeightCaps(ws, { perWalletCapBp: 500, orgCapBp: GOVERNANCE_POLICY_V1.orgCapBp });
-    const org = capped.slice(0, 5).reduce((t, w) => t + w.contribution, 0n);
-    const all = capped.reduce((t, w) => t + w.contribution, 0n);
-    expect(org * 10_000n).toBeLessThanOrEqual(1000n * all);
+    const capped = gw(ws, { person: 500, org: p.orgCapBp });
+    const org = capped.weights.slice(0, 5).reduce((t, w) => t + w.contribution, 0n);
+    expect(org * 10_000n).toBeLessThanOrEqual(1000n * capped.contributionTotal);
     const t = tallyDualMajority(
-      ws.slice(0, 5).map((w) => ({ accountId: w.accountId, choice: "yes" as const })),
+      ws.slice(0, 5).map((w) => ({ accountId: w.id, choice: "yes" as const })),
       capped,
-      GOVERNANCE_POLICY_V1,
+      p,
       "governance",
     );
     expect(t.passes).toBe(false);
     // Two 10%-capped groups can never both be under 10%: the tally refuses rather than breaking the promise.
-    const two = applyWeightCaps(
+    const two = gw(
       [
-        { accountId: "a", organizationId: "A", locked: 90n, contribution: 90n },
-        { accountId: "b", organizationId: "B", locked: 10n, contribution: 10n },
+        { id: "a", org: "A", locked: 90n, contribution: 90n },
+        { id: "b", org: "B", locked: 10n, contribution: 10n },
       ],
-      { perWalletCapBp: 500, orgCapBp: 1000 },
+      { person: 500, org: 1000 },
     );
     expect(two.feasible).toBe(false);
     const both = [
       { accountId: "a", choice: "yes" as const },
       { accountId: "b", choice: "yes" as const },
     ];
-    expect(tallyDualMajority(both, two, GOVERNANCE_POLICY_V1, "routine").passes).toBe(false);
+    expect(tallyDualMajority(both, two, p, "routine").passes).toBe(false);
     const many = [
       { groupId: "a", weight: 90n, capBp: 1000 },
       ...Array.from({ length: 20 }, (_, i) => ({ groupId: `g${i}`, weight: 1n, capBp: 1000 })),
     ];
     expect(capGroupShares(many).feasible).toBe(true);
   });
+  it("A3-8 probe: caps apply AFTER eligibility, so passive lockers cannot dilute the organization's locked share", () => {
+    // Astra's probe: org 900 locked + 900 contribution; 50 active outsiders (0 locked, 2 contribution); 50 passive
+    // outsiders (2 locked, 0 contribution). Old: feasible=true, org = 100% of the ELIGIBLE locked denominator.
+    const ws = [
+      { id: "org", org: "O", locked: 900n, contribution: 900n },
+      ...Array.from({ length: 50 }, (_, i) => ({ id: `act${i}`, locked: 0n, contribution: 2n })),
+      ...Array.from({ length: 50 }, (_, i) => ({ id: `pas${i}`, locked: 2n, contribution: 0n })),
+    ];
+    const capped = gw(ws, { person: 500, org: 1000 });
+    expect(capped.weights.filter((w) => w.accountId.startsWith("pas")).every((w) => w.locked === 0n)).toBe(true);
+    expect(capped.lockedTotal).toBe(capped.weights.find((w) => w.accountId === "org")!.locked);
+    expect(capped.feasible).toBe(false); // one eligible locked group cannot be held to 10%: refuse, never exceed
+    const t = tallyDualMajority([{ accountId: "org", choice: "yes" }], capped, p);
+    expect(t.passes).toBe(false);
+    expect(t.reasons.join(" ")).toMatch(/caps infeasible/);
+    // With enough eligible independent lockers, the organization's final locked share is <= 10% of the eligible total.
+    const ok = gw(
+      [
+        { id: "org", org: "O", locked: 900n, contribution: 900n },
+        ...Array.from({ length: 50 }, (_, i) => ({ id: `both${i}`, locked: 2n, contribution: 2n })),
+      ],
+      { person: 500, org: 1000 },
+    );
+    expect(ok.feasible).toBe(true);
+    expect(ok.weights.find((w) => w.accountId === "org")!.locked * 10_000n).toBeLessThanOrEqual(1000n * ok.lockedTotal);
+  });
+  it("A3-8: weights without their validation (a copy, a hand-built array) are refused, never defaulted to feasible", () => {
+    const valid = gw([
+      { id: 1, locked: 70n, contribution: 70n },
+      { id: 2, locked: 30n, contribution: 30n },
+    ]);
+    const votes = [{ accountId: u(1), choice: "yes" as const }];
+    expect(tallyDualMajority(votes, valid, p).passes).toBe(true);
+    const lostFlag = { ...valid, feasible: undefined } as unknown as typeof valid;
+    expect(tallyDualMajority(votes, lostFlag, p).passes).toBe(false);
+    const raw = valid.weights as unknown as typeof valid;
+    expect(tallyDualMajority(votes, raw, p).reasons.join(" ")).toMatch(/not produced by governanceWeights/);
+    // A serialized round trip keeps the structured flags (bigints as strings, restored by the reader).
+    const back = JSON.parse(
+      JSON.stringify(valid, (_k, v) => (typeof v === "bigint" ? `${v}n` : v)),
+      (_k, v) => (typeof v === "string" && /^\d+n$/.test(v) ? BigInt(v.slice(0, -1)) : v),
+    );
+    expect(tallyDualMajority(votes, back, p).passes).toBe(true);
+  });
+  it("A3-8: a zero locked leg passes nothing in dual-majority mode; contribution-only mode skips it (off-ramp)", () => {
+    const ws = gw([
+      { id: 1, locked: 0n, contribution: 70n },
+      { id: 2, locked: 0n, contribution: 30n },
+    ]);
+    const votes = [
+      { accountId: u(1), choice: "yes" as const },
+      { accountId: u(2), choice: "no" as const },
+    ];
+    expect(tallyDualMajority(votes, ws, { ...p, mode: "dual_majority" }).passes).toBe(false);
+    expect(tallyDualMajority(votes, ws, { ...p, mode: "contribution_only" }).passes).toBe(true);
+  });
   it("ignores locked weight of voters with no recent contribution (recommended rule)", () => {
-    const weights = [w(1, 1000n, 0n), w(2, 10n, 100n)];
     const r = tallyDualMajority(
       [
         { accountId: u(1), choice: "yes" },
         { accountId: u(2), choice: "no" },
       ],
-      weights,
+      gw([
+        { id: 1, locked: 1000n, contribution: 0n },
+        { id: 2, locked: 10n, contribution: 100n },
+      ]),
       p,
     );
     expect(r.lockedYes).toBe(0n);
     expect(r.passes).toBe(false);
-  });
-  it("falls back to contribution-only weight when the token adapter is retired", () => {
-    const weights = [w(1, 0n, 70n), w(2, 0n, 30n)];
-    const r = tallyDualMajority(
-      [
-        { accountId: u(1), choice: "yes" },
-        { accountId: u(2), choice: "no" },
-      ],
-      weights,
-      { ...p, mode: "contribution_only" },
-    );
-    expect(r.passes).toBe(true);
   });
   it("ages contribution out linearly and counts locks only while >= 12 months remain", () => {
     expect(contributionWeight(2600n, 10, 10, 26)).toBe(2600n);

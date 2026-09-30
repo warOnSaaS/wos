@@ -1,5 +1,5 @@
 /**
- * DRAFT v2 (after Astra review 02) — the deterministic reward engine (docs/protocol/REWARD-PROTOCOL.md §5–§9).
+ * DRAFT v3 (after Astra review 03) — the deterministic reward engine (docs/protocol/REWARD-PROTOCOL.md §5–§9).
  *
  * Pure, integer-only (bigint), no clock, no I/O. Same inputs, byte-identical outputs. The rewards package calls this
  * code; tools/tokenomics-sim uses it for every simulated epoch.
@@ -9,15 +9,19 @@
  *     R + ΣP + S + I = emissionReserve,   R, P_k, S, I >= 0,   Σ holdback tranches <= I
  *
  * R remaining reserve, P completion pools, S security reserve, I issued to beneficiaries (released, held back, or
- * final-but-unclaimed). `computeEpoch` asserts it on its input and on its output. Every movement names its source:
- *   returns          identified transfers back to R: an expired unbound entitlement (from I), a cancelled pool (from P),
- *                    a forfeited holdback on exit (from I and its tranches)
- *   corrections      completion accrual attributed to work later clipped or revoked (from P)
- *   disputes         escrowed excess of a clipped/revoked allocation (from I); bounty <= bountyBp x recovered
- *   confiscations    proven cheating (D39): unreleased holdback and unclaimed entitlements (from I); bounty from the
- *                    recovered amount only; any unrecovered proven excess becomes an offset
+ * final-but-unclaimed). `computeEpoch` asserts it on its input and on its output. A3-10: the state also tracks WHO owns
+ * the claimable part of I (`claimable`, per beneficiary) and each holdback tranche (with its pinned maturity and policy),
+ * so every movement out of I names an owner with a balance, and Σ claimable + Σ holdback <= I:
+ *   returns          identified transfers back to R: an expired unbound entitlement (from that beneficiary's claimable
+ *                    balance), a cancelled pool (from P), a forfeited holdback on exit (from that beneficiary's tranches)
+ *   corrections      completion accrual attributed to work later clipped or revoked: the part still in the pool returns
+ *                    from P; the part already paid becomes beneficiary offsets (A3-15)
+ *   disputes         escrowed excess of a clipped/revoked allocation (from I, never released); bounty <= bountyBp x recovered
+ *   confiscations    proven cheating (D39): COMPENSATORY only — holdback + unclaimed recovered never exceed the proven
+ *                    excess (A3-4); bounty from the recovered amount only; any unrecovered proven excess becomes an offset
+ *   claims           settled leaves leave the claimable balance (I is unchanged: the tokens are issued and delivered)
  *   write-offs       an uncollectable offset becomes a loss absorbed by later budgets (bounded per epoch, D-H4b)
- * Every event id may be consumed once: duplicates inside an input, or ids in `consumedIds`, are refused.
+ * Every event id may be consumed once: duplicates inside an input, or ids in `consumedIds` (REQUIRED replay state), are refused.
  */
 import type { DistributingSlice } from "./entities.js";
 
@@ -115,6 +119,8 @@ export interface EngineParams {
   /** D40 holdback: this share of each net allocation is held for `holdbackEpochs` epochs. */
   holdbackBp: bigint;
   holdbackEpochs: number;
+  /** A3-10: the reward policy version pinned on every new tranche (its maturity never follows a later policy). */
+  holdbackPolicyVersion: string;
   /** Bounties are this share of amounts actually RECOVERED (D41). */
   bountyBpOfRecovered: bigint;
   /** At most this share of an epoch's budget absorbs unrecovered losses (D41); the rest carries forward. */
@@ -125,6 +131,9 @@ export interface HoldbackTranche {
   beneficiaryId: string;
   epochNumber: number;
   amount: bigint;
+  /** A3-10: fixed when the tranche is created (epoch + the holdback epochs of the policy then in force). */
+  maturesAtEpoch: number;
+  policyVersion: string;
 }
 
 export interface EngineState {
@@ -133,6 +142,8 @@ export interface EngineState {
   securityReserve: bigint;
   cumulativeIssued: bigint;
   holdback: readonly HoldbackTranche[];
+  /** A3-10: released (or matured, or bounty) but not yet claimed, per beneficiary: the only source of unclaimed returns. */
+  claimable: ReadonlyMap<string, bigint>;
   /** Outstanding offsets per beneficiary (proven excess not yet recovered). */
   offsets: ReadonlyMap<string, bigint>;
   /** Unrecovered losses (written-off offsets) not yet absorbed by a budget. Bookkeeping, not a balance. */
@@ -172,18 +183,29 @@ export interface Bounty {
 export interface EpochInput {
   epochNumber: number;
   state: EngineState;
-  /** Ids consumed by earlier epochs (replay protection); the database enforces the same with unique keys. */
-  consumedIds?: ReadonlySet<string>;
+  /** A3-10: ids consumed by earlier epochs (replay state, REQUIRED); the database enforces the same with unique keys. */
+  consumedIds: ReadonlySet<string>;
   /** Published trailing realised execution rate (base units per ACU), for the Q3 damping. */
   trailingRateBasePerAcu?: bigint;
   receipts: readonly EngineReceipt[];
   returns?: readonly EngineReturn[];
-  accrualCorrections?: ReadonlyArray<{ id: string; poolKey: string; amount: bigint }>;
+  /**
+   * A3-15: `amount` is the part still in the pool (returned to R); `recoverFromPaid` is the part the pool already paid,
+   * attributed to the beneficiaries who received it, which becomes their offsets (recovered from later gross).
+   */
+  accrualCorrections?: ReadonlyArray<{
+    id: string;
+    poolKey: string;
+    amount: bigint;
+    recoverFromPaid?: ReadonlyArray<{ beneficiaryId: string; amount: bigint }>;
+  }>;
+  /** Settled claim leaves: they leave the beneficiary's claimable balance. */
+  claims?: ReadonlyArray<{ id: string; beneficiaryId: string; amount: bigint }>;
   poolPayouts?: readonly PoolPayout[];
   securityPayouts?: ReadonlyArray<{ id: string; receiptId: string; beneficiaryId: string; weightMicro: bigint }>;
   /** Clipped/revoked allocations whose excess was escrowed (never released): recovered in full. */
   disputeSettlements?: ReadonlyArray<{ id: string; excessBase: bigint; bounties: readonly Bounty[] }>;
-  /** D39 confiscation after proven cheating: holdback first, then unclaimed entitlements; the rest becomes an offset. */
+  /** D39 confiscation after proven cheating (compensatory): holdback + unclaimed <= proven excess; the rest becomes an offset. */
   confiscations?: ReadonlyArray<{
     id: string;
     beneficiaryId: string;
@@ -252,12 +274,13 @@ export function assertConserved(emissionReserve: bigint, s: EngineState): void {
   if (s.lossCarry < 0n) throw new EngineError("negative loss carry");
   for (const [k, v] of s.poolBalances) if (v < 0n) throw new EngineError(`negative pool ${k}`);
   for (const [k, v] of s.offsets) if (v < 0n) throw new EngineError(`negative offset ${k}`);
+  for (const [k, v] of s.claimable) if (v < 0n) throw new EngineError(`negative claimable balance ${k}`);
   let held = 0n;
   for (const t of s.holdback) {
     if (t.amount < 0n) throw new EngineError(`negative holdback for ${t.beneficiaryId}`);
     held += t.amount;
   }
-  if (held > s.cumulativeIssued) throw new EngineError("holdback exceeds issuance");
+  if (held + sumMap(s.claimable) > s.cumulativeIssued) throw new EngineError("holdback and claimable balances exceed issuance");
   const total = s.remainingReserve + sumMap(s.poolBalances) + s.securityReserve + s.cumulativeIssued;
   if (total !== emissionReserve) throw new EngineError(`funding equation broken: ${total} != ${emissionReserve}`);
 }
@@ -270,6 +293,7 @@ export function initialState(emissionReserve: bigint): EngineState {
     securityReserve: 0n,
     cumulativeIssued: 0n,
     holdback: [],
+    claimable: new Map(),
     offsets: new Map(),
     lossCarry: 0n,
   };
@@ -321,7 +345,13 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
   let S = input.state.securityReserve;
   let I = input.state.cumulativeIssued;
   let tranches = input.state.holdback.map((t) => ({ ...t }));
+  const claimable = new Map(input.state.claimable);
   const offsets = new Map(input.state.offsets);
+  const debitClaimable = (beneficiaryId: string, amount: bigint, why: string) => {
+    const have = claimable.get(beneficiaryId) ?? 0n;
+    if (amount > have) throw new EngineError(`${why}: ${beneficiaryId} has only ${have} claimable, not ${amount}`);
+    claimable.set(beneficiaryId, have - amount);
+  };
   let lossCarry = input.state.lossCarry;
   let returned = 0n;
   const gross = new Map<string, bigint>();
@@ -373,6 +403,7 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
       pools.set(r.poolKey, bal - r.amount);
     } else {
       if (r.kind === "holdback_forfeit") takeHoldback(r.beneficiaryId, r.amount, `return ${r.id}`);
+      else debitClaimable(r.beneficiaryId, r.amount, `return ${r.id}`);
       if (r.amount > I) throw new EngineError(`return ${r.id} exceeds issuance`);
       I -= r.amount;
     }
@@ -382,17 +413,34 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
   for (const c of input.accrualCorrections ?? []) {
     consume(c.id, "accrual correction");
     const bal = pools.get(c.poolKey) ?? 0n;
-    if (c.amount <= 0n || c.amount > bal) throw new EngineError(`correction ${c.id} must be within pool ${c.poolKey}`);
+    const paid = c.recoverFromPaid ?? [];
+    if (c.amount < 0n || paid.some((x) => x.amount <= 0n) || c.amount + paid.reduce((t, x) => t + x.amount, 0n) === 0n)
+      throw new EngineError(`correction ${c.id} must be positive`);
+    if (c.amount > bal)
+      throw new EngineError(
+        `correction ${c.id}: only ${bal} is still in pool ${c.poolKey}; attribute the already-paid part with recoverFromPaid`,
+      );
     pools.set(c.poolKey, bal - c.amount);
     R += c.amount;
     returned += c.amount;
+    for (const x of paid) offsets.set(x.beneficiaryId, (offsets.get(x.beneficiaryId) ?? 0n) + x.amount);
+  }
+  for (const c of input.claims ?? []) {
+    consume(c.id, "claim");
+    if (c.amount <= 0n) throw new EngineError(`claim ${c.id} must be positive`);
+    debitClaimable(c.beneficiaryId, c.amount, `claim ${c.id}`);
   }
 
   // 2. Confiscations (D39): consume identified holdback and unclaimed amounts exactly once; bounty from recovered only.
   for (const c of [...(input.confiscations ?? [])].sort((a, b) => cmp(a.id, b.id))) {
     consume(c.id, "confiscation");
     if (c.holdbackBase < 0n || c.unclaimedBase < 0n || c.provenExcessBase < 0n) throw new EngineError(`negative amounts in ${c.id}`);
+    if (c.holdbackBase + c.unclaimedBase > c.provenExcessBase)
+      throw new EngineError(
+        `confiscation ${c.id} recovers more than the proven excess (compensatory only; punitive forfeiture is a separate holdback_forfeit)`,
+      );
     if (c.holdbackBase > 0n) takeHoldback(c.beneficiaryId, c.holdbackBase, `confiscation ${c.id}`);
+    if (c.unclaimedBase > 0n) debitClaimable(c.beneficiaryId, c.unclaimedBase, `confiscation ${c.id}`);
     const recovered = c.holdbackBase + c.unclaimedBase;
     if (recovered > I) throw new EngineError(`confiscation ${c.id} exceeds issuance`);
     I -= recovered;
@@ -458,23 +506,35 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
     R += slice$ - emit;
     returned += slice$ - emit;
     if (emit === 0n) continue;
-    const lines = new Map<string, { beneficiaryId: string; receipt: EngineReceipt; weight: bigint }[]>();
+    // L16 (A3-16): each line carries its EXACT share numerator weight x shareBp; nothing is rounded before the
+    // beneficiary totals, so splitting a sponsored receipt cannot move base units between beneficiaries.
+    const lines = new Map<string, { beneficiaryId: string; receipt: EngineReceipt; num: bigint; display: bigint }[]>();
     for (const r of input.receipts) {
       if (r.slice !== slice) continue;
-      for (const [b, bw] of splitWeight(r)) lines.set(b, [...(lines.get(b) ?? []), { beneficiaryId: b, receipt: r, weight: bw }]);
+      const display = splitWeight(r);
+      for (const x of beneficiariesOf(r))
+        lines.set(x.beneficiaryId, [
+          ...(lines.get(x.beneficiaryId) ?? []),
+          {
+            beneficiaryId: x.beneficiaryId,
+            receipt: r,
+            num: r.weightMicro * BigInt(x.shareBp),
+            display: display.get(x.beneficiaryId) ?? 0n,
+          },
+        ]);
     }
     const byBeneficiary = largestRemainder(
       emit,
-      [...lines].map(([key, ls]) => ({ key, weight: ls.reduce((t, l) => t + l.weight, 0n) })),
+      [...lines].map(([key, ls]) => ({ key, weight: ls.reduce((t, l) => t + l.num, 0n) })),
     );
     for (const [b, amount] of byBeneficiary) {
       const ls = lines.get(b)!;
       const perLine =
-        ls.reduce((t, l) => t + l.weight, 0n) === 0n
+        ls.reduce((t, l) => t + l.num, 0n) === 0n
           ? new Map(ls.map((l) => [l.receipt.receiptId, 0n]))
           : largestRemainder(
               amount,
-              ls.map((l) => ({ key: l.receipt.receiptId, weight: l.weight })),
+              ls.map((l) => ({ key: l.receipt.receiptId, weight: l.num })),
             );
       for (const l of ls) {
         allocations.push({
@@ -484,7 +544,7 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
           slice,
           poolKey: null,
           component: null,
-          weightMicro: l.weight,
+          weightMicro: l.display,
           amountBase: perLine.get(l.receipt.receiptId) ?? 0n,
         });
       }
@@ -613,7 +673,7 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
   const keys = [...new Set([...gross.keys(), ...bountyGross.keys(), ...tranches.map((t) => t.beneficiaryId)])].sort(cmp);
   const matured = new Map<string, bigint>();
   tranches = tranches.filter((t) => {
-    if (t.epochNumber + p.holdbackEpochs <= input.epochNumber) {
+    if (t.maturesAtEpoch <= input.epochNumber) {
       addGross(matured, t.beneficiaryId, t.amount);
       return false;
     }
@@ -631,9 +691,18 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
     }
     const net = g - rec;
     const held = (net * p.holdbackBp) / BP;
-    if (held > 0n) tranches.push({ beneficiaryId: b, epochNumber: input.epochNumber, amount: held });
+    if (held > 0n)
+      tranches.push({
+        beneficiaryId: b,
+        epochNumber: input.epochNumber,
+        amount: held,
+        maturesAtEpoch: input.epochNumber + p.holdbackEpochs,
+        policyVersion: p.holdbackPolicyVersion,
+      });
     I += net;
     const bounty = bountyGross.get(b) ?? 0n;
+    const nowClaimable = net - held + bounty + (matured.get(b) ?? 0n);
+    if (nowClaimable > 0n) claimable.set(b, (claimable.get(b) ?? 0n) + nowClaimable);
     entitlements.set(b, {
       beneficiaryId: b,
       gross: g + bounty,
@@ -644,6 +713,7 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
     });
   }
   for (const [k, v] of [...offsets]) if (v === 0n) offsets.delete(k);
+  for (const [k, v] of [...claimable]) if (v === 0n) claimable.delete(k);
   for (const [k, v] of [...pools]) if (v === 0n) pools.delete(k);
 
   allocations.sort(
@@ -659,6 +729,7 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
     securityReserve: S,
     cumulativeIssued: I,
     holdback: tranches,
+    claimable,
     offsets,
     lossCarry,
   };
@@ -684,6 +755,7 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
 /** Builds engine parameters from the V1 policy documents' numbers. */
 export function engineParamsFrom(
   reward: {
+    policyVersion: string;
     emission: {
       emissionReserveBase: string;
       budgetPpmOfRemaining: number;
@@ -725,6 +797,7 @@ export function engineParamsFrom(
     maxOffsetRecoveryBp: BigInt(reward.settlement.maxOffsetRecoveryBp),
     holdbackBp: BigInt(reward.holdback.shareBp),
     holdbackEpochs: reward.holdback.epochs,
+    holdbackPolicyVersion: reward.policyVersion,
     bountyBpOfRecovered: BigInt(reward.losses.bountyBpOfRecovered),
     lossAbsorptionMaxBp: BigInt(reward.losses.absorptionMaxBp),
   };

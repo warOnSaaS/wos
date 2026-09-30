@@ -49,14 +49,24 @@ function n(v: unknown, field: string, errors: string[]): number {
   return 0;
 }
 
-function add(a: ProviderUsage, b: ProviderUsage): ProviderUsage {
-  return {
+/** A3-11: checked accumulation — an aggregate outside the safe-integer range is an error, never a silent float. */
+function add(a: ProviderUsage, b: ProviderUsage, errors: string[]): ProviderUsage {
+  const out = {
     inputTokens: a.inputTokens + b.inputTokens,
     cachedInputTokens: a.cachedInputTokens + b.cachedInputTokens,
     cacheWriteInputTokens: a.cacheWriteInputTokens + b.cacheWriteInputTokens,
     outputTokens: a.outputTokens + b.outputTokens,
     reasoningOutputTokens: a.reasoningOutputTokens + b.reasoningOutputTokens,
   };
+  const total = out.inputTokens + out.cachedInputTokens + out.cacheWriteInputTokens + out.outputTokens;
+  if (Object.values(out).some((v) => !Number.isSafeInteger(v)) || !Number.isSafeInteger(total))
+    errors.push("aggregate usage exceeds the safe-integer range");
+  return out;
+}
+
+/** A3-11: a stream with no usage-bearing event is a parse failure, not a legitimate zero-usage session. */
+function requireUsage(seen: number, errors: string[], what: string): void {
+  if (seen === 0) errors.push(`no usage-bearing ${what} events: the log is empty or not this provider's format`);
 }
 
 function jsonLines(lines: string | readonly string[], errors: string[]): Record<string, unknown>[] {
@@ -152,7 +162,8 @@ export function parseClaudeStream(lines: string | readonly string[]): AdapterRes
     }
   }
   let usage = zero();
-  for (const u of byId.values()) usage = add(usage, u);
+  for (const u of byId.values()) usage = add(usage, u, errors);
+  requireUsage(byId.size + (resultUsage ? 1 : 0), errors, "assistant/result");
   if (subagentEvents > 0) errors.push(`${subagentEvents} sub-agent events (outside the context manifest)`);
   return finish({
     usage,
@@ -171,10 +182,14 @@ export function parseCodexExecStream(lines: string | readonly string[]): Adapter
   const errors: string[] = [];
   let usage = zero();
   let unknownEvents = 0;
+  let turns = 0;
   for (const ev of jsonLines(lines, errors)) {
-    if (ev.type === "turn.completed") usage = add(usage, codexUsage(ev.usage as Record<string, unknown> | undefined, errors));
-    else if (typeof ev.type !== "string") unknownEvents++;
+    if (ev.type === "turn.completed") {
+      turns++;
+      usage = add(usage, codexUsage(ev.usage as Record<string, unknown> | undefined, errors), errors);
+    } else if (typeof ev.type !== "string") unknownEvents++;
   }
+  requireUsage(turns, errors, "turn.completed");
   // The exec stream carries no response ids: it is a cross-check source only, never the authoritative one (M15).
   return finish({ usage, eventIds: [], modelsReported: [], reasoningObserved: null, subagentEvents: 0, unknownEvents, errors });
 }
@@ -194,8 +209,11 @@ export function parseCodexRollout(lines: string | readonly string[]): AdapterRes
   for (const ev of jsonLines(lines, errors)) {
     const payload = (ev.payload ?? {}) as Record<string, unknown>;
     if (typeof payload.thread_id === "string") threads.add(payload.thread_id);
-    if (ev.type === "token_usage_record" && typeof payload.response_id === "string") {
-      byId.set(payload.response_id, codexUsage(payload.usage as Record<string, unknown> | undefined, errors));
+    if (ev.type === "token_usage_record") {
+      // A3-11: a usage-bearing record without its response id cannot be deduplicated: an error, never skipped.
+      if (typeof payload.response_id === "string" && payload.response_id.length > 0)
+        byId.set(payload.response_id, codexUsage(payload.usage as Record<string, unknown> | undefined, errors));
+      else errors.push("token_usage_record without response_id (usage cannot be deduplicated)");
     } else if (ev.type === "event_msg" && payload.type === "token_count") {
       const info = (payload.info ?? {}) as Record<string, unknown>;
       cumulative = codexUsage(info.total_token_usage as Record<string, unknown> | undefined, errors);
@@ -205,7 +223,8 @@ export function parseCodexRollout(lines: string | readonly string[]): AdapterRes
     }
   }
   let usage = zero();
-  for (const u of byId.values()) usage = add(usage, u);
+  for (const u of byId.values()) usage = add(usage, u, errors);
+  requireUsage(byId.size, errors, "token_usage_record");
   // Sub-agent detection for codex is not demonstrated (M15): the policy forbids `ultra`; a rollout with more than
   // one thread id is reported as an error rather than counted.
   if (threads.size > 1) errors.push(`rollout contains ${threads.size} threads (possible sub-agents)`);

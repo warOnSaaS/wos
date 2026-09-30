@@ -166,23 +166,23 @@ Seed 20260929. Policies: reward-policy.v1, review-policy.v1, completion-policy.v
 
 ### A2. Fabrication with real recovery: holdback, confiscation, exclusion, exit, churn, collusion, contaminated baselines (H4, D39, D40)
 
-| strategy | P(caught per receipt) | planned epochs before exit | identity churn | P(caught before exit) | expected gain vs honest: exclusion only, no holdback | expected gain vs honest: 50% holdback + confiscation + exclusion |
-| --- | --- | --- | --- | --- | --- | --- |
-| cap saturation, fabricated consistent logs | 0.1% | 52 | no | 40% | 35% | 29% |
-| cap saturation, fabricated consistent logs | 0.5% | 52 | no | 93% | -41% | -54% |
-| cap saturation, fabricated consistent logs | 2.0% | 52 | no | 100% | -85% | -92% |
-| cap saturation, fabricated consistent logs | 0.5% | 13 | no | 49% | 25% | 6% |
-| cap saturation, fabricated consistent logs | 0.5% | 52 | after 4 epochs | 92% | 40% | 11% |
-| same, baselines contaminated (cap drifts +20%) | 0.1% | 52 | no | 39% | 62% | 55% |
-| same, baselines contaminated (cap drifts +20%) | 0.5% | 52 | no | 93% | -26% | -43% |
-| same, baselines contaminated (cap drifts +20%) | 2.0% | 52 | no | 100% | -82% | -90% |
-| same, baselines contaminated (cap drifts +20%) | 0.5% | 13 | no | 46% | 51% | 33% |
-| same, baselines contaminated (cap drifts +20%) | 0.5% | 52 | after 4 epochs | 93% | 68% | 33% |
-| 10% skim on every receipt | 0.1% | 52 | no | 41% | -15% | -19% |
-| 10% skim on every receipt | 0.5% | 52 | no | 93% | -62% | -71% |
-| 10% skim on every receipt | 2.0% | 52 | no | 100% | -91% | -95% |
-| 10% skim on every receipt | 0.5% | 13 | no | 47% | -22% | -31% |
-| 10% skim on every receipt | 0.5% | 52 | after 4 epochs | 93% | -12% | -30% |
+| strategy | P(caught per receipt) | planned epochs before exit | identity churn | P(caught before exit) | gain vs honest: no holdback, exclusion only | gain: 50% holdback, COMPENSATORY recovery (0007 v3) | gain: 50% holdback, PUNITIVE forfeiture (F17) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| cap saturation, fabricated consistent logs | 0.1% | 52 | no | 40% | 35% | 30% | 29% |
+| cap saturation, fabricated consistent logs | 0.5% | 52 | no | 93% | -40% | -50% | -54% |
+| cap saturation, fabricated consistent logs | 2.0% | 52 | no | 100% | -86% | -89% | -92% |
+| cap saturation, fabricated consistent logs | 0.5% | 13 | no | 47% | 26% | 14% | 10% |
+| cap saturation, fabricated consistent logs | 0.5% | 52 | after 4 epochs | 92% | 40% | 20% | 11% |
+| same, baselines contaminated (cap drifts +20%) | 0.1% | 52 | no | 41% | 65% | 53% | 54% |
+| same, baselines contaminated (cap drifts +20%) | 0.5% | 52 | no | 93% | -28% | -44% | -44% |
+| same, baselines contaminated (cap drifts +20%) | 2.0% | 52 | no | 100% | -82% | -89% | -90% |
+| same, baselines contaminated (cap drifts +20%) | 0.5% | 13 | no | 49% | 51% | 32% | 30% |
+| same, baselines contaminated (cap drifts +20%) | 0.5% | 52 | after 4 epochs | 93% | 68% | 36% | 33% |
+| 10% skim on every receipt | 0.1% | 52 | no | 41% | -15% | -15% | -20% |
+| 10% skim on every receipt | 0.5% | 52 | no | 93% | -62% | -61% | -71% |
+| 10% skim on every receipt | 2.0% | 52 | no | 100% | -90% | -89% | -95% |
+| 10% skim on every receipt | 0.5% | 13 | no | 48% | -22% | -19% | -32% |
+| 10% skim on every receipt | 0.5% | 52 | after 4 epochs | 93% | -12% | -11% | -31% |
 
 ### B. Skim attack: detection (D29)
 
@@ -345,5 +345,14 @@ An honest account with 130 receipts in the window is ranked at Z >= 3 with proba
 | 50% | 50 | 10.0% | yes | no | no |
 | 90% | 50 | 10.0% | yes | no | no |
 | 90% | 5 | 28.6% | no (tally refuses) | no | no |
+
+### M. Quiet-epoch timing under the trailing-average ceiling (Q3, A3-14)
+
+| prior realised WOS/ACU (epochs 1-4) | epoch 4 rate | trailing mean | quiet epoch 5 pays (WOS/ACU) | vs epoch 4 |
+| --- | --- | --- | --- | --- |
+| steady (100, 100, 100, 100) | 100.00 | 100.00 | 98.68 | 1.0x |
+| crowded then one very low epoch (100, 100, 100, 1) | 1.00 | 75.25 | 98.68 | 98.7x |
+| alternating (100, 1, 100, 1) | 1.00 | 50.50 | 75.75 | 75.8x |
+| recovering after two low epochs (1, 1, 100, 100) | 100.00 | 50.50 | 75.75 | 0.8x |
 
 <!-- SIM:END -->

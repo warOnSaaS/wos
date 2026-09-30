@@ -7,7 +7,6 @@
  * real contributors (there are none yet) and not the founder's figures.
  */
 import {
-  applyWeightCaps,
   COMPLETION_POLICY_V1,
   computeEpoch,
   tallyDualMajority,
@@ -15,6 +14,7 @@ import {
   type EngineReceipt,
   type EngineState,
   engineParamsFrom,
+  governanceWeights,
   initialState,
   GENESIS_POLICY_V1,
   GOVERNANCE_POLICY_V1,
@@ -152,6 +152,7 @@ export interface ScenarioRow {
 
 export function runScenario(s: Scenario, params: EngineParams, rng: () => number, checkpoints: number[]): ScenarioRow[] {
   let state: EngineState = initialState(BigInt(REWARD_POLICY_V1.emission.emissionReserveBase));
+  const consumedIds = new Set<string>();
   const trailing: bigint[] = [];
   const out: ScenarioRow[] = [];
   const p = s.noCeiling ? { ...params, rateCeilingInitialBasePerAcu: 10n ** 15n, rateCeilingDecayPpm: 0n } : params;
@@ -173,7 +174,7 @@ export function runScenario(s: Scenario, params: EngineParams, rng: () => number
         execW += w;
         if (provider === "codex") codexW += w;
         receipts.push({
-          receiptId: `x-${c}-${provider}`,
+          receiptId: `x-${e}-${c}-${provider}`,
           accountId: acct(`c${c}${provider}`),
           slice: "execution",
           weightMicro: w,
@@ -185,7 +186,7 @@ export function runScenario(s: Scenario, params: EngineParams, rng: () => number
     // Contributor zero, same rules as everyone.
     const fw = BigInt(ASSUMPTIONS.founderAcuPerWeek) * MICRO;
     receipts.push({
-      receiptId: "x-founder",
+      receiptId: `x-${e}-founder`,
       accountId: acct("founder"),
       slice: "execution",
       weightMicro: fw,
@@ -195,7 +196,7 @@ export function runScenario(s: Scenario, params: EngineParams, rng: () => number
     execW += fw;
     const units = Number(execW / MICRO) / ASSUMPTIONS.acuPerMergedUnit;
     receipts.push({
-      receiptId: "p-all",
+      receiptId: `p-${e}`,
       accountId: acct("planners"),
       slice: "planning",
       weightMicro: BigInt(Math.round(Number(execW) * ASSUMPTIONS.planningShareOfExecution)),
@@ -203,7 +204,7 @@ export function runScenario(s: Scenario, params: EngineParams, rng: () => number
       applicationPoolKeys: [],
     });
     receipts.push({
-      receiptId: "h-all",
+      receiptId: `h-${e}`,
       accountId: acct("humans"),
       slice: "human_review",
       weightMicro: BigInt(Math.round(units * ASSUMPTIONS.humanReviewAcuEqPerUnit * 1_000_000)),
@@ -211,7 +212,7 @@ export function runScenario(s: Scenario, params: EngineParams, rng: () => number
       applicationPoolKeys: [],
     });
     receipts.push({
-      receiptId: "o-all",
+      receiptId: `o-${e}`,
       accountId: acct("proposers"),
       slice: "outcomes",
       weightMicro: BigInt(Math.round((units / 50) * 10 * 1_000_000)),
@@ -250,6 +251,7 @@ export function runScenario(s: Scenario, params: EngineParams, rng: () => number
       {
         epochNumber: e,
         state,
+        consumedIds,
         trailingRateBasePerAcu: trailingRate,
         receipts,
         poolPayouts: payouts,
@@ -261,6 +263,7 @@ export function runScenario(s: Scenario, params: EngineParams, rng: () => number
       p,
     );
     state = res.state;
+    for (const id of res.consumedIds) consumedIds.add(id);
     if (res.weightBySlice.execution > 0n) {
       trailing.push((res.emittedBySlice.execution * MICRO) / res.weightBySlice.execution);
       if (trailing.length > 4) trailing.shift();
@@ -627,13 +630,18 @@ export function dutyTable(): string {
 }
 
 /**
- * H4 / D39 / D40: fabrication economics with REAL recovery. A cheater claims `k` x honest weight on every receipt
- * (n receipts/epoch) for a planned X epochs and then exits. Each epoch it is caught with probability
- * 1 - (1 - pd)^n, where pd = (sampled audit + dispute propensity) x the gate's chance to catch it with a fraction f of
- * colluding auditors. On detection: that epoch's pending allocation and ALL unreleased holdback are confiscated and the
- * account is excluded (no future earnings, so offsets collect nothing); without holdback only future offsets exist,
- * which exclusion and exit make worthless. Identity churn restarts the cheater after D epochs. Contaminated baselines
- * raise the cap, so k rises. Payout is compared with honest work over the same X epochs. Monte Carlo, seeded.
+ * H4 / D39 / D40 / A3-13: fabrication economics under the ledger's own recovery rules. A cheater claims `k` x honest
+ * weight on every receipt (n receipts/epoch) for a planned X epochs and then exits. Each epoch it is caught with
+ * probability 1 - (1 - pd)^n (pd is the unmeasured detection rate per receipt, an explicit axis). On detection the
+ * notice places HOLDS at once on the pending allocation and all unreleased holdback (migration 0007 v3: holds apply at
+ * notice, so nothing leaves during the reply and appeal windows), then the account is excluded. Two recovery rules:
+ *   compensatory (what 0007 v3 implements): recovery = min(proven excess, held); the proven excess is the fabricated
+ *     part of every epoch still inside the holdback window (a pattern finding); the rest of the held amount is the
+ *     cheater's honest share and is released to them;
+ *   punitive (D39/D40 wording, founder decision F17): every held unit is forfeited.
+ * Identity churn restarts the cheater after D epochs. Payout is compared with honest work over the same X epochs.
+ * Monte Carlo, seeded. Wrongful findings are not modelled: under compensatory recovery a wrongful finding costs an
+ * honest contributor at most the (wrongly) proven excess; under punitive forfeiture, all unreleased holdback.
  */
 export function fabricationTable(): string {
   const rng = mulberry32(SEED + 7);
@@ -642,8 +650,6 @@ export function fabricationTable(): string {
   const L = REWARD_POLICY_V1.holdback.epochs;
   const n = 10;
   const trials = 4000;
-  // Detection per receipt is the unmeasured quantity (Astra-02 H4), so it is an explicit sensitivity axis. Collusion
-  // among auditors and weak judges only LOWER it; the model rate from table A (25%) is far above these values.
   const cases: { name: string; k: number; pd: number; X: number; churn: number }[] = [];
   for (const [name, k] of [
     ["cap saturation, fabricated consistent logs", 1.75],
@@ -656,7 +662,7 @@ export function fabricationTable(): string {
   }
   for (const c of cases) {
     const pEpoch = 1 - (1 - c.pd) ** n;
-    const run = (h: number) => {
+    const run = (h: number, rule: "compensatory" | "punitive") => {
       let total = 0;
       let caughtAny = 0;
       for (let t = 0; t < trials; t++) {
@@ -667,7 +673,10 @@ export function fabricationTable(): string {
           const alloc = c.k * n;
           if (rng() < pEpoch) {
             caught = true;
-            tranches = []; // pending allocation and all unreleased holdback confiscated; excluded
+            const held = tranches.reduce((x, y) => x + y, 0) + alloc; // holds at notice: tranches + pending allocation
+            const proven = (c.k - 1) * n * (tranches.length + 1); // pattern finding over the held window
+            if (rule === "compensatory") paid += held - Math.min(proven, held);
+            tranches = [];
             if (c.churn === 0) break;
             e += c.churn; // a fresh identity after `churn` epochs
             continue;
@@ -682,16 +691,18 @@ export function fabricationTable(): string {
       }
       return { gain: total / trials / (c.X * n) - 1, caught: caughtAny / trials };
     };
-    const without = run(0);
-    const withHold = run(hold);
+    const without = run(0, "punitive");
+    const comp = run(hold, "compensatory");
+    const puni = run(hold, "punitive");
     rows.push([
       c.name,
       `${fmt(c.pd * 100, 1)}%`,
       c.X,
       c.churn === 0 ? "no" : `after ${c.churn} epochs`,
-      `${fmt(withHold.caught * 100, 0)}%`,
+      `${fmt(puni.caught * 100, 0)}%`,
       `${fmt(without.gain * 100, 0)}%`,
-      `${fmt(withHold.gain * 100, 0)}%`,
+      `${fmt(comp.gain * 100, 0)}%`,
+      `${fmt(puni.gain * 100, 0)}%`,
     ]);
   }
   return table(
@@ -701,8 +712,9 @@ export function fabricationTable(): string {
       "planned epochs before exit",
       "identity churn",
       "P(caught before exit)",
-      "expected gain vs honest: exclusion only, no holdback",
-      `expected gain vs honest: ${hold * 100}% holdback + confiscation + exclusion`,
+      "gain vs honest: no holdback, exclusion only",
+      `gain: ${hold * 100}% holdback, COMPENSATORY recovery (0007 v3)`,
+      `gain: ${hold * 100}% holdback, PUNITIVE forfeiture (F17)`,
     ],
     rows,
   );
@@ -746,6 +758,7 @@ export function concentrationTable(params: EngineParams): string {
   for (const sc of [SCENARIOS[5]!, SCENARIOS[0]!, SCENARIOS[4]!]) {
     const rng = mulberry32(SEED + 1);
     let state: EngineState = initialState(BigInt(REWARD_POLICY_V1.emission.emissionReserveBase));
+    const consumedIds = new Set<string>();
     const window: { founder: number; all: number }[] = [];
     let founderLocked = 0;
     let othersLocked = 0;
@@ -758,7 +771,7 @@ export function concentrationTable(params: EngineParams): string {
         );
         if (w > 0n)
           receipts.push({
-            receiptId: `c${c}`,
+            receiptId: `c${e}-${c}`,
             accountId: acct(`c${c}`),
             slice: "execution",
             weightMicro: w,
@@ -767,15 +780,16 @@ export function concentrationTable(params: EngineParams): string {
           });
       }
       receipts.push({
-        receiptId: "f",
+        receiptId: `f${e}`,
         accountId: acct("founder"),
         slice: "execution",
         weightMicro: BigInt(ASSUMPTIONS.founderAcuPerWeek) * MICRO,
         featurePoolKeys: [],
         applicationPoolKeys: [],
       });
-      const res = computeEpoch({ epochNumber: e, state, receipts }, params);
+      const res = computeEpoch({ epochNumber: e, state, consumedIds, receipts }, params);
       state = res.state;
+      for (const id of res.consumedIds) consumedIds.add(id);
       const netOf = (b: string) => {
         const x = res.entitlements.get(b);
         return x ? wos(x.releasedNow + x.heldBack) : 0;
@@ -860,12 +874,13 @@ export function orgConcentrationTable(): string {
         contribution: otherEach,
       })),
     ];
-    const capped = applyWeightCaps(ws, {
+    const capped = governanceWeights(ws, {
       perWalletCapBp: GOVERNANCE_POLICY_V1.lock.perWalletCapBp,
       orgCapBp: GOVERNANCE_POLICY_V1.orgCapBp,
+      lockedVoterMustHaveContributed: GOVERNANCE_POLICY_V1.lockedVoterMustHaveContributed,
     });
-    const org = capped.slice(0, 5).reduce((t, w) => t + w.contribution, 0n);
-    const all = capped.reduce((t, w) => t + w.contribution, 0n);
+    const org = capped.weights.slice(0, 5).reduce((t, w) => t + w.contribution, 0n);
+    const all = capped.contributionTotal;
     const share = all === 0n ? 0 : Number((org * 1_000_000n) / all) / 1e6;
     const alone = tallyDualMajority(
       ws.slice(0, 5).map((w) => ({ accountId: w.accountId, choice: "yes" as const })),
@@ -891,6 +906,45 @@ export function orgConcentrationTable(): string {
       "org alone passes routine",
       "share >= routine threshold",
     ],
+    rows,
+  );
+}
+
+// ------------------------------------------------------------------------------------------------ timing (A3-14)
+
+/**
+ * A3-14: the Q3 ceiling is min(absolute ceiling, 1.5 x the mean realised rate of the last four epochs). It smooths; it
+ * does not bound a quiet epoch against the immediately preceding one. One ACU submitted into an otherwise empty epoch 5
+ * earns the ceiling; the table compares that with the previous epoch's realised rate.
+ */
+export function timingTable(params: EngineParams): string {
+  const rows: (string | number)[][] = [];
+  const W = 1_000_000n;
+  for (const [name, prior] of [
+    ["steady (100, 100, 100, 100)", [100, 100, 100, 100]],
+    ["crowded then one very low epoch (100, 100, 100, 1)", [100, 100, 100, 1]],
+    ["alternating (100, 1, 100, 1)", [100, 1, 100, 1]],
+    ["recovering after two low epochs (1, 1, 100, 100)", [1, 1, 100, 100]],
+  ] as const) {
+    const trailing = BigInt(Math.round((prior.reduce((t, x) => t + x, 0) / prior.length) * 1e6));
+    const res = computeEpoch(
+      {
+        epochNumber: 5,
+        state: initialState(BigInt(REWARD_POLICY_V1.emission.emissionReserveBase)),
+        consumedIds: new Set(),
+        trailingRateBasePerAcu: trailing,
+        receipts: [
+          { receiptId: "quiet", accountId: "q", slice: "execution", weightMicro: W, featurePoolKeys: [], applicationPoolKeys: [] },
+        ],
+      },
+      params,
+    );
+    const quiet = Number(res.rateCeilingBasePerAcu) / 1e6;
+    const prev = prior[prior.length - 1]!;
+    rows.push([name, fmt(prev, 2), fmt(Number(trailing) / 1e6, 2), fmt(quiet, 2), `${fmt(quiet / prev, 1)}x`]);
+  }
+  return table(
+    ["prior realised WOS/ACU (epochs 1-4)", "epoch 4 rate", "trailing mean", "quiet epoch 5 pays (WOS/ACU)", "vs epoch 4"],
     rows,
   );
 }
@@ -974,6 +1028,7 @@ export function report(policy: RewardPolicy = REWARD_POLICY_V1): string {
   parts.push(`### J. Governance capture vs threshold (D36)\n\n${captureTable()}`);
   parts.push(`### K. Governance concentration over time: contributor zero (D34, D37)\n\n${concentrationTable(params)}`);
   parts.push(`### L. Organization concentration and the per-organization cap (D38)\n\n${orgConcentrationTable()}`);
+  parts.push(`### M. Quiet-epoch timing under the trailing-average ceiling (Q3, A3-14)\n\n${timingTable(params)}`);
   return parts.join("\n\n");
 }
 

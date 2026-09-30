@@ -1,5 +1,6 @@
 // Astra review 03 TypeScript probes (the .jsonl cases plus two more). Needs built contracts: npm run build -w @waronsaas/contracts.
 // Output before the fix is recorded in docs/protocol/reviews/ASTRA-REVIEW-03-repros-prefix.txt; the fixed behaviour is asserted in packages/contracts/test/protocol.test.ts.
+// NOTE: written against the PRE-FIX API (commit 639b4fb: applyWeightCaps, optional consumedIds); it does not run on v3.
 import * as P from "../packages/contracts/dist/protocol/index.js";
 import { readFileSync } from "node:fs";
 const reward = JSON.parse(readFileSync(new URL("../packages/contracts/src/protocol/data/reward-policy.v1.json", import.meta.url), "utf8"));

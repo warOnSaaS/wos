@@ -173,43 +173,59 @@ export interface TallyResult {
 }
 
 /**
+ * A3-8: the ONLY input a tally accepts. Built by `governanceWeights`: eligibility is frozen FIRST (locked weight of a
+ * voter without contribution in the window is zero when the policy says so), then each eligible leg is capped per
+ * beneficial owner, and the totals are exactly those capped eligible legs. A plain structured object, so it survives
+ * serialization; a missing or false `feasible` / `eligibilityApplied` is refused, never defaulted to success.
+ */
+export interface GovernanceWeights {
+  schema: "wos-governance-weights.v1";
+  weights: VoterWeights[];
+  lockedTotal: bigint;
+  contributionTotal: bigint;
+  feasible: boolean;
+  eligibilityApplied: boolean;
+}
+
+/**
  * Tiered dual supermajority (D34, D36, D37). Each weight must reach the tier's threshold of yes / (yes + no) and the
- * tier's turnout against its eligible denominator. In contribution_only mode (off-ramp, D35) the locked leg is skipped.
+ * tier's turnout against its eligible, capped denominator. In contribution_only mode (off-ramp, D35) the locked leg is
+ * skipped. Weights must come from `governanceWeights` (A3-8).
  */
 export function tallyDualMajority(
   votes: ReadonlyArray<{ accountId: string; choice: "yes" | "no" | "abstain" }>,
-  weights: readonly VoterWeights[],
-  p: Pick<GovernancePolicy, "tiers" | "lockedVoterMustHaveContributed" | "mode">,
+  gw: GovernanceWeights,
+  p: Pick<GovernancePolicy, "tiers" | "mode">,
   tier: GovernanceTier = "routine",
 ): TallyResult {
-  const capsFeasible = (weights as { feasible?: boolean }).feasible !== false;
   const t = p.tiers[tier];
+  const reasons: string[] = [];
+  const valid = gw?.schema === "wos-governance-weights.v1" && gw.eligibilityApplied === true && Array.isArray(gw.weights);
+  if (!valid) reasons.push("weights were not produced by governanceWeights (eligibility and caps must be applied first)");
+  else if (gw.feasible !== true) reasons.push("caps infeasible: too few independent groups for every group to stay under its cap");
+  const weights = valid ? gw.weights : [];
   const w = new Map(weights.map((x) => [x.accountId, x]));
   const seen = new Set<string>();
   let [ly, ln, cy, cn, lt, ct] = [0n, 0n, 0n, 0n, 0n, 0n];
-  const lockedOf = (x: VoterWeights) => (p.lockedVoterMustHaveContributed && x.contribution === 0n ? 0n : x.locked);
   for (const v of votes) {
     if (seen.has(v.accountId)) continue; // one vote per account (the first counted; the signed log shows all)
     seen.add(v.accountId);
     const x = w.get(v.accountId);
     if (!x) continue;
-    const locked = lockedOf(x);
-    lt += locked;
+    lt += x.locked;
     ct += x.contribution;
     if (v.choice === "yes") {
-      ly += locked;
+      ly += x.locked;
       cy += x.contribution;
     } else if (v.choice === "no") {
-      ln += locked;
+      ln += x.locked;
       cn += x.contribution;
     }
   }
-  const totalLocked = weights.reduce((s, x) => s + lockedOf(x), 0n);
-  const totalContribution = weights.reduce((s, x) => s + x.contribution, 0n);
+  const totalLocked = valid ? gw.lockedTotal : 0n;
+  const totalContribution = valid ? gw.contributionTotal : 0n;
   const bp = (a: bigint, b: bigint) => (b === 0n ? 0 : Number((a * 10_000n) / b));
   const meets = (yes: bigint, no: bigint) => yes + no > 0n && yes * 10_000n >= BigInt(t.thresholdBp) * (yes + no);
-  const reasons: string[] = [];
-  if (!capsFeasible) reasons.push("caps infeasible: too few independent groups for every group to stay under its cap");
   const lockedLeg = p.mode !== "contribution_only";
   if (lockedLeg && !meets(ly, ln)) reasons.push(`locked weight below the ${tier} threshold`);
   if (!meets(cy, cn)) reasons.push(`contribution weight below the ${tier} threshold`);
@@ -302,31 +318,31 @@ export const OFFRAMP_DISCLOSURE =
  * proportional-to-cap weight. Turnout and thresholds then use the SAME capped total (consistent denominator). Integer
  * arithmetic: weights are scaled so shares hold to the unit.
  */
-export function capGroupShares(
-  groups: ReadonlyArray<{ groupId: string; weight: bigint; capBp: number }>,
-): Map<string, bigint> & { feasible: boolean } {
-  const out = new Map<string, bigint>() as Map<string, bigint> & { feasible: boolean };
-  out.feasible = true;
+export function capGroupShares(groups: ReadonlyArray<{ groupId: string; weight: bigint; capBp: number }>): {
+  shares: Map<string, bigint>;
+  feasible: boolean;
+} {
+  const shares = new Map<string, bigint>();
+  const live = groups.filter((g) => g.weight > 0n); // A3-8: a zero-weight group holds no share and caps nothing
   let capped = new Set<string>();
-  for (let iter = 0; iter <= groups.length; iter++) {
-    const rest = groups.filter((g) => !capped.has(g.groupId)).reduce((t, g) => t + g.weight, 0n);
-    const capSum = groups.filter((g) => capped.has(g.groupId)).reduce((t, g) => t + BigInt(g.capBp), 0n);
+  for (let iter = 0; iter <= live.length; iter++) {
+    const rest = live.filter((g) => !capped.has(g.groupId)).reduce((t, g) => t + g.weight, 0n);
+    const capSum = live.filter((g) => capped.has(g.groupId)).reduce((t, g) => t + BigInt(g.capBp), 0n);
     if (capSum >= 10_000n || (rest === 0n && capped.size > 0)) {
       // Infeasible: too few independent groups for every cap to hold (e.g. two groups with 10% caps). Shares fall back
       // to proportional-to-cap and the tally refuses to pass anything (H5: the promise is never silently broken).
-      out.feasible = false;
-      for (const g of groups) out.set(g.groupId, capped.has(g.groupId) ? BigInt(g.capBp) * 1_000_000n : 0n);
-      return out;
+      for (const g of groups) shares.set(g.groupId, capped.has(g.groupId) ? BigInt(g.capBp) * 1_000_000n : 0n);
+      return { shares, feasible: false };
     }
     // T = rest / (1 - capSum); a capped group gets cap x T. Scale by 1e6 to keep precision in integers.
     const T = (rest * 10_000n * 1_000_000n) / (10_000n - capSum);
     const next = new Set(capped);
-    for (const g of groups) {
+    for (const g of live) {
       if (!capped.has(g.groupId) && g.weight * 1_000_000n * 10_000n > BigInt(g.capBp) * T) next.add(g.groupId);
     }
     if (next.size === capped.size) {
-      for (const g of groups) out.set(g.groupId, capped.has(g.groupId) ? (BigInt(g.capBp) * T) / 10_000n : g.weight * 1_000_000n);
-      return out;
+      for (const g of groups) shares.set(g.groupId, capped.has(g.groupId) ? (BigInt(g.capBp) * T) / 10_000n : g.weight * 1_000_000n);
+      return { shares, feasible: true };
     }
     capped = next;
   }
@@ -334,31 +350,40 @@ export function capGroupShares(
 }
 
 /**
- * Applies the per-owner cap (people, 5%) and the per-organization cap (10%) to each weight so that no group's FINAL
- * share exceeds its cap (H5). Voters in a group share its capped weight in proportion to their raw weight. Returned
- * weights are in a common scaled unit (x1e6); only ratios matter for the tally.
+ * A3-8: builds the tally's weights. (1) Eligibility first: with `lockedVoterMustHaveContributed`, a voter without
+ * contribution weight has zero locked weight. (2) Group by beneficial owner (organization, else the declared owner or the
+ * account). (3) Cap each ELIGIBLE leg by water-filling: people at `perWalletCapBp`, organizations at `orgCapBp`, so no
+ * group's final share of the eligible capped total exceeds its cap. (4) The totals are exactly those capped legs.
+ * Voters in a group share its capped weight in proportion to their eligible raw weight; units are x1e6.
  */
-export function applyWeightCaps(
-  weights: readonly (VoterWeights & { organizationId: string | null; ownerId?: string })[],
-  p: { perWalletCapBp: number; orgCapBp: number },
-): VoterWeights[] & { feasible: boolean } {
+export function governanceWeights(
+  raw: readonly (VoterWeights & { organizationId: string | null; ownerId?: string })[],
+  p: { perWalletCapBp: number; orgCapBp: number; lockedVoterMustHaveContributed: boolean },
+): GovernanceWeights {
+  const eligible = raw.map((w) => ({ ...w, locked: p.lockedVoterMustHaveContributed && w.contribution === 0n ? 0n : w.locked }));
   let feasible = true;
-  const groupOf = (w: (typeof weights)[number]) => (w.organizationId ? `org:${w.organizationId}` : `owner:${w.ownerId ?? w.accountId}`);
+  const groupOf = (w: (typeof eligible)[number]) => (w.organizationId ? `org:${w.organizationId}` : `owner:${w.ownerId ?? w.accountId}`);
   const capOf = (g: string) => (g.startsWith("org:") ? p.orgCapBp : p.perWalletCapBp);
   const leg = (pick: (w: VoterWeights) => bigint) => {
-    const raw = new Map<string, bigint>();
-    for (const w of weights) raw.set(groupOf(w), (raw.get(groupOf(w)) ?? 0n) + pick(w));
-    const cappedG = capGroupShares([...raw].map(([groupId, weight]) => ({ groupId, weight, capBp: capOf(groupId) })));
-    if (!cappedG.feasible) feasible = false;
-    return (w: (typeof weights)[number]) => {
+    const rawG = new Map<string, bigint>();
+    for (const w of eligible) rawG.set(groupOf(w), (rawG.get(groupOf(w)) ?? 0n) + pick(w));
+    const cg = capGroupShares([...rawG].map(([groupId, weight]) => ({ groupId, weight, capBp: capOf(groupId) })));
+    if (!cg.feasible && [...rawG.values()].some((v) => v > 0n)) feasible = false;
+    return (w: (typeof eligible)[number]) => {
       const g = groupOf(w);
-      const total = raw.get(g) ?? 0n;
-      return total === 0n ? 0n : ((cappedG.get(g) ?? 0n) * pick(w)) / total;
+      const total = rawG.get(g) ?? 0n;
+      return total === 0n ? 0n : ((cg.shares.get(g) ?? 0n) * pick(w)) / total;
     };
   };
   const L = leg((w) => w.locked);
   const C = leg((w) => w.contribution);
-  const out = weights.map((w) => ({ accountId: w.accountId, locked: L(w), contribution: C(w) })) as VoterWeights[] & { feasible: boolean };
-  out.feasible = feasible;
-  return out;
+  const weights = eligible.map((w) => ({ accountId: w.accountId, locked: L(w), contribution: C(w) }));
+  return {
+    schema: "wos-governance-weights.v1",
+    weights,
+    lockedTotal: weights.reduce((t, x) => t + x.locked, 0n),
+    contributionTotal: weights.reduce((t, x) => t + x.contribution, 0n),
+    feasible,
+    eligibilityApplied: true,
+  };
 }

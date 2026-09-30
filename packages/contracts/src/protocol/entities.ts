@@ -519,10 +519,12 @@ export function stakeForfeited(items: ReadonlyArray<{ stakeBase: bigint; outcome
 // ------------------------------------------------------------------------------------------------ Confiscation (D39)
 
 /**
- * After PROVEN cheating (an upheld finding with recorded evidence, notice, the reply window and the appeal window
- * elapsed or decided), confiscation consumes identified protocol-held sources exactly once, in this order: pending
- * allocations of open windows, unreleased holdback (all tranches), unclaimed entitlements, unreleased Genesis vesting.
- * Any proven excess still unrecovered becomes an offset on future earnings. Never on-chain seizure of released tokens.
+ * After a finding with recorded evidence, the NOTICE places holds on identified protocol-held sources (A3-4: holds apply
+ * at notice and reduce each source's remaining balance, possibly partially): pending allocations, unreleased holdback,
+ * unclaimed entitlements. The holds EXECUTE only after the reply and appeal windows (no appeal) or an upheld appeal
+ * decided after the reply window by its own two-person action; an overturned appeal or a lapsed hold releases them.
+ * Compensatory only: holds never exceed the proven excess; any proven excess still unrecovered becomes an offset.
+ * Punitive forfeiture is not implemented (founder decision F17). Never on-chain seizure of released tokens.
  */
 export const ConfiscationSource = z.enum(["pending_allocation", "holdback", "unclaimed_entitlement", "genesis_unvested"]);
 export type ConfiscationSource = z.infer<typeof ConfiscationSource>;
@@ -538,6 +540,11 @@ export const Confiscation = z.object({
   noticeAt: Timestamp,
   replyClosesAt: Timestamp,
   appealClosesAt: Timestamp,
+  /** A3-4: holds lapse (release) at this time unless executed; server-set to appeal close + 14 days (F17). */
+  holdExpiresAt: Timestamp,
+  appeal: z.object({ appellantAccountId: Uuid, filedAt: Timestamp }).nullable(),
+  decision: z.object({ decision: z.enum(["upheld", "overturned"]), adminActionId: Uuid, decidedAt: Timestamp }).nullable(),
+  executedAt: Timestamp.nullable(),
 });
 export type Confiscation = z.infer<typeof Confiscation>;
 
@@ -992,8 +999,11 @@ export const RunLogCommitment = z.object({
 export type RunLogCommitment = z.infer<typeof RunLogCommitment>;
 
 /**
- * H2: final entitlements are separate from proposed allocations. They are written at FINALIZED (undisputed) or when
- * a gate resolves (disputed), per BENEFICIARY, and a claim later turns released amounts into settlement leaves.
+ * H2 / A3-1: final entitlements are separate from proposed allocations. Each names its SOURCE and consumes that
+ * source's remaining balance once per (source, kind): an allocation (at its effective final adjudication, A3-3) for
+ * release_now / withheld_release / holdback_tranche; a tranche for holdback_matured (only from its pinned maturity
+ * epoch); a dispute settlement for a bounty. The server copies the settlement domain (cluster, mode) and reward policy
+ * from the epoch. A claim later takes an entitlement's whole remaining balance into one settlement leaf.
  */
 export const BeneficiaryRef = z.object({ kind: z.enum(["person", "organization"]), id: Uuid });
 export type BeneficiaryRef = z.infer<typeof BeneficiaryRef>;
@@ -1001,9 +1011,15 @@ export type BeneficiaryRef = z.infer<typeof BeneficiaryRef>;
 export const EntitlementRecord = z.object({
   id: Uuid,
   epochNumber: z.number().int().positive(),
+  cluster: SolanaCluster,
+  mode: z.enum(["test", "live"]),
   beneficiary: BeneficiaryRef,
-  kind: z.enum(["release_now", "holdback_tranche", "holdback_matured", "bounty", "genesis_vesting"]),
+  kind: z.enum(["release_now", "withheld_release", "holdback_tranche", "holdback_matured", "bounty", "genesis_vesting"]),
+  source: z.object({ kind: z.enum(["allocation", "tranche", "dispute_settlement", "genesis"]), id: Uuid }),
   amountBase: U64String,
+  /** Tranches only: epoch + the holdback epochs pinned by `policyVersion` when the tranche was created (A3-10). */
+  maturesEpoch: z.number().int().positive().nullable(),
+  policyVersion: z.string().nullable(),
   /** Withheld epochs recorded when a disputed amount is released late (D43: released with the delay recorded). */
   withheldEpochs: z.number().int().nonnegative(),
   flags: z.array(z.enum(["unaudited", "released_after_dispute"])),
@@ -1021,6 +1037,29 @@ export const SettlementAttempt = z.object({
   persistedAt: Timestamp,
 });
 export type SettlementAttempt = z.infer<typeof SettlementAttempt>;
+
+/**
+ * A3-9: every signed attempt is ambiguous until one of these. Confirmed needs finalized commitment and a slot; expiry
+ * needs an observed block height past the attempt's last valid block height and the verbatim historical status lookup.
+ * There is no "failed before broadcast" for signed bytes. A leaf is voided only when every attempt is proven expired.
+ */
+export const SettlementOutcome = z.discriminatedUnion("outcome", [
+  z.object({
+    leafId: Uuid,
+    attempt: z.number().int().positive(),
+    outcome: z.literal("confirmed"),
+    commitment: z.literal("finalized"),
+    slot: z.number().int().positive(),
+  }),
+  z.object({
+    leafId: Uuid,
+    attempt: z.number().int().positive(),
+    outcome: z.literal("expired_not_landed"),
+    observedBlockHeight: z.number().int().positive(),
+    statusObservation: z.record(z.string(), z.unknown()),
+  }),
+]);
+export type SettlementOutcome = z.infer<typeof SettlementOutcome>;
 
 /** One claim leaf per (epoch, wallet): the sum of that account's non-negative allocations after offsets. */
 export const ClaimLeaf = z.object({
@@ -1205,11 +1244,75 @@ export const AdminAction = z.object({
   affectedEpochNumbers: z.array(z.number().int().positive()),
   previousState: z.record(z.string(), z.unknown()),
   resultingState: z.record(z.string(), z.unknown()),
-  /** Second maintainer's approval for actions RiskPolicy marks as two-person (e.g. invalidate_receipt of another maintainer). */
+  /** The exact mutation this action authorizes; consumers compare it field for field (A3-7). */
+  payload: z.record(z.string(), z.unknown()),
+  /** Named second maintainer for two-person kinds; they approve `operationSha256` separately, from their own session. */
   coSignerAccountId: Uuid.nullable(),
+  /** sha256 over kind, target, payload and prior state; each action is consumed by exactly one mutation (A3-7). */
+  operationSha256: Sha256,
   createdAt: Timestamp,
 });
 export type AdminAction = z.infer<typeof AdminAction>;
+
+/** A3-7: the co-signer's separate approval of one operation hash (migration 0007 wos.admin_action_approvals). */
+export const AdminActionApproval = z.object({
+  adminActionId: Uuid,
+  approverAccountId: Uuid,
+  operationSha256: Sha256,
+  approvedAt: Timestamp,
+});
+export type AdminActionApproval = z.infer<typeof AdminActionApproval>;
+
+/**
+ * A3-6: the server's seat assignment for a payout audit. A verdict must redeem exactly one assignment, with matching
+ * quorum, slot, packet hash, reviewer, task, lease and a signed run of that lease by the permitted provider.
+ */
+export const PayoutAuditAssignment = z.object({
+  id: Uuid,
+  quorumId: Uuid,
+  slot: z.number().int().positive(),
+  outsideFeature: z.boolean(),
+  packetSha256: Sha256,
+  reviewerAccountId: Uuid,
+  taskId: Uuid,
+  leaseId: Uuid,
+  leaseGeneration: z.number().int().positive(),
+  permittedProvider: ProviderId,
+  reviewPolicyVersion: z.string().min(1),
+});
+export type PayoutAuditAssignment = z.infer<typeof PayoutAuditAssignment>;
+
+/**
+ * A3-5: the qualification evaluator's typed result, as relationships: the accepted changeset on the lease generation,
+ * the revealed consensus round at the qualified revision and diff hash, green CI (implementations), the pinned
+ * run-policy snapshot and, when that snapshot requires it, the human pre-merge PASS on the same round.
+ */
+export const QualificationResult = z.object({
+  id: Uuid,
+  subjectKind: z.enum(["attempt", "document"]),
+  subjectId: Uuid,
+  subjectRevision: z.string().regex(/^[0-9a-f]{40}$/),
+  leaseId: Uuid,
+  leaseGeneration: z.number().int().positive(),
+  changesetId: Uuid,
+  roundId: Uuid,
+  verificationRunId: Uuid.nullable(),
+  humanReviewId: Uuid.nullable(),
+  policySnapshotSha256: Sha256,
+  evidenceSha256: Sha256,
+});
+export type QualificationResult = z.infer<typeof QualificationResult>;
+
+/** A3-12: the frozen, content-addressed Genesis reference population, approved by two maintainers over its hash. */
+export const GenesisReferenceManifest = z.object({
+  version: z.string().min(1),
+  cutoffEpoch: z.number().int().positive(),
+  rules: z.record(z.string(), z.unknown()),
+  receiptIds: z.array(Uuid).min(1),
+  manifestSha256: Sha256,
+  adminActionId: Uuid,
+});
+export type GenesisReferenceManifest = z.infer<typeof GenesisReferenceManifest>;
 
 // ------------------------------------------------------------------------------------------------ Human review
 
