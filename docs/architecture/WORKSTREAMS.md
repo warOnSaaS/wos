@@ -415,7 +415,7 @@ The web workstream (public site) also uses `TargetSummary.apps` and `getApplicat
 
 ## 13. D60 architecture changes: interfaces (contracts 5.5.0)
 
-Everything is additive at 5.5.0. No Wave 3a interface in section 12.4 changed. Nothing is served yet, and serving needs migration 0007. The architect writes it when the control plane picks this up. It adds `architecture` to the documents' kind check, `architecture_holds`, and the element registry.
+Everything is additive at 5.5.0. No Wave 3a interface in section 12.4 changed. Nothing is served yet, and serving needs migration 0007. The architect writes it when the control plane picks this up. It adds `architecture` to the documents' kind check, the hold table (`work_holds` since 5.7.0, section 15), and the element registry.
 
 | Workstream | Implements (later) | Uses |
 |---|---|---|
@@ -442,3 +442,17 @@ The blocker files live on their workstream branches. The coordinator copies each
 - 0007 is `ws/protocol`'s `0007_proof_of_contribution.sql`, when it integrates.
 - 0008 is this ruling's migration.
 - The next free number is 0009. Any workstream needing a migration asks the architect for a number.
+
+## 15. D61 bugs and maintenance: interfaces (contracts 5.7.0)
+
+Additive. The D60 hold is now `WorkHoldMachine` (`work_hold`); `ArchitectureHoldMachine` is the same object, kept as an alias. Migration 0009 will create `work_holds` with a source kind (`architecture` | `bug`) instead of `architecture_holds`, plus `bugs`, `triage_decisions` and `sweeps`. The architect writes it when the control plane serves this. Nothing is served yet. The economy side is on ws/protocol (`D61-PROTOCOL-NOTES.md`).
+
+| Workstream | Implements (later) | Uses |
+|---|---|---|
+| cli, desktop | `wos bug` and Desktop's REPORT BUG: collect a `BugReport` (steps required, an optional failing test file), send it to the control plane. The App opens the issue; clients never talk to GitHub for it | `BugReport`, `bugReportRefusals` |
+| control-plane | a `fileBug` route that validates the report and has the App open the issue (`bugIssueTitle`, `renderBugIssueBody`, label `BUG_ISSUE_LABEL`), `bug.reported`; `BugMachine`; `bug_triage` tasks, accepting a `TriageDecision` (`bug.triaged` with its canonical hash); on `fix`, create the fix ABU after `validateFixUnit` at the current merged version; on `contract_revision`, open a feature-contract revision; critical holds via `computeBugHolds` and `WorkHoldMachine` (`bug.hold_changed`), released on `bug.fixed`; sweeps (`BugSweep`, `sweepOutputRefusals`, `sweep.completed`); build next through `rankBuildNext` once the protocol serves D56 | everything in `bugs.ts`, `BUGS_POLICY_V1` |
+| planning | owns `validateFixUnit` (added by the architect) and its one-fixture-per-code tests | `FixUnitErrorCode` |
+| verification | the `wos-regression/<feature>/BUG-<n>` check in `wos-verify` (run the regression test on the parent and on the head; `RedGreenEvidence`); changeset rule: deleting or editing a file under `*/regressions/**` needs a contract revision; the sweep runner (journeys across the browser matrix, iOS, Android) | `regressionCheckName`, `regressionTestPattern`, `redGreenRefusals` |
+| context-policy | triage and sweep task contexts (the issue, the feature's contract and acceptance, the scope paths); builder obligation for fix units: add the failing regression test first | `TriageDecision`, `BugSweep` |
+| web | bugs, triage outcomes, holds and sweeps on the public activity feed | the five events |
+| protocol (ws/protocol) | task types `bug_triage`, `bug_sweep`, fix builds; outcomes and bindings in `D61-PROTOCOL-NOTES.md` | |

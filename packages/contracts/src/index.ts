@@ -16,6 +16,7 @@ export * from "./api.js";
 export * from "./blocker.js";
 export * from "./progress.js";
 export * from "./architecture.js";
+export * from "./bugs.js";
 export * from "./data.js";
 export * from "./not-implemented.js";
 export type * from "./orchestrator.js";

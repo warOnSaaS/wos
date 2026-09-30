@@ -177,3 +177,25 @@ These override `docs/V1-SPEC.md` where they differ. Date: 2026-09-29.
 - **Priority.** While a record is migrating, its migration ABUs get a published build-next boost (`architecture-policy.v1` `migrationBoost`). Held work returns in its prior order.
 - **Rare by design.** Core and conventions get their own record first. Features are modules that talk only through declared APIs and resources. ARCHITECTURE.md section 15 says what is an architecture change and what is local.
 - **Protocol impact:** small and additive (build-next boost and hold filter, ranking continuity on reissue, a release label). It is written as a note for the protocol architect in `docs/architecture/D60-PROTOCOL-DELTA.md`; `ws/protocol` is not edited.
+
+## D61. Bugs and maintenance (founder decision, 2026-09-30): the planning and build side
+- Founder: bugs and maintenance are first-class work. The protocol architect designs the economy side (task types, budgets, outcomes) on `ws/protocol`; this side is contracts 5.7.0 (`packages/contracts/src/bugs.ts`). The two meet only through the records here; the note for the protocol is `docs/architecture/D61-PROTOCOL-NOTES.md`.
+- **Intake.** `wos bug` (CLI and Desktop) files a `BugReport` (`wos-bug-report.v1`) through the wOS GitHub App as a GitHub Issue in waronsaas/product, labelled `wos:bug` (D9). The issue body carries the report as one fenced `wos-bug-report` block. Reproduction steps are required; a failing test is optional but encouraged. The bug's id is `BUG-<issue number>`.
+- **Triage.** A `bug_triage` task, done by an agent or a maintainer, outputs a `TriageDecision` (`wos-triage-decision.v1`):
+  - whether it reproduced, and where;
+  - the severity (low, medium, high or critical);
+  - duplicates;
+  - the mapping through the scope paths: catalog feature, contract version, requirements, divergent ABUs and files;
+  - the outcome: `fix`, `contract_revision`, `duplicate`, `not_reproducible`, `not_a_bug` or `wont_fix` (maintainer only).
+
+  Its canonical hash is what the protocol binds the reward to.
+- **Fix units.** When the code diverges from a merged contract, a fix ABU (`AbuSpec.fix`: bug and regression test) is created directly at the current merged contract version, with no version bump.
+  - `planning.validateFixUnit` enforces the rules: writes only inside `modules/<feature>/**` and `features/<feature>/acceptance/**`; restores requirements of the merged contract; the regression test is at `<profile acceptance dir>/regressions/BUG-<n>.*`; no architectural element changes.
+  - CI proves red then green: check `wos-regression/<feature>/BUG-<n>`, `redGreenRefusals`. The regression test fails on the parent commit and passes on the head.
+  - Normal review and merge queue.
+  - When the contract itself is wrong, a contract revision opens instead.
+- **Sweeps.** Scheduled or maintainer-opened `bug_sweep` tasks (`BugSweep`) run acceptance journeys across surfaces (the web browser matrix, iOS, Android) and explore. Their output (`SweepOutput`) is bug reports only: no write scope, and every failed journey is reported.
+- **Priority and holds.**
+  - Severity boosts are published policy data (`bugs-policy.v1`): low 0, medium 150, high 1000, critical 200000. A critical fix outranks an architecture migration (100000).
+  - A critical bug whose outcome is fix or contract_revision HOLDS the unstarted new feature ABUs of its feature until the fix merges (`computeBugHolds`, the D60 overlay, now `WorkHoldMachine` with an architecture or bug source). The fix and every other feature keep building. A maintainer confirms critical severity before holds open.
+- **The regression suite grows.** Every fix's regression test stays in that feature's acceptance suite for good. Removing one needs a contract revision.

@@ -233,3 +233,27 @@ MINOR, additive, plus migration 0008. Rulings and who implements them: WORKSTREA
 - Regenerated: goldens, the vendored validator bundle.
 
 Affected workstreams: suite-shell, control-plane, desktop, mobile-runtime, verification, web.
+
+## 5.7.0 — 2026-09-30 (D61: bugs and maintenance, the planning and build side)
+
+MINOR, additive. No migration yet: 0009 comes with serving (WORKSTREAMS 15).
+- New module `bugs.ts`:
+  - `BugId`, `BugSeverity`, `BugTaskKind`, `BUG_ISSUE_LABEL`;
+  - `BugReport` (`wos-bug-report.v1`) with `renderBugIssueBody` / `parseBugIssueBody` / `bugIssueTitle` / `bugReportRefusals`;
+  - `TriageOutcome`, `TriageDecision` (`wos-triage-decision.v1`);
+  - `regressionTestPattern`, `regressionCheckName`, `RedGreenEvidence`, `redGreenRefusals`;
+  - `BugSweep`, `SweepOutput`, `sweepOutputRefusals`;
+  - `BugsPolicy`, `computeBugHolds`, `WorkHoldSource`, `rankBuildNext`.
+- Policy data `bugs-policy.v1.json` (`BUGS_POLICY_V1`):
+  - severity boosts 0 / 150 / 1000 / 200000;
+  - critical bugs hold their feature's new ABUs, after a maintainer confirms critical;
+  - regressions are removable only by a contract revision.
+- `AbuSpec.fix` (optional: bug and regression test). `FixUnitErrorCode` and planning `validateFixUnit`.
+- State machines:
+  - the D60 hold is generalized as `WorkHoldMachine` (`work_hold`, architecture or bug source); `ArchitectureHoldMachine` is an alias for it. The rename is recorded as MINOR because no table or client persisted `architecture_hold`.
+  - New `BugMachine`. Claim guard text: no active work hold.
+- Events `bug.reported`, `bug.triaged` (with the decision's canonical hash), `bug.fixed`, `bug.hold_changed`, `sweep.completed`.
+- Docs: DECISIONS D61; FEATURE-CONTRACT "Fix units and regressions"; WORKSTREAMS 15; `D61-PROTOCOL-NOTES.md` for the protocol architect.
+- Regenerated: goldens, the vendored validator bundle, the product template's vendored contracts.
+
+Affected workstreams: control-plane, cli, desktop, planning, verification, context-policy, web (later, section 15); protocol (the note).

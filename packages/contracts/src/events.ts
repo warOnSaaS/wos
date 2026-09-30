@@ -142,6 +142,30 @@ export const DomainEventBody = z.discriminatedUnion("type", [
     abu: AbuKey,
     state: z.enum(["held", "released", "superseded"]),
   }),
+  // D61 (contracts 5.7.0): bugs and sweeps.
+  e("bug.reported", "public", {
+    bug: z.string().regex(/^BUG-\d{1,9}$/),
+    issueNumber: z.number().int().positive(),
+    surface: ProductSurface,
+    feature: FeatureKey.nullable(),
+    via: z.enum(["cli", "desktop", "sweep"]),
+  }),
+  e("bug.triaged", "public", {
+    bug: z.string().regex(/^BUG-\d{1,9}$/),
+    outcome: z.enum(["fix", "contract_revision", "duplicate", "not_reproducible", "not_a_bug", "wont_fix"]),
+    severity: z.enum(["low", "medium", "high", "critical"]).nullable(),
+    feature: FeatureKey.nullable(),
+    /** canonicalSha256 of the TriageDecision: what the protocol binds the triage reward to. */
+    decisionSha256: Sha256,
+    fixAbu: AbuKey.nullable(),
+  }),
+  e("bug.fixed", "public", { bug: z.string().regex(/^BUG-\d{1,9}$/), abu: AbuKey, prNumber: z.number().int(), regressionTest: z.string() }),
+  e("bug.hold_changed", "public", {
+    bug: z.string().regex(/^BUG-\d{1,9}$/),
+    abu: AbuKey,
+    state: z.enum(["held", "released", "superseded"]),
+  }),
+  e("sweep.completed", "public", { sweepId: Uuid, commit: GitSha, journeysRun: z.number().int().min(0), reports: z.number().int().min(0) }),
   e("entitlement.changed", "private", {
     organizationId: Uuid,
     app: AppId,

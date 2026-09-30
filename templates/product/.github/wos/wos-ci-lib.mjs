@@ -6307,7 +6307,7 @@ const TaskMachine = machine({
 			to: "leased",
 			event: "claim",
 			actor: ["contributor"],
-			guard: "claimant passes Agent Policy eligibility and independence rules; resource locks acquired; no other active lease on the task; for abu_build, no active architecture hold on the ABU (D60, ArchitectureHoldMachine)"
+			guard: "claimant passes Agent Policy eligibility and independence rules; resource locks acquired; no other active lease on the task; for abu_build, no active work hold on the ABU (D60 architecture record or D61 critical bug, WorkHoldMachine)"
 		},
 		{
 			from: "leased",
@@ -7164,14 +7164,14 @@ const ModuleInstallStates = [
 	"failed",
 	"removed"
 ];
-const ArchitectureHoldMachineStates = [
+const WorkHoldMachineStates = [
 	"held",
 	"released",
 	"superseded"
 ];
-const ArchitectureHoldMachine = machine({
-	name: "architecture_hold",
-	states: ArchitectureHoldMachineStates,
+const WorkHoldMachine = machine({
+	name: "work_hold",
+	states: WorkHoldMachineStates,
 	initial: ["held"],
 	terminal: ["released", "superseded"],
 	transitions: [{
@@ -7179,14 +7179,93 @@ const ArchitectureHoldMachine = machine({
 		to: "released",
 		event: "release",
 		actor: ["system"],
-		guard: "the record's migration graph fully merged and no newer contract version of the ABU's feature merged, or one did and carries the ABU over unchanged (FEATURE-CONTRACT section 5); or the record was abandoned. The ABU is offered again with its prior rank"
+		guard: "the source ended (architecture: the record's migration graph fully merged or the record was abandoned; bug: its fix merged with red-then-green evidence, or the bug was closed without a fix) and no newer contract version of the ABU's feature merged, or one did and carries the ABU over unchanged (FEATURE-CONTRACT section 5). The ABU is offered again with its prior rank"
 	}, {
 		from: "held",
 		to: "superseded",
 		event: "supersede",
 		actor: ["system"],
-		guard: "the record's migration graph fully merged and a newer contract version of the ABU's feature merged that does not carry the ABU over; the ABU is superseded in the same transaction (AbuMachine supersede)"
+		guard: "the source ended and a newer contract version of the ABU's feature merged that does not carry the ABU over; the ABU is superseded in the same transaction (AbuMachine supersede)"
 	}]
+});
+const BugStates = [
+	"reported",
+	"triaging",
+	"confirmed",
+	"contract_revision",
+	"fixed",
+	"closed"
+];
+const BugMachine = machine({
+	name: "bug",
+	states: BugStates,
+	initial: ["reported"],
+	terminal: [],
+	transitions: [
+		{
+			from: "reported",
+			to: "triaging",
+			event: "triage_claimed",
+			actor: ["system"],
+			guard: "a bug_triage task on this bug was leased"
+		},
+		{
+			from: "triaging",
+			to: "reported",
+			event: "triage_lost",
+			actor: ["system"],
+			guard: "the triage lease ended without an accepted decision"
+		},
+		{
+			from: "triaging",
+			to: "confirmed",
+			event: "confirm",
+			actor: ["system", "maintainer"],
+			guard: "an accepted TriageDecision with outcome fix: reproduced, severity set, mapped to a feature, requirements and files; the fix ABU is created at the current merged contract version in the same transaction (no version bump); a critical bug with holdsFeature opens its work holds"
+		},
+		{
+			from: "triaging",
+			to: "contract_revision",
+			event: "needs_revision",
+			actor: ["system", "maintainer"],
+			guard: "an accepted TriageDecision with outcome contract_revision: the merged contract itself is wrong; a feature-contract revision document is opened for the feature"
+		},
+		{
+			from: "triaging",
+			to: "closed",
+			event: "close",
+			actor: ["system", "maintainer"],
+			guard: "an accepted TriageDecision with outcome duplicate (duplicateOf set), not_reproducible, not_a_bug or wont_fix (maintainer only), with its rationale"
+		},
+		{
+			from: "confirmed",
+			to: "fixed",
+			event: "fix_merged",
+			actor: ["github"],
+			guard: "the fix ABU's PR merged with red-then-green evidence (redGreenRefusals empty); its regression test is now part of the feature's acceptance; the bug's holds end"
+		},
+		{
+			from: "contract_revision",
+			to: "fixed",
+			event: "fix_merged",
+			actor: ["github"],
+			guard: "the revised contract merged and the ABU carrying the bug's regression test merged with red-then-green evidence"
+		},
+		{
+			from: "closed",
+			to: "reported",
+			event: "reopen",
+			actor: ["maintainer"],
+			guard: "reason recorded (new evidence); a new triage task opens"
+		},
+		{
+			from: "fixed",
+			to: "reported",
+			event: "reopen",
+			actor: ["maintainer"],
+			guard: "the regression test passes but the bug reproduces; reason recorded"
+		}
+	]
 });
 const ModuleInstallMachine = machine({
 	name: "module_install",
@@ -7790,6 +7869,10 @@ const AbuSpec = object({
 		read: array(ReadGlob).default([])
 	}),
 	resources: array(ResourceClaim).default([]),
+	fix: object({
+		bug: string().regex(/^BUG-\d{1,9}$/),
+		regressionTest: RepoPath
+	}).optional(),
 	acceptance: object({
 		checks: array(object({
 			id: string(),
@@ -7852,6 +7935,15 @@ const FeatureContractErrorCode = _enum([
 	"PROFILE_DUPLICATE",
 	"IMPACTED_TARGETS_MISSING",
 	"PROFILE_CHANGED_UNLISTED"
+]);
+const FixUnitErrorCode = _enum([
+	"FIX_NOT_MARKED",
+	"FIX_KEY_NOT_IN_FEATURE",
+	"FIX_SCOPE_OUTSIDE_FEATURE",
+	"FIX_REQUIREMENT_UNKNOWN",
+	"FIX_REGRESSION_TEST_OUTSIDE_ACCEPTANCE",
+	"FIX_REGRESSION_TEST_NOT_DECLARED",
+	"FIX_CHANGES_ARCHITECTURE"
 ]);
 
 //#endregion
@@ -8886,6 +8978,58 @@ const DomainEventBody = discriminatedUnion("type", [
 			"released",
 			"superseded"
 		])
+	}),
+	e("bug.reported", "public", {
+		bug: string().regex(/^BUG-\d{1,9}$/),
+		issueNumber: number$1().int().positive(),
+		surface: ProductSurface,
+		feature: FeatureKey.nullable(),
+		via: _enum([
+			"cli",
+			"desktop",
+			"sweep"
+		])
+	}),
+	e("bug.triaged", "public", {
+		bug: string().regex(/^BUG-\d{1,9}$/),
+		outcome: _enum([
+			"fix",
+			"contract_revision",
+			"duplicate",
+			"not_reproducible",
+			"not_a_bug",
+			"wont_fix"
+		]),
+		severity: _enum([
+			"low",
+			"medium",
+			"high",
+			"critical"
+		]).nullable(),
+		feature: FeatureKey.nullable(),
+		decisionSha256: Sha256,
+		fixAbu: AbuKey.nullable()
+	}),
+	e("bug.fixed", "public", {
+		bug: string().regex(/^BUG-\d{1,9}$/),
+		abu: AbuKey,
+		prNumber: number$1().int(),
+		regressionTest: string()
+	}),
+	e("bug.hold_changed", "public", {
+		bug: string().regex(/^BUG-\d{1,9}$/),
+		abu: AbuKey,
+		state: _enum([
+			"held",
+			"released",
+			"superseded"
+		])
+	}),
+	e("sweep.completed", "public", {
+		sweepId: Uuid,
+		commit: GitSha,
+		journeysRun: number$1().int().min(0),
+		reports: number$1().int().min(0)
 	}),
 	e("entitlement.changed", "private", {
 		organizationId: Uuid,
@@ -10182,6 +10326,156 @@ const ArchitecturePolicy = object({
 const ContractArchitecture = array(ArchElementKey).optional();
 
 //#endregion
+//#region packages/contracts/dist/bugs.js
+const BugId = string().regex(/^BUG-\d{1,9}$/);
+const BugSeverity = _enum([
+	"low",
+	"medium",
+	"high",
+	"critical"
+]);
+const BugTaskKind = _enum(["bug_triage", "bug_sweep"]);
+const BugReport = object({
+	schema: literal("wos-bug-report.v1"),
+	title: string().min(8).max(120),
+	surface: ProductSurface,
+	feature: FeatureKey.nullable(),
+	environment: object({
+		version: string().min(1).max(60),
+		os: string().max(60).nullable(),
+		browser: Browser.nullable(),
+		device: string().max(60).nullable()
+	}),
+	steps: array(string().min(3).max(500)).min(1).max(30),
+	expected: string().min(3).max(2e3),
+	actual: string().min(3).max(2e3),
+	failingTest: object({
+		path: RepoPath,
+		content: string().min(1).max(2e4)
+	}).nullable(),
+	reportedVia: _enum([
+		"cli",
+		"desktop",
+		"sweep"
+	]),
+	sweepId: Uuid.nullable()
+});
+const TriageOutcome = _enum([
+	"fix",
+	"contract_revision",
+	"duplicate",
+	"not_reproducible",
+	"not_a_bug",
+	"wont_fix"
+]);
+const TriageDecision = object({
+	schema: literal("wos-triage-decision.v1"),
+	bug: BugId,
+	decidedBy: discriminatedUnion("kind", [object({
+		kind: literal("agent"),
+		taskId: Uuid,
+		leaseId: Uuid
+	}), object({
+		kind: literal("maintainer"),
+		accountId: Uuid
+	})]),
+	reproduced: boolean(),
+	reproduction: object({
+		commit: GitSha,
+		surface: ProductSurface,
+		notes: string().min(20),
+		failingTestRan: boolean()
+	}).nullable(),
+	outcome: TriageOutcome,
+	severity: BugSeverity.nullable(),
+	duplicateOf: BugId.nullable(),
+	mapping: object({
+		feature: FeatureKey,
+		contractVersion: number$1().int().positive(),
+		requirements: array(RequirementKey).min(1),
+		abus: array(AbuKey),
+		files: array(RepoPath).min(1)
+	}).nullable(),
+	rationale: string().min(40),
+	decidedAt: Timestamp
+}).superRefine((d, ctx) => {
+	const issue = (path, message) => ctx.addIssue({
+		code: "custom",
+		path,
+		message
+	});
+	if (d.reproduced !== (d.reproduction !== null)) issue(["reproduction"], "reproduction is set exactly when reproduced");
+	const acts = d.outcome === "fix" || d.outcome === "contract_revision";
+	if (acts && !d.reproduced) issue(["reproduced"], `${d.outcome} needs a reproduced bug`);
+	if (acts && (d.severity === null || d.mapping === null)) issue(["mapping"], `${d.outcome} needs a severity and the mapping`);
+	if (d.outcome === "not_reproducible" && d.reproduced) issue(["outcome"], "a reproduced bug is not not_reproducible");
+	if (d.outcome === "duplicate" !== (d.duplicateOf !== null)) issue(["duplicateOf"], "duplicateOf is set exactly for duplicates");
+	if (d.duplicateOf === d.bug) issue(["duplicateOf"], "a bug is not its own duplicate");
+	if (d.outcome === "wont_fix" && d.decidedBy.kind !== "maintainer") issue(["decidedBy"], "only a maintainer decides wont_fix");
+});
+const RedGreenEvidence = object({
+	bug: BugId,
+	feature: FeatureKey,
+	regressionTest: RepoPath,
+	parent: object({
+		sha: GitSha,
+		conclusion: _enum(["failure", "success"]),
+		failedTests: array(RepoPath)
+	}),
+	head: object({
+		sha: GitSha,
+		conclusion: _enum(["failure", "success"]),
+		failedTests: array(RepoPath)
+	}),
+	testSha256: Sha256
+});
+const BugSweep = object({
+	schema: literal("wos-bug-sweep.v1"),
+	id: Uuid,
+	openedBy: _enum(["schedule", "maintainer"]),
+	commit: GitSha,
+	features: array(FeatureKey),
+	surfaces: array(ProductSurface).min(1),
+	browsers: array(Browser),
+	explore: boolean()
+});
+const SweepOutput = object({
+	schema: literal("wos-sweep-output.v1"),
+	sweepId: Uuid,
+	commit: GitSha,
+	journeysRun: array(object({
+		feature: FeatureKey,
+		journey: string().regex(/^J-\d{3}$/),
+		surface: ProductSurface,
+		browser: Browser.nullable(),
+		result: _enum([
+			"passed",
+			"failed",
+			"skipped"
+		])
+	})),
+	reports: array(BugReport).max(50)
+});
+const BugsPolicy = object({
+	schema: literal("wos-bugs-policy.v1"),
+	severityBoost: object({
+		low: number$1().int().min(0),
+		medium: number$1().int().min(0),
+		high: number$1().int().min(0),
+		critical: number$1().int().min(0)
+	}),
+	criticalHoldsFeature: boolean(),
+	triage: object({
+		requiresReproduction: literal(true),
+		maintainerConfirmsCritical: boolean()
+	}),
+	regressions: object({
+		dir: literal("regressions"),
+		removableOnlyByContractRevision: literal(true)
+	})
+});
+
+//#endregion
 //#region packages/contracts/dist/data/agent-policy.v1.json
 var agent_policy_v1_default = {
 	policyVersion: "agent-policy.v1",
@@ -11031,10 +11325,32 @@ var architecture_policy_v1_default = {
 };
 
 //#endregion
+//#region packages/contracts/dist/data/bugs-policy.v1.json
+var bugs_policy_v1_default = {
+	schema: "wos-bugs-policy.v1",
+	severityBoost: {
+		"low": 0,
+		"medium": 150,
+		"high": 1e3,
+		"critical": 2e5
+	},
+	criticalHoldsFeature: true,
+	triage: {
+		"requiresReproduction": true,
+		"maintainerConfirmsCritical": true
+	},
+	regressions: {
+		"dir": "regressions",
+		"removableOnlyByContractRevision": true
+	}
+};
+
+//#endregion
 //#region packages/contracts/dist/data.js
 const AGENT_POLICY_V1 = AgentPolicyDocument.parse(agent_policy_v1_default);
 const REWARD_SCHEDULE_V1 = RewardSchedule.parse(reward_schedule_v1_default);
 const ARCHITECTURE_POLICY_V1 = ArchitecturePolicy.parse(architecture_policy_v1_default);
+const BUGS_POLICY_V1 = BugsPolicy.parse(bugs_policy_v1_default);
 
 //#endregion
 //#region packages/contracts/dist/canonical.js

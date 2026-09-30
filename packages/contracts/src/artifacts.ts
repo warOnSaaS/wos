@@ -653,6 +653,17 @@ export const AbuSpec = z.object({
     read: z.array(ReadGlob).default([]),
   }),
   resources: z.array(ResourceClaim).default([]),
+  /**
+   * D61 (contracts 5.7.0): set on a FIX unit, created from a TriageDecision at the feature's current merged contract
+   * version (no version bump). `regressionTest` is under a profile acceptance dir at `regressions/BUG-<n>.*`, fails on
+   * the parent commit and passes on the head (red then green), and stays in the feature's acceptance for good.
+   */
+  fix: z
+    .object({
+      bug: z.string().regex(/^BUG-\d{1,9}$/),
+      regressionTest: RepoPath,
+    })
+    .optional(),
   acceptance: z.object({
     /** Commands that must exit 0; run locally by the builder and in CI. */
     checks: z.array(z.object({ id: z.string(), run: CommandArgv })).min(1),
@@ -731,3 +742,15 @@ export const FeatureContractErrorCode = z.enum([
   "PROFILE_CHANGED_UNLISTED",
 ]);
 export type FeatureContractErrorCode = z.infer<typeof FeatureContractErrorCode>;
+
+/** D61 (contracts 5.7.0): codes of planning.validateFixUnit (fix ABUs created from a triage decision). */
+export const FixUnitErrorCode = z.enum([
+  "FIX_NOT_MARKED",
+  "FIX_KEY_NOT_IN_FEATURE",
+  "FIX_SCOPE_OUTSIDE_FEATURE",
+  "FIX_REQUIREMENT_UNKNOWN",
+  "FIX_REGRESSION_TEST_OUTSIDE_ACCEPTANCE",
+  "FIX_REGRESSION_TEST_NOT_DECLARED",
+  "FIX_CHANGES_ARCHITECTURE",
+]);
+export type FixUnitErrorCode = z.infer<typeof FixUnitErrorCode>;

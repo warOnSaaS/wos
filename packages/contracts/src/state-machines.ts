@@ -75,7 +75,7 @@ export const TaskMachine = machine<TaskState, TaskEvent>({
       event: "claim",
       actor: ["contributor"],
       guard:
-        "claimant passes Agent Policy eligibility and independence rules; resource locks acquired; no other active lease on the task; for abu_build, no active architecture hold on the ABU (D60, ArchitectureHoldMachine)",
+        "claimant passes Agent Policy eligibility and independence rules; resource locks acquired; no other active lease on the task; for abu_build, no active work hold on the ABU (D60 architecture record or D61 critical bug, WorkHoldMachine)",
     },
     {
       from: "leased",
@@ -931,17 +931,18 @@ export type ModuleInstallState = (typeof ModuleInstallStates)[number];
 export type ModuleInstallEvent = "activate" | "supersede" | "rollback" | "fail" | "remove";
 
 // ---------------------------------------------------------------------------------------------
-// Architecture hold (D60, contracts 5.5.0): an overlay on an ABU while an architecture record migrates.
-// The ABU, attempt and task machines are unchanged; a claim's guard also requires "no active hold".
+// Work hold (D60 contracts 5.5.0; generalized by D61 contracts 5.7.0): an overlay on an ABU while its source is
+// open. Sources: an architecture record that is migrating, or a critical bug of the ABU's feature that is being
+// fixed. The ABU, attempt and task machines are unchanged; a claim's guard requires "no active hold".
 // ---------------------------------------------------------------------------------------------
 
-export const ArchitectureHoldMachineStates = ["held", "released", "superseded"] as const;
-export type ArchitectureHoldMachineState = (typeof ArchitectureHoldMachineStates)[number];
-export type ArchitectureHoldEvent = "release" | "supersede";
+export const WorkHoldMachineStates = ["held", "released", "superseded"] as const;
+export type WorkHoldMachineState = (typeof WorkHoldMachineStates)[number];
+export type WorkHoldEvent = "release" | "supersede";
 
-export const ArchitectureHoldMachine = machine<ArchitectureHoldMachineState, ArchitectureHoldEvent>({
-  name: "architecture_hold",
-  states: ArchitectureHoldMachineStates,
+export const WorkHoldMachine = machine<WorkHoldMachineState, WorkHoldEvent>({
+  name: "work_hold",
+  states: WorkHoldMachineStates,
   initial: ["held"],
   terminal: ["released", "superseded"],
   transitions: [
@@ -951,7 +952,7 @@ export const ArchitectureHoldMachine = machine<ArchitectureHoldMachineState, Arc
       event: "release",
       actor: ["system"],
       guard:
-        "the record's migration graph fully merged and no newer contract version of the ABU's feature merged, or one did and carries the ABU over unchanged (FEATURE-CONTRACT section 5); or the record was abandoned. The ABU is offered again with its prior rank",
+        "the source ended (architecture: the record's migration graph fully merged or the record was abandoned; bug: its fix merged with red-then-green evidence, or the bug was closed without a fix) and no newer contract version of the ABU's feature merged, or one did and carries the ABU over unchanged (FEATURE-CONTRACT section 5). The ABU is offered again with its prior rank",
     },
     {
       from: "held",
@@ -959,7 +960,92 @@ export const ArchitectureHoldMachine = machine<ArchitectureHoldMachineState, Arc
       event: "supersede",
       actor: ["system"],
       guard:
-        "the record's migration graph fully merged and a newer contract version of the ABU's feature merged that does not carry the ABU over; the ABU is superseded in the same transaction (AbuMachine supersede)",
+        "the source ended and a newer contract version of the ABU's feature merged that does not carry the ABU over; the ABU is superseded in the same transaction (AbuMachine supersede)",
+    },
+  ],
+});
+
+/** D60 names, kept: the same machine (5.5.0 called it architecture_hold; nothing persisted it). */
+export const ArchitectureHoldMachineStates = WorkHoldMachineStates;
+export type ArchitectureHoldMachineState = WorkHoldMachineState;
+export type ArchitectureHoldEvent = WorkHoldEvent;
+export const ArchitectureHoldMachine = WorkHoldMachine;
+
+// ---------------------------------------------------------------------------------------------
+// Bug (D61, contracts 5.7.0): a report filed through the App as a GitHub Issue, triaged, then fixed by a fix
+// ABU (code diverges from the merged contract) or by a contract revision (the contract is wrong).
+// ---------------------------------------------------------------------------------------------
+
+export const BugStates = ["reported", "triaging", "confirmed", "contract_revision", "fixed", "closed"] as const;
+export type BugState = (typeof BugStates)[number];
+export type BugEvent = "triage_claimed" | "triage_lost" | "confirm" | "needs_revision" | "close" | "fix_merged" | "reopen";
+
+export const BugMachine = machine<BugState, BugEvent>({
+  name: "bug",
+  states: BugStates,
+  initial: ["reported"],
+  terminal: [],
+  transitions: [
+    { from: "reported", to: "triaging", event: "triage_claimed", actor: ["system"], guard: "a bug_triage task on this bug was leased" },
+    {
+      from: "triaging",
+      to: "reported",
+      event: "triage_lost",
+      actor: ["system"],
+      guard: "the triage lease ended without an accepted decision",
+    },
+    {
+      from: "triaging",
+      to: "confirmed",
+      event: "confirm",
+      actor: ["system", "maintainer"],
+      guard:
+        "an accepted TriageDecision with outcome fix: reproduced, severity set, mapped to a feature, requirements and files; the fix ABU is created at the current merged contract version in the same transaction (no version bump); a critical bug with holdsFeature opens its work holds",
+    },
+    {
+      from: "triaging",
+      to: "contract_revision",
+      event: "needs_revision",
+      actor: ["system", "maintainer"],
+      guard:
+        "an accepted TriageDecision with outcome contract_revision: the merged contract itself is wrong; a feature-contract revision document is opened for the feature",
+    },
+    {
+      from: "triaging",
+      to: "closed",
+      event: "close",
+      actor: ["system", "maintainer"],
+      guard:
+        "an accepted TriageDecision with outcome duplicate (duplicateOf set), not_reproducible, not_a_bug or wont_fix (maintainer only), with its rationale",
+    },
+    {
+      from: "confirmed",
+      to: "fixed",
+      event: "fix_merged",
+      actor: ["github"],
+      guard:
+        "the fix ABU's PR merged with red-then-green evidence (redGreenRefusals empty); its regression test is now part of the feature's acceptance; the bug's holds end",
+    },
+    {
+      from: "contract_revision",
+      to: "fixed",
+      event: "fix_merged",
+      actor: ["github"],
+      guard: "the revised contract merged and the ABU carrying the bug's regression test merged with red-then-green evidence",
+    },
+    {
+      from: "closed",
+      to: "reported",
+      event: "reopen",
+      actor: ["maintainer"],
+      guard: "reason recorded (new evidence); a new triage task opens",
+    },
+    {
+      from: "fixed",
+      to: "reported",
+      event: "reopen",
+      actor: ["maintainer"],
+      guard: "the regression test passes but the bug reproduces; reason recorded",
     },
   ],
 });
@@ -1040,5 +1126,6 @@ export const ALL_MACHINES = [
   EntitlementMachine,
   AppReleaseMachine,
   ModuleInstallMachine,
-  ArchitectureHoldMachine,
+  WorkHoldMachine,
+  BugMachine,
 ] as const;
