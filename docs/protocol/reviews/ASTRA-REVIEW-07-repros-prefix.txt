@@ -1,0 +1,13 @@
+# Astra review 07 — Astra's probes (ASTRA-REVIEW-07-probes.mjs) re-run on the PRE-FIX code, commit 4dddfe7, 2026-09-30T16:28Z
+# node --experimental-strip-types ASTRA-REVIEW-07-probes.mjs from the repo root. R07-1, R07-2, R07-5, R07-6 and the engine re-issue case reproduce; the R06 lines are Astra's fixed baselines.
+
+{"name":"R06-1_fixed_fallback_baseline","result":[]}
+{"name":"R06-6_fixed_foreign_snapshot","result":["the run-policy snapshot belongs to another lease or generation"]}
+{"name":"R07-1_unknown_risk_class_skips_all_agent_reviews","result":[]}
+{"name":"R07-1_unpinned_capability_policy_accepts_different_reviewer","result":{"pinnedVersion":"capability-policy.v1","suppliedVersion":"capability-policy.v2","refusals":[]}}
+{"name":"R07-2_active_receipt_cannot_use_free_challenge_publication","result":["only a PROVISIONAL receipt is published for challenge"]}
+{"name":"R07-4_late_submission_engine_refused","error":"task t expired at epoch 5; submitted too late"}
+{"name":"R07-5_machine_targets_not_declared","result":[{"from":"PROVISIONAL","to":"FINAL_BY_SILENCE","event":"final_by_silence"},{"from":"FINAL_BY_SILENCE","to":"REVOKED","event":"revoked"},{"from":"REVOKED","to":"FINAL_BY_SILENCE","event":"restored"}]}
+{"name":"R07-6_hold_created_and_released_same_epoch","error":"hold h is not active"}
+{"name":"reissue_rule_rejects_duplicate_but_engine_needs_validated_input","result":{"engineFunded":["new1","new2"],"ruleRefusals":["a task is re-issued once (re-issue the latest generation)"]}}
+{"name":"R06-5_fixed_grace_pinning","result":{"pinnedExpiry":7,"expired":[]}}

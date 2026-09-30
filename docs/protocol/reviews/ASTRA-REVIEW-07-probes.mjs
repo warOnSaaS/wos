@@ -1,0 +1,35 @@
+import { registerHooks } from 'node:module';
+import { readFileSync,existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+registerHooks({resolve(spec,ctx,next){if(spec==='@waronsaas/contracts/protocol')return next(new URL('./packages/contracts/src/protocol/index.ts',import.meta.url).href,ctx);if(spec.startsWith('.')&&spec.endsWith('.js')&&ctx.parentURL?.startsWith('file:')){const u=new URL(spec.slice(0,-3)+'.ts',ctx.parentURL);if(existsSync(fileURLToPath(u)))return next(u.href,ctx);}return next(spec,ctx);}});
+const e=await import('./packages/contracts/src/protocol/engine.ts');
+const g=await import('./packages/contracts/src/protocol/governance.ts');
+const u=await import('./packages/contracts/src/protocol/usage.ts');
+const read=n=>JSON.parse(readFileSync(new URL('./packages/contracts/src/protocol/data/'+n+'.v1.json',import.meta.url),'utf8'));
+const p0=e.engineParamsFrom(read('reward-policy'),read('completion-policy'));
+
+const r=await import('./packages/contracts/src/protocol/rules.ts');
+const m=await import('./packages/contracts/src/protocol/machines.ts');
+const ent=await import('./packages/contracts/src/protocol/entities.ts');
+const run=(name,fn)=>{try{console.log(JSON.stringify({name,result:fn()},(_,v)=>typeof v==='bigint'?v.toString():v instanceof Map?Object.fromEntries(v):v));}catch(err){console.log(JSON.stringify({name,error:err.message}));}};
+const small={...p0,emissionReserve:1000n,budgetPpm:1000000n,rateCeilingInitialBasePerAcu:100n,rateCeilingDecayPpm:0n,budgetExpiryEpochs:4,reviewGraceEpochs:2,holdbackBp:0n};
+const fresh=(state=e.initialState(1000n),epochNumber=1,ids=[])=>({epochNumber,state,consumedIds:new Set(ids)});
+const iss=(taskId,budgetAcuMicro=1000000n)=>({taskId,kind:'execution',budgetAcuMicro,featurePoolKeys:['feature'],applicationPoolKeys:['app']});
+const acc=taskId=>({taskId,shares:[{accountId:'alice',beneficiaryId:'alice',shareBp:10000}]});
+const snap={schema:'wos-run-policy-snapshot.v1',leaseId:'00000000-0000-4000-8000-000000000c03',leaseGeneration:1,policyVersions:{reward:'reward-policy.v1',oracle:'cost-oracle.v1',review:'review-policy.v1',usageProof:'usage-proof-policy.v1',agent:'agent-policy.v1',capability:'capability-policy.v1',risk:'risk-policy.v1',merge:'merge-policy.v1',completion:'completion-policy.v1'},capabilityClass:'PLAN_L1',provider:'claude_cli',modelId:'claude-opus-5-5',reasoningRequired:'max',reservedCapAcuMicro:'60000000',humanReviewRequired:true,riskClass:'standard',issuedAt:'2026-09-30T00:00:00.000Z'};
+const q={subjectKind:'document',subjectId:'d1',revision:'b'.repeat(40),lease:{id:snap.leaseId,generation:1,accountId:'bob',taskKind:'roadmap_author',taskAttemptId:null,taskAbuId:null,taskDocumentId:'d1',issuedAtMs:0,expiresAtMs:100,hardDeadlineAtMs:200,endedAtMs:null},citedGeneration:1,changeset:{leaseId:snap.leaseId,ok:true,signatureValid:true,createdAtMs:50,submissionSha256:'s9'},round:{state:'revealed',outcome:'consensus',headSha:'b'.repeat(40),submissionSha256:'s9',attemptId:null,documentId:'d1',reviewVerdicts:[{slot:'astra',verdict:'NO_MATERIAL_GAPS'},{slot:'fable',verdict:'NO_MATERIAL_GAPS'}]},greenCiAtHead:false,snapshotBody:snap,humanPreMergePassOnRound:true};
+
+const hash=await import('./packages/contracts/src/protocol/receipts.ts');
+const review=read('review-policy'),cap=read('capability-policy');
+const bind=body=>{const sha=hash.runPolicySnapshotSha256(body);return {snapshotBody:body,snapshotRow:{leaseId:body.leaseId,generation:body.leaseGeneration,snapshotSha256:sha},qualificationSnapshotSha256:sha};};
+const base={...q,...bind(snap),pinnedReviewPolicy:review,pinnedCapabilityPolicy:cap,receiptLabels:[{label:'single_lab_review',reason:'fable_unavailable'}],round:{...q.round,reviewVerdicts:[{slot:'astra',verdict:'NO_MATERIAL_GAPS',modelId:'gpt-6-astra',reasoning:'max'}]}};
+run('R06-1_fixed_fallback_baseline',()=>r.qualificationRefusals(base));
+run('R06-6_fixed_foreign_snapshot',()=>r.qualificationRefusals({...base,...bind({...snap,leaseId:'00000000-0000-4000-8000-000000000099',leaseGeneration:99,humanReviewRequired:false})}));
+run('R07-1_unknown_risk_class_skips_all_agent_reviews',()=>r.qualificationRefusals({...base,...bind({...snap,riskClass:'unknown-risk'}),round:{...base.round,reviewVerdicts:[]}}));
+run('R07-1_unpinned_capability_policy_accepts_different_reviewer',()=>{const alternate={...cap,policyVersion:'capability-policy.v2',classes:cap.classes.map(c=>c.id==='REVIEW_A'?{...c,qualified:[{provider:'codex_cli',modelId:'unqualified-in-v1'}]}:c)};return {pinnedVersion:base.snapshotBody.policyVersions.capability,suppliedVersion:alternate.policyVersion,refusals:r.qualificationRefusals({...base,pinnedCapabilityPolicy:alternate,round:{...base.round,reviewVerdicts:[{slot:'astra',verdict:'NO_MATERIAL_GAPS',modelId:'unqualified-in-v1',reasoning:'max'}]}})};});
+run('R07-2_active_receipt_cannot_use_free_challenge_publication',()=>r.challengePublicationRefusals({status:'ACTIVE',bootstrapOn:false,nowMs:100,bootstrapEndedAtMs:0,closesAtMs:100+48*3600000,windowHours:48,notified:true,alreadyPublished:false}));
+run('R07-4_late_submission_engine_refused',()=>{const a=e.computeEpoch({...fresh(),issuances:[iss('t')]},small);return e.computeEpoch({...fresh(a.state,6,a.consumedIds),submissions:[{taskId:'t'}]},small);});
+run('R07-5_machine_targets_not_declared',()=>m.ReceiptStatusMachine.transitions.filter(t=>!m.ReceiptStatusMachine.states.includes(t.to)||!m.ReceiptStatusMachine.states.includes(t.from)).map(t=>({from:t.from,to:t.to,event:t.event})));
+run('R07-6_hold_created_and_released_same_epoch',()=>{const s={...e.initialState(1000n),remainingReserve:900n,cumulativeIssued:100n,claimable:new Map([['alice',100n]])};return e.computeEpoch({...fresh(s),holds:[{id:'h',beneficiaryId:'alice',source:'claimable',amount:10n}],holdReleases:[{holdId:'h'}]},small);});
+run('reissue_rule_rejects_duplicate_but_engine_needs_validated_input',()=>{const a=e.computeEpoch({...fresh(),issuances:[iss('old')]},small);const b=e.computeEpoch({...fresh(a.state,5,a.consumedIds)},small);const c=e.computeEpoch({...fresh(b.state,6,[...a.consumedIds,...b.consumedIds]),issuances:[{...iss('new1'),reissueOf:'old'},{...iss('new2'),reissueOf:'old'}]},small);return {engineFunded:c.funded,ruleRefusals:r.reissueRefusals({newTaskId:'new2',replaced:{taskId:'old',objectiveId:'o',released:true,accepted:false},objectiveId:'o',alreadyReissued:true})};});
+run('R06-5_fixed_grace_pinning',()=>{const a=e.computeEpoch({...fresh(),issuances:[iss('t')],submissions:[{taskId:'t'}]},small);const b=e.computeEpoch({...fresh(a.state,6,a.consumedIds)},{...small,reviewGraceEpochs:0});return {pinnedExpiry:e.reservationExpiry(a.state.reserved.get('t')),expired:b.expired};});
