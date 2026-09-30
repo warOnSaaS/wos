@@ -4,10 +4,10 @@
  */
 import type { AbuSummary, AppFeatureDetail, AppFeatureSummary, Me, ModelRef, TargetDetail, TargetSummary } from "@waronsaas/contracts";
 import { useEffect, useMemo, useState } from "react";
-import { type BuilderModelChoice, type RunInfo, splitBridgeError } from "../../shared/ipc.js";
-import { Bar, Cells, Crumbs, Empty, Loading, Notice, Section, Title } from "../components/ui.js";
-import { pct, upper } from "../lib/format.js";
-import { useLoad, wos } from "../lib/hooks.js";
+import { type BuilderModelChoice, type RunInfo, splitBridgeError } from "../../../shared/ipc.js";
+import { Bar, Cells, Crumbs, Empty, Loading, Notice, Section, Title } from "../../../renderer/components/ui.js";
+import { pct, upper } from "../../../renderer/lib/format.js";
+import { useLoad, wos } from "../../../renderer/lib/hooks.js";
 
 export type Route =
   | { name: "targets" }
@@ -350,6 +350,10 @@ export function FeatureView({
             This feature has no atomic build units yet. They appear when its Feature Contract and build graph merge.
           </Empty>
         ) : (
+          // TODO(WORKSTREAMS 13 and 15, D60/D61): show a held unit as HELD with its record (ADR-nnn or BUG-n) and
+          // never offer it to BUILD. Nothing serves hold data yet: `AbuSummary` has no hold field, and the control plane
+          // emits neither `architecture.hold_changed` nor `bug.hold_changed` until migration 0010 and the
+          // WorkHoldMachine land. The server already refuses a claim on a held unit. Do not infer a hold here.
           <table className="tbl" data-testid="abus">
             <thead>
               <tr>

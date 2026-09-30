@@ -8,11 +8,14 @@ import { AGENT_POLICY_V1, type LocalStatus, type Me, TOKEN_DISCLAIMER } from "@w
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { featureDetail, targetDetail, targets } from "../dev/fixtures.js";
-import { builderModelChoices } from "../src/main/models.js";
-import { ActivityView } from "../src/renderer/components/Activity.js";
+import { builderModelChoices } from "../src/apps/build/main/models.js";
+import { ContributionsView, ProfileView, WorkView } from "../src/apps/build/renderer/Account.js";
+import { ActivityView } from "../src/apps/build/renderer/Activity.js";
+import { BuildPanelView, type BuildPanelProps, FeatureView, SniperListView, TargetView } from "../src/apps/build/renderer/Targets.js";
 import { agentLines, bar, eventLines, pct } from "../src/renderer/lib/format.js";
-import { ContributionsView, ProfileView, SettingsView, WorkView } from "../src/renderer/screens/Account.js";
-import { BuildPanelView, type BuildPanelProps, FeatureView, SniperListView, TargetView } from "../src/renderer/screens/Targets.js";
+import { AppsView, type AppsViewProps } from "../src/renderer/screens/Apps.js";
+import { SettingsView } from "../src/renderer/screens/Settings.js";
+import type { ShellState } from "../src/shared/ipc.js";
 import { APP_INFO } from "./support.js";
 
 const here = import.meta.dirname;
@@ -77,6 +80,70 @@ describe("format: honest numbers", () => {
       tag: "ERROR",
       strong: true,
     });
+  });
+});
+
+const SHELL: ShellState = {
+  environment: {
+    url: "https://core.waronsaas.com",
+    isDefault: true,
+    descriptor: null,
+    problem: "NOT REACHABLE: https://core.waronsaas.com did not answer (fetch failed).",
+    session: { signedIn: false, waitingForCode: false, email: null, organizationId: null, role: null, expiresAt: null },
+  },
+  organizations: [
+    {
+      id: "0192f000-0000-7000-8000-0000000000a1",
+      slug: "dev",
+      name: "dev@example.com",
+      kind: "personal",
+      role: "owner",
+      createdAt: "2026-09-29T12:00:00Z",
+    },
+  ],
+  organizationId: "0192f000-0000-7000-8000-0000000000a1",
+  activeApps: null,
+  activeAppsProblem: "NOT REACHABLE: https://core.waronsaas.com did not answer (fetch failed).",
+  modules: [],
+  navigation: [],
+  build: {
+    entitled: true,
+    entitledOrgs: ["0192f000-0000-7000-8000-0000000000a1"],
+    onDevice: false,
+    open: false,
+    reason: "BUILD IS OFF ON THIS DEVICE. Turn it on to let wOS run claude, codex and git here.",
+    checkedAt: "2026-09-30T12:00:00Z",
+  },
+};
+
+describe("the shell's APPS screen", () => {
+  const props = (over: Partial<AppsViewProps>): AppsViewProps => ({
+    me: ME,
+    shell: SHELL,
+    orgApps: { organizationId: SHELL.organizationId!, yourApps: [], availableApps: [] },
+    orgAppsProblem: null,
+    busy: null,
+    error: null,
+    onSelectOrg: noop,
+    onEnable: noop,
+    onDisable: noop,
+    onBuildOnDevice: noop,
+    onSettings: noop,
+    ...over,
+  });
+
+  it("empty lists and an unreachable environment are said plainly, never filled in", () => {
+    const t = text(renderToStaticMarkup(<AppsView {...props({})} />));
+    expect(t).toContain("NO APPS ENABLED");
+    expect(t).toContain("NOTHING ELSE TO ENABLE");
+    expect(t).toContain("NO ACTIVE APPS READ");
+    expect(t).toContain("dev@example.com / PERSONAL / OWNER");
+  });
+
+  it("without a wOS account the cloud sections are replaced by one plain line", () => {
+    const t = text(renderToStaticMarkup(<AppsView {...props({ me: null })} />));
+    expect(t).toContain("NOT SIGNED IN TO A wOS ACCOUNT");
+    expect(t).not.toContain("YOUR APPS NO APPS ENABLED");
   });
 });
 
@@ -247,17 +314,35 @@ describe("screens render real API shapes with honest empty states", () => {
     const s = text(
       renderToStaticMarkup(
         <SettingsView
-          settings={{ deviceName: "dev", detachAfterSubmit: true, preferredModel: null, eventsPollSeconds: 5 }}
+          settings={{
+            deviceName: "dev",
+            detachAfterSubmit: true,
+            preferredModel: null,
+            eventsPollSeconds: 5,
+            environmentUrl: "https://core.waronsaas.com",
+            organizationId: null,
+            buildOnDevice: false,
+          }}
           me={ME}
           info={APP_INFO}
+          shell={SHELL}
           onChange={noop}
           onLogout={noop}
           onOpen={noop}
+          onBuildOnDevice={noop}
+          onEnvironment={noop}
+          onEnvSignIn={noop}
+          onEnvCode={noop}
+          onEnvSignOut={noop}
         />,
       ),
     );
     expect(s).toContain("OS KEYCHAIN");
     expect(s).toContain("B-0003-desktop");
+    expect(s).toContain("ENVIRONMENT");
+    expect(s).toContain("NOT REACHABLE: https://core.waronsaas.com did not answer");
+    expect(s).toContain("USE BUILD ON THIS DEVICE");
+    expect(s).toContain("BUILD IS OFF ON THIS DEVICE");
   });
 
   it("Activity: nothing run yet says so; runs show state in words", () => {
@@ -318,7 +403,10 @@ function files(dir: string, ext: RegExp): string[] {
 }
 
 describe("renderer isolation (static)", () => {
-  const sources = files(join(here, "../src/renderer"), /\.(ts|tsx)$/);
+  const sources = [
+    ...files(join(here, "../src/renderer"), /\.(ts|tsx)$/),
+    ...files(join(here, "../src/apps/build/renderer"), /\.(ts|tsx)$/),
+  ];
   it("never imports Node, Electron, the orchestrator or runtime values from contracts", () => {
     expect(sources.length).toBeGreaterThan(5);
     for (const f of sources) {
@@ -337,7 +425,9 @@ describe("renderer isolation (static)", () => {
 
 describe("the look (founder's rule and the site's CSS rules)", () => {
   const css = readFileSync(join(here, "../src/renderer/styles.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
-  const tsx = files(join(here, "../src/renderer"), /\.tsx$/).map((f) => readFileSync(f, "utf8"));
+  const tsx = [...files(join(here, "../src/renderer"), /\.tsx$/), ...files(join(here, "../src/apps/build/renderer"), /\.tsx$/)].map((f) =>
+    readFileSync(f, "utf8"),
+  );
   it("monochrome: every colour is a grey (r = g = b), no gradients, no shadows, square corners", () => {
     const hexes = [...css.matchAll(/#([0-9a-f]{6}|[0-9a-f]{3})\b/gi)].map((m) => m[1]!.toLowerCase());
     expect(hexes.length).toBeGreaterThan(5);
@@ -350,11 +440,16 @@ describe("the look (founder's rule and the site's CSS rules)", () => {
     expect(css).toMatch(/border-radius: 0 !important/);
     expect(css).toMatch(/box-shadow: none !important/);
   });
-  it("one face, bundled: JetBrains Mono from ./fonts, with its OFL licence", () => {
+  it("JetBrains Mono for everything, Geist Mono Bold for the wOS mark only; both bundled with their OFL licences", () => {
     const families = new Set([...css.matchAll(/font-family:\s*([^;]+);/g)].map((m) => m[1]!.split(",")[0]!.trim()));
-    expect([...families]).toEqual(['"JetBrains Mono"']);
+    expect([...families].sort()).toEqual(['"Geist Mono"', '"JetBrains Mono"']);
     expect(css).toContain('url("./fonts/JetBrainsMono-400.ttf")');
+    expect(css).toContain('url("./fonts/GeistMono-700.ttf")');
+    // Geist Mono is used by the masthead mark and the sign-in mark, nowhere else.
+    const uses = [...css.matchAll(/([^{}]+)\{[^}]*font-family:\s*"Geist Mono",/g)].map((m) => m[1]!.trim());
+    expect(uses).toEqual([".wordmark", ".gate .mark"]);
     expect(readFileSync(join(here, "../src/renderer/fonts/OFL-JetBrainsMono.txt"), "utf8")).toMatch(/SIL OPEN FONT LICENSE/i);
+    expect(readFileSync(join(here, "../src/renderer/fonts/OFL-GeistMono.txt"), "utf8")).toMatch(/SIL OPEN FONT LICENSE/i);
   });
   it("no text-transform and no italic: capitals are written in the source", () => {
     expect(css).not.toMatch(/text-transform/);

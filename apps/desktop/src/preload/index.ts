@@ -11,6 +11,20 @@ const call = <T>(channel: string, payload?: unknown): Promise<T> => ipcRenderer.
 
 const bridge: WosBridge = {
   appInfo: () => call(C.appInfo),
+  account: () => call(C.account),
+  shellState: () => call(C.shellState),
+  refreshShell: () => call(C.refreshShell),
+  setEnvironment: (url) => call(C.setEnvironment, { url }),
+  environmentSignIn: (email) => call(C.environmentSignIn, { email }),
+  environmentSignInCode: (code) => call(C.environmentSignInCode, { code }),
+  environmentSignOut: () => call(C.environmentSignOut),
+  selectOrganization: (organizationId) => call(C.selectOrganization, { organizationId }),
+  orgApps: (organizationId) => call(C.orgApps, { organizationId }),
+  enableApp: (organizationId, app, expectedRowVersion) => call(C.enableApp, { organizationId, app, expectedRowVersion }),
+  disableApp: (organizationId, app, expectedRowVersion) => call(C.disableApp, { organizationId, app, expectedRowVersion }),
+  setBuildOnDevice: (on) => call(C.setBuildOnDevice, { on }),
+  showModule: (app, route, bounds) => call(C.showModule, { app, route, bounds }),
+  hideModule: () => call(C.hideModule),
   status: () => call(C.status),
   signIn: (email) => call(C.signIn, { email }),
   submitSignInCode: (code) => call(C.signInCode, { code }),
@@ -41,6 +55,6 @@ const bridge: WosBridge = {
   openExternal: (url) => call(C.openExternal, { url }),
 };
 
-contextBridge.exposeInMainWorld("wos", bridge);
+contextBridge.exposeInMainWorld("wos", Object.freeze(bridge));
 
 export type ExposedApi = { wos: WosBridge };

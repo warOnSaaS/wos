@@ -18,7 +18,9 @@
     "smoke": "npm run bundle && vitest run --config vitest.config.ts test/electron.test.ts",
     "shots": "npm run bundle && node scripts/shots.mjs",
     "dist:mac": "npm run bundle:release && electron-builder --config electron-builder.yml --mac dmg --publish never",
-    "dist:linux": "npm run bundle:release && electron-builder --config electron-builder.yml --linux AppImage --publish never"
+    "dist:linux": "npm run bundle:release && electron-builder --config electron-builder.yml --linux AppImage --publish never",
+    "icons": "electron scripts/render-icons.mjs",
+    "dist:win": "npm run bundle:release && electron-builder --config electron-builder.yml --win nsis --publish never"
   },
   "dependencies": {
     "@waronsaas/contracts": "*",

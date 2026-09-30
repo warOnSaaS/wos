@@ -3,8 +3,9 @@
  * checked with the contract's own zod schemas; objects must be plain, with exactly the allowed keys.
  * Anything else throws a ValidationError, which the bridge returns as VALIDATION_FAILED.
  */
-import { AbuKey, FeatureKey, ModelRef, ReviewerSlot, TargetSlug, Uuid } from "@waronsaas/contracts";
-import { IPC_CHANNELS, type InvokeChannel, type LocalSettings } from "../shared/ipc.js";
+import { AbuKey, AppId, FeatureKey, ModelRef, ReviewerSlot, TargetSlug, Uuid } from "@waronsaas/contracts";
+import { IPC_CHANNELS, type InvokeChannel, type LocalSettings, type ModuleBounds } from "../shared/ipc.js";
+import { environmentUrlProblem, normalizeEnvironmentUrl } from "./settings.js";
 
 export class ValidationError extends Error {
   readonly code = "VALIDATION_FAILED";
@@ -71,12 +72,56 @@ const deviceName: Schema<string> = {
 const pollSeconds: Schema<number> = {
   safeParse: (v) => (typeof v === "number" && Number.isInteger(v) && v >= 5 && v <= 300 ? { success: true, data: v } : { success: false }),
 };
+const environmentUrl: Schema<string> = {
+  safeParse: (v) =>
+    typeof v === "string" && environmentUrlProblem(v.trim()) === null
+      ? { success: true, data: normalizeEnvironmentUrl(v.trim()) }
+      : { success: false },
+};
+const rowVersion: Schema<number | null> = {
+  safeParse: (v) =>
+    v === null || (typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 2_147_483_647)
+      ? { success: true, data: v as number | null }
+      : { success: false },
+};
+/** A route under an app's routes.ui ("/crm", "/crm/pipeline"); the manifest check happens in main. */
+const uiRoute: Schema<string> = {
+  safeParse: (v) =>
+    typeof v === "string" && v.length <= 200 && /^\/[a-z0-9/_-]*$/.test(v) ? { success: true, data: v } : { success: false },
+};
+const pixels = (max: number): Schema<number> => ({
+  safeParse: (v) => (typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= max ? { success: true, data: v } : { success: false }),
+});
+function bounds(value: unknown): ModuleBounds {
+  const r = record(value, ["x", "y", "width", "height"]);
+  return {
+    x: leaf(pixels(20_000), r.x, "x"),
+    y: leaf(pixels(20_000), r.y, "y"),
+    width: leaf(pixels(20_000), r.width, "width"),
+    height: leaf(pixels(20_000), r.height, "height"),
+  };
+}
+
 const eventCursor: Schema<number> = {
   safeParse: (v) => (typeof v === "number" && Number.isInteger(v) && v >= 0 ? { success: true, data: v } : { success: false }),
 };
 
 export type Payloads = {
   "wos:app-info": undefined;
+  "wos:account": undefined;
+  "wos:shell-state": undefined;
+  "wos:refresh-shell": undefined;
+  "wos:set-environment": { url: string | null };
+  "wos:environment-sign-in": { email: string };
+  "wos:environment-sign-in-code": { code: string };
+  "wos:environment-sign-out": undefined;
+  "wos:select-organization": { organizationId: string };
+  "wos:org-apps": { organizationId: string };
+  "wos:enable-app": { organizationId: string; app: string; expectedRowVersion: number | null };
+  "wos:disable-app": { organizationId: string; app: string; expectedRowVersion: number | null };
+  "wos:set-build-on-device": { on: boolean };
+  "wos:show-module": { app: string; route: string; bounds: ModuleBounds };
+  "wos:hide-module": undefined;
   "wos:status": undefined;
   "wos:sign-in": { email: string };
   "wos:sign-in-code": { code: string };
@@ -102,8 +147,37 @@ export type Payloads = {
 
 const C = IPC_CHANNELS;
 
+const entitlementChange = (p: unknown) => {
+  const r = record(p, ["organizationId", "app", "expectedRowVersion"]);
+  return {
+    organizationId: leaf(Uuid, r.organizationId, "organization"),
+    app: leaf(AppId, r.app, "app"),
+    expectedRowVersion: leaf(rowVersion, r.expectedRowVersion, "row version"),
+  };
+};
+
 export const VALIDATORS: { [K in InvokeChannel]: (payload: unknown) => Payloads[K] } = {
   [C.appInfo]: none,
+  [C.account]: none,
+  [C.shellState]: none,
+  [C.refreshShell]: none,
+  [C.setEnvironment]: (p) => {
+    const r = record(p, ["url"]);
+    return { url: r.url === null ? null : leaf(environmentUrl, r.url, "environment address") };
+  },
+  [C.environmentSignIn]: (p) => ({ email: leaf(email, record(p, ["email"]).email, "email") }),
+  [C.environmentSignInCode]: (p) => ({ code: leaf(code, record(p, ["code"]).code, "code") }),
+  [C.environmentSignOut]: none,
+  [C.selectOrganization]: (p) => ({ organizationId: leaf(Uuid, record(p, ["organizationId"]).organizationId, "organization") }),
+  [C.orgApps]: (p) => ({ organizationId: leaf(Uuid, record(p, ["organizationId"]).organizationId, "organization") }),
+  [C.enableApp]: entitlementChange,
+  [C.disableApp]: entitlementChange,
+  [C.setBuildOnDevice]: (p) => ({ on: leaf(bool, record(p, ["on"]).on, "on") }),
+  [C.showModule]: (p) => {
+    const r = record(p, ["app", "route", "bounds"]);
+    return { app: leaf(AppId, r.app, "app"), route: leaf(uiRoute, r.route, "route"), bounds: bounds(r.bounds) };
+  },
+  [C.hideModule]: none,
   [C.status]: none,
   [C.signIn]: (p) => ({ email: leaf(email, record(p, ["email"]).email, "email") }),
   [C.signInCode]: (p) => ({ code: leaf(code, record(p, ["code"]).code, "code") }),
@@ -156,4 +230,26 @@ export function validatePayload<K extends InvokeChannel>(channel: K, payload: un
 
 export function isInvokeChannel(channel: unknown): channel is InvokeChannel {
   return typeof channel === "string" && Object.hasOwn(VALIDATORS, channel);
+}
+
+/** The module host bridge's payloads (S-38): the app id, and for requests an HTTP method, a path and a JSON body. */
+export function validateModuleManifestPayload(payload: unknown): { app: string } {
+  return { app: leaf(AppId, record(payload, ["app"]).app, "app") };
+}
+
+const MAX_MODULE_BODY = 1_000_000;
+
+export function validateModuleRequestPayload(payload: unknown): { app: string; method: string; path: string; body: unknown } {
+  const r = record(payload, ["app", "method", "path", "body"]);
+  const method = typeof r.method === "string" ? r.method.toUpperCase() : "";
+  if (!["GET", "POST", "PATCH", "DELETE"].includes(method)) throw new ValidationError("method must be GET, POST, PATCH or DELETE");
+  if (typeof r.path !== "string" || r.path.length > 1024) throw new ValidationError("path is not valid");
+  let size = 0;
+  try {
+    size = JSON.stringify(r.body ?? null).length;
+  } catch {
+    throw new ValidationError("body must be JSON");
+  }
+  if (size > MAX_MODULE_BODY) throw new ValidationError("body is too large");
+  return { app: leaf(AppId, r.app, "app"), method, path: r.path, body: r.body ?? null };
 }

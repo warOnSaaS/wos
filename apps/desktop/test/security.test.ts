@@ -34,10 +34,17 @@ describe("BrowserWindow webPreferences", () => {
     for (const bad of ["nodeIntegration: true", "contextIsolation: false", "sandbox: false", "webSecurity: false", "loadURL("]) {
       expect(src).not.toContain(bad);
     }
-    // Every IPC handler checks the sender before doing anything.
+    // Every shell and Build IPC handler checks the sender before doing anything (one listener factory for all).
     expect(src).toMatch(
-      /ipcMain\.handle\(channel, async \(event: IpcMainInvokeEvent, payload: unknown\) => \{\s*if \(!win \|\| !isTrustedSender\(/,
+      /const listener = \(channel: InvokeChannel\) => async \(event: IpcMainInvokeEvent, payload: unknown\) => \{\s*if \(!win \|\| !isTrustedSender\(/,
     );
+    expect(src).toContain("createHandlerRegistry(ipcMain, listener)");
+    // The module bridge's handlers check that the sender is the shown module's own view first.
+    for (const m of src.matchAll(
+      /ipcMain\.handle\(MODULE_CHANNELS\.\w+, async \(event: IpcMainInvokeEvent, payload: unknown\) => \{\s*([^\n]+)/g,
+    ))
+      expect(m[1]).toBe("const sender = moduleSender(event);");
+    expect([...src.matchAll(/ipcMain\.handle\(/g)].length).toBe(2);
   });
 });
 

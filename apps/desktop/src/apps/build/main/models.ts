@@ -4,7 +4,7 @@
  * default is the first attested entry of allowedModels (contracts 4.3.0, B-0010-github-build).
  */
 import type { AgentPolicyDocument, LocalStatus, ModelRef } from "@waronsaas/contracts";
-import type { BuilderModelChoice } from "../shared/ipc.js";
+import type { BuilderModelChoice } from "../../../shared/ipc.js";
 
 const LABELS: Record<ModelRef, string> = { opus: "OPUS", astra: "ASTRA", sol: "SOL", fable: "FABLE" };
 const CLI: Record<string, string> = { claude_cli: "claude", codex_cli: "codex" };

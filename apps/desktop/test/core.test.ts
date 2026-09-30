@@ -179,6 +179,7 @@ describe("the BUILD flow: Sniper List -> Salesforce -> CRM -> feature -> ABU -> 
           },
         }) as Orchestrator,
     });
+    await signIn(r); // S-40: Build needs a signed-in account with Build enabled.
     const id = r.backend.server.abuId;
     const a = (await r.core.invoke("wos:build", { abu: id, model: "opus" })) as { runId: string };
     const b = (await r.core.invoke("wos:build", { abu: id, model: "astra" })) as { runId: string };
@@ -241,6 +242,7 @@ describe("the BUILD flow: Sniper List -> Salesforce -> CRM -> feature -> ABU -> 
           },
         }) as Orchestrator,
     });
+    await signIn(r); // S-40
     const one = (await r.core.invoke("wos:build", { abu: r.backend.server.abuId, model: "sol" })) as { runId: string };
     const two = (await r.core.invoke("wos:build", { abu: r.backend.server.abuId, model: "astra" })) as { runId: string };
     await r.core.settle();

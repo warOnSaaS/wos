@@ -11,7 +11,7 @@
     "moduleResolution": "Bundler",
     "emitDeclarationOnly": true
   },
-  "include": ["src/renderer", "src/shared"],
+  "include": ["src/renderer", "src/shared", "src/apps/build/renderer"],
   "references": [
     {
       "path": "../../packages/contracts"
