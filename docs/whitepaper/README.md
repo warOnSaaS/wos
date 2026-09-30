@@ -35,4 +35,10 @@ A human merges the pull request. The agent never invents evidence: every figure 
 
 ## The handoff prompt
 
-The prompt on /whitepaper lives in `apps/web/lib/whitepaper.ts` (`HANDOFF_PROMPT`, and a one-line `HANDOFF_PROMPT_SHORT` for the llms files). Keep its two stages and eleven points in step with the paper's instructions to the evaluating agent. Only chat links whose pre-fill was verified in a browser may carry the prompt (today: ChatGPT `?q=`); others open the chat and the user pastes.
+The prompt on /whitepaper lives in `apps/web/lib/handoff-prompt.ts` (`HANDOFF_PROMPT`, and a one-line `HANDOFF_PROMPT_SHORT` for the llms files; re-exported by `apps/web/lib/whitepaper.ts`). It has no imports because `tools/assessments/run-reference.ts` sends exactly that text to the founder's agents. Keep its two stages and eleven points in step with the paper's instructions to the evaluating agent. Only chat links whose pre-fill was verified in a browser may carry the prompt (today: ChatGPT `?q=`); others open the chat and the user pastes.
+
+## Assessments (since v0.7)
+
+The brief asks the evaluating agent to end its report with a `wos-assessment` score block (spec in the core, "The score block"; machine schema `packages/contracts/src/assessment.ts`). warOnSaaS records only its own reference runs (`tools/assessments/run-reference.ts`, files in `docs/assessments/`), shown at https://waronsaas.com/assessments and https://waronsaas.com/whitepaper/assessments.md.
+
+**Anti-anchoring rule:** no recorded score may appear in the core, a companion file or the full pack, and the assessments file is never a companion. The paper and the prompt tell the agent to open the record only after writing its own block. `tests/assessments.test.ts` checks the template in the core parses against the schema and that the record stays out of the companions and the pack. When the score block changes, bump the schema (`wos-assessment/v2`) and the paper together.
