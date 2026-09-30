@@ -518,3 +518,10 @@ Each transition writes `entitlement.changed` (private) in the same transaction a
 | `removed` | Files deleted (terminal). |
 
 Transitions: `activate` (staged → active), `fail` (staged → failed, active → failed), `supersede` (active → previous), `rollback` (previous → active), and `remove` (previous, active or failed → removed).
+
+
+## 9. Proof of Contribution (DRAFT, Amendment 02, migration 0007)
+
+Not yet implemented; designed in `docs/protocol/PROTOCOL.md` §2 (entities and tables). Two domain changes affect existing entities:
+- **Contributor vs Beneficiary (D38).** The contributor is the natural person whose agent did the work (accountability, review rights, reputation, Sybil checks, run logs). The beneficiary is the person or an Organization (Amendment 01's `organizations`) they contribute for through an approved sponsorship link (`sponsorship_links`), with a split (default 100% organization). Every receipt records both as of qualification; ending a link is forward-only. Org-mates are **related accounts** for every independence rule.
+- **Leases carry a generation** (fencing token); **attempts** a hard lifetime; **tasks** gain kind `payout_audit` / role `payout_auditor`.

@@ -1,5 +1,7 @@
 # REWARD-PROTOCOL
 
+> **Being superseded (DRAFT, 2026-09-29):** Amendment 02 / D18 replace this document with `docs/protocol/REWARD-PROTOCOL.md` (v2) when the protocol is activated after the Astra review. `docs/protocol/SUPERSESSION.md` lists which rules below survive. Until then this document describes what is deployed.
+
 How accepted work earns WOS tokens, and how the ledger works. Part of the wOS constitution.
 
 > WOS tokens are in-app credits with no cash value.

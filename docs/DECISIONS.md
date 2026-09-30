@@ -13,7 +13,7 @@ These override `docs/V1-SPEC.md` where they differ. Date: 2026-09-29.
 - Deterministic verification (typecheck, lint, tests, scope/diff check) is re-run in GitHub Actions on the PR. A contributor's local "tests passed" is never trusted alone.
 - Bootstrap problem: at launch the founder is contributor zero and there is nobody else to review. The architect must specify a bootstrap mode (who may review when the pool is too small, how that is labelled publicly, and when it switches off).
 
-## D3. Tokens and points are one unit.
+## D3. Tokens and points are one unit. (SUPERSEDED by D18, 2026-09-29: WOS is a Solana token; the one-record and derived-balance principles survive)
 - WOS tokens are in-app credits, earned per individual for accepted work. The running total is the person's score; the leaderboard ranks it.
 - One append-only ledger, one unit. Balances are derived, never stored-and-mutated.
 - Not cryptocurrency, not transferable, no cash value. Required public wording wherever tokens appear: "WOS tokens are in-app credits with no cash value."
@@ -131,3 +131,70 @@ These override `docs/V1-SPEC.md` where they differ. Date: 2026-09-29.
 - Founder: wOS Desktop V1 ships on macOS, Windows and Linux. This supersedes the G-18 recommendation of "macOS + Linux; Windows later".
 - Windows code signing uses Azure Trusted Signing or an OV certificate (FOUNDER-CHECKLIST section 12).
 - Windows paths and worktrees need test coverage.
+
+## Amendment 02. Proof of Contribution (founder, 2026-09-29)
+- Verbatim in `docs/AMENDMENT-02-PROOF-OF-CONTRIBUTION.md` (Part A binding). The founder's further decisions in the same design pass, relayed by the coordinator, are D18–D38 below. The architect's design applying them is in `docs/protocol/` (DRAFT, pending the Astra review; ADR-001 argues every deviation). Nothing here is implemented in services yet.
+
+## D18. WOS is a real Solana token (supersedes D3)
+- A5: WOS is a Solana token; V1 runs on devnet (no monetary value, and the UI says so); it may become tradeable. wOS never sells WOS, runs no presale/ICO, provides no liquidity and never promotes a price; the company is funded by wOS Cloud. Mainnet is a deliberate milestone behind MAINNET-READINESS with one legal checkpoint (A8).
+- **D3 is superseded**: "WOS tokens are in-app credits with no cash value", "not cryptocurrency, not transferable" no longer hold. D3's one-append-only-record and derived-balances principles survive. Every statement that must change is listed in `docs/protocol/SUPERSESSION.md` §3.
+
+## D19. Proof of Contribution; execution rewarded by normalised usage (A1, A2)
+- Language: contribution, receipt, allocation. Builders, agent reviewers, resolvers (and auditors) are weighted by provider usage normalised to ACU through a versioned ModelRateOracle, only when merged/accepted, clipped at the authorised cap; repairs count inside the cap; failed work earns nothing.
+
+## D20. Planning and ideas by outcome (A3)
+- Authoring compute counts only if in the merged version, plus pool shares; proposals, bugs and security are rewarded by outcome (acceptance, finder's share, severity).
+
+## D21. Human review required in V1 (A4)
+- Deterministic verification + Astra PASS + Fable PASS + 1 authorized non-author human, under a versioned ReviewPolicy; human review is a contribution; disagreements become eval data. Amended by D23 for low-risk classes.
+
+## D22. Founder allocation, treasury, regulation (A6–A8)
+- Founder = contributor zero under the same rules + a capped Genesis credit from recorded evidence; no premine; treasury only as a rules-bound protocol pool; one legal checkpoint before a value-bearing mainnet.
+
+## D23. Merge authority is separate from reward qualification
+- In bootstrap mode the founder may approve and merge anything, including their own work (AdminAction `bootstrap_merge`, public label). The founder may be the human reviewer of others' work (qualifies normally). The founder's own work so merged gets a PROVISIONAL receipt: public, devnet test allocations only, not Genesis-qualifying, until an independent reviewer ratifies it (original timestamp kept; rejections stay provisional, never deleted). Sunset = the existing one-way bootstrap exit. While the founder is alone: devnet test mode. A batch human-review queue in the Desktop Build app; low-risk classes (docs, tests, copy) may require 0 humans when Astra and Fable both pass. Supersedes REVIEW-PROTOCOL §9's self-review exception for qualification.
+
+## D24. All agent compute runs on contributors' own subscriptions (reaffirms D1)
+- Builds, Astra and Fable reviews, audits and planning run on contributors' subscriptions; wOS pays for no model usage and holds no model API keys. Reviewers are assigned at random by the control plane; audit re-reviews are leased tasks for a random third contributor (rate in ReviewPolicy); a material disagreement revokes the original reviewer's receipts (append-only) and raises an AbuseSignal; audits are rewarded. The site-sync GitHub Action (founder's own subscription) is a convenience outside the protocol.
+
+## D25. Review duty at claim time
+- To claim, a contributor's client runs randomly assigned audit tasks on their own subscription (automatic, no manual effort). Re-scoped by D27 (payout audits) and D28 (duty serves dispute gates, sampled audits and provisional ratification only).
+
+## D26. Canaries
+- Decoy review tasks with known defects, generated without a model. Re-aimed by D27 at payouts; code-defect canaries are not used in V1 (ADR-001 §3.6).
+
+## D27. Payout audits, not code review; run logs; payout canaries
+- Duty/audit reviews judge the plausibility of payouts (usage vs diff/contract/complexity, repairs, context, model choice, attribution, peer outliers); arithmetic is the engine's. Builders and agent reviewers submit scrubbed structured run logs. Upheld inflation findings clip or revoke receipts (append-only) and pay the auditor a bonus; quorums need outside-feature auditors. Payout canaries are model-free perturbations of real lines.
+
+## D28. Optimistic verification with a challenge window (default payout path)
+- Allocations are published with explanations to every participant; 48 h challenge window; silence accepts; undisputed allocations finalize automatically; disputed ones go to an audit gate while the rest finalize on time. Epoch-wide standing; bounty for upheld disputes; anti-griefing stake from the disputer's pending allocation; rate limits; sampled audits (~5%) and canaries continue regardless; admin escalation for deadlocks.
+
+## D29. Full transparency against skims
+- Every participant sees every allocation; deterministic anomaly metrics rank the challenge list; the dispute bounty is computed on the total excess of the accused across the epoch; pattern disputes; sampled audits and baseline flags always run. The opt-in leaderboard stays opt-in.
+
+## D30. Dispute one specific allocation
+- Stable ids and permalinks, `wos dispute <id>`, a dispute form with reasons, evidence, proposed amount, stake and bounty previews; DISPUTED shown publicly; right of reply (24 h); outcomes published with immutable history; duplicate disputes merge into one gate (first disputer has bounty priority).
+
+## D31. Dispute any set of allocations
+- One dispute may select several allocations across contributors and features; per-allocation evidence and outcomes; stake scaled by count with a cap; bounty on total upheld excess; rate limits on items per dispute.
+
+## D32. A dispute focuses the audit
+- The dispute builds the auditors' context around the disputed allocations (concern, evidence, run-log turns, diff, baselines, the reply) and instructs them to answer the concern first; disputer text is untrusted and delimited; stakes stay low enough not to intimidate.
+
+## D33. Every economic number is policy data, forward-only
+- Versioned policy records activated by AdminAction (later governance), effective from the next epoch, announced before it, previewable by re-running the engine on recent epochs; emergency changes only for safety and only on unpublished allocations. V1 values are provisional.
+
+## D34. Governance by locked tokens and contribution
+- Dual weight: WOS locked ≥ 12 months (snapshot before voting, per-wallet cap) and accepted contribution over the trailing 6 months (decaying). Proposals are policy PRs with previews and Astra + Fable exploit reviews, ≥ 1-epoch timelock, per-change limits, an auto-expiring emergency pause. V1 runs governance off chain with devnet locks; the founder sets policy until an activation threshold.
+
+## D35. Off-ramp
+- The off-chain receipt/allocation ledger is canonical; WOS is a settlement adapter (`solana_wos`, `in_app_credits`, `paused_accrual`, successor). Security, chain, legal or program failure → emergency pause (accrual continues, auto-expiring, ratified by governance); switching or migrating needs governance + timelock; a falling price is not a trigger; migrations use a public snapshot and a deterministic mapping; governance falls back to contribution-only weight; honest disclosure; an off-ramp drill in the devnet E2E and the mainnet gate.
+
+## D36. Tiered supermajorities
+- Routine 60%, structural 66–75% (architect recommends 70%), governance 75%, emergency ratification simple majority — required in BOTH weights, each with a minimum turnout; thresholds are policy data changeable only at the governance tier.
+
+## D37. Denominators are distributed, never maximum supply
+- Token side: ≥ 12-month-locked WOS in contributor wallets; unemitted supply, the protocol pool, multisig and wOS-controlled holdings never vote or count. Contribution side: contribution weight of contributors active in the trailing 6 months. Snapshot moment defined in GOVERNANCE.md.
+
+## D38. Organizations as beneficiaries
+- Contributor (the accountable person) vs Beneficiary (the person or an Organization). Sponsorship links approved by an org admin, with a split (default 100% org), recorded on every receipt as of qualification; forward-only. Org-mates are related accounts for every independence rule (DB-enforced). Governance weight accrues to the beneficiary with a 10% per-organization cap. Org wallets (multisig recommended).

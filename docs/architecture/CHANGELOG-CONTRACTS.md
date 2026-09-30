@@ -1,5 +1,13 @@
 # Contracts changelog
 
+## Unreleased — DRAFT (Proof of Contribution, `ws/protocol`, pending the Astra review)
+
+Not released and not wired into any service. Will ship as **6.0.0** (MAJOR) when the review is resolved: `TaskKind`/`AgentRole` gain `payout_audit`/`payout_auditor`, `TOKEN_DISCLAIMER` is replaced (D18), new routes and events.
+
+- New entry point `@waronsaas/contracts/protocol` (`packages/contracts/src/protocol/`): entities (UsageReceipt, RunLog, ContributionReceipt with beneficiary, receipt status ACTIVE/PROVISIONAL/RATIFIED/REVOKED, epochs with PROPOSED, allocations per receipt with explanations, anomaly metrics, disputes over any set of allocations, payout audit packets/verdicts with a focus section, payout canaries, clips, duty, completion definitions, Genesis historical credit, abuse signals, risk flags, AdminAction, human review, qualifications, eval cases, wallet bindings, sponsorship links), nine policy schemas + activation rules, governance (tiered dual supermajority, caps) and the settlement-adapter off-ramp, the deterministic bigint reward engine with the conserved funding equation, receipt/Merkle hashing rules P-1..P-4, provider usage adapters, state machines, V1 policy data (all `status: draft`).
+- Draft migration `0007_proof_of_contribution.sql` (applies on 0006; exercised by `db:test`; never applied to production).
+- `tools/tokenomics-sim` (deterministic simulation and policy preview), root scripts `sim:tokenomics` and typecheck of the tool.
+
 ## 1.0.0 — 2026-09-29 (Wave 0, Lead Architect)
 
 Initial frozen contracts: `packages/contracts` (state machines, domain read models, API route map, events, artifacts including the global Feature Catalog, roadmaps with reasoned weights and per-app requirement profiles, build graphs, agent I/O and signed submissions, ledger, progress functions, orchestrator interface, blocker schema), `agent-policy.v1` and `rewards.v1` (proposal) data, and `packages/db/migrations/0000_meta.sql` + `0001_init.sql`. Incorporates founder decisions D1–D12 and the naming rule.

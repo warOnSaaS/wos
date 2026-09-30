@@ -273,3 +273,8 @@ changesets and provenance.
 - The roadmap author's and both roadmap reviewers' contexts render, verbatim from the policy, the D13 obligations and rules: surfaces with evidence, journeys per surface, reasoned surface weights, and the no-trade-dress line. The inventory's `surfaces` and the roadmap's `surfaces` are always included (required artifacts, never truncated).
 - Feature author and reviewer contexts include every impacted app's roadmap ref with its surfaces, surface weights and journeys (`wos:app-refs/<featureKey>`), so requirements can be tagged per surface and journeys checked.
 - Builder contexts include the ABU's `repo` and, when the ABU touches native paths, the matching `toolchainRequirements` of `wos.json`.
+
+
+## Addendum (DRAFT, Amendment 02): the payout-auditor role
+
+A new role `payout_auditor` (task kind `payout_audit`) receives a `PayoutAuditPacket` (`@waronsaas/contracts/protocol`): payout lines, run-log references, diff summary and excerpt, contract excerpts, peer baselines, and for dispute gates a **focus** section (each concern, its evidence, shared evidence). The disputer's note and the accused's reply are rendered inside delimited untrusted-content blocks after the obligations, like repository text. Obligation: answer every focus concern first with cited evidence, then judge every line. Packets carry no receipt ids, merge shas or account names. Details: `docs/protocol/PROTOCOL.md` §6.

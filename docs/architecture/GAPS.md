@@ -270,3 +270,45 @@ Sources: `docs/V1-SPEC.md` (the spec), `docs/DECISIONS.md` (D1–D12 and the nam
 
 ### G-65 Windows build of Build (D17)
 - Contributors on Windows need the claude and codex CLIs on PATH, Git for Windows, and long-path support. Some product toolchains (the iOS native requirement) are macOS-only regardless. The toolchain attestation already carries `os: windows`, and eligibility handles it. Risk: agent CLIs may behave differently on Windows; the Wave 3 Windows CI covers our code, not the vendors' CLIs. No founder decision.
+
+
+## K. Found with Amendment 02 (Proof of Contribution, DRAFT design in `docs/protocol/`)
+
+### G-66 Usage is attested, never verified — FOUNDER DECISION before mainnet (F1)
+- Subscription CLIs report usage client-side; a modified client can fabricate consistent logs (USAGE-PROOF §1). Devnet accepts ATTESTED; mainnet eligibility is empty (fail closed) until the founder decides whether attested usage may carry value, or switches mainnet weight to accepted-output reference ACU (ADR-001 §3.4).
+
+### G-67 Oracle rates are unverified
+- Oracle v1 rates come from the claude-api reference (Anthropic) and third-party summaries (OpenAI); Fable's cache-read figure looks wrong. Every rate is `verified: false`; activation needs the providers' own price pages (MAINNET-READINESS G-10).
+
+### G-68 CLI usage shapes are partly UNVERIFIED
+- Claude transcript and Codex rollout fields were observed in local session files; the exact `stream-json` result fields and the `codex exec --json` `turn.completed` usage shape at the pinned versions need a recorded fixture (one founder-run capture per CLI version). Whether `claude --max-budget-usd` applies under subscription auth is unknown.
+
+### G-69 No one can review in V1 except the founder — FOUNDER DECISION (F11)
+- With D23 the founder's own work stays PROVISIONAL until someone independent ratifies it; live epochs have no receipts until other contributors and authorized human reviewers exist. Recruit seed reviewers and auditors (G-02 recommendation now matters economically).
+
+### G-70 Small pools make random gates weak
+- Below ~10 eligible auditors, random assignment concentrates (TOKENOMICS-SIMULATION D). The human sign-off is the gate there; Sybil resistance beyond GitHub age needs KYC at the mainnet gate (F9).
+
+### G-71 Small skims surface slowly
+- A consistent 10% over-claim on 10 receipts per epoch needs ~39 epochs to be likely ranked (TOKENOMICS-SIMULATION B). Accepted residual, bounded by caps and the pattern lookback; revisit with a stronger (mean log-ratio) statistic once real data exists.
+
+### G-72 Payout canaries are only indistinguishable during the audit window
+- They depend on per-run usage staying unpublished until finalization and on packets carrying no ids. Code-defect canaries are not used (public history distinguishes them).
+
+### G-73 Solana program choices are unverified
+- Squads v4 upgrade authority and audits, Token-2022 support in any Merkle distributor (Jito `distributor`, Solana Foundation `rewards`) and in SPL Governance VSR are unverified (MAINNET-READINESS G-2, G-8).
+
+### G-74 Solana CLI is not installed; the devnet E2E needs it
+- `solana-test-validator` and `solana sign-offchain-message` are needed by the protocol-chain workstream and CI (WORKSTREAMS-PROTOCOL §6). No Rust is needed for V1 devnet.
+
+### G-75 Wallet UX for contributors without a wallet
+- V1 supports external wallets only (no custody, no seed phrases in wOS); allocations without a bound wallet carry 52 epochs then return to the reserve (F12). Embedded wallets are deferred.
+
+### G-76 Transparency vs privacy
+- Every allocation is public under a pseudonym and wallet (D29); cluster evidence is maintainer-only and must be lawful per jurisdiction; organization beneficiaries are public. Privacy review before mainnet.
+
+### G-77 Governance early concentration
+- In a small network the founder can meet routine turnout alone (TOKENOMICS-SIMULATION K); founder mode stays explicit until the activation threshold (F10).
+
+### G-03 addendum (observation, D38)
+- Contributing through an organization may fit vendor terms better on business Claude/ChatGPT plans than on personal subscriptions; to be covered by the legal read (G-03, MAINNET-READINESS G-18).

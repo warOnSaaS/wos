@@ -1,5 +1,7 @@
 # TOKEN-DISTRIBUTION (proposal)
 
+> **Being superseded (DRAFT, 2026-09-29):** A5/D18 make WOS a Solana token (devnet in V1). See `docs/protocol/` (TOKENOMICS-REVIEW, SOLANA-ARCHITECTURE, TOKEN-AUTHORITIES, SUPERSESSION). Until activation this document describes what is deployed.
+
 **Status: PROPOSAL. Not implemented. Not an offer.** Nothing in this document is built in V1, and nothing here promises anyone anything. It exists because the spec asks for the proposed token distribution architecture to be documented separately from the implementation.
 
 > WOS tokens are in-app credits with no cash value.
