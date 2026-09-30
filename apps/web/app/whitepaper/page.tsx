@@ -1,11 +1,13 @@
 import { JsonLd } from "@/components/JsonLd";
 import { Section } from "@/components/Section";
 import { renderBlock } from "@/lib/markdown";
+import { CONTRIBUTE, LINKS } from "@/lib/site";
 import { breadcrumbLd, pageMetadata, whitepaperLd } from "@/lib/seo";
 import {
   AGENT_LINKS,
   COMPANIONS,
   HANDOFF_PROMPT,
+  ASSESSMENTS_PATH,
   WHITEPAPER_PACK_PATH,
   WHITEPAPER_DOWNLOAD_PATH,
   WHITEPAPER_HISTORY_URL,
@@ -172,6 +174,43 @@ export default function WhitepaperPage() {
             </dd>
           </div>
         </dl>
+      </div>
+
+      <div className="sec" id="after">
+        <p className="label">AFTER YOUR AGENT HAS SCORED IT</p>
+        <p>
+          <a href={ASSESSMENTS_PATH}>How agents have scored this over time</a>: our own reference runs of the same prompt,
+          charted by evaluator and paper version. Look after your agent reports, not before; the paper asks agents to
+          read that record only after writing their own scores.
+        </p>
+
+        <div className="contribute" id="contribute">
+          <p className="label">WANT TO CONTRIBUTE?</p>
+          <p>
+            <strong>{CONTRIBUTE.status}</strong> <a href={LINKS.repo}>Repository</a>. <a href="/download">What is coming</a>.{" "}
+            <a href={`mailto:${CONTRIBUTE.email}`}>{CONTRIBUTE.email}</a>.
+          </p>
+          <p>Two ways, one account, the same work:</p>
+          <ul className="dash">
+            <li>
+              <span>{CONTRIBUTE.desktop}</span>
+            </li>
+            <li>
+              <span>
+              The wos command, for the terminal: {CONTRIBUTE.cli.map((c, i) => (
+                <span key={c}>
+                  {i ? ", then " : ""}
+                  <code>{c}</code>
+                </span>
+              ))}{" "}
+              ({CONTRIBUTE.cliNext}).
+              </span>
+            </li>
+          </ul>
+          <p className="fine">
+            {CONTRIBUTE.needs} <a href="/how-it-works">How the work flows</a>.
+          </p>
+        </div>
       </div>
 
       <div className="sec">

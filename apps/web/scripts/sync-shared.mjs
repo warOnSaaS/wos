@@ -10,11 +10,15 @@
  *   docs/whitepaper/WHITEPAPER.md        -> generated/WHITEPAPER.md          (byte-identical; the /whitepaper
  *                                           page and /whitepaper.md render it; its date comes from gen-log.mjs)
  *   docs/whitepaper/{MATERIALITY,EDGE-CASES,DESIGN,APPENDICES,SOURCES}.md -> generated/whitepaper/  (byte-identical companions)
+ *   docs/assessments/*.json              -> generated/assessments.json        (every recorded reference run, oldest
+ *                                           first, without the raw block text; /assessments and
+ *                                           /whitepaper/assessments.md render it. Validated against the contract
+ *                                           by tests/assessments.test.ts.)
  *
  * With the repo present (local builds): writes the copies, or with --check fails if they differ.
  * Without the repo (Vercel): checks the committed copies exist and exits 0.
  */
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 
 const web = process.cwd();
@@ -34,6 +38,13 @@ const files = [
     map: (s) => s,
   })),
   {
+    // A directory, not a file: every run recorded by tools/assessments/run-reference.ts.
+    from: join(repo, "docs/assessments"),
+    to: join(web, "generated/assessments.json"),
+    read: (dir) => assessmentsJson(dir),
+    map: (s) => s,
+  },
+  {
     from: join(repo, "packages/contracts/src/progress.ts"),
     to: join(web, "generated/contracts-progress.ts"),
     map: (s) => {
@@ -42,6 +53,20 @@ const files = [
     },
   },
 ];
+
+/** The site's copy of the recorded runs: deterministic (sorted, fixed formatting), so --check can compare it. */
+function assessmentsJson(dir) {
+  const runs = readdirSync(dir)
+    .filter((f) => f.endsWith(".json"))
+    .map((f) => {
+      const r = JSON.parse(readFileSync(join(dir, f), "utf8"));
+      if (`${r.id}.json` !== f) throw new Error(`sync-shared: docs/assessments/${f} has id ${r.id}`);
+      const { rawBlock: _raw, ...rest } = r;
+      return rest;
+    })
+    .sort((a, b) => (a.recordedAt < b.recordedAt ? -1 : a.recordedAt > b.recordedAt ? 1 : a.id < b.id ? -1 : 1));
+  return `${JSON.stringify({ source: "docs/assessments", runs }, null, 2)}\n`;
+}
 
 mkdirSync(join(web, "generated", "whitepaper"), { recursive: true });
 let failed = false;
@@ -53,7 +78,7 @@ for (const f of files) {
     }
     continue;
   }
-  const want = f.map(readFileSync(f.from, "utf8"));
+  const want = f.map(f.read ? f.read(f.from) : readFileSync(f.from, "utf8"));
   const have = existsSync(f.to) ? readFileSync(f.to, "utf8") : null;
   if (have === want) continue;
   if (check) {

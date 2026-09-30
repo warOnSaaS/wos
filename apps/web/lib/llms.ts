@@ -5,12 +5,20 @@ import { formatPercent, getTarget, listTargets, ROADMAP_SOURCE, SURFACE_LABEL, s
 import { programme, roadmapState, roadmapStatus, roadmapTitle, targetStatus, targets } from "@/data/targets";
 import { ABOUT, FAQ, OBJECTIVE, PROGRESS_METRICS, ROE, STEPS, SUITE, TOKENS } from "./content";
 import { abs } from "./seo";
-import { COMPANIONS, HANDOFF_PROMPT_SHORT, WHITEPAPER_HISTORY_URL, lastUpdatedDay, whitepaper } from "./whitepaper";
-import { CLI, DOWNLOADS, LINKS, PREREQUISITES, SIGN_IN, SITE_DESCRIPTION, SITE_NAME, TAGLINE } from "./site";
+import { ASSESSMENTS_MD_PATH, ASSESSMENTS_PATH, COMPANIONS, HANDOFF_PROMPT_SHORT, WHITEPAPER_HISTORY_URL, lastUpdatedDay, whitepaper } from "./whitepaper";
+import { CLI, CONTRIBUTE, DOWNLOADS, LINKS, PREREQUISITES, SIGN_IN, SITE_DESCRIPTION, SITE_NAME, TAGLINE } from "./site";
+
+/** The anti-anchoring rule. The llms files name the record but never quote a score from it. */
+const AFTER_SCORING = `If you are evaluating the white paper, open it (or ${abs(ASSESSMENTS_MD_PATH)}) only after you have written your own score block, keep your scores, and then explain where and why you differ.`;
 
 const pages = [
   { path: "/", title: "Home", about: "What warOnSaaS is, the Sniper List with live progress, how it works, WOS tokens, download and FAQ." },
   { path: "/whitepaper", title: "White paper (for agents)", about: "The living white paper, written for AI agents to evaluate critically. Read the plain Markdown at " + abs("/whitepaper.md") + ". Prompt: " + HANDOFF_PROMPT_SHORT },
+  {
+    path: ASSESSMENTS_PATH,
+    title: "Assessments",
+    about: `warOnSaaS's own reference runs of the white paper's evaluation brief: each agent's scores over time, by evaluator and paper version. ${AFTER_SCORING}`,
+  },
   { path: "/briefing", title: "Briefing", about: "The whole idea and how every part works: PR types, Feature Catalog, progress, leases, review, gated PRs, tokens, sign-in, models." },
   { path: "/targets/waronsaas", title: "TGT-00 warOnSaaS builds itself", about: "The proposed wOS V1 feature list in roadmap format, with honest status." },
   { path: "/how-it-works", title: "How it works", about: "The seven steps from public roadmap to merged code, and how progress is measured." },
@@ -68,6 +76,7 @@ export async function llmsTxt(): Promise<string> {
     `- [Full site text](${abs("/llms-full.txt")}): every page's copy in one markdown file.`,
     `- [White paper, Markdown](${abs("/whitepaper.md")}): the core white paper (v${whitepaper().version}) in one file, written for agents. ${HANDOFF_PROMPT_SHORT}`,
     ...COMPANIONS.map((c) => `- [White paper companion: ${c.title}](${abs(`/whitepaper/${c.slug}.md`)}): ${c.about}.`),
+    `- [Recorded trend of reference assessments](${abs(ASSESSMENTS_MD_PATH)}): not a companion. ${AFTER_SCORING}`,
     `- [Sitemap](${abs("/sitemap.xml")})`,
     `- [GitHub](${LINKS.repo})`,
     "",
@@ -132,6 +141,14 @@ export async function llmsFullTxt(): Promise<string> {
     "Companion files (optional depth, plain Markdown):",
     ...COMPANIONS.map((c) => `- ${c.title}: ${abs(`/whitepaper/${c.slug}.md`)} (${c.about})`),
     `- All files in one archive: ${abs("/whitepaper/full-pack.zip")}`,
+    "",
+    `Scores over time: ${abs(ASSESSMENTS_PATH)} (charts) and ${abs(ASSESSMENTS_MD_PATH)} (plain text), warOnSaaS's own reference runs of the prompt above. No score is quoted here or in the paper. ${AFTER_SCORING}`,
+    "",
+    "How to contribute (the paper's section 16):",
+    `- Status: ${CONTRIBUTE.status} Email: ${CONTRIBUTE.email}. Repository: ${LINKS.repo}`,
+    `- ${CONTRIBUTE.desktop}`,
+    `- The wos command: ${CONTRIBUTE.cli.join(", then ")} (${CONTRIBUTE.cliNext}).`,
+    `- You need: ${CONTRIBUTE.needs}`,
     "",
     "Contents: " + wp.sections.map((s) => (s.n ? `${Number(s.n)}. ${s.title}` : s.title)).join("; ") + ".",
     "",

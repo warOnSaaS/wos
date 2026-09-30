@@ -970,3 +970,116 @@ button.cmd {
 .fulltext .brief {
   padding: 0;
 }
+
+/* Assessments charts (components/ScoreChart.tsx). Monochrome: identity is marker shape plus the legend; the two
+ * ink steps only separate neighbouring lines. Hairline solid grid, 2px lines, 2px surface ring on markers. */
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1.5rem;
+  padding: 0 0 1.5rem;
+}
+.chart-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.chart-legend .fine {
+  flex-basis: 100%;
+}
+.chart-group + .chart-group {
+  margin-top: 2.5rem;
+}
+.chart-group > .fine {
+  margin: 0.25rem 0 1rem;
+}
+.charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 1fr));
+  gap: 1.5rem 2rem;
+}
+.chart {
+  margin: 0;
+  min-width: 0;
+}
+.chart .label {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+.chart__svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.chart__grid {
+  stroke: var(--rule);
+  stroke-width: 1;
+}
+.chart__version {
+  stroke: var(--dim);
+  stroke-width: 1;
+}
+.chart__axis,
+.chart__val {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10px;
+  fill: var(--dim);
+}
+.chart__val {
+  fill: var(--fg);
+}
+.chart__line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.chart__ink .chart__line {
+  stroke: var(--fg);
+}
+.chart__ink2 .chart__line {
+  stroke: var(--dim);
+}
+.chart__pt > :not(.chart__hit),
+.chart__key > * {
+  stroke: var(--bg);
+  stroke-width: 2;
+}
+.chart__ink .chart__pt > :not(.chart__hit),
+.chart__key.chart__ink > * {
+  fill: var(--fg);
+}
+.chart__ink2 .chart__pt > :not(.chart__hit),
+.chart__key.chart__ink2 > * {
+  fill: var(--dim);
+}
+.chart__pt > .chart__hollow,
+.chart__key > .chart__hollow {
+  fill: var(--bg);
+  stroke: var(--fg);
+  stroke-width: 1.5;
+}
+.chart__pt:hover > :not(.chart__hit) {
+  stroke: var(--fg);
+}
+.chart__hit {
+  fill: transparent;
+  stroke: none;
+}
+.chart__key {
+  flex: none;
+  vertical-align: -3px;
+}
+.is-off {
+  display: none;
+}
+.contribute {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--rule);
+}
+.contribute > * + * {
+  margin-top: 0.75rem;
+}

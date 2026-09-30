@@ -9,6 +9,11 @@
  * number n in that snapshot, and every "N bp" figure must be a number in it. Data pages: the home
  * page, every target dossier and every drilldown page. The white paper (/whitepaper) is prose and is
  * excluded explicitly; see PROSE_PAGES below.
+ *
+ * /assessments is a data page with its own data source: the recorded reference runs (docs/assessments, built as
+ * /assessments/data.json from the same module the page renders from). See "Assessments" at the end: every figure
+ * the page marks as data (<data value>, data-figure) and every "N/100", "N/20" or "N/10" score must be a number in
+ * that snapshot; RUNS: N must be its count; with no runs the page must show no figure and its empty state.
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -69,6 +74,51 @@ for (const f of dataPages) {
   for (const m of t.matchAll(/(\d+)\s*bp\b/gi)) {
     seen++;
     if (!numbers.has(Number(m[1]))) errors.push(`${relative(web, f)}: "${m[0]}" is not a number in the data source`);
+  }
+}
+
+// ---- Assessments: /assessments against its own snapshot (never against the progress snapshot, never skipped).
+{
+  const page = join(app, "assessments.html");
+  const src = join(app, "assessments", "data.json.body");
+  let html = null;
+  let snap = null;
+  try {
+    html = readFileSync(page, "utf8");
+    snap = JSON.parse(readFileSync(src, "utf8"));
+  } catch {
+    errors.push("assessments: assessments.html or assessments/data.json.body is missing from the build");
+  }
+  if (html && snap) {
+    const nums = new Set();
+    (function collect(v) {
+      if (typeof v === "number") nums.add(v);
+      else if (Array.isArray(v)) v.forEach(collect);
+      else if (v && typeof v === "object") Object.values(v).forEach(collect);
+    })(snap.runs);
+    const t = text(html);
+    const figures = [
+      ...[...html.matchAll(/<data value="([^"]*)"/g)].map((m) => m[1]),
+      ...[...html.matchAll(/\sdata-figure="([^"]*)"/g)].map((m) => m[1]),
+    ];
+    for (const f of figures) {
+      seen++;
+      if (!nums.has(Number(f))) errors.push(`assessments.html: figure ${f} is not a score in the recorded runs`);
+    }
+    for (const m of t.matchAll(/(\d+)\s*\/\s*(100|20|10)\b/g)) {
+      seen++;
+      if (!nums.has(Number(m[1]))) errors.push(`assessments.html: "${m[0]}" is not a score in the recorded runs`);
+    }
+    const runsLabel = t.match(/RUNS:\s*(\d+)/);
+    if (!runsLabel || Number(runsLabel[1]) !== snap.count || snap.count !== snap.runs.length) {
+      errors.push(`assessments.html: RUNS label ${runsLabel?.[1] ?? "missing"} does not equal the ${snap.runs.length} recorded runs`);
+    }
+    if (snap.runs.length === 0) {
+      if (figures.length) errors.push("assessments.html: shows figures although no run is recorded");
+      if (!t.includes("No assessments recorded yet")) errors.push("assessments.html: no runs recorded but the empty state is missing");
+    }
+    for (const m of t.matchAll(/(<1|\d+)%|(\d+)\s*bp\b/gi)) errors.push(`assessments.html: "${m[0]}": the record has no percentages or basis points`);
+    dataPages.push(page);
   }
 }
 

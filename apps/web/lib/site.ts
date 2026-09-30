@@ -58,9 +58,27 @@ export const NAV = [
   { href: "/#targets", label: "TARGETS" },
   { href: "/briefing", label: "BRIEFING" },
   { href: "/whitepaper", label: "WHITE PAPER" },
+  { href: "/assessments", label: "ASSESSMENTS" },
   { href: "/how-it-works", label: "PROCEDURE" },
   { href: "/tokens", label: "TOKENS" },
   { href: "/leaderboard", label: "LEADERBOARD" },
   { href: "/faq", label: "FAQ" },
   { href: "/download", label: "DOWNLOAD" },
 ] as const;
+
+/**
+ * How to contribute, as told on /whitepaper (and in the white paper's section 16). HONEST STATUS: update `released`
+ * and `status` only when a signed Desktop release or the npm package actually exists (SITE-SYNC.md rule).
+ */
+export const CONTRIBUTE = {
+  released: false,
+  status:
+    "Not open yet. There is no signed wOS Desktop release, and the wos command is not published on npm. Today you can watch or star the repository, read the download page for what is coming, or email us to be told when it opens.",
+  email: "hello@waronsaas.com",
+  desktop:
+    "wOS Desktop with the Build app: pick a target, a feature and a build unit, and press BUILD. Or press BUILD NEXT to take the next unit wOS ranks for you (designed, not built yet).",
+  cli: ["npm install -g @waronsaas/cli", "wos login", "wos link-github", "wos status", "wos build <unit>"],
+  cliNext: "or wos build --next, optionally continuous until you stop it or reach your own limits (designed, not built yet)",
+  needs:
+    "An email address, a GitHub account, and your own AI subscription: Claude Code, or the Codex CLI with ChatGPT. wOS never sees your AI credentials; you work within your own subscription's limits.",
+} as const;
