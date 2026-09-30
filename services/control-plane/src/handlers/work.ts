@@ -15,7 +15,7 @@ import {
 } from "@waronsaas/contracts";
 import { eligibilityRouteError } from "@waronsaas/agent-policy";
 import { inTransaction, type Tx } from "@waronsaas/db";
-import { APP_COMMIT_AUTHOR_NAME, candidateBranch, coAuthoredBy } from "@waronsaas/github";
+import { APP_COMMIT_AUTHOR_NAME, candidateBranch, coAuthoredBy, noreplyEmail } from "@waronsaas/github";
 import type { Deps } from "../deps.js";
 import { ApiFailure } from "../errors.js";
 import { insertEvent } from "../db/events.js";
@@ -862,7 +862,14 @@ export const workHandlers: Pick<
         branch,
         cs,
         {
-          author: { name: APP_COMMIT_AUTHOR_NAME, email: `${APP_COMMIT_AUTHOR_NAME}@users.noreply.github.com` },
+          author: {
+            name: APP_COMMIT_AUTHOR_NAME,
+            // Attributed to the bot account when its id is known (the id+login noreply form GitHub links to the account).
+            email:
+              deps.config.appBotUserId !== null
+                ? noreplyEmail(deps.config.appBotUserId, APP_COMMIT_AUTHOR_NAME)
+                : `${APP_COMMIT_AUTHOR_NAME}@users.noreply.github.com`,
+          },
           trailers,
           message: `${title}\n\n${Object.entries(trailers)
             .map(([k, v]) => `${k}: ${v}`)

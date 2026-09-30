@@ -99,9 +99,11 @@ async function openOrUpdatePr(deps: Deps, e: EventRow, attemptId: string): Promi
         head_sha: string;
         review_label: "single_lab_review";
         review_label_reason: string;
+        bootstrap_self: boolean;
       }[]
     >`
-      select coalesce(a.github_login, a.handle) as login, h.verdict, h.head_sha, h.review_label, h.review_label_reason
+      select coalesce(a.github_login, a.handle) as login, h.verdict, h.head_sha, h.review_label, h.review_label_reason,
+             coalesce((to_jsonb(h) ->> 'bootstrap_self')::boolean, false) as bootstrap_self
         from wos.round_human_reviews h join wos.accounts a on a.id = h.account_id where h.round_id = ${round!.id}`;
     const ci = await tx<{ github_check_suite_id: string; conclusion: string }[]>`
       select github_check_suite_id, conclusion from wos.verification_runs where attempt_id = ${attempt.id} and source = 'ci' and head_sha = ${attempt.head_sha}
@@ -144,7 +146,9 @@ async function openOrUpdatePr(deps: Deps, e: EventRow, attemptId: string): Promi
     ),
     ...(facts.human
       ? [
-          `- Human review (required seat under fable_unavailable) by @${facts.human.login}: ${facts.human.verdict}`,
+          `- Human review (required seat under fable_unavailable) by @${facts.human.login}: ${facts.human.verdict}${
+            facts.human.bootstrap_self ? " (bootstrap_self: the builder's own work, D67; PROVISIONAL until its independent re-review)" : ""
+          }`,
           "",
           `Label: ${facts.human.review_label} (${facts.human.review_label_reason}). Devnet/shadow accounting only (D53).`,
         ]
@@ -221,6 +225,7 @@ async function openOrUpdatePr(deps: Deps, e: EventRow, attemptId: string): Promi
             roundNumber: facts.round.round_number,
             label: facts.human.review_label,
             labelReason: facts.human.review_label_reason,
+            ...(facts.human.bootstrap_self ? { independence: "bootstrap_self" as const } : {}),
           },
         }
       : {}),

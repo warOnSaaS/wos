@@ -424,3 +424,14 @@ These override `docs/V1-SPEC.md` where they differ. Date: 2026-09-29.
   - An email change is re-verified at both addresses, or by the linked GitHub when the old mailbox is lost.
 - **Public site:** "Sign in with GitHub" appears next to the email code once the routes are live.
 - **GitHub App:** the founder enables the App's "Email addresses: read" permission (FOUNDER-CHECKLIST).
+
+## D67. Bootstrap exception: the founder may hold the D53 human seat on the founder's own work (founder decision, 2026-09-30)
+- While bootstrap is on (D23/D54; bootstrap ends at 3 outside contributors with an accepted receipt, F31), the bootstrap founder, as maintainer, may hold the D53 human review seat on a round whose subject the founder's own account authored.
+- Conditions:
+  - the round, its human verdict, the PR comment and any provenance are labelled `bootstrap_self` publicly, alongside `single_lab_review`;
+  - the founder's authored work stays PROVISIONAL (D23). After bootstrap ends it gets the independent re-review of REVIEW-PROTOCOL section 9 "After exit" (an ordinary round on the merged head);
+  - the agent seat is still never the author's own model (Astra reviews Opus-authored work);
+  - the human seat still opens only after the Astra verdict is sealed ("the human is the final check");
+  - only the maintainer account named as the bootstrap founder may use it, and it is refused automatically once bootstrap ends;
+  - the founder still never holds both the agent seat and the human seat of one round (`humanMayHoldAgentSlotOfSameRound` is unchanged).
+- Encoded as `review-policy.v2` (`bootstrap.bootstrapFounderMayHoldHumanSeatOnOwnWork: true`, `bootstrapFounderMayHoldBothSeats: false`); v1 is unchanged. It is activated by the existing forward-only AdminAction `switch_review_policy` naming the founder, and a round follows the policy in force when it opened. Contracts 5.16.0, migration 0014 (the database guard of the human seat mirrors it).

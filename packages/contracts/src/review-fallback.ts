@@ -25,12 +25,24 @@ export const SINGLE_LAB_REVIEW_REASON = "fable_unavailable: Fable seat replaced 
 export const SecondSeat = z.enum(["fable", "human"]);
 export type SecondSeat = z.infer<typeof SecondSeat>;
 
+/**
+ * Review policy versions of the V1 control plane, in order (switches only move forward). v2 = D67: while bootstrap is on,
+ * the bootstrap founder may hold the D53 human seat on the founder's own work (labelled bootstrap_self, PROVISIONAL).
+ */
+export const ReviewPolicyVersion = z.enum(["review-policy.v1", "review-policy.v2"]);
+export type ReviewPolicyVersion = z.infer<typeof ReviewPolicyVersion>;
+export const REVIEW_POLICY_VERSIONS: readonly ReviewPolicyVersion[] = ReviewPolicyVersion.options;
+
 /** The review policy in force (public). `switchSeq` null: no switch was ever made (fallback none). */
 export const ReviewPolicyState = z.object({
   fallback: ReviewFallback,
   switchSeq: z.number().int().positive().nullable(),
   since: Timestamp.nullable(),
   reason: z.string().nullable(),
+  /** contracts 5.16.0 (D67): the policy version in force ("review-policy.v1" before any version switch). */
+  policyVersion: ReviewPolicyVersion.optional(),
+  /** contracts 5.16.0 (D67): handle of the bootstrap founder named by review-policy.v2, else null. */
+  bootstrapFounder: z.string().nullable().optional(),
 });
 export type ReviewPolicyState = z.infer<typeof ReviewPolicyState>;
 
@@ -63,6 +75,8 @@ export const HumanReviewQueueItem = z.object({
   agentVerdictSealed: z.boolean(),
   label: z.literal(SINGLE_LAB_REVIEW_LABEL),
   eligibility: HumanSeatEligibility,
+  /** contracts 5.16.0 (D67): true when the caller would hold the seat on their own work (labelled bootstrap_self). */
+  bootstrapSelf: z.boolean().optional(),
 });
 export type HumanReviewQueueItem = z.infer<typeof HumanReviewQueueItem>;
 

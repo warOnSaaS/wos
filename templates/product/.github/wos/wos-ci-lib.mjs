@@ -8522,7 +8522,8 @@ const ProvenanceRecord = object({
 		headSha: GitSha,
 		roundNumber: number$1().int().positive(),
 		label: literal("single_lab_review"),
-		labelReason: string()
+		labelReason: string(),
+		independence: ReviewIndependence.optional()
 	}).optional()
 });
 
@@ -8612,11 +8613,15 @@ const RewardSchedule = object({
 const ReviewFallback = _enum(["none", "fable_unavailable"]);
 const SINGLE_LAB_REVIEW_LABEL = "single_lab_review";
 const SecondSeat = _enum(["fable", "human"]);
+const ReviewPolicyVersion = _enum(["review-policy.v1", "review-policy.v2"]);
+const REVIEW_POLICY_VERSIONS = ReviewPolicyVersion.options;
 const ReviewPolicyState = object({
 	fallback: ReviewFallback,
 	switchSeq: number$1().int().positive().nullable(),
 	since: Timestamp.nullable(),
-	reason: string().nullable()
+	reason: string().nullable(),
+	policyVersion: ReviewPolicyVersion.optional(),
+	bootstrapFounder: string().nullable().optional()
 });
 const RoundSeats = object({
 	secondSeat: SecondSeat,
@@ -8644,7 +8649,8 @@ const HumanReviewQueueItem = object({
 	openedAt: Timestamp,
 	agentVerdictSealed: boolean(),
 	label: literal(SINGLE_LAB_REVIEW_LABEL),
-	eligibility: HumanSeatEligibility
+	eligibility: HumanSeatEligibility,
+	bootstrapSelf: boolean().optional()
 });
 const HumanReviewFinding = object({
 	id: Uuid,
@@ -9083,6 +9089,12 @@ const DomainEventBody = discriminatedUnion("type", [
 	e("review_policy.switched", "public", {
 		seq: number$1().int().positive(),
 		fallback: _enum(["none", "fable_unavailable"]),
+		reason: string()
+	}),
+	e("review_policy.version_switched", "public", {
+		seq: number$1().int().positive(),
+		policyVersion: string(),
+		bootstrapFounder: string().nullable(),
 		reason: string()
 	}),
 	e("round.single_lab_review", "public", {
@@ -10694,7 +10706,9 @@ const Routes = {
 			}),
 			object({
 				action: literal("switch_review_policy"),
-				fallback: ReviewFallback,
+				fallback: ReviewFallback.optional(),
+				policyVersion: ReviewPolicyVersion.optional(),
+				bootstrapFounder: Handle.optional(),
 				reason: string().min(5)
 			}),
 			object({

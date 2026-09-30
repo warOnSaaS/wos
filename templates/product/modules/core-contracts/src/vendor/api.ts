@@ -37,6 +37,7 @@ import {
   HumanReviewSubject,
   HumanRulingBody,
   ReviewFallback,
+  ReviewPolicyVersion,
   SubmitHumanReviewBody,
   SubmitHumanReviewResponse,
 } from "./review-fallback.js";
@@ -941,7 +942,17 @@ export const Routes = {
       z.object({ action: z.literal("set_hosting"), target: TargetSlug, hostedUrl: z.url().nullable(), selfHostable: z.boolean() }),
       z.object({ action: z.literal("end_bootstrap"), reason: z.string().min(5) }),
       /** D53 (contracts 5.15.0): forward-only, public; refused while a round is awaiting reviews. */
-      z.object({ action: z.literal("switch_review_policy"), fallback: ReviewFallback, reason: z.string().min(5) }),
+      /**
+       * D67 (contracts 5.16.0): also moves the review policy version forward (`review-policy.v2`, naming the bootstrap
+       * founder by handle). Give `fallback`, `policyVersion`, or both; what is left out stays as it is.
+       */
+      z.object({
+        action: z.literal("switch_review_policy"),
+        fallback: ReviewFallback.optional(),
+        policyVersion: ReviewPolicyVersion.optional(),
+        bootstrapFounder: Handle.optional(),
+        reason: z.string().min(5),
+      }),
       z.object({
         action: z.literal("ledger_adjustment"),
         handle: Handle,

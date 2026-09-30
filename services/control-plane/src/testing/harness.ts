@@ -69,7 +69,15 @@ export class FakeGithub implements GithubPort {
   manifest: object = REPO_MANIFEST;
   heads = new Map<string, string>();
   files = new Map<string, Uint8Array>();
-  commits: Array<{ repo: string; branch: string; sha: string; parent: string; trailers: Record<string, string>; message: string }> = [];
+  commits: Array<{
+    repo: string;
+    branch: string;
+    sha: string;
+    parent: string;
+    trailers: Record<string, string>;
+    message: string;
+    authorEmail?: string;
+  }> = [];
   prs: Array<{ repo: string; number: number; head: string; title: string; body: string; draft: boolean; labels: string[] }> = [];
   statuses: Array<{ repo: string; sha: string; context: string; state: string }> = [];
   branches = new Map<string, string>();
@@ -86,13 +94,26 @@ export class FakeGithub implements GithubPort {
   putFile(repo: string, commit: string, path: string, content: string) {
     this.files.set(`${repo}@${commit}:${path}`, Buffer.from(content, "utf8"));
   }
-  async commitChangeset(repo: string, branch: string, cs: Changeset, identity: { trailers: Record<string, string>; message: string }) {
+  async commitChangeset(
+    repo: string,
+    branch: string,
+    cs: Changeset,
+    identity: { trailers: Record<string, string>; message: string; author?: { name: string; email: string } },
+  ) {
     if (this.failCommits > 0) {
       this.failCommits--;
       throw new Error("GitHub 502");
     }
     const sha = sha1(`${repo}:${branch}:${cs.submissionSha256}:${this.n++}`);
-    this.commits.push({ repo, branch, sha, parent: cs.parentCommit, trailers: identity.trailers, message: identity.message });
+    this.commits.push({
+      repo,
+      branch,
+      sha,
+      parent: cs.parentCommit,
+      trailers: identity.trailers,
+      message: identity.message,
+      authorEmail: identity.author?.email,
+    });
     // The new commit carries the parent's files plus the upserts (so later reads at the head work).
     for (const [k, v] of this.files) {
       const prefix = `${repo}@${cs.parentCommit}:`;
@@ -443,6 +464,7 @@ export async function createHarness(overrides: Partial<Logic> = {}, options: Har
       platformRepo: "waronsaas/wos",
       githubRetries: 1,
       appBotLogin: "waronsaas-wos[bot]",
+      appBotUserId: 335681065,
     },
     github,
     mailer,

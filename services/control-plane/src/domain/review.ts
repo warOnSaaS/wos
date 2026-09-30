@@ -176,15 +176,22 @@ async function sealedSeats(tx: Tx, round: RoundRow): Promise<{ first: Seat | nul
     return r ? { kind: "agent", ...r } : null;
   };
   if (round.second_seat === "fable") return { first: agent("astra"), second: agent("fable") };
-  const [h] = await tx<{ id: string; account_id: string; github_user_id: string | null; body: ReviewVerdict }[]>`
-    select h.id, h.account_id, a.github_user_id, h.body from wos.round_human_reviews h join wos.accounts a on a.id = h.account_id
-     where h.round_id = ${round.id}`;
+  const [h] = await tx<{ id: string; account_id: string; github_user_id: string | null; body: ReviewVerdict; bootstrap_self: boolean }[]>`
+    select h.id, h.account_id, a.github_user_id, h.body, coalesce((to_jsonb(h) ->> 'bootstrap_self')::boolean, false) as bootstrap_self
+      from wos.round_human_reviews h join wos.accounts a on a.id = h.account_id where h.round_id = ${round.id}`;
   let human: Seat | null = null;
   if (h) {
-    // The human seat is never the author (migration 0013); in bootstrap a maintainer reviewer is labelled as such.
+    // The human seat is never the author (0013), except the bootstrap founder under review-policy.v2 (D67, 0014), which the
+    // database marks bootstrap_self. Otherwise, in bootstrap a maintainer reviewer is labelled bootstrap_maintainer.
     const [b] = await tx<{ on: boolean }[]>`
       select coalesce((value ->> 'enabled')::boolean, false) as on from wos.platform_settings where key = 'bootstrap_mode'`;
-    human = { kind: "human", slot: "human", ...h, independence: b?.on ? "bootstrap_maintainer" : "independent" };
+    const { bootstrap_self, ...rest } = h;
+    human = {
+      kind: "human",
+      slot: "human",
+      ...rest,
+      independence: bootstrap_self ? "bootstrap_self" : b?.on ? "bootstrap_maintainer" : "independent",
+    };
   }
   return { first: agent("astra"), second: human };
 }

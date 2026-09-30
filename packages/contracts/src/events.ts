@@ -59,6 +59,13 @@ export const DomainEventBody = z.discriminatedUnion("type", [
     fallback: z.enum(["none", "fable_unavailable"]),
     reason: z.string(),
   }),
+  // contracts 5.16.0 (D67): the review policy version moved forward (v2: the bootstrap founder's human seat exception).
+  e("review_policy.version_switched", "public", {
+    seq: z.number().int().positive(),
+    policyVersion: z.string(),
+    bootstrapFounder: z.string().nullable(),
+    reason: z.string(),
+  }),
   e("round.single_lab_review", "public", {
     roundId: Uuid,
     subjectKind: z.enum(["roadmap", "feature_contract", "implementation"]),
