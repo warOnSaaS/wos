@@ -51,10 +51,11 @@ const active = (version: string, manifest = sampleManifest(version)): ActiveApps
 const ENV = { coreVersion: "0.1.0" };
 
 describe("pinned keys (S-37)", () => {
-  it("the committed file pins no key yet: the coordinator adds the real one (FOUNDER-CHECKLIST 13.5); no test key is in it", () => {
-    expect(PINNED_MODULE_KEYS).toEqual({});
+  it("the committed file pins the real keys wos-module-2026 and -next (FOUNDER-CHECKLIST 13.5), public halves only, no test key", () => {
+    expect(Object.keys(PINNED_MODULE_KEYS).sort()).toEqual(["wos-module-2026", "wos-module-2026-next"]);
     const raw = readFileSync(join(import.meta.dirname, "../src/main/keys/module-signing-keys.json"), "utf8");
-    expect(JSON.parse(raw)).toEqual({ schema: "wos-module-signing-keys.v1", keys: [] });
+    expect(JSON.parse(raw).schema).toBe("wos-module-signing-keys.v1");
+    expect(raw).not.toContain("PRIVATE KEY");
     expect(raw).not.toContain(testKey().publicKey);
   });
 
