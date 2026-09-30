@@ -230,6 +230,7 @@
       "proposerMayNotBuild": true
     },
     "expiryEpochs": 4,
+    "reviewGraceEpochs": 2,
     "recalibration": {
       "everyEpochs": 13,
       "maxChangeBp": 2000,
@@ -244,8 +245,66 @@
   "confiscation": {
     "replyHours": 72,
     "appealHours": 168,
+    "maxReplyHours": 336,
+    "maxAppealHours": 720,
+    "maxHoldAfterAppealHours": 336,
     "maxTimeBoxedExclusionEpochs": 52,
     "permanentExclusionTier": "structural"
+  },
+  "modules": {
+    "active": [
+      "accounting_correctness",
+      "budgets_with_bounds_and_objective_cap",
+      "acceptance_review",
+      "optimistic_challenge_and_publication",
+      "provisional_optimistic_finalization",
+      "append_only_audit_and_admin_actions",
+      "shadow_epoch_pipeline",
+      "simple_hold",
+      "holdback"
+    ],
+    "dormant": [
+      {
+        "module": "dispute_stakes_and_bounties",
+        "activationTrigger": "first value-bearing token (mainnet readiness) or first outside disputer",
+        "v1Stub": "a challenge is a free flag for review; no stake, no bounty"
+      },
+      {
+        "module": "multi_allocation_disputes_and_appeals",
+        "activationTrigger": "first outside contributor with a disputed allocation",
+        "v1Stub": "one flagged receipt goes to the review gate: reply, one decision"
+      },
+      {
+        "module": "payout_canaries",
+        "activationTrigger": "at least 10 active outside payout auditors",
+        "v1Stub": "none (no payout audit duty in V1)"
+      },
+      {
+        "module": "organization_caps_and_beneficiary_splits",
+        "activationTrigger": "first sponsoring organization approved",
+        "v1Stub": "every beneficiary is the contributor (person); no organization cap"
+      },
+      {
+        "module": "governance_voting",
+        "activationTrigger": "at least 25 eligible outside voters",
+        "v1Stub": "the founder sets policy by public AdminAction"
+      },
+      {
+        "module": "collusion_and_sybil_detection_beyond_basics",
+        "activationTrigger": "at least 10 outside contributors",
+        "v1Stub": "related-account independence and anomaly metrics only"
+      },
+      {
+        "module": "confiscation_beyond_simple_hold",
+        "activationTrigger": "first value-bearing token (mainnet readiness)",
+        "v1Stub": "a bounded simple hold and release; no confiscation execution"
+      },
+      {
+        "module": "genesis_calibration_population",
+        "activationTrigger": "Genesis finalization (mainnet only)",
+        "v1Stub": "Genesis records only; no reference manifest"
+      }
+    ]
   },
   "auditCapacity": {
     "unauditedRelease": true,

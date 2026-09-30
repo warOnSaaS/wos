@@ -165,6 +165,12 @@ export const RunPolicySnapshot = z.object({
   reasoningRequired: ReasoningLevel,
   /** Remaining compute budget of the attempt/subject when this lease was issued (reservation, Astra-01 item 6). */
   reservedCapAcuMicro: U64String,
+  /**
+   * Review 04 finding 6: the policy-derived human-review requirement and risk class, pinned at lease issue. REQUIRED:
+   * the qualification rule parses the stored snapshot with this schema and fails closed when either is missing.
+   */
+  humanReviewRequired: z.boolean(),
+  riskClass: z.string().min(1),
   issuedAt: Timestamp,
 });
 export type RunPolicySnapshot = z.infer<typeof RunPolicySnapshot>;
@@ -279,6 +285,11 @@ export const ContributionReceipt = z.object({
     astraReviewSha256: Sha256.nullable(),
     fableReviewSha256: Sha256.nullable(),
     humanReviewSha256s: z.array(Sha256),
+    /**
+     * D53: labels the review policy put on this receipt. Under the `fable_unavailable` fallback every receipt carries
+     * `single_lab_review` with the reason; it is eligible for devnet/shadow accounting only.
+     */
+    labels: z.array(z.object({ label: z.literal("single_lab_review"), reason: z.string().min(5) })),
   }),
   /** D49: the task budget (micro-ACU) for commissioned work, or the ACU-equivalent weight of an outcome. */
   weightMicro: U64String,

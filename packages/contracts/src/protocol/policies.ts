@@ -156,6 +156,11 @@ export const RewardPolicy = z.object({
     }),
     /** An issued task not accepted within this many epochs is released and re-priced before re-issue. */
     expiryEpochs: z.number().int().positive(),
+    /**
+     * Review 05 B4: work submitted while its reservation is live keeps it this many further epochs while the protocol's
+     * reviews finish. PROVISIONAL (founder F28).
+     */
+    reviewGraceEpochs: z.number().int().nonnegative(),
     /** The budget model is recalibrated from telemetry of ACCEPTED units at most this often, moving at most maxChangeBp. */
     recalibration: z.object({ everyEpochs: z.number().int().positive(), maxChangeBp: Bp, minSamples: z.number().int().positive() }),
   }),
@@ -171,8 +176,39 @@ export const RewardPolicy = z.object({
   confiscation: z.object({
     replyHours: z.number().int().positive(),
     appealHours: z.number().int().positive(),
+    /**
+     * Review 04 finding 4: FINITE maxima, measured from notice, so a hold is bounded whatever the writer sets: reply
+     * closes within maxReplyHours of notice, the appeal within maxAppealHours after the reply, and the hold lapses within
+     * maxHoldAfterAppealHours after the appeal closes. PROVISIONAL (founder F17).
+     */
+    maxReplyHours: z.number().int().positive(),
+    maxAppealHours: z.number().int().positive(),
+    maxHoldAfterAppealHours: z.number().int().positive(),
     maxTimeBoxedExclusionEpochs: z.number().int().positive(),
     permanentExclusionTier: z.literal("structural"),
+  }),
+  /**
+   * D55: modules that are V1-ACTIVE and modules that are designed but DORMANT (kept, tested, not built in V1 waves),
+   * each dormant one activated later by a forward-only policy switch (AdminAction) once its trigger is met.
+   */
+  modules: z.object({
+    active: z.array(z.string().min(1)).min(1),
+    dormant: z.array(
+      z.object({
+        module: z.enum([
+          "dispute_stakes_and_bounties",
+          "multi_allocation_disputes_and_appeals",
+          "payout_canaries",
+          "organization_caps_and_beneficiary_splits",
+          "governance_voting",
+          "collusion_and_sybil_detection_beyond_basics",
+          "confiscation_beyond_simple_hold",
+          "genesis_calibration_population",
+        ]),
+        activationTrigger: z.string().min(10),
+        v1Stub: z.string().min(5),
+      }),
+    ),
   }),
   /** D42: when no eligible auditor exists by the deadline, the claim releases on schedule, flagged "unaudited". */
   auditCapacity: z.object({ unauditedRelease: z.literal(true), penalizeContributor: z.literal(false) }),
@@ -356,8 +392,46 @@ export const ReviewPolicy = z.object({
     founderOwnWorkReceipt: z.literal("PROVISIONAL"),
     selfReviewSatisfiesRules: z.literal(false),
     publicLabel: z.string().min(10),
-    ratificationQueueFirst: z.literal(true),
   }),
+  /**
+   * D54: PROVISIONAL (founder bootstrap) receipts finalize OPTIMISTICALLY once bootstrap ends: each is published with a
+   * challenge window (default = the payout challenge window) and all participants are notified; silence accepts it
+   * (qualifying, Genesis-eligible, original timestamp); a challenge sends that receipt to the normal review gate. No
+   * recruited reviewer pool or ratification queue; nothing waits on an independent human before bootstrap ends.
+   */
+  ratification: z.object({
+    mode: z.literal("optimistic_challenge"),
+    recruitedReviewerPool: z.literal(false),
+    /** Bootstrap ends when this many outside contributors (unrelated to the founder) have an accepted receipt. PROVISIONAL (F31). */
+    bootstrapEndsAtOutsideContributors: z.number().int().positive(),
+    challengeWindowHours: z.number().int().positive(),
+    notifyAllParticipants: z.literal(true),
+    challengeGoesTo: z.literal("review_gate"),
+    finalKeepsOriginalTimestamp: z.literal(true),
+  }),
+  /**
+   * D53: versioned fallbacks. `fable_unavailable`: the Fable seat is replaced by the required human review (founder or
+   * authorized reviewers) as the second independent check; Astra remains the agent reviewer (another lab than the Opus
+   * builder); a model never reviews work built by the same model; every round and receipt reviewed under it carries
+   * the `single_lab_review` label with the reason and is eligible for devnet/shadow accounting only; a later Fable pass
+   * is optional and never blocking. Switching is a forward-only, public AdminAction (`switch_review_policy`).
+   */
+  fallbacks: z.array(
+    z.object({
+      key: z.literal("fable_unavailable"),
+      active: z.boolean(),
+      replacesSlot: z.literal("fable"),
+      replacementSeat: z.literal("human"),
+      agentReviewer: z.literal("astra"),
+      authoringModel: z.string().min(1),
+      label: z.literal("single_lab_review"),
+      laterFablePass: z.literal("optional_never_blocking"),
+      sameModelSelfReview: z.literal(false),
+      eligibleFor: z.array(z.enum(["devnet", "shadow"])).min(1),
+      switchedBy: z.literal("admin_action_forward_only"),
+      public: z.literal(true),
+    }),
+  ),
   /** A human approval is bound to (head sha, submission sha256, context sha256, review policy version); any new revision voids it. */
   approvalBinding: z.literal("head_submission_context_policy"),
   recordDisagreementsAsEvalCases: z.literal(true),
@@ -422,6 +496,28 @@ export const AgentCapabilityPolicy = z.object({
       qualificationSuite: z.string().min(1),
     }),
   ),
+  /**
+   * D56: "build next" — versioned, published ranking of the units a contributor is eligible for. Score (integers):
+   * reuseWeight x targets served by the unit's catalog feature + unlockWeight x dependent units waiting + focus
+   * priority of the unit's target/capability + ageingPerEpoch x epochs since issue (capped); ties by unit id ascending.
+   * The contributor's limits are an eligibility filter, never a score. Budgets are identical in both modes.
+   */
+  assignment: z.object({
+    rankingPolicyVersion: z.string().regex(/^build-next-ranking\.v\d+$/),
+    modes: z.array(z.enum(["self_pick", "assigned_next"])).length(2),
+    weights: z.object({
+      reuse: z.number().int().nonnegative(),
+      unlock: z.number().int().nonnegative(),
+      ageingPerEpoch: z.number().int().nonnegative(),
+    }),
+    ageingCapEpochs: z.number().int().positive(),
+    focus: z.array(
+      z.object({ target: z.string().min(1), capabilityClass: CapabilityClass.nullable(), priority: z.number().int().nonnegative() }),
+    ),
+    tieBreak: z.literal("unit_id_ascending"),
+    /** Optional lever (default 0 = off): freshly issued units are offered only to assigned mode for this long. */
+    assignedOnlyWindowMinutes: z.number().int().nonnegative(),
+  }),
   /** D52: ModelQualificationSuite — fixed units with known acceptance outcomes, run in devnet shadow mode. */
   qualificationSuites: z.array(
     z.object({

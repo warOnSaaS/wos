@@ -173,9 +173,33 @@
     "founderMergeAuthority": true,
     "founderOwnWorkReceipt": "PROVISIONAL",
     "selfReviewSatisfiesRules": false,
-    "publicLabel": "Merged under founder bootstrap authority: provisional until independently ratified",
-    "ratificationQueueFirst": true
+    "publicLabel": "Merged under founder bootstrap authority: provisional until its challenge window after bootstrap closes (D54)"
   },
+  "ratification": {
+    "mode": "optimistic_challenge",
+    "recruitedReviewerPool": false,
+    "bootstrapEndsAtOutsideContributors": 3,
+    "challengeWindowHours": 48,
+    "notifyAllParticipants": true,
+    "challengeGoesTo": "review_gate",
+    "finalKeepsOriginalTimestamp": true
+  },
+  "fallbacks": [
+    {
+      "key": "fable_unavailable",
+      "active": true,
+      "replacesSlot": "fable",
+      "replacementSeat": "human",
+      "agentReviewer": "astra",
+      "authoringModel": "claude-opus-5-5",
+      "label": "single_lab_review",
+      "laterFablePass": "optional_never_blocking",
+      "sameModelSelfReview": false,
+      "eligibleFor": ["devnet", "shadow"],
+      "switchedBy": "admin_action_forward_only",
+      "public": true
+    }
+  ],
   "approvalBinding": "head_submission_context_policy",
   "audits": {
     "baseRateBp": 1000,

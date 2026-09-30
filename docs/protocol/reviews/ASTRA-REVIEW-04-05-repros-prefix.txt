@@ -1,0 +1,51 @@
+# Astra reviews 04 and 05 — reproductions on the PRE-FIX code (commit 710600c = 6385b27 + the two review files), 2026-09-30T14:57Z
+# Review 05 examined 12509a1 (before D51 e5e4930 and D52 6385b27); every finding is re-run here against the current code.
+# TS:  node tools/astra-04-05-ts-probes.mjs (built contracts).  SQL: bash tools/astra-04-05-sql-repros.sh (Postgres 17 in Docker, after the full db-assertions fixture).
+# Races: packages/db/test/concurrency.sh (npm run db:test). REPRODUCED/ACCEPTED = the finding holds on this code; REJECTED = refused here.
+
+---- engine (review 04 finding 1 / review 05 B7, B3, B4, B5, B8, B9; review 04 finding 10)
+R04-1a/B7 dispute of tokens already delivered => REPRODUCED: reserve back to 1000 and issuance 0 although alice's 100 was delivered
+R04-1b/B7 dispute of alice's unclaimed 20 => THROWS holdback and claimable balances exceed issuance
+R04-10 computeEpoch without consumedIds at runtime => REPRODUCED: accepted, reserve 1000
+B3a issue and accept the same task in one epoch => THROWS task same has no reservation (not issued, already accepted, released or expired)
+B3b a second computeEpoch call for the same epoch draws capacity again => REPRODUCED: 700 reserved under epoch 1 (first call's capacity 750)
+B4 accept at epoch 9 a task that expired at epoch 5 => REPRODUCED: paid 100 after expiry (expires at 5)
+B5 a released task leaves its pool and security accrual behind => REPRODUCED: pools 18 + security 6 remain after the task failed
+B8 an unfunded task retried next epoch under the same id => THROWS task issuance task:big consumed twice
+B9 engine reservation of a 1 micro-ACU budget at 500000 per ACU => engine 0 (SQL side in the SQL repro)
+---- rules (review 05 B1, B2, B6, B10; review 04 findings 4, 6, 7, 9, 11)
+B1 a budget bounded against a caller-supplied model 100x the real one => REPRODUCED: no refusal
+B2 a 50/50 task allocated 100/0 => REPRODUCED: no rule derives per-receipt amounts from the declared shares (allocationLineRefusals checks slice/account/beneficiary only)
+B6 a HUMAN_REVIEW receipt with no human review behind it => REPRODUCED: receiptRefusals has no contribution-type route or human-review binding
+B10 a valid accepted task refused because its optional telemetry was reused => REPRODUCED: a usage receipt already backs another contribution
+R04-6 the typed run-policy snapshot and the human-review requirement => REPRODUCED: RunPolicySnapshot has no humanReviewRequired; the rule trusts a caller-supplied boolean
+R04-7 run-pinned oracle telemetry admitted to an epoch with another oracle => OBSOLETE: receiptRefusals takes no oracle input since D49; telemetry never prices the receipt
+R04-4 confiscation with an appeal window ten years long => REPRODUCED: no refusal
+R04-9 a reviewer grant approved for low-risk review used to grant protocol review => REPRODUCED: kind and target match; the grant's scope is not part of the checked operation
+R04-11 a Genesis manifest with duplicate and test receipts under an asserted hash => REPRODUCED: no refusal
+
+---- SQL
+---- review 05
+B1a a budget equal to a caller-supplied model 100x the policy model (2 size points = 8 ACU) => ACCEPTED: 800 ACU budget for a 2-point build (policy model 8 ACU)
+B1b two objectives with the same kind and ref, each funded in full => ACCEPTED: 3 objectives for one criterion
+B2 a 60/40 task allocated wholly to one collaborator => ACCEPTED: alice (40%) allocated the whole 600000000 reservation
+B4 a budget released as expired four epochs before its expiry => ACCEPTED: released as expired; expires_epoch is 6
+B6 a human_review budget for an arbitrary id, paid by a HUMAN_REVIEW receipt with no review => ACCEPTED: HUMAN_REVIEW receipt paid from an arbitrary commissioned id, no human review row
+B9 a 1 micro-ACU budget at 500000 base units per ACU (the engine reserves 0) => REPRODUCED: SQL reserves 1, the engine 0
+---- review 04 (and its carry-forward in review 05)
+R04-2 tranche 150: hold 10, mature the other 149999990, lapse the hold, mature the restored 10 => REJECTED: ERROR:  duplicate key value violates unique constraint "entitlements_source_kind_source_id_kind_key"
+R04-3 one 1-WOS pending allocation used as a dispute stake and held for a confiscation => ACCEPTED: 1000000 staked and 1000000 held against one 1000000 allocation
+R04-3b the same, hold first then stake => ACCEPTED: held first, then staked in full
+R04-4a a confiscation hold with an appeal window ten years long and no hold expiry => ACCEPTED: hold until infinity
+R04-4b a lapsed hold released and the same confiscation executed => ACCEPTED: released as lapsed (before its hold expiry) and executed
+R04-5 an appeal accepted after the allocation's money was entitled => ACCEPTED: appeal filed after the allocation was entitled
+R04-8 expiry declared with an observation that says the transaction finalized => ACCEPTED: expired_not_landed recorded over an observation of a finalized transaction
+R04-8b expiry declared with an empty observation => ACCEPTED: expired_not_landed recorded over {}
+R04-11 a Genesis reference manifest listing one receipt twice => ACCEPTED: 2 ids, 1 distinct
+
+---- two-session races (npm run db:test)
+RACE FAILED: R04-5: a timely appeal racing the allocation's finalization (entitlement) — invariant: an appeal and an entitlement of the same allocation both committed
+RACE FAILED: R04-4: a confiscation executed while its hold is released as lapsed — invariant: executed and released
+RACE FAILED: R04-3: a dispute stake and a confiscation hold on the same 1-WOS allocation — invariant: the same 1000000 is both staked and held
+ok (race): B1/I5 (review 05): a budget racing its proposer's lease on the same task — first session: committed; second session: ERROR:  wos: the proposer of this task's budget (or a related account) may not take its lease
+ok (race): B2 (review 05): one task's reservation allocated in two epochs concurrently — first session: ERROR:  wos: allocations of a task exceed its reserved budget; second session: committed

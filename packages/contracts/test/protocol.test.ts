@@ -15,6 +15,8 @@ import {
   stakeForfeited,
   allocationTree,
   assertConserved,
+  budgetToBase,
+  openEpoch,
   governanceWeights,
   capGroupShares,
   CAPABILITY_POLICY_V1,
@@ -109,18 +111,24 @@ function issueAccept(issuances: TaskIssuance[], acceptances: TaskAcceptance[], p
 }
 /** A synthetic small state: reserve 900, issued 100 of which 100 held back by "a" (params with a tiny reserve). */
 const small = { ...params, emissionReserve: 1000n };
-const smallState = (over: Partial<EngineState> = {}): EngineState => ({
-  remainingReserve: 900n,
-  poolBalances: new Map(),
-  securityReserve: 0n,
-  reserved: new Map(),
-  cumulativeIssued: 100n,
-  holdback: [tranche("a", 1, 100n)],
-  claimable: new Map(),
-  offsets: new Map(),
-  lossCarry: 0n,
-  ...over,
-});
+const smallState = (over: Partial<EngineState> = {}): EngineState => {
+  const s = {
+    remainingReserve: 900n,
+    poolBalances: new Map(),
+    securityReserve: 0n,
+    reserved: new Map(),
+    cumulativeIssued: 100n,
+    holdback: [tranche("a", 1, 100n)],
+    claimable: new Map(),
+    offsets: new Map(),
+    lossCarry: 0n,
+    lastEpoch: 0,
+    ...over,
+  } as Omit<EngineState, "delivered"> & { delivered?: bigint };
+  // Whatever is issued but neither held back nor claimable was delivered (I = delivered + claimable + holdback).
+  const owned = s.holdback.reduce((t, x) => t + x.amount, 0n) + [...s.claimable.values()].reduce((t, x) => t + x, 0n);
+  return { ...s, delivered: s.delivered ?? s.cumulativeIssued - owned };
+};
 
 describe("policy data (V1 drafts)", () => {
   it("parses every document and keeps the slices at 10000 bp", () => {
@@ -311,19 +319,20 @@ describe("computeEpoch: budget-based rewards (D49)", () => {
     }
     expect(st.holdback).toEqual([]);
   });
-  it("pools accrue only in proportion to funded capacity, attributed to the pools of the tasks issued", () => {
-    const r = computeEpoch({ ...fresh(), issuances: [task(1, 50)] }, params);
-    const accrued = [...r.accruals.values()].reduce((s, v) => s + v, 0n);
+  it("pools accrue only on ACCEPTANCE, in proportion to the task's reservation, to the pools of that task (B5)", () => {
+    const { r1, r2 } = issueAccept([task(1, 50)], [solo(1, 1)]);
+    expect(r1.accruals.size).toBe(0);
+    const accrued = [...r2.accruals.values()].reduce((s, v) => s + v, 0n);
     expect(accrued).toBeGreaterThan(0n);
-    expect(accrued).toBeLessThan(r.slices.completion_accrual!);
-    expect(r.accruals.has("salesforce/contacts")).toBe(true);
+    expect(accrued).toBeLessThan(r1.slices.completion_accrual!);
+    expect(r2.accruals.has("salesforce/contacts")).toBe(true);
   });
   it("feature pools pay by component; a missing finder returns to the reserve", () => {
-    const e1 = computeEpoch({ ...fresh(), issuances: [task(1, 100)] }, params);
+    const { r2: e1 } = issueAccept([task(1, 100)], [solo(1, 1)]);
     const bal = e1.state.poolBalances.get("salesforce/contacts")!;
     const e2 = computeEpoch(
       {
-        ...fresh(e1.state, 2),
+        ...fresh(e1.state, 3),
         consumedIds: new Set(e1.consumedIds),
         poolPayouts: [
           {
@@ -385,11 +394,14 @@ describe("computeEpoch: budget-based rewards (D49)", () => {
     expect(() => assertConserved(1000n, { ...smallState(), remainingReserve: 1000n })).toThrow(/funding equation/);
   });
   it("H1: the same dispute settlement cannot be consumed twice", () => {
-    const d = { id: "dispute-1", excessBase: 100n, bounties: [{ beneficiaryId: "b", amountBase: 20n }] };
-    expect(() => computeEpoch({ ...fresh(smallState({ holdback: [] })), disputeSettlements: [d, { ...d }] }, small)).toThrow(
-      /consumed twice/,
-    );
-    const first = computeEpoch({ ...fresh(smallState({ holdback: [] })), disputeSettlements: [d] }, small);
+    const d = {
+      id: "dispute-1",
+      recoveries: [{ beneficiaryId: "a", from: "claimable" as const, amount: 50n }],
+      bounties: [{ beneficiaryId: "b", amountBase: 10n }],
+    };
+    const owned = smallState({ holdback: [], claimable: new Map([["a", 100n]]) });
+    expect(() => computeEpoch({ ...fresh(owned), disputeSettlements: [d, { ...d }] }, small)).toThrow(/consumed twice/);
+    const first = computeEpoch({ ...fresh(owned), disputeSettlements: [d] }, small);
     expect(() =>
       computeEpoch({ ...fresh(first.state, 2), consumedIds: new Set(first.consumedIds), disputeSettlements: [d] }, small),
     ).toThrow(/consumed twice/);
@@ -404,8 +416,14 @@ describe("computeEpoch: budget-based rewards (D49)", () => {
     expect(() =>
       computeEpoch(
         {
-          ...fresh(smallState({ holdback: [] })),
-          disputeSettlements: [{ id: "d9", excessBase: 100n, bounties: [{ beneficiaryId: "b", amountBase: 21n }] }],
+          ...fresh(smallState({ holdback: [], claimable: new Map([["a", 100n]]) })),
+          disputeSettlements: [
+            {
+              id: "d9",
+              recoveries: [{ beneficiaryId: "a", from: "claimable", amount: 100n }],
+              bounties: [{ beneficiaryId: "b", amountBase: 21n }],
+            },
+          ],
         },
         small,
       ),
@@ -444,7 +462,9 @@ describe("computeEpoch: budget-based rewards (D49)", () => {
   });
   it("D41: written-off losses reduce later budgets, at most 10% per epoch", () => {
     const st = { ...initialState(RESERVE), offsets: new Map([["x", 10n ** 15n]]) };
-    const r = computeEpoch({ ...fresh(st), writeOffs: [{ id: "w1", beneficiaryId: "x", amount: 10n ** 12n }] }, params);
+    const r1 = computeEpoch({ ...fresh(st), writeOffs: [{ id: "w1", beneficiaryId: "x", amount: 10n ** 12n }] }, params);
+    expect(r1.absorbedLoss).toBe(0n); // the envelope is frozen when the epoch opens (B3): absorbed from the next one
+    const r = computeEpoch({ ...fresh(r1.state, 2), consumedIds: new Set(r1.consumedIds) }, params);
     expect(r.absorbedLoss).toBe(r.budget / 9n);
   });
 });
@@ -478,7 +498,7 @@ describe("Astra review 03 probes (docs/protocol/reviews/ASTRA-REVIEW-03-probe-re
         tiny,
       ),
     ).toThrow(/claimable/);
-    expect(() => assertConserved(1000n, { ...st, claimable: new Map([["a", 101n]]) })).toThrow(/exceed issuance/);
+    expect(() => assertConserved(1000n, { ...st, claimable: new Map([["a", 101n]]) })).toThrow(/not owned/);
   });
   it("A3-10 probe negative_security_payout: still refused by the funding equation", () => {
     expect(() => assertConserved(1000n, { ...smallState(), securityReserve: 50n })).toThrow(/funding equation broken: 1050 != 1000/);
@@ -901,7 +921,12 @@ describe("hashing and Merkle (P-1..P-4)", () => {
     mergeCommit: "2".repeat(40),
     pr: { repo: "waronsaas/product", number: 7 },
     verificationResultSha256: null,
-    reviews: { astraReviewSha256: null, fableReviewSha256: null, humanReviewSha256s: [] },
+    reviews: {
+      astraReviewSha256: null,
+      fableReviewSha256: null,
+      humanReviewSha256s: [],
+      labels: [{ label: "single_lab_review", reason: "fable_unavailable: Fable seat replaced by the required human review (D53)" }],
+    },
     weightMicro: "3820000",
     weightBasis: "task_budget",
     taskBudget: { taskId: u(9), budgetAcuMicro: "3820000", issuedEpoch: 1, shareBp: 10_000 },
@@ -934,6 +959,12 @@ describe("hashing and Merkle (P-1..P-4)", () => {
     expect(contributionReceiptSha256(shuffled)).toBe(h);
     expect(contributionReceiptSha256({ ...base, extra: 1 } as ContributionReceipt)).toBe(h);
     expect(contributionReceiptSha256({ ...base, weightMicro: "3820001" })).not.toBe(h);
+  });
+  it("D53: the single_lab_review label is part of the receipt (required, and in its hash)", () => {
+    expect(base.reviews.labels).toEqual([{ label: "single_lab_review", reason: expect.stringMatching(/fable_unavailable/) }]);
+    expect(contributionReceiptSha256({ ...base, reviews: { ...base.reviews, labels: [] } })).not.toBe(contributionReceiptSha256(base));
+    const { labels: _l, ...noLabels } = base.reviews;
+    expect(() => contributionReceiptSha256({ ...base, reviews: noLabels } as ContributionReceipt)).toThrow();
   });
   it("builds and verifies allocation proofs, including a promoted odd leaf", () => {
     const leaves: ClaimLeaf[] = Array.from({ length: 5 }, (_, i) => ({
@@ -1147,5 +1178,123 @@ describe("usage adapters (fixtures shaped like OBSERVED local session files)", (
     expect(r.usage.inputTokens).toBe(30);
     expect(r.eventIds).toEqual(["resp_1", "resp_2"]);
     expect(usageMismatchBp(r.usage, r.cumulative!)).toBe(0);
+  });
+});
+
+// ------------------------------------------------------------------------------------------------ Astra reviews 04 and 05
+describe("Astra reviews 04 and 05: engine regressions (docs/protocol/reviews/ASTRA-REVIEW-04-05-repros-prefix.txt)", () => {
+  const tiny = { ...small, budgetPpm: 0n, holdbackBp: 0n };
+  const alice100 = () => smallState({ holdback: [], claimable: new Map([["alice", 100n]]) });
+  const rec = (from: "claimable" | "holdback" | "delivered", amount: bigint) => ({
+    id: `d-${from}`,
+    recoveries: [{ beneficiaryId: "alice", from, amount }],
+    bounties: [],
+  });
+  it("R04-1a/B7: a dispute over tokens already delivered becomes the owner's offset; nothing fictional returns to R", () => {
+    const claimed = computeEpoch({ ...fresh(alice100()), claims: [{ id: "c1", beneficiaryId: "alice", amount: 100n }] }, tiny).state;
+    expect(claimed.delivered).toBe(100n);
+    const r = computeEpoch({ ...fresh(claimed, 2), disputeSettlements: [rec("delivered", 100n)] }, tiny).state;
+    expect(r.remainingReserve).toBe(900n);
+    expect(r.cumulativeIssued).toBe(100n);
+    expect(r.offsets.get("alice")).toBe(100n);
+  });
+  it("R04-1b/B7: a dispute over alice's unclaimed 20 debits HER claimable balance (the honest correction works)", () => {
+    const r = computeEpoch({ ...fresh(alice100()), disputeSettlements: [rec("claimable", 20n)] }, tiny).state;
+    expect(r.claimable.get("alice")).toBe(80n);
+    expect(r.cumulativeIssued).toBe(80n);
+    expect(r.remainingReserve).toBe(920n);
+    expect(() => computeEpoch({ ...fresh(alice100()), disputeSettlements: [rec("claimable", 101n)] }, tiny)).toThrow(/only 100 claimable/);
+  });
+  it("R04-1: issuance is always owned — I = delivered + claimable + holdback", () => {
+    expect(() => assertConserved(1000n, { ...alice100(), delivered: 1n })).toThrow(/not owned/);
+  });
+  it("R04-10: computeEpoch refuses a missing replay state at runtime", () => {
+    const untyped = { epochNumber: 1, state: initialState(RESERVE) } as unknown as Parameters<typeof computeEpoch>[0];
+    expect(() => computeEpoch(untyped, params)).toThrow(/replay state/);
+  });
+  const pt = {
+    ...params,
+    emissionReserve: 1000n,
+    budgetPpm: 1_000_000n,
+    rateCeilingInitialBasePerAcu: 100n,
+    rateCeilingDecayPpm: 0n,
+    holdbackBp: 0n,
+  };
+  const iss = (taskId: string, acu: bigint): TaskIssuance => ({
+    taskId,
+    kind: "execution",
+    budgetAcuMicro: acu * 1_000_000n,
+    featurePoolKeys: ["feature"],
+    applicationPoolKeys: ["app"],
+  });
+  const accept = (taskId: string): TaskAcceptance => ({ taskId, shares: [{ accountId: "a", beneficiaryId: "a", shareBp: 10_000 }] });
+  const zero = initialState(1000n);
+  it("B3a: a task issued and accepted in the same epoch is paid in that epoch", () => {
+    const r = computeEpoch({ ...fresh(zero), issuances: [iss("same", 1n)], acceptances: [accept("same")] }, pt);
+    expect(r.acceptedBase).toBe(100n);
+    expect(r.state.reserved.size).toBe(0);
+  });
+  it("B3b: one call per epoch — a second call for the same epoch is refused, so capacity is drawn once", () => {
+    const first = computeEpoch({ ...fresh(zero), issuances: [iss("first", 7n)] }, pt);
+    expect(() => computeEpoch({ ...fresh(first.state, 1), issuances: [iss("second", 1n)] }, pt)).toThrow(/one call per epoch/);
+  });
+  it("B3: the envelope is frozen from the state the epoch opens on (openEpoch), whatever returns arrive in it", () => {
+    const st = alice100();
+    const env = openEpoch(st, 1, 0n, small);
+    const r = computeEpoch({ ...fresh(st), returns: [{ id: "x", kind: "unbound_expiry", beneficiaryId: "alice", amount: 100n }] }, small);
+    expect(r.envelope).toEqual(env);
+    expect(r.budget).toBe(env.budget);
+  });
+  it("B4: one expiry rule — payable while epoch < expiresAtEpoch; at and after it the acceptance is refused", () => {
+    const e1 = computeEpoch({ ...fresh(zero), issuances: [iss("t", 1n)] }, pt);
+    const res = e1.state.reserved.get("t")!;
+    expect(res.expiresAtEpoch).toBe(1 + pt.budgetExpiryEpochs);
+    const before = computeEpoch(
+      { ...fresh(e1.state, res.expiresAtEpoch - 1), consumedIds: new Set(e1.consumedIds), acceptances: [accept("t")] },
+      pt,
+    );
+    expect(before.acceptedBase).toBe(100n);
+    for (const at of [res.expiresAtEpoch, 9])
+      expect(() => computeEpoch({ ...fresh(e1.state, at), consumedIds: new Set(e1.consumedIds), acceptances: [accept("t")] }, pt)).toThrow(
+        /expired/,
+      );
+    const swept = computeEpoch({ ...fresh(e1.state, res.expiresAtEpoch), consumedIds: new Set(e1.consumedIds) }, pt);
+    expect(swept.expired).toEqual(["t"]);
+  });
+  it("B4: work submitted on time keeps its reservation through the review grace; a late submission is refused", () => {
+    const e1 = computeEpoch({ ...fresh(zero), issuances: [iss("t", 1n)] }, pt);
+    const exp = e1.state.reserved.get("t")!.expiresAtEpoch;
+    const e2 = computeEpoch({ ...fresh(e1.state, exp - 1), consumedIds: new Set(e1.consumedIds), submissions: [{ taskId: "t" }] }, pt);
+    const ids = new Set([...e1.consumedIds, ...e2.consumedIds]);
+    const late = computeEpoch({ ...fresh(e2.state, exp + pt.reviewGraceEpochs - 1), consumedIds: ids, acceptances: [accept("t")] }, pt);
+    expect(late.acceptedBase).toBe(100n);
+    expect(() =>
+      computeEpoch({ ...fresh(e1.state, exp), consumedIds: new Set(e1.consumedIds), submissions: [{ taskId: "t" }] }, pt),
+    ).toThrow(/submitted too late/);
+  });
+  it("B5: a released (failed) task funds nothing — its pool and security accrual return with it", () => {
+    const e1 = computeEpoch({ ...fresh(zero), issuances: [iss("t", 1n)] }, pt);
+    expect(e1.state.poolBalances.size).toBe(0);
+    expect(e1.state.securityReserve).toBe(0n);
+    const e2 = computeEpoch(
+      { ...fresh(e1.state, 2), consumedIds: new Set(e1.consumedIds), releases: [{ taskId: "t" }] },
+      { ...pt, budgetPpm: 0n },
+    );
+    expect(e2.state.poolBalances.size).toBe(0);
+    expect(e2.state.securityReserve).toBe(0n);
+    expect(e2.state.remainingReserve).toBe(1000n);
+  });
+  it("B8: a task that did not fit is not consumed and can be issued next epoch under the same id", () => {
+    const e1 = computeEpoch({ ...fresh(zero), issuances: [iss("big", 100n)] }, pt);
+    expect(e1.unfunded).toEqual(["big"]);
+    const e2 = computeEpoch({ ...fresh(e1.state, 2), consumedIds: new Set(e1.consumedIds), issuances: [iss("big", 1n)] }, pt);
+    expect(e2.funded).toEqual(["big"]);
+  });
+  it("B9: reservations floor at every boundary (the database uses the same floor; db-assertions holds the vectors)", () => {
+    expect(budgetToBase(1n, 500_000n)).toBe(0n);
+    expect(budgetToBase(2n, 500_000n)).toBe(1n);
+    expect(budgetToBase(3n, 500_000n)).toBe(1n);
+    expect(budgetToBase(999_999n, 1n)).toBe(0n);
+    expect(budgetToBase(1_000_000n, 1n)).toBe(1n);
   });
 });

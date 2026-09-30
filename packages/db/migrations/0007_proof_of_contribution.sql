@@ -1,5 +1,6 @@
--- 0007_proof_of_contribution.sql — DRAFT v5 (engine-first enforcement, D51; budget-based rewards, D49), pending Astra
--- review 05. Owner: Lead Architect. DO NOT APPLY TO PRODUCTION. It applies cleanly on 0006 and is exercised by db:test.
+-- 0007_proof_of_contribution.sql — DRAFT v6 (review 04/05 fix pass; engine-first enforcement, D51; budget-based rewards,
+-- D49; D53-D55), pending Astra review 06. Owner: Lead Architect. DO NOT APPLY TO PRODUCTION. It applies cleanly on 0006
+-- (it depends on nothing after 0006) and is exercised by db:test.
 --
 -- Proof of Contribution (Amendment 02, D18–D51). v5 shrinks the database's job (D51): tables store the outputs of the
 -- deterministic engine and rules (packages/contracts/src/protocol), append-only; SQL enforces ONLY the hard invariants
@@ -41,7 +42,7 @@ create table wos.admin_actions (
     'approve_genesis_reference', 'award_security', 'bootstrap_merge', 'ratify_receipt', 'reject_ratification',
     'resolve_dispute', 'decide_appeal', 'clip_receipt', 'correct_accrual', 'end_bootstrap', 'start_test_epochs',
     'end_test_epochs', 'pause_settlement', 'resume_settlement', 'switch_adapter', 'void_leaf', 'confiscate',
-    'decide_confiscation_appeal', 'exclude', 'write_off', 'bind_org_wallet', 'approve_budget')),
+    'decide_confiscation_appeal', 'exclude', 'write_off', 'bind_org_wallet', 'approve_budget', 'switch_review_policy')),
   target_kind            text not null,
   target_id              text not null,
   reason                 text not null check (length(btrim(reason)) >= 20),
@@ -50,6 +51,7 @@ create table wos.admin_actions (
   resulting_state        jsonb not null,
   requires_co_signer     boolean not null default false,       -- derived by the trigger, never trusted from the caller
   co_signer_account_id   uuid references wos.accounts (id),    -- the named second maintainer; they approve SEPARATELY (A3-7)
+  bootstrap_single_signer boolean not null default false,      -- D54: a two-person action single-signed in bootstrap (derived, public)
   operation_sha256       text not null default '',              -- derived: hash of the exact operation (kind, target, payload, prior state)
   prev_hash              bytea not null default '\x00',
   entry_hash             bytea not null default '\x00',
@@ -251,13 +253,20 @@ create table wos.epochs (
   -- D49: pinned when the epoch is defined (from the engine and the policy); no task is issued without them.
   issuance_rate_base_per_acu bigint check (issuance_rate_base_per_acu > 0),
   task_capacity_base  bigint check (task_capacity_base >= 0),
+  -- Review 05 B3: the reserve snapshot and demand forecast the envelope was computed from (engine openEpoch; rule
+  -- epochEnvelopeRefusals compares the pinned rate and capacity with the engine's). Pinned together or not at all.
+  reserve_snapshot_base      bigint check (reserve_snapshot_base >= 0),
+  demand_forecast_acu_micro  bigint check (demand_forecast_acu_micro >= 0),
   budget_expiry_epochs integer not null default 4 check (budget_expiry_epochs > 0),
   budget_human_above_bp integer not null default 12500 check (budget_human_above_bp >= 10000),
   budget_hard_max_bp  integer not null default 20000 check (budget_hard_max_bp >= 10000),
   policy_versions     jsonb not null,
   created_at          timestamptz not null default now(),
   check (ends_at > starts_at),
-  check (mode <> 'test' or cluster = 'devnet')         -- H7: test epochs are devnet only
+  check (mode <> 'test' or cluster = 'devnet'),        -- H7: test epochs are devnet only
+  check ((issuance_rate_base_per_acu is null) = (task_capacity_base is null)
+     and (issuance_rate_base_per_acu is null) = (reserve_snapshot_base is null)
+     and (issuance_rate_base_per_acu is null) = (demand_forecast_acu_micro is null))
 );
 
 create table wos.epoch_transitions (
@@ -285,7 +294,8 @@ create table wos.acceptance_objectives (
   budget_acu_micro      bigint not null check (budget_acu_micro > 0),
   budget_model_version  text not null,
   consensus_round_id    uuid references wos.rounds (id),
-  created_at            timestamptz not null default now()
+  created_at            timestamptz not null default now(),
+  unique (kind, ref)                                  -- review 05 B1: one objective per canonical work identity (I4)
 );
 
 create table wos.task_budgets (
@@ -409,6 +419,20 @@ create table wos.human_reviews (
 );
 
 alter table wos.qualification_results add constraint qualification_results_human_review_fk foreign key (human_review_id) references wos.human_reviews (id);
+
+-- Review 05 B6: a commissioned human review is a server-owned assignment of a human_review task budget to one
+-- reviewer for one subject; the review cites it and a HUMAN_REVIEW receipt is paid only through it (rule
+-- receiptRouteRefusals). One assignment per task (I4).
+create table wos.human_review_assignments (
+  task_id              uuid primary key,
+  reviewer_account_id  uuid not null references wos.accounts (id),
+  subject_kind         text not null check (subject_kind in ('attempt', 'document', 'receipt', 'genesis', 'security_report')),
+  subject_id           uuid not null,
+  risk_class           text not null,
+  created_at           timestamptz not null default now()
+);
+alter table wos.human_reviews add column assignment_task_id uuid references wos.human_review_assignments (task_id);
+create unique index human_reviews_one_per_assignment on wos.human_reviews (assignment_task_id) where assignment_task_id is not null;
 
 create table wos.review_eval_cases (
   id               uuid primary key default gen_random_uuid(),
@@ -675,8 +699,12 @@ create table wos.entitlements (
   policy_version    text,                                            -- server-set: the epoch's pinned reward policy
   withheld_epochs   integer not null default 0 check (withheld_epochs >= 0),
   flags             text[] not null default '{}',
+  -- Review 04 finding 2: a tranche (or a withheld allocation) may be released in several parts when a hold on part of
+  -- it is lifted later; each part has its sequence number. Over-release is refused by the conservation check (I8).
+  release_seq       integer not null default 1 check (release_seq >= 1),
   created_at        timestamptz not null default now(),
-  unique (source_kind, source_id, kind),
+  unique (source_kind, source_id, kind, release_seq),
+  check (release_seq = 1 or kind in ('holdback_matured', 'withheld_release')),
   check ((kind in ('release_now', 'withheld_release', 'holdback_tranche')) = (source_kind = 'allocation')),
   check ((kind = 'holdback_matured') = (source_kind = 'tranche')),
   check ((kind = 'bounty') = (source_kind = 'dispute_settlement')),
@@ -759,8 +787,9 @@ create table wos.confiscations (
   notice_at          timestamptz not null default now(),
   reply_closes_at    timestamptz not null,
   appeal_closes_at   timestamptz not null,
-  hold_expires_at    timestamptz not null default 'infinity',      -- set by the service from the confiscation rules (F17)
-  check (appeal_closes_at >= reply_closes_at)
+  hold_expires_at    timestamptz not null,                        -- review 04 finding 4: finite, bounded from notice (rule, F17)
+  check (appeal_closes_at >= reply_closes_at),
+  check (isfinite(reply_closes_at) and isfinite(appeal_closes_at) and isfinite(hold_expires_at) and hold_expires_at >= appeal_closes_at)
 );
 
 create table wos.confiscation_appeals (
@@ -1026,8 +1055,9 @@ create table wos.epoch_balances (
 --   I7  serialized epoch publication: the transition machine, and nothing written to an epoch after it is published
 --   I8  conservation at commit: one deferred check over every balance the protocol moves (no source over-consumed,
 --       no capacity over-reserved, shares exactly 10000, stakes within pending) plus the epoch funding equation (CHECK)
---   I9  settlement finality: persisted signed attempts, one unresolved attempt, proven expiry, finalized confirmation,
---       a shared fence with pause/snapshot, no void of a leaf that may still pay
+--   I9  settlement finality: persisted signed attempts, one unresolved attempt, proven expiry and finalized
+--       confirmation by a typed observation of the attempt's own signature, a shared fence with pause/snapshot, no void
+--       of a leaf that may still pay; a confiscation ends once (executed or released, serialized)
 -- ============================================================================================
 
 -- I2: server time. A generic stamp: `create trigger ... execute function wos.stamp_now('column')`.
@@ -1059,7 +1089,12 @@ begin
     raise exception 'wos: admin action by a non-maintainer' using errcode = 'insufficient_privilege';
   end if;
   new.requires_co_signer := wos.two_person_action(new.action);
-  if new.requires_co_signer and (new.co_signer_account_id is null or new.co_signer_account_id = new.actor_account_id
+  -- D54: during bootstrap the founder is never blocked on recruiting a second person: a two-person action without a
+  -- co-signer is single-signed, derived and labelled (public in the chain). Outside bootstrap it needs the co-signer.
+  new.bootstrap_single_signer := new.requires_co_signer and new.co_signer_account_id is null and wos.bootstrap_on();
+  if new.bootstrap_single_signer then
+    new.requires_co_signer := false;
+  elsif new.requires_co_signer and (new.co_signer_account_id is null or new.co_signer_account_id = new.actor_account_id
                                  or not wos.is_maintainer(new.co_signer_account_id)) then
     raise exception 'wos: % needs a second maintainer as co-signer', new.action using errcode = 'check_violation';
   end if;
@@ -1074,7 +1109,7 @@ begin
   new.operation_sha256 := wos.operation_sha256(new.action, new.target_kind, new.target_id, new.payload, new.previous_state);
   new.entry_hash := sha256(new.prev_hash || convert_to(concat_ws('|', new.entry_no, new.id, new.actor_account_id, new.action,
       new.target_kind, new.target_id, new.reason, new.payload::text, new.previous_state::text, new.resulting_state::text,
-      new.requires_co_signer, coalesce(new.co_signer_account_id::text, ''),
+      new.requires_co_signer, coalesce(new.co_signer_account_id::text, ''), new.bootstrap_single_signer,
       to_char(new.created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')), 'UTF8'));
   return new;
 end $$;
@@ -1297,7 +1332,11 @@ begin
     raise exception 'wos: tasks are issued only in an OPEN epoch with a pinned issuance rate and task capacity' using errcode = 'check_violation';
   end if;
   new.issuance_rate_base_per_acu := ep.issuance_rate_base_per_acu;
-  new.reserved_base := (new.budget_acu_micro::numeric * ep.issuance_rate_base_per_acu / 1000000)::bigint;
+  -- Review 05 B9: an explicit floor, as the engine (a numeric -> bigint cast would round to nearest).
+  new.reserved_base := floor(new.budget_acu_micro::numeric * ep.issuance_rate_base_per_acu / 1000000)::bigint;
+  if new.reserved_base = 0 then
+    raise exception 'wos: the budget reserves nothing at the epoch''s rate: the task is not issued (as the engine)' using errcode = 'check_violation';
+  end if;
   new.expires_epoch := new.issued_epoch + ep.budget_expiry_epochs;
   return new;
 end $$;
@@ -1338,6 +1377,13 @@ begin
                 and (select sum(x.amount_base) from wos.allocations x join wos.contribution_receipts r on r.id = x.receipt_id where r.task_id = c.task_id)
                     > (select reserved_base from wos.task_budgets where task_id = c.task_id)) then
       raise exception 'wos: allocations of a task exceed its reserved budget' using errcode = 'check_violation';
+    end if;
+    -- Review 05 B2: no receipt is allocated more than its declared share of the reservation (rounded up); the exact
+    -- largest-remainder split is the rule taskAllocationRefusals.
+    if exists (select 1 from wos.contribution_receipts c join wos.task_budgets b on b.task_id = c.task_id where c.id = new.receipt_id
+                and (select sum(x.amount_base) from wos.allocations x where x.receipt_id = c.id)
+                    > ceil(b.reserved_base::numeric * c.share_bp / 10000)) then
+      raise exception 'wos: a receipt is allocated more than its declared share of the task''s reservation' using errcode = 'check_violation';
     end if;
   elsif tg_table_name = 'allocation_disputes' then
     if (select sum(stake_base) from wos.allocation_disputes where epoch_number = new.epoch_number and disputer_account_id = new.disputer_account_id)
@@ -1506,16 +1552,61 @@ end $$;
 create trigger settlement_attempts_check before insert on wos.settlement_attempts for each row execute function wos.check_settlement_attempt();
 create or replace function wos.check_settlement_outcome() returns trigger
 language plpgsql security definer set search_path = wos, pg_temp as $$
+declare
+  a wos.settlement_attempts%rowtype;
+  cl text;
+  o jsonb := new.status_observation;
 begin
   perform pg_advisory_xact_lock(hashtext('wos.leaf:' || new.leaf_id::text));
   new.at := clock_timestamp();
-  if new.outcome = 'expired_not_landed' and (new.observed_block_height > (select last_valid_block_height from wos.settlement_attempts
-                                               where leaf_id = new.leaf_id and attempt = new.attempt)) is not true then
+  select * into a from wos.settlement_attempts where leaf_id = new.leaf_id and attempt = new.attempt;
+  select cluster into cl from wos.claim_leaves where id = new.leaf_id;
+  if new.outcome = 'expired_not_landed' and (new.observed_block_height > a.last_valid_block_height) is not true then
     raise exception 'wos: expiry is proven only by a block height past the attempt''s last valid block height' using errcode = 'check_violation';
+  end if;
+  -- Review 04 finding 8: the observation is typed and must say what the outcome claims, for THIS signature on THIS
+  -- cluster. Expiry: a historical search that found nothing (value = [null]). Confirmation: finalized without error.
+  -- (Rows the table CHECKs refuse anyway — no history search, no finalized commitment — are left to those CHECKs.)
+  if (new.outcome = 'expired_not_landed' and new.history_checked and new.observed_block_height is not null and o is not null)
+     or (new.outcome = 'confirmed' and new.commitment = 'finalized' and new.slot is not null) then
+  if (o ->> 'signature' = a.signature and o ->> 'cluster' = cl and jsonb_typeof(o -> 'value') = 'array' and jsonb_array_length(o -> 'value') = 1) is not true then
+    raise exception 'wos: the status observation must be the response for this attempt''s signature on its cluster' using errcode = 'check_violation';
+  end if;
+  if new.outcome = 'expired_not_landed' and (o ->> 'searchTransactionHistory' = 'true' and o -> 'value' = '[null]'::jsonb) is not true then
+    raise exception 'wos: expiry needs a historical search that found no transaction (the observation shows one)' using errcode = 'check_violation';
+  end if;
+  if new.outcome = 'confirmed' and (o -> 'value' -> 0 ->> 'confirmationStatus' = 'finalized' and o -> 'value' -> 0 -> 'err' = 'null'::jsonb) is not true then
+    raise exception 'wos: confirmed needs the signature finalized without error' using errcode = 'check_violation';
+  end if;
   end if;
   return new;
 end $$;
 create trigger settlement_outcomes_check before insert on wos.settlement_outcomes for each row execute function wos.check_settlement_outcome();
+
+-- I9 (review 04 finding 4): a confiscation ENDS once — executed or released, never both — serialized per confiscation
+-- (a lock both writers take), so an execution left open across the hold's expiry cannot commit beside a lapse release
+-- and a claim of the source. Execution only before the hold lapses; a 'lapsed' release only once it has (server time).
+create or replace function wos.check_confiscation_end() returns trigger
+language plpgsql security definer set search_path = wos, pg_temp as $$
+declare
+  c wos.confiscations%rowtype;
+begin
+  perform pg_advisory_xact_lock(hashtext('wos.confiscation:' || new.confiscation_id::text));
+  select * into c from wos.confiscations where id = new.confiscation_id;
+  if exists (select 1 from wos.confiscation_executions x where x.confiscation_id = new.confiscation_id)
+     or exists (select 1 from wos.confiscation_releases x where x.confiscation_id = new.confiscation_id) then
+    raise exception 'wos: confiscation % has already ended (executed or released)', new.confiscation_id using errcode = 'check_violation';
+  end if;
+  if tg_table_name = 'confiscation_executions' and clock_timestamp() >= c.hold_expires_at then
+    raise exception 'wos: the hold of confiscation % lapsed at %: it no longer executes', new.confiscation_id, c.hold_expires_at using errcode = 'check_violation';
+  end if;
+  if tg_table_name = 'confiscation_releases' and to_jsonb(new) ->> 'reason' = 'lapsed' and clock_timestamp() < c.hold_expires_at then
+    raise exception 'wos: the hold of confiscation % lapses only at %', new.confiscation_id, c.hold_expires_at using errcode = 'check_violation';
+  end if;
+  return new;
+end $$;
+create trigger confiscation_executions_end before insert on wos.confiscation_executions for each row execute function wos.check_confiscation_end();
+create trigger confiscation_releases_end before insert on wos.confiscation_releases for each row execute function wos.check_confiscation_end();
 create or replace function wos.may_broadcast(leaf uuid, att integer) returns boolean
 language plpgsql security definer set search_path = wos, pg_temp as $$
 begin
@@ -1605,7 +1696,8 @@ begin
     'pool_accruals', 'pool_accrual_corrections', 'pool_events', 'genesis_contributions', 'genesis_commit_claims',
     'genesis_reference_manifests', 'governance_proposals', 'governance_weight_snapshots', 'governance_votes',
     'settlement_adapter_events', 'migration_snapshots', 'abuse_signals', 'risk_flags', 'admin_action_approvals',
-    'admin_action_uses', 'contribution_usage', 'payout_audit_assignments', 'acceptance_objectives', 'task_budgets', 'task_budget_releases', 'confiscation_releases', 'epoch_balances'
+    'admin_action_uses', 'contribution_usage', 'payout_audit_assignments', 'acceptance_objectives', 'task_budgets', 'task_budget_releases', 'confiscation_releases', 'epoch_balances',
+    'human_review_assignments'
   ] loop
     perform wos.protocol_append_only(t);
   end loop;
@@ -1625,7 +1717,7 @@ begin
     'genesis_contributions', 'genesis_commit_claims', 'genesis_reference_manifests', 'governance_proposals',
     'governance_weight_snapshots', 'governance_votes', 'settlement_adapter_events', 'migration_snapshots',
     'abuse_signals', 'risk_flags', 'admin_action_approvals', 'admin_action_uses', 'contribution_usage', 'payout_audit_assignments',
-    'acceptance_objectives', 'task_budgets', 'task_budget_releases', 'confiscation_releases', 'epoch_balances'
+    'acceptance_objectives', 'task_budgets', 'task_budget_releases', 'confiscation_releases', 'epoch_balances', 'human_review_assignments'
   ] loop
     execute format('alter table wos.%I enable row level security', t);
     execute format('grant select, insert on wos.%I to wos_app', t);
@@ -1704,6 +1796,9 @@ create policy own_or_privileged on wos.payout_audit_verdicts for select to wos_a
 create policy reviewer_inserts on wos.payout_audit_verdicts for insert to wos_app with check (wos.is_privileged() or reviewer_account_id = wos.actor_id());
 -- A3-6: assignments are server-owned and private (they reveal seats and canary packets).
 create policy privileged_only on wos.payout_audit_assignments for all to wos_app using (wos.is_privileged()) with check (wos.is_privileged());
+-- Review 05 B6: human-review assignments are server-owned (the reviewer and privileged actors read them).
+create policy own_or_privileged on wos.human_review_assignments for select to wos_app using (wos.is_privileged() or reviewer_account_id = wos.actor_id());
+create policy privileged_write on wos.human_review_assignments for insert to wos_app with check (wos.is_privileged());
 create policy own_or_privileged on wos.duty_events for select to wos_app using (wos.is_privileged() or account_id = wos.actor_id());
 create policy privileged_write on wos.duty_events for insert to wos_app with check (wos.is_privileged());
 do $$

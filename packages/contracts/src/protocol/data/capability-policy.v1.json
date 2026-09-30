@@ -176,6 +176,30 @@
       "qualificationSuite": "model-qualification.build-l1-l2.v1"
     }
   ],
+  "assignment": {
+    "rankingPolicyVersion": "build-next-ranking.v1",
+    "modes": ["self_pick", "assigned_next"],
+    "weights": {
+      "reuse": 100,
+      "unlock": 60,
+      "ageingPerEpoch": 25
+    },
+    "ageingCapEpochs": 8,
+    "focus": [
+      {
+        "target": "salesforce",
+        "capabilityClass": null,
+        "priority": 200
+      },
+      {
+        "target": "salesforce",
+        "capabilityClass": "BUILD_L3",
+        "priority": 50
+      }
+    ],
+    "tieBreak": "unit_id_ascending",
+    "assignedOnlyWindowMinutes": 0
+  },
   "qualificationSuites": [
     {
       "suiteVersion": "model-qualification.build-l1-l2.v1",

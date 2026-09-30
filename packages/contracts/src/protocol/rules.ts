@@ -13,6 +13,10 @@
  * protocol-rules.test.ts); REVIEW-PACKET §3e maps each repro to its guard.
  */
 
+import { canonicalSha256 } from "../canonical.js";
+import { largestRemainder } from "./engine.js";
+import { RunPolicySnapshot } from "./entities.js";
+
 const H = 3_600_000;
 
 // ------------------------------------------------------------------------------------------------ admin actions (H12, A3-7)
@@ -45,18 +49,56 @@ function sameJson(a: unknown, b: unknown): boolean {
 }
 
 /**
+ * Review 04 finding 9: the canonical operation of each consumer — every field that affects authority, money or
+ * duration, and the expected prior state where a stale approval matters. A consumer must pass ALL of them as
+ * `operation`; the approved payload must equal it. Kind and target alone authorize only operations they fully identify.
+ */
+export const CANONICAL_OPERATION_FIELDS = {
+  reviewer_grant: ["accountId", "action", "domains", "level", "contributionTypes", "riskClasses"],
+  epoch_transition: ["epochNumber", "fromState", "toState"],
+  confiscation: ["beneficiaryKind", "beneficiaryId", "provenExcessBase", "findingRef", "replyClosesAt", "appealClosesAt", "holdExpiresAt"],
+  dispute_resolution: ["allocationId", "outcome", "resultingAmountBase", "excessBase", "recoveredBase"],
+  appeal_decision: ["allocationId", "decision", "finalAmountBase"],
+  adapter_event: ["action", "adapter", "triggerKind", "expiresAt", "config"],
+  record_offset: ["beneficiaryId", "receiptId", "amountBase"],
+  approve_budget: ["taskId", "objectiveId", "kind", "budgetAcuMicro", "modelAcuMicro", "budgetModelVersion", "basis"],
+  genesis_reference: ["version", "manifestSha256"],
+  review_policy_switch: ["fromPolicyVersion", "toPolicyVersion", "fallback"],
+  void_leaf: ["leafId"],
+} as const satisfies Record<string, readonly string[]>;
+export type OperationConsumer = keyof typeof CANONICAL_OPERATION_FIELDS;
+
+export function canonicalOperationFields(consumer: OperationConsumer): readonly string[] {
+  return CANONICAL_OPERATION_FIELDS[consumer];
+}
+
+/**
  * A consuming mutation must cite an action of an allowed kind, targeting exactly this row, whose payload IS the
- * operation, separately approved by the named co-signer when two-person, and never used before.
+ * operation, separately approved by the named co-signer when two-person, and never used before. With `consumer`, the
+ * operation must carry every canonical field of that consumer (review 04 finding 9).
  */
 export function adminAuthorizationRefusals(
   a: AdminActionRow | null,
-  need: { kinds: readonly string[]; targetKind: string; targetId: string; operation?: Record<string, unknown> },
+  need: {
+    kinds: readonly string[];
+    targetKind: string;
+    targetId: string;
+    consumer?: OperationConsumer;
+    operation?: Record<string, unknown>;
+  },
   ctx: { approval: { approverAccountId: string; operationSha256: string } | null; alreadyUsed: boolean },
 ): string[] {
   if (!a) return ["no admin action cited"];
   const r: string[] = [];
   if (!need.kinds.includes(a.action) || a.targetKind !== need.targetKind || a.targetId !== need.targetId)
     r.push(`admin action does not authorize ${need.kinds.join("|")} on ${need.targetKind}/${need.targetId}`);
+  if (need.consumer) {
+    const fields = CANONICAL_OPERATION_FIELDS[need.consumer];
+    const missing = fields.filter((f) => !need.operation || !(f in need.operation));
+    if (missing.length > 0) r.push(`the ${need.consumer} operation must name ${missing.join(", ")} (canonical fields)`);
+    const unapproved = fields.filter((f) => !(f in a.payload));
+    if (unapproved.length > 0) r.push(`the approved payload omits ${unapproved.join(", ")}`);
+  }
   if (need.operation && !sameJson(a.payload, need.operation)) r.push("admin action authorizes another operation (payload differs)");
   if (
     a.requiresCoSigner &&
@@ -82,6 +124,8 @@ export interface QualificationEvidence {
     taskAbuId: string | null;
     taskDocumentId: string | null;
     issuedAtMs: number;
+    /** Review 04 finding 6: the lease's own expiry, not only its hard deadline. */
+    expiresAtMs: number;
     hardDeadlineAtMs: number;
     endedAtMs: number | null;
   };
@@ -98,8 +142,18 @@ export interface QualificationEvidence {
     reviewVerdicts: ReadonlyArray<{ slot: string; verdict: string }>;
   } | null;
   greenCiAtHead: boolean;
-  snapshotRequiresHuman: boolean;
+  /**
+   * Review 04 finding 6 / review 05 B6: the run-policy snapshot body AS STORED. It is parsed with the typed schema,
+   * which carries the policy-derived `humanReviewRequired`; a missing or malformed field fails closed.
+   */
+  snapshotBody: unknown;
   humanPreMergePassOnRound: boolean;
+}
+
+/** The pinned human-review requirement of a stored snapshot, or null when the snapshot does not parse (fail closed). */
+export function snapshotHumanRequirement(body: unknown): { required: boolean; riskClass: string } | null {
+  const p = RunPolicySnapshot.safeParse(body);
+  return p.success ? { required: p.data.humanReviewRequired, riskClass: p.data.riskClass } : null;
 }
 
 export function qualificationRefusals(q: QualificationEvidence): string[] {
@@ -114,6 +168,7 @@ export function qualificationRefusals(q: QualificationEvidence): string[] {
     !c.signatureValid ||
     c.createdAtMs < l.issuedAtMs ||
     c.createdAtMs > l.hardDeadlineAtMs ||
+    c.createdAtMs > l.expiresAtMs ||
     (l.endedAtMs !== null && c.createdAtMs > l.endedAtMs)
   )
     r.push("the changeset was not accepted on this lease while it was valid");
@@ -146,7 +201,9 @@ export function qualificationRefusals(q: QualificationEvidence): string[] {
     anyGap
   )
     r.push("needs the revealed consensus round of this subject at this revision (both seats passing)");
-  if (q.snapshotRequiresHuman && !q.humanPreMergePassOnRound) r.push("the pinned policy requires a human pre-merge PASS on this round");
+  const human = snapshotHumanRequirement(q.snapshotBody);
+  if (!human) r.push("the run-policy snapshot does not parse (humanReviewRequired and riskClass are required): fail closed");
+  else if (human.required && !q.humanPreMergePassOnRound) r.push("the pinned policy requires a human pre-merge PASS on this round");
   return r;
 }
 
@@ -163,12 +220,22 @@ export function receiptRefusals(x: {
   needsQualification: boolean;
   evidenceClass: "accepted_budget" | "outcome";
   weightMicro: bigint;
-  budget: { amountMicro: bigint; kind: string; released: boolean; expiresEpoch: number } | null;
+  /**
+   * `submittedEpoch`: when the work was submitted while the reservation was live (review 05 B4); it keeps the
+   * reservation for `reviewGraceEpochs` more epochs. One expiry rule in every layer: live while epoch < expiry.
+   */
+  budget: {
+    amountMicro: bigint;
+    kind: string;
+    released: boolean;
+    expiresEpoch: number;
+    submittedEpoch: number | null;
+    reviewGraceEpochs: number;
+  } | null;
   slice: string;
   admittedEpoch: number;
   shareBp: number | null;
   sharesAlreadyDeclaredBp: number;
-  usage: { allOwnAndThisLease: boolean; anyAttributedElsewhere: boolean };
 }): string[] {
   const r: string[] = [];
   if (!x.consentAccepted) r.push("the contributor has not accepted the publication disclosure (D47)");
@@ -181,21 +248,127 @@ export function receiptRefusals(x: {
     const b = x.budget;
     if (!b) r.push("no task budget");
     else {
-      if (b.released || x.admittedEpoch > b.expiresEpoch) r.push("the task budget was released or expired");
+      const expiry = b.submittedEpoch !== null && b.submittedEpoch < b.expiresEpoch ? b.expiresEpoch + b.reviewGraceEpochs : b.expiresEpoch;
+      if (b.released || x.admittedEpoch >= expiry) r.push("the task budget was released or expired");
       if (x.weightMicro !== b.amountMicro || x.slice !== b.kind) r.push("the receipt carries its task budget, never a usage figure");
     }
     if (x.shareBp === null || x.sharesAlreadyDeclaredBp + x.shareBp > 10_000) r.push("declared shares exceed 10000 bp");
   }
-  if (!x.usage.allOwnAndThisLease) r.push("telemetry usage receipts must be the contributor's own, of this lease");
-  if (x.usage.anyAttributedElsewhere) r.push("a usage receipt already backs another contribution");
+  return r;
+}
+
+/**
+ * Review 05 B10: optional telemetry never blocks reward admission. Each usage receipt offered with a contribution gets
+ * an integrity status; only `valid` ones are linked (and used for calibration); the others are excluded and raise a
+ * signal. An earned budget changes only through a separately adjudicated acceptance defect (a dispute).
+ */
+export function telemetryLinkStatus(u: {
+  ownAndThisLease: boolean;
+  attributedElsewhere: boolean;
+}): "valid" | "excluded_not_this_lease" | "excluded_already_linked" {
+  if (!u.ownAndThisLease) return "excluded_not_this_lease";
+  if (u.attributedElsewhere) return "excluded_already_linked";
+  return "valid";
+}
+
+/**
+ * Review 05 B6: contribution type -> commissioning route -> acceptance event, from the pinned reward policy's
+ * `acceptance` table. A type without a route is refused (no reward-bearing receipt without a real acceptance path). A
+ * commissioned type (task_budget) needs its matching task kind, lease rule and, for HUMAN_REVIEW, a completed human
+ * review by this account under the task's server-owned assignment; an outcome type is never paid from a budget.
+ */
+export function receiptRouteRefusals(x: {
+  acceptance: ReadonlyArray<{ contributionType: string; slice: string; weightBasis: string; needsLease: boolean }>;
+  contributionType: string;
+  slice: string;
+  evidenceClass: "accepted_budget" | "outcome";
+  /** The kind of the task budget the receipt is paid from (null for outcomes). */
+  taskKind: string | null;
+  hasLease: boolean;
+  receiptAccountId: string;
+  taskId: string | null;
+  /** For HUMAN_REVIEW: the sealed human review cited and its assignment. */
+  humanReview: {
+    reviewerAccountId: string;
+    assignmentTaskId: string | null;
+    assignmentReviewerAccountId: string | null;
+    sealed: boolean;
+  } | null;
+}): string[] {
+  const route = x.acceptance.find((a) => a.contributionType === x.contributionType);
+  if (!route || route.slice === "none" || route.weightBasis === "none")
+    return [`${x.contributionType} has no acceptance route in the pinned reward policy: no reward-bearing receipt`];
+  const r: string[] = [];
+  if (x.slice !== route.slice) r.push(`${x.contributionType} is paid from the ${route.slice} slice, not ${x.slice}`);
+  if (route.weightBasis === "task_budget") {
+    if (x.evidenceClass !== "accepted_budget" || !x.taskId)
+      r.push(`${x.contributionType} is a commissioned task: it is paid its task budget`);
+    if (x.taskKind !== route.slice) r.push(`the task budget is of kind ${x.taskKind}, the route needs ${route.slice}`);
+    if (route.needsLease && !x.hasLease) r.push(`${x.contributionType} needs the lease it was done under`);
+  } else if (x.evidenceClass !== "outcome" || x.taskId) r.push(`${x.contributionType} is an outcome: never paid from a task budget`);
+  if (x.contributionType === "HUMAN_REVIEW") {
+    const h = x.humanReview;
+    if (
+      !h?.sealed ||
+      h.reviewerAccountId !== x.receiptAccountId ||
+      h.assignmentTaskId !== x.taskId ||
+      h.assignmentReviewerAccountId !== x.receiptAccountId
+    )
+      r.push("a HUMAN_REVIEW receipt needs this account's sealed human review under the task's own assignment");
+  }
   return r;
 }
 
 // ------------------------------------------------------------------------------------------------ budgets (D49)
 
+/**
+ * Review 05 B1: the budget model, computed from pinned policy data and the task's immutable basis (never taken from the
+ * caller): (base + perSizePoint x size) x difficulty x importance for commissioned agent work; the risk-class weight
+ * for a human review. Returns null with a reason when the basis is outside the policy.
+ */
+export interface BudgetBasis {
+  taskKind: string;
+  sizePoints: number;
+  difficultyBp: number;
+  importanceBp: number;
+  /** Human reviews only. */
+  riskClass?: string;
+}
+export function budgetModelMicro(
+  policy: {
+    capabilityBudgets: ReadonlyArray<{ taskKind: string; baseMicro: string; perSizePointMicro: string }>;
+    model: { difficultyBp: { min: number; max: number }; importanceBp: { min: number; max: number } };
+    humanReviewWeights: Readonly<Record<string, string>>;
+  },
+  basis: BudgetBasis,
+): { modelMicro: bigint } | { refusal: string } {
+  const { difficultyBp: d, importanceBp: i } = policy.model;
+  if (!Number.isInteger(basis.difficultyBp) || basis.difficultyBp < d.min || basis.difficultyBp > d.max)
+    return { refusal: `difficulty ${basis.difficultyBp} bp is outside the policy bounds ${d.min}..${d.max}` };
+  if (!Number.isInteger(basis.importanceBp) || basis.importanceBp < i.min || basis.importanceBp > i.max)
+    return { refusal: `importance ${basis.importanceBp} bp is outside the policy bounds ${i.min}..${i.max}` };
+  let base: bigint;
+  if (basis.taskKind === "human_review") {
+    const w = basis.riskClass ? policy.humanReviewWeights[basis.riskClass] : undefined;
+    if (!w) return { refusal: `no human-review budget weight for risk class ${basis.riskClass}` };
+    base = BigInt(w);
+  } else {
+    const row = policy.capabilityBudgets.find((b) => b.taskKind === basis.taskKind);
+    if (!row) return { refusal: `no budget model for task kind ${basis.taskKind}` };
+    if (!Number.isInteger(basis.sizePoints) || basis.sizePoints < 0) return { refusal: "size points are a non-negative integer" };
+    base = BigInt(row.baseMicro) + BigInt(row.perSizePointMicro) * BigInt(basis.sizePoints);
+  }
+  const modelMicro = (base * BigInt(basis.difficultyBp) * BigInt(basis.importanceBp)) / 100_000_000n;
+  return modelMicro > 0n ? { modelMicro } : { refusal: "the model budget is zero" };
+}
+
 export function budgetRefusals(x: {
   budgetMicro: bigint;
+  /** What the caller stored as the model: must equal the model computed from the basis (review 05 B1). */
   modelMicro: bigint;
+  computedModel: { modelMicro: bigint } | { refusal: string };
+  /** The objective's consensus round (review 05 B1): revealed, consensus, covering scope and total budget. */
+  objectiveConsensus: { revealed: boolean; outcome: string | null; coversBudget: boolean } | null;
   humanAboveBp: number;
   hardMaxBp: number;
   justification: string;
@@ -206,6 +379,12 @@ export function budgetRefusals(x: {
   cluster: "devnet" | "mainnet-beta";
 }): string[] {
   const r: string[] = [];
+  if ("refusal" in x.computedModel) r.push(`budget model: ${x.computedModel.refusal}`);
+  else if (x.computedModel.modelMicro !== x.modelMicro)
+    r.push(`the stored model ${x.modelMicro} differs from the model computed from the basis (${x.computedModel.modelMicro})`);
+  const c = x.objectiveConsensus;
+  if (!c?.revealed || c.outcome !== "consensus" || !c.coversBudget)
+    r.push("the acceptance objective needs its revealed consensus round over scope and total budget");
   if (!x.epochOpenWithRate) r.push("tasks are issued only in an OPEN epoch with a pinned issuance rate and task capacity");
   if (x.cluster === "mainnet-beta") r.push("no task is issued on mainnet in this draft");
   if (x.budgetMicro <= 0n) r.push("a budget is positive");
@@ -364,7 +543,10 @@ export function entitlementRefusals(x: {
     if (!x.tranche) r.push("a matured release must name a tranche of the same beneficiary");
     else {
       if (x.epochNumber < x.tranche.maturesEpoch) r.push(`the tranche matures in epoch ${x.tranche.maturesEpoch}`);
-      if (x.amount !== x.tranche.remaining) r.push("a matured release is exactly the tranche's remaining balance");
+      // Review 04 finding 2: a matured release takes the tranche's remaining UNHELD balance; the part a hold kept is
+      // released by a later release (release_seq + 1) once the hold is lifted — never stranded, never withheld wholesale.
+      if (x.amount !== x.tranche.remaining - x.heldOnSource || x.amount <= 0n)
+        r.push("a matured release is exactly the tranche's remaining unheld balance");
     }
   } else if (x.sourceKind === "dispute_settlement") {
     if (!x.bounty?.toDisputer || x.bounty.alreadyBase + x.amount > x.bounty.bountyBase)
@@ -394,10 +576,33 @@ export function claimRefusals(x: {
 
 // ------------------------------------------------------------------------------------------------ confiscation (D39, A3-4)
 
-export function confiscationNoticeRefusals(x: { nowMs: number; replyClosesAtMs: number; appealClosesAtMs: number }): string[] {
-  return x.replyClosesAtMs < x.nowMs + 72 * H || x.appealClosesAtMs < x.replyClosesAtMs + 168 * H
-    ? ["confiscation needs >= 72 h reply and >= 168 h appeal windows after notice"]
-    : [];
+/**
+ * D39 minimum windows, and (review 04 finding 4) FINITE maxima from notice: the reply closes within `maxReplyHours`
+ * of notice, the appeal within `maxAppealHours` after the reply, the hold lapses within `maxHoldAfterAppealHours`
+ * after the appeal closes (and not before it). Maxima come from the pinned reward policy (provisional, F17).
+ */
+export function confiscationNoticeRefusals(x: {
+  nowMs: number;
+  replyClosesAtMs: number;
+  appealClosesAtMs: number;
+  holdExpiresAtMs: number;
+  maxima?: { maxReplyHours: number; maxAppealHours: number; maxHoldAfterAppealHours: number };
+}): string[] {
+  const m = x.maxima ?? { maxReplyHours: 336, maxAppealHours: 720, maxHoldAfterAppealHours: 336 };
+  const r: string[] = [];
+  if (x.replyClosesAtMs < x.nowMs + 72 * H || x.appealClosesAtMs < x.replyClosesAtMs + 168 * H)
+    r.push("confiscation needs >= 72 h reply and >= 168 h appeal windows after notice");
+  if (
+    !Number.isFinite(x.holdExpiresAtMs) ||
+    x.replyClosesAtMs > x.nowMs + m.maxReplyHours * H ||
+    x.appealClosesAtMs > x.replyClosesAtMs + m.maxAppealHours * H ||
+    x.holdExpiresAtMs > x.appealClosesAtMs + m.maxHoldAfterAppealHours * H ||
+    x.holdExpiresAtMs < x.appealClosesAtMs
+  )
+    r.push(
+      `a hold is bounded from notice: reply <= ${m.maxReplyHours} h, appeal <= ${m.maxAppealHours} h after it, lapse <= ${m.maxHoldAfterAppealHours} h after the appeal closes`,
+    );
+  return r;
 }
 
 export function confiscationAppealRefusals(x: {
@@ -575,12 +780,41 @@ export function genesisCommitClaimRefusals(x: { isMergedLiveAttempt: boolean }):
   return x.isMergedLiveAttempt ? ["a merged live attempt is live work, not Genesis"] : [];
 }
 
+/** Review 04 finding 11: the canonical hash of a Genesis reference manifest (receipt ids sorted, unique). */
+export function genesisReferenceManifestSha256(m: {
+  version: string;
+  cutoffEpoch: number;
+  rules: unknown;
+  receiptIds: readonly string[];
+}): string {
+  return canonicalSha256({ version: m.version, cutoffEpoch: m.cutoffEpoch, rules: m.rules, receiptIds: [...m.receiptIds].sort() });
+}
+
 export function genesisReferenceManifestRefusals(x: {
-  receipts: ReadonlyArray<{ exists: boolean; status: string | null; admittedEpoch: number; relatedToGenesisBeneficiary: boolean }>;
+  receipts: ReadonlyArray<{
+    exists: boolean;
+    status: string | null;
+    admittedEpoch: number;
+    relatedToGenesisBeneficiary: boolean;
+    mode?: "test" | "live";
+    contributionType?: string;
+  }>;
   cutoffEpoch: number;
   approvalRefusals: string[];
+  /** Review 04 finding 11: the manifest's contents and the hash the approval names (recomputed, never asserted). */
+  manifest?: { version: string; cutoffEpoch: number; rules: { types?: readonly string[] }; receiptIds: readonly string[] };
+  manifestSha256?: string;
 }): string[] {
   const r: string[] = [...x.approvalRefusals];
+  if (x.manifest) {
+    if (x.manifestSha256 !== genesisReferenceManifestSha256(x.manifest))
+      r.push("the approved manifest hash does not match the manifest's canonical contents");
+    if (new Set(x.manifest.receiptIds).size !== x.manifest.receiptIds.length) r.push("a reference receipt is listed twice");
+    const types = x.manifest.rules.types;
+    if (x.receipts.some((c) => c.mode !== "live")) r.push("the reference population holds live receipts only (no test-mode receipts)");
+    if (types && x.receipts.some((c) => !c.contributionType || !types.includes(c.contributionType)))
+      r.push("a reference receipt is outside the manifest's population rules");
+  }
   if (x.receipts.some((c) => !c.exists || c.admittedEpoch > x.cutoffEpoch || !(c.status === "ACTIVE" || c.status === "RATIFIED")))
     r.push("every reference receipt exists, is ACTIVE or RATIFIED, and was admitted by the cutoff");
   if (x.receipts.some((c) => c.relatedToGenesisBeneficiary))
@@ -797,4 +1031,331 @@ export function modelClaimRefusals(
     r.push(`${candidate.key} is a candidate model: not eligible for any role until it passes qualification (D52)`);
   else if (!qualified) r.push(`model ${claim.modelId} is not qualified for ${claim.requiredClass}`);
   return r;
+}
+
+// ------------------------------------------------------------------------------------------------ review 04/05 fix pass
+
+/**
+ * Review 05 B2: allocations of a commissioned task are DERIVED, not asserted: the task's reservation is split over its
+ * receipts by declared shares (largest remainder, the engine's rule), and each receipt's amount over its person and
+ * sponsoring organization by the sponsorship share. The set of lines must equal the derivation exactly. (SQL keeps a
+ * hard bound: no receipt above ceil(reservation x share).)
+ */
+export function taskAllocationRefusals(x: {
+  reservedBase: bigint;
+  receipts: ReadonlyArray<{ receiptId: string; shareBp: number; orgShareBp: number }>;
+  lines: ReadonlyArray<{ receiptId: string; beneficiary: "person" | "organization"; amount: bigint }>;
+}): string[] {
+  const sum = x.receipts.reduce((t, c) => t + c.shareBp, 0);
+  if (sum !== 10_000) return ["declared shares of the task must sum to 10000 bp before allocation"];
+  const perReceipt = largestRemainder(
+    x.reservedBase,
+    x.receipts.map((c) => ({ key: c.receiptId, weight: BigInt(c.shareBp) })),
+  );
+  const want = new Map<string, bigint>();
+  for (const c of x.receipts) {
+    const amt = perReceipt.get(c.receiptId) ?? 0n;
+    const org = (amt * BigInt(c.orgShareBp)) / 10_000n;
+    want.set(`${c.receiptId}/person`, amt - org);
+    if (c.orgShareBp > 0) want.set(`${c.receiptId}/organization`, org);
+  }
+  const got = new Map<string, bigint>();
+  for (const l of x.lines) got.set(`${l.receiptId}/${l.beneficiary}`, (got.get(`${l.receiptId}/${l.beneficiary}`) ?? 0n) + l.amount);
+  const r: string[] = [];
+  for (const [k, v] of want) if ((got.get(k) ?? 0n) !== v) r.push(`allocation ${k} is ${got.get(k) ?? 0n}, the declared shares give ${v}`);
+  for (const k of got.keys()) if (!want.has(k)) r.push(`allocation ${k} is not a line of this task`);
+  return r;
+}
+
+/**
+ * Review 05 B4: releasing a reservation. `expired` only at or after its (grace-extended) expiry; `failed` and
+ * `abandoned` only once no lease is active; `cancelled` and `repriced` of a task with an active lease or submitted work
+ * need an authorized, operation-bound admin action; nothing accepted is released (also SQL).
+ */
+export function budgetReleaseRefusals(x: {
+  reason: "expired" | "failed" | "abandoned" | "cancelled" | "repriced";
+  epochNumber: number;
+  expiresEpoch: number;
+  submittedEpoch: number | null;
+  reviewGraceEpochs: number;
+  accepted: boolean;
+  activeLease: boolean;
+  authorizationRefusals: string[] | null;
+}): string[] {
+  const r: string[] = [];
+  const expiry = x.submittedEpoch !== null && x.submittedEpoch < x.expiresEpoch ? x.expiresEpoch + x.reviewGraceEpochs : x.expiresEpoch;
+  if (x.accepted) r.push("an accepted task is paid, never released");
+  if (x.reason === "expired" && x.epochNumber < expiry) r.push(`the reservation is live until epoch ${expiry}`);
+  if ((x.reason === "failed" || x.reason === "abandoned") && x.activeLease)
+    r.push("a task with an active lease is not failed or abandoned");
+  if (
+    (x.reason === "cancelled" || x.reason === "repriced") &&
+    (x.activeLease || x.submittedEpoch !== null) &&
+    (x.authorizationRefusals === null || x.authorizationRefusals.length > 0)
+  )
+    r.push("cancelling or re-pricing active or submitted work needs an authorized admin action");
+  return r;
+}
+
+/** Review 05 B4: reward-bearing work is leased only against a funded, unreleased, unexpired budget. */
+export function leaseBudgetRefusals(x: {
+  rewardBearing: boolean;
+  budget: { released: boolean; expiresEpoch: number } | null;
+  epochNumber: number;
+}): string[] {
+  if (!x.rewardBearing) return [];
+  if (!x.budget) return ["reward-bearing work needs a funded task budget before it is leased"];
+  if (x.budget.released || x.epochNumber >= x.budget.expiresEpoch) return ["the task budget was released or has expired"];
+  return [];
+}
+
+/**
+ * Review 05 B3: the epoch row's pinned issuance rate and task capacity must be the envelope the engine computes when
+ * the epoch opens, from the persisted reserve snapshot and demand forecast.
+ */
+export function epochEnvelopeRefusals(
+  pinned: {
+    rateBasePerAcu: bigint | null;
+    taskCapacityBase: bigint | null;
+    reserveSnapshot: bigint | null;
+    demandForecastAcuMicro: bigint | null;
+  },
+  envelope: { rate: bigint; taskCapacity: bigint; reserveSnapshot: bigint; demandForecastAcuMicro: bigint },
+): string[] {
+  const r: string[] = [];
+  if (pinned.reserveSnapshot !== envelope.reserveSnapshot || pinned.demandForecastAcuMicro !== envelope.demandForecastAcuMicro)
+    r.push("the epoch's reserve snapshot and demand forecast must be the ones the envelope was computed from");
+  if (pinned.rateBasePerAcu !== envelope.rate || pinned.taskCapacityBase !== envelope.taskCapacity)
+    r.push("the epoch's pinned rate and task capacity differ from the engine's envelope");
+  return r;
+}
+
+/**
+ * Review 04 finding 8: a typed settlement observation. `expired_not_landed` needs a history search for THIS signature on
+ * THIS cluster that found nothing (`value: [null]`) at a block height past the attempt's last valid height; `confirmed`
+ * needs the signature finalized WITHOUT error. Contradictory or incomplete evidence leaves the attempt unresolved.
+ */
+export interface StatusObservation {
+  signature: string;
+  cluster: "devnet" | "mainnet-beta";
+  searchTransactionHistory: boolean;
+  observedBlockHeight: number;
+  value: ReadonlyArray<{ confirmationStatus: string | null; err: unknown; slot: number } | null>;
+}
+export function settlementObservationRefusals(x: {
+  outcome: "confirmed" | "expired_not_landed";
+  attempt: { signature: string; cluster: string; lastValidBlockHeight: number };
+  observation: unknown;
+}): string[] {
+  const o = x.observation as Partial<StatusObservation> | null;
+  if (!o || typeof o !== "object" || !Array.isArray(o.value) || o.value.length !== 1)
+    return ["the observation is not a status response for one signature"];
+  const r: string[] = [];
+  if (o.signature !== x.attempt.signature || o.cluster !== x.attempt.cluster) r.push("the observation is of another signature or cluster");
+  const v = o.value[0];
+  if (x.outcome === "expired_not_landed") {
+    if (o.searchTransactionHistory !== true) r.push("expiry needs a historical search");
+    if (v !== null) r.push("the observation shows the transaction: it landed (or may land), it is not expired");
+    if (!(typeof o.observedBlockHeight === "number" && o.observedBlockHeight > x.attempt.lastValidBlockHeight))
+      r.push("expiry needs a block height past the attempt's last valid block height");
+  } else if (v?.confirmationStatus !== "finalized" || v.err !== null) r.push("confirmed needs the signature finalized without error");
+  return r;
+}
+
+// ------------------------------------------------------------------------------------------------ D53 Fable unavailable
+
+/**
+ * D53: while the ReviewPolicy fallback `fable_unavailable` is active, the Fable seat is replaced by the required human
+ * review (founder or authorized reviewers) as the second independent check; Astra stays the agent reviewer; a model
+ * never reviews work built by the same model; every round and receipt reviewed under the fallback is labelled
+ * `single_lab_review` with the reason. A later Fable pass is optional, never required, never blocking.
+ */
+export function reviewSeatRefusals(x: {
+  activeFallback: "none" | "fable_unavailable";
+  slot: "astra" | "fable" | "human";
+  reviewerModelId: string | null;
+  builderModelId: string | null;
+  /** True for a later, optional Fable pass recorded after the round closed (never counted toward consensus). */
+  optionalLaterPass?: boolean;
+}): string[] {
+  const r: string[] = [];
+  if (x.activeFallback === "fable_unavailable" && x.slot === "fable" && !x.optionalLaterPass)
+    r.push("the Fable seat is replaced by the required human review while the fable_unavailable fallback is active");
+  if (x.reviewerModelId !== null && x.builderModelId !== null && x.reviewerModelId === x.builderModelId)
+    r.push(`${x.reviewerModelId} may not review work built by ${x.builderModelId} (same-model self-review)`);
+  return r;
+}
+
+/** D53: the seats a round needs under the active review policy fallback, and the label its outputs carry. */
+export function requiredReviewSeats(activeFallback: "none" | "fable_unavailable"): {
+  seats: ReadonlyArray<"astra" | "fable" | "human">;
+  labels: ReadonlyArray<{ label: "single_lab_review"; reason: string }>;
+} {
+  return activeFallback === "fable_unavailable"
+    ? {
+        seats: ["astra", "human"],
+        labels: [{ label: "single_lab_review", reason: "fable_unavailable: Fable seat replaced by the required human review (D53)" }],
+      }
+    : { seats: ["astra", "fable"], labels: [] };
+}
+
+/** D53: switching the review policy is forward-only, needs its AdminAction and is published. */
+export function reviewPolicySwitchRefusals(x: {
+  fromVersion: string;
+  toVersion: string;
+  versionsInOrder: readonly string[];
+  authorizationRefusals: string[];
+  published: boolean;
+}): string[] {
+  const r = [...x.authorizationRefusals];
+  const a = x.versionsInOrder.indexOf(x.fromVersion);
+  const b = x.versionsInOrder.indexOf(x.toVersion);
+  if (a < 0 || b <= a) r.push("a review policy switch is forward-only");
+  if (!x.published) r.push("a review policy switch is shown publicly");
+  return r;
+}
+
+// ------------------------------------------------------------------------------------------------ D54 provisional receipts
+
+/**
+ * D54: PROVISIONAL (bootstrap) receipts finalize optimistically. When bootstrap ends each is published with a challenge
+ * window; silence accepts it (qualifying, Genesis-eligible, original timestamp); a challenge sends that receipt to the
+ * normal review gate. No recruited reviewer pool or ratification queue is needed; nothing waits on an independent human
+ * before bootstrap ends.
+ */
+export function provisionalReceiptOutcome(x: {
+  bootstrapEnded: boolean;
+  publishedAtMs: number | null;
+  challengeWindowHours: number;
+  challenged: boolean;
+  nowMs: number;
+}): "provisional" | "in_challenge_window" | "final_by_silence" | "to_review_gate" {
+  if (!x.bootstrapEnded || x.publishedAtMs === null) return "provisional";
+  if (x.challenged) return "to_review_gate";
+  return x.nowMs >= x.publishedAtMs + x.challengeWindowHours * H ? "final_by_silence" : "in_challenge_window";
+}
+
+// ------------------------------------------------------------------------------------------------ D55 V1-active and dormant modules
+
+/**
+ * D55: modules that are designed but DORMANT in V1 (valueless devnet/shadow tokens, a solo founder). A dormant module is
+ * refused until its forward-only activation (policy switch by AdminAction) after its trigger; the V1 build waves do not
+ * build it. The list and triggers live in POLICIES.md §0 and PROTOCOL.md §13.
+ */
+export const DORMANT_MODULES = [
+  "dispute_stakes_and_bounties",
+  "multi_allocation_disputes_and_appeals",
+  "payout_canaries",
+  "organization_caps_and_beneficiary_splits",
+  "governance_voting",
+  "collusion_and_sybil_detection_beyond_basics",
+  "confiscation_beyond_simple_hold",
+  "genesis_calibration_population",
+] as const;
+export type DormantModule = (typeof DORMANT_MODULES)[number];
+
+export function moduleRefusals(x: { module: DormantModule; activated: readonly string[] }): string[] {
+  return x.activated.includes(x.module) ? [] : [`${x.module} is dormant in V1 (D55): activate it by a forward-only policy switch first`];
+}
+
+// ------------------------------------------------------------------------------------------------ D56 build next
+
+export interface NextUnitCandidate {
+  unitId: string;
+  target: string;
+  requiredClass: string;
+  /** Targets served by the unit's catalog feature (reuse). */
+  targetsServed: number;
+  /** Units waiting on this one (unlock value). */
+  dependentsWaiting: number;
+  issuedEpoch: number;
+  issuedAtMs: number;
+  budgetAcuMicro: bigint;
+  estimatedMinutes: number;
+  proposerAccountId: string;
+  requiredToolchains: readonly string[];
+  budget: { released: boolean; expiresEpoch: number } | null;
+}
+
+export interface NextUnitContributor {
+  accountId: string;
+  provider: string;
+  modelId: string;
+  attestedToolchains: readonly string[];
+  activeLeasesByProvider: Readonly<Record<string, number>>;
+  leaseLimitByProvider: Readonly<Record<string, number>>;
+  /** Accounts related to the contributor (org-mates, sponsors): independence. */
+  relatedAccountIds: readonly string[];
+  /** What is left of the contributor's own limits (null = no limit). */
+  remaining: { budgetAcuMicro: bigint | null; wallTimeMinutes: number | null };
+}
+
+/**
+ * D56: may this contributor be assigned this unit? The same checks as a self-picked claim: the model is qualified for
+ * the unit's class (candidate models refused, modelClaimRefusals), the device attests the toolchains, a provider lease
+ * slot is free, the unit's budget was not proposed by the contributor or a related account, the budget is funded and
+ * live, and the unit fits the contributor's remaining limits (a filter, never a score).
+ */
+export function nextUnitEligibilityRefusals(
+  capability: Parameters<typeof modelClaimRefusals>[0],
+  c: NextUnitContributor,
+  u: NextUnitCandidate,
+  epochNumber: number,
+): string[] {
+  const r = modelClaimRefusals(capability, { provider: c.provider, modelId: c.modelId, requiredClass: u.requiredClass, role: "builder" });
+  if (u.requiredToolchains.some((t) => !c.attestedToolchains.includes(t))) r.push("the device does not attest the unit's toolchains");
+  if ((c.activeLeasesByProvider[c.provider] ?? 0) >= (c.leaseLimitByProvider[c.provider] ?? 1)) r.push(`no free ${c.provider} lease slot`);
+  if (u.proposerAccountId === c.accountId || c.relatedAccountIds.includes(u.proposerAccountId))
+    r.push("the contributor (or a related account) proposed this unit's budget");
+  r.push(...leaseBudgetRefusals({ rewardBearing: true, budget: u.budget, epochNumber }));
+  if (c.remaining.budgetAcuMicro !== null && u.budgetAcuMicro > c.remaining.budgetAcuMicro)
+    r.push("the unit exceeds the contributor's remaining ACU limit");
+  if (c.remaining.wallTimeMinutes !== null && u.estimatedMinutes > c.remaining.wallTimeMinutes)
+    r.push("the unit exceeds the contributor's remaining wall time");
+  return r;
+}
+
+/** D56: the published ranking. Deterministic; ties by unit id ascending. */
+export function rankNextUnits(
+  policy: {
+    weights: { reuse: number; unlock: number; ageingPerEpoch: number };
+    ageingCapEpochs: number;
+    focus: ReadonlyArray<{ target: string; capabilityClass: string | null; priority: number }>;
+  },
+  units: readonly NextUnitCandidate[],
+  epochNumber: number,
+): Array<{ unitId: string; score: { reuse: number; unlock: number; focus: number; ageing: number; total: number } }> {
+  return units
+    .map((u) => {
+      const reuse = policy.weights.reuse * u.targetsServed;
+      const unlock = policy.weights.unlock * u.dependentsWaiting;
+      const focus = policy.focus
+        .filter((f) => f.target === u.target && (f.capabilityClass === null || f.capabilityClass === u.requiredClass))
+        .reduce((t, f) => t + f.priority, 0);
+      const ageing = policy.weights.ageingPerEpoch * Math.min(Math.max(0, epochNumber - u.issuedEpoch), policy.ageingCapEpochs);
+      return { unitId: u.unitId, score: { reuse, unlock, focus, ageing, total: reuse + unlock + focus + ageing } };
+    })
+    .sort((a, b) => b.score.total - a.score.total || (a.unitId < b.unitId ? -1 : a.unitId > b.unitId ? 1 : 0));
+}
+
+/** D56 optional lever (default off): a freshly issued unit is offered only to assigned mode for a short window. */
+export function selfPickRefusals(x: { issuedAtMs: number; nowMs: number; assignedOnlyWindowMinutes: number }): string[] {
+  return x.nowMs < x.issuedAtMs + x.assignedOnlyWindowMinutes * 60_000 ? ["this unit is offered to assigned mode only for now"] : [];
+}
+
+/** D56 continuous mode: stop when asked or when a contributor-set limit is reached (checked before each next claim). */
+export function continuousNextStop(x: {
+  stopRequested: boolean;
+  limits: { units?: number; wallTimeMinutes?: number; budgetAcuMicro?: bigint; perProviderUnits?: Readonly<Record<string, number>> };
+  used: { units: number; wallTimeMinutes: number; budgetAcuMicro: bigint; unitsByProvider: Readonly<Record<string, number>> };
+  provider: string;
+}): string | null {
+  if (x.stopRequested) return "stopped by the contributor";
+  const l = x.limits;
+  if (l.units !== undefined && x.used.units >= l.units) return "unit limit reached";
+  if (l.wallTimeMinutes !== undefined && x.used.wallTimeMinutes >= l.wallTimeMinutes) return "wall-time limit reached";
+  if (l.budgetAcuMicro !== undefined && x.used.budgetAcuMicro >= l.budgetAcuMicro) return "ACU limit reached";
+  const pp = l.perProviderUnits?.[x.provider];
+  if (pp !== undefined && (x.used.unitsByProvider[x.provider] ?? 0) >= pp) return `${x.provider} unit limit reached`;
+  return null;
 }

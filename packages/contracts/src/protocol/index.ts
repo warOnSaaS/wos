@@ -12,3 +12,4 @@ export * from "./usage.js";
 export * from "./governance.js";
 export * from "./rules.js";
 export * from "./data.js";
+export * from "./assignment.js";

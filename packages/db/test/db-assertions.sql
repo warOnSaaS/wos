@@ -419,6 +419,12 @@ begin
   set constraints all deferred;
 end $$;
 
+-- A typed status observation (review 04 finding 8): a history search for one signature on devnet that found nothing.
+create or replace function wos_test.obs(sig text) returns jsonb
+language sql immutable as $$
+  select jsonb_build_object('signature', sig, 'cluster', 'devnet', 'searchTransactionHistory', true, 'observedBlockHeight', 0, 'value', jsonb_build_array(null))
+$$;
+
 -- I3 admin actions (H12): maintainer actor, two-person derived from the kind, bootstrap only in bootstrap, hash chain.
 select wos_test.expect_error($$insert into wos.admin_actions (actor_account_id, action, target_kind, target_id, reason, previous_state, resulting_state, requires_co_signer)
   values ('00000000-0000-0000-0000-00000000000b', 'hold_receipt', 'receipt', 'x', 'bob is not a maintainer at all here', '{}', '{}', false)$$,
@@ -448,11 +454,12 @@ select wos_test.expect_error($$update wos.leases set generation = generation + 1
 -- I7 serialized epoch publication (H6)
 select wos_test.expect_error($$insert into wos.epochs (epoch_number, mode, cluster, starts_at, ends_at, risk_review_hours, challenge_hours, policy_versions)
   values (90, 'test', 'mainnet-beta', now(), now() + interval '7 days', 48, 48, '{}')$$, 'H7: a test epoch on mainnet');
-insert into wos.epochs (epoch_number, mode, cluster, starts_at, ends_at, risk_review_hours, challenge_hours, policy_versions, issuance_rate_base_per_acu, task_capacity_base) values
-  (1, 'test', 'devnet', now() - interval '8 days', now() - interval '1 day', 48, 48, '{}', 100000000, 1000000000000),
-  (2, 'test', 'devnet', now() - interval '1 day', now() + interval '6 days', 48, 48, '{}', 100000000, 1000000000000),
-  (8, 'test', 'devnet', now() - interval '1 day', now() + interval '6 days', 48, 48, '{}', 100000000, 500000000),
-  (99001, 'test', 'devnet', now(), now() + interval '7 days', 48, 48, '{}', null, null);
+insert into wos.epochs (epoch_number, mode, cluster, starts_at, ends_at, risk_review_hours, challenge_hours, policy_versions, issuance_rate_base_per_acu, task_capacity_base,
+  reserve_snapshot_base, demand_forecast_acu_micro) values
+  (1, 'test', 'devnet', now() - interval '8 days', now() - interval '1 day', 48, 48, '{}', 100000000, 1000000000000, 20000000000000, 0),
+  (2, 'test', 'devnet', now() - interval '1 day', now() + interval '6 days', 48, 48, '{}', 100000000, 1000000000000, 20000000000000, 0),
+  (8, 'test', 'devnet', now() - interval '1 day', now() + interval '6 days', 48, 48, '{}', 100000000, 500000000, 10000000000, 0),
+  (99001, 'test', 'devnet', now(), now() + interval '7 days', 48, 48, '{}', null, null, null, null);
 select wos_test.expect_error($$insert into wos.epoch_transitions (epoch_number, from_state, to_state, actor) values (99001, null, 'FINALIZED', 'system')$$,
   'repro A: skipping every epoch window (H6)', 'not allowed');
 insert into wos.epoch_transitions (epoch_number, from_state, to_state, actor) values (1, null, 'OPEN', 'system'), (2, null, 'OPEN', 'system'), (8, null, 'OPEN', 'system');
@@ -765,28 +772,47 @@ select wos_test.expect_error($$insert into wos.settlement_outcomes (leaf_id, att
   values ('00000000-0000-0000-0000-0000000f1001', 1, 'expired_not_landed', false, 101, '{}')$$,
   'H3: declaring an attempt expired without a historical search', 'check constraint');
 select wos_test.expect_error($$insert into wos.settlement_outcomes (leaf_id, attempt, outcome, history_checked, observed_block_height, status_observation)
-  values ('00000000-0000-0000-0000-0000000f1001', 1, 'expired_not_landed', true, 100, '{"value": [null]}')$$,
+  values ('00000000-0000-0000-0000-0000000f1001', 1, 'expired_not_landed', true, 100, wos_test.obs('sig-1-' || repeat('a', 40)))$$,
   'A3-9: expiry declared at a block height that has not passed the last valid height', 'block height');
+-- Review 04 finding 8: expiry over an observation that shows the transaction finalized, or over {}, is refused.
+select wos_test.expect_error($$insert into wos.settlement_outcomes (leaf_id, attempt, outcome, history_checked, observed_block_height, status_observation)
+  values ('00000000-0000-0000-0000-0000000f1001', 1, 'expired_not_landed', true, 101,
+          wos_test.obs('sig-1-' || repeat('a', 40)) || '{"value": [{"confirmationStatus": "finalized", "err": null, "slot": 5}]}')$$,
+  'R04-8 repro: expiry declared over an observation of a finalized transaction', 'found no transaction');
+select wos_test.expect_error($$insert into wos.settlement_outcomes (leaf_id, attempt, outcome, history_checked, observed_block_height, status_observation)
+  values ('00000000-0000-0000-0000-0000000f1001', 1, 'expired_not_landed', true, 101, '{}')$$,
+  'R04-8 repro: expiry declared over an empty observation', 'this attempt''s signature');
+select wos_test.expect_error($$insert into wos.settlement_outcomes (leaf_id, attempt, outcome, history_checked, observed_block_height, status_observation)
+  values ('00000000-0000-0000-0000-0000000f1001', 1, 'expired_not_landed', true, 101, wos_test.obs('sig-of-another-attempt'))$$,
+  'R04-8: expiry proven by an observation of another signature', 'this attempt''s signature');
 insert into wos.settlement_outcomes (leaf_id, attempt, outcome, history_checked, observed_block_height, status_observation)
-values ('00000000-0000-0000-0000-0000000f1001', 1, 'expired_not_landed', true, 101, '{"value": [null]}');
+values ('00000000-0000-0000-0000-0000000f1001', 1, 'expired_not_landed', true, 101, wos_test.obs('sig-1-' || repeat('a', 40)));
 insert into wos.settlement_attempts (leaf_id, attempt, adapter_generation, signed_tx, signed_tx_sha256, signature, last_valid_block_height)
 values ('00000000-0000-0000-0000-0000000f1001', 2, 1, '\x02', 'sha256:' || repeat('2', 64), 'sig-2-' || repeat('a', 40), 200);
 select wos_test.expect_error($$insert into wos.settlement_outcomes (leaf_id, attempt, outcome, commitment, slot) values ('00000000-0000-0000-0000-0000000f1001', 2, 'confirmed', 'confirmed', 1)$$,
   'H3: confirming before finalized commitment', 'check constraint');
 select wos_test.expect_error($$insert into wos.settlement_outcomes (leaf_id, attempt, outcome) values ('00000000-0000-0000-0000-0000000f1001', 2, 'confirmed')$$,
   'A3-9 repro: confirmed with a NULL commitment', 'check constraint');
-insert into wos.settlement_outcomes (leaf_id, attempt, outcome, commitment, history_checked, slot) values ('00000000-0000-0000-0000-0000000f1001', 2, 'confirmed', 'finalized', true, 1234);
+select wos_test.expect_error($$insert into wos.settlement_outcomes (leaf_id, attempt, outcome, commitment, history_checked, slot, status_observation)
+  values ('00000000-0000-0000-0000-0000000f1001', 2, 'confirmed', 'finalized', true, 1234,
+          wos_test.obs('sig-2-' || repeat('a', 40)) || '{"value": [{"confirmationStatus": "finalized", "err": {"InstructionError": [0, "Custom"]}, "slot": 1234}]}')$$,
+  'R04-8: a transaction finalized WITH an error recorded as confirmed', 'without error');
+insert into wos.settlement_outcomes (leaf_id, attempt, outcome, commitment, history_checked, slot, status_observation) values ('00000000-0000-0000-0000-0000000f1001', 2, 'confirmed', 'finalized', true, 1234,
+  wos_test.obs('sig-2-' || repeat('a', 40)) || '{"value": [{"confirmationStatus": "finalized", "err": null, "slot": 1234}]}');
 select wos_test.expect_error($$insert into wos.settlement_attempts (leaf_id, attempt, adapter_generation, signed_tx, signed_tx_sha256, signature, last_valid_block_height)
   values ('00000000-0000-0000-0000-0000000f1001', 3, 1, '\x03', 'sha256:' || repeat('3', 64), 'sig-3-' || repeat('a', 40), 300)$$, 'H3: paying a settled leaf again', 'already settled');
 select wos_test.expect_error($$insert into wos.leaf_voids (leaf_id, admin_action_id) values ('00000000-0000-0000-0000-0000000f1001', wos_test.aa('void_leaf', 'leaf', '00000000-0000-0000-0000-0000000f1001'))$$,
   'A3-2 repro: voiding a settled leaf to re-claim its entitlement', 'never voided');
 
 -- Confiscation holds (D39, A3-4): capped at the proven excess and by each source's balance at commit; releases restore.
-insert into wos.confiscations (id, beneficiary_kind, beneficiary_id, proven_excess_base, finding_ref, admin_action_id, reply_closes_at, appeal_closes_at) values
+insert into wos.confiscations (id, beneficiary_kind, beneficiary_id, proven_excess_base, finding_ref, admin_action_id, reply_closes_at, appeal_closes_at, hold_expires_at) values
   ('00000000-0000-0000-0000-0000000c0f02', 'person', '00000000-0000-0000-0000-00000000000b', 200000000, 'pattern finding',
-   wos_test.aa('confiscate', 'confiscation', '00000000-0000-0000-0000-0000000c0f02'), now() + interval '73 hours', now() + interval '242 hours'),
+   wos_test.aa('confiscate', 'confiscation', '00000000-0000-0000-0000-0000000c0f02'), now() + interval '73 hours', now() + interval '242 hours', now() + interval '256 hours'),
   ('00000000-0000-0000-0000-0000000c0f03', 'person', '00000000-0000-0000-0000-00000000000a', 10000000, 'gate a1002',
-   wos_test.aa('confiscate', 'confiscation', '00000000-0000-0000-0000-0000000c0f03'), now() + interval '73 hours', now() + interval '242 hours');
+   wos_test.aa('confiscate', 'confiscation', '00000000-0000-0000-0000-0000000c0f03'), now() + interval '73 hours', now() + interval '242 hours', now() + interval '256 hours');
+select wos_test.expect_error($$insert into wos.confiscations (beneficiary_kind, beneficiary_id, proven_excess_base, finding_ref, admin_action_id, reply_closes_at, appeal_closes_at, hold_expires_at)
+  values ('person', '00000000-0000-0000-0000-00000000000b', 1, 'r04-4', wos_test.aa('confiscate', 'confiscation', 'r04-4'), now() + interval '73 hours', now() + interval '10 years', 'infinity')$$,
+  'R04-4a repro: a confiscation hold that never lapses', 'check constraint');
 insert into wos.confiscation_sources (confiscation_id, source_kind, source_id, amount_base) values
   ('00000000-0000-0000-0000-0000000c0f02', 'holdback', '00000000-0000-0000-0000-00000000e002', 150000000),
   ('00000000-0000-0000-0000-0000000c0f03', 'unclaimed_entitlement', '00000000-0000-0000-0000-00000000e003', 10000000);
@@ -808,6 +834,86 @@ insert into wos.claim_leaves (id, cluster, beneficiary_kind, beneficiary_id, wal
 values ('00000000-0000-0000-0000-0000000f1004', 'devnet', 'person', '00000000-0000-0000-0000-00000000000b', repeat('3', 32), 60000000, 1, 'sha256:' || repeat('4', 64));
 insert into wos.entitlement_claims (entitlement_id, leaf_id, amount_base) values ('00000000-0000-0000-0000-00000000e005', '00000000-0000-0000-0000-0000000f1004', 60000000);
 do $$ begin raise notice 'ok: a released (overturned) hold stops counting; the bounty is claimable'; end $$;
+
+-- ---------------------------------------------------------------------------------- Astra reviews 04 and 05 (fix pass)
+-- R04-2: a tranche released in parts around a lifted hold — nothing stranded, nothing over-released (I4 key + I8).
+insert into wos.confiscations (id, beneficiary_kind, beneficiary_id, proven_excess_base, finding_ref, admin_action_id, reply_closes_at, appeal_closes_at, hold_expires_at)
+values ('00000000-0000-0000-0045-0000000000c2', 'person', '00000000-0000-0000-0000-00000000000b', 10, 'r04-2',
+        wos_test.aa('confiscate', 'confiscation', '00000000-0000-0000-0045-0000000000c2'), now() + interval '73 hours', now() + interval '242 hours', now() + interval '256 hours');
+insert into wos.confiscation_sources (confiscation_id, source_kind, source_id, amount_base) values ('00000000-0000-0000-0045-0000000000c2', 'holdback', '00000000-0000-0000-0000-00000000e002', 10);
+insert into wos.entitlements (epoch_number, beneficiary_kind, beneficiary_id, kind, source_kind, source_id, amount_base, release_seq)
+values (3, 'person', '00000000-0000-0000-0000-00000000000b', 'holdback_matured', 'tranche', '00000000-0000-0000-0000-00000000e002', 149999990, 1);
+insert into wos.confiscation_releases (confiscation_id, reason) values ('00000000-0000-0000-0045-0000000000c2', 'overturned');
+insert into wos.entitlements (epoch_number, beneficiary_kind, beneficiary_id, kind, source_kind, source_id, amount_base, release_seq)
+values (3, 'person', '00000000-0000-0000-0000-00000000000b', 'holdback_matured', 'tranche', '00000000-0000-0000-0000-00000000e002', 10, 2);
+do $$ begin raise notice 'ok: R04-2 repro: the restored 10 of a tranche matures in a second release after the hold is lifted'; end $$;
+select wos_test.over($$insert into wos.entitlements (epoch_number, beneficiary_kind, beneficiary_id, kind, source_kind, source_id, amount_base, release_seq)
+  values (3, 'person', '00000000-0000-0000-0000-00000000000b', 'holdback_matured', 'tranche', '00000000-0000-0000-0000-00000000e002', 1, 3)$$,
+  'R04-2: a third release of a fully released tranche', 'over-consumed');
+select wos_test.expect_error($$insert into wos.entitlements (epoch_number, beneficiary_kind, beneficiary_id, kind, source_kind, source_id, amount_base, release_seq)
+  values (3, 'person', '00000000-0000-0000-0000-00000000000b', 'release_now', 'allocation', '00000000-0000-0000-0000-0000000a1001', 1, 2)$$,
+  'R04-2: only matured and withheld releases come in parts', 'check constraint');
+-- R04-4: a confiscation ends once; a lapse is not declared before the hold expires.
+insert into wos.confiscations (id, beneficiary_kind, beneficiary_id, proven_excess_base, finding_ref, admin_action_id, reply_closes_at, appeal_closes_at, hold_expires_at)
+values ('00000000-0000-0000-0045-0000000000c4', 'person', '00000000-0000-0000-0000-00000000000b', 10, 'r04-4',
+        wos_test.aa('confiscate', 'confiscation', '00000000-0000-0000-0045-0000000000c4'), now() + interval '73 hours', now() + interval '242 hours', now() + interval '256 hours');
+select wos_test.expect_error($$insert into wos.confiscation_releases (confiscation_id, reason) values ('00000000-0000-0000-0045-0000000000c4', 'lapsed')$$,
+  'R04-4b repro: a hold released as lapsed before it expires', 'lapses only at');
+insert into wos.confiscation_executions (confiscation_id) values ('00000000-0000-0000-0045-0000000000c4');
+select wos_test.expect_error($$insert into wos.confiscation_releases (confiscation_id, reason) values ('00000000-0000-0000-0045-0000000000c4', 'overturned')$$,
+  'R04-4b repro: an executed confiscation also released', 'already ended');
+-- B1: one objective per canonical work identity; B9: the floor, as the engine.
+select wos_test.expect_error($$insert into wos.acceptance_objectives (kind, ref, budget_acu_micro, budget_model_version)
+  values ('feature_criterion', 'contacts: create and edit', 10000000, 'budget-model.v1')$$, 'B1b repro: a second objective for the same criterion', 'duplicate key');
+insert into wos.epochs (epoch_number, mode, cluster, starts_at, ends_at, risk_review_hours, challenge_hours, policy_versions, issuance_rate_base_per_acu, task_capacity_base,
+  reserve_snapshot_base, demand_forecast_acu_micro)
+values (30, 'test', 'devnet', now() - interval '1 day', now() + interval '6 days', 48, 48, '{}', 500000, 1000000000, 10000000000000, 0);
+insert into wos.epoch_transitions (epoch_number, from_state, to_state, actor) values (30, null, 'OPEN', 'system');
+select wos_test.expect_error($$insert into wos.task_budgets (task_id, objective_id, kind, budget_acu_micro, model_acu_micro, basis, budget_model_version, proposer_account_id, issued_epoch)
+  values (gen_random_uuid(), '00000000-0000-0000-0007-0000000000b1', 'execution', 1, 1, '{}', 'budget-model.v1', '00000000-0000-0000-0000-00000000000c', 30)$$,
+  'B9 repro: a budget that reserves 0 at the rate (1 micro-ACU x 500000 / 1e6 floors to 0, as the engine)', 'reserves nothing');
+insert into wos.task_budgets (task_id, objective_id, kind, budget_acu_micro, model_acu_micro, basis, budget_model_version, proposer_account_id, issued_epoch)
+values ('00000000-0000-0000-0045-0000000000f9', '00000000-0000-0000-0007-0000000000b1', 'execution', 3, 3, '{}', 'budget-model.v1', '00000000-0000-0000-0000-00000000000c', 30);
+do $$ begin
+  if (select reserved_base from wos.task_budgets where task_id = '00000000-0000-0000-0045-0000000000f9') <> 1 then
+    raise exception 'B9: 3 micro-ACU x 500000 / 1e6 = 1.5 must floor to 1 (the engine''s budgetToBase)';
+  end if;
+  raise notice 'ok: B9 cross-language vector: 3 micro-ACU at 500000/ACU reserves 1 in SQL and in the engine';
+end $$;
+select wos_test.expect_error($$insert into wos.epochs (epoch_number, mode, cluster, starts_at, ends_at, risk_review_hours, challenge_hours, policy_versions, issuance_rate_base_per_acu, task_capacity_base)
+  values (32, 'test', 'devnet', now(), now() + interval '7 days', 48, 48, '{}', 100, 100)$$,
+  'B3: a pinned rate and capacity without the reserve snapshot and forecast they were computed from', 'check constraint');
+-- B6: one human review per assignment.
+insert into wos.human_review_assignments (task_id, reviewer_account_id, subject_kind, subject_id, risk_class)
+values ('00000000-0000-0000-0045-0000000000f6', '00000000-0000-0000-0000-00000000000d', 'receipt', '00000000-0000-0000-0000-0000000cc002', 'standard');
+insert into wos.human_reviews (purpose, subject_kind, subject_id, context_sha256, reviewer_account_id, risk_class, verdict, review_policy_version, body, review_sha256, assignment_task_id)
+values ('audit', 'receipt', '00000000-0000-0000-0000-0000000cc002', 'sha256:' || repeat('1', 64), '00000000-0000-0000-0000-00000000000d', 'standard', 'PASS', 'review-policy.v1', '{}',
+        'sha256:' || repeat('4', 64), '00000000-0000-0000-0045-0000000000f6');
+select wos_test.expect_error($$insert into wos.human_reviews (purpose, subject_kind, subject_id, context_sha256, reviewer_account_id, risk_class, verdict, review_policy_version, body, review_sha256, assignment_task_id)
+  values ('audit', 'receipt', '00000000-0000-0000-0000-0000000cc002', 'sha256:' || repeat('1', 64), '00000000-0000-0000-0000-00000000000d', 'standard', 'PASS', 'review-policy.v1', '{}',
+          'sha256:' || repeat('5', 64), '00000000-0000-0000-0045-0000000000f6')$$,
+  'B6: a second human review redeeming the same assignment', 'duplicate key');
+-- D54: in bootstrap a two-person action is single-signed (labelled in the chain), never blocked on a second person.
+do $$
+declare
+  i uuid;
+begin
+  begin
+    -- (bootstrap ended earlier in this file and is one-way; re-enter it only inside this rolled-back block)
+    alter table wos.platform_settings disable trigger platform_settings_bootstrap_one_way;
+    update wos.platform_settings set value = '{"enabled": true, "since": null}' where key = 'bootstrap_mode';
+    insert into wos.admin_actions (actor_account_id, action, target_kind, target_id, reason, payload, previous_state, resulting_state)
+    values ('00000000-0000-0000-0000-00000000000c', 'approve_budget', 'task', 'd54', 'founder alone in bootstrap approves a budget above the model', '{}', '{}', '{}')
+    returning id into i;
+    if not (select bootstrap_single_signer and not requires_co_signer from wos.admin_actions where id = i) then
+      raise exception 'D54: a bootstrap two-person action must be recorded as single-signed';
+    end if;
+    raise exception 'rollback-d54';
+  exception when raise_exception then
+    if sqlerrm <> 'rollback-d54' then raise; end if;
+  end;
+  raise notice 'ok: D54 a two-person action in bootstrap is single-signed and labelled; outside bootstrap it still needs a co-signer';
+end $$;
 
 -- Off-ramp (repro G, H3, D46, A3-9): server time and 14-day expiry, the fence, drained snapshots, explicit resumption.
 select wos_test.expect_error($$insert into wos.settlement_adapter_events (action, adapter, trigger_kind, admin_action_id, created_at, expires_at)
@@ -832,7 +938,7 @@ end $$;
 select wos_test.expect_error($$insert into wos.migration_snapshots (at_epoch, from_adapter, to_adapter, finalized_slot, body, snapshot_sha256)
   values (3, 'solana_wos', 'in_app_credits', 1234, '{}', 'sha256:' || repeat('1', 64))$$, 'A3-9: a snapshot with an in-flight signed attempt', 'drain');
 insert into wos.settlement_outcomes (leaf_id, attempt, outcome, history_checked, observed_block_height, status_observation)
-values ('00000000-0000-0000-0000-0000000f1003', 1, 'expired_not_landed', true, 501, '{"value": [null]}');
+values ('00000000-0000-0000-0000-0000000f1003', 1, 'expired_not_landed', true, 501, wos_test.obs('sig-31-' || repeat('a', 40)));
 insert into wos.migration_snapshots (at_epoch, from_adapter, to_adapter, finalized_slot, body, snapshot_sha256)
 values (3, 'solana_wos', 'in_app_credits', 1234, '{}', 'sha256:' || repeat('1', 64));
 select wos_test.expect_error($$insert into wos.settlement_adapter_events (action, adapter, trigger_kind, admin_action_id)

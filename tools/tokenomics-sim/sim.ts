@@ -986,6 +986,64 @@ export function orgConcentrationTable(): string {
 
 // ------------------------------------------------------------------------------------------------ report
 
+/**
+ * Q (review 05 B5): repeatedly issuing and abandoning tasks must not move reserve into completion pools or the security
+ * reserve. The engine reserves each task's ancillary accrual WITH its budget and returns it on release or expiry; only
+ * accepted work funds pools. Uses the real engine for 13 epochs of 20 tasks per epoch.
+ */
+export function failedTaskAccrualTable(params: EngineParams): string {
+  const rows: (string | number)[][] = [];
+  for (const [label, acceptShare] of [
+    ["every task abandoned (released the next epoch)", 0],
+    ["half accepted, half abandoned", 0.5],
+    ["every task accepted", 1],
+  ] as const) {
+    let state: EngineState = initialState(BigInt(REWARD_POLICY_V1.emission.emissionReserveBase));
+    const consumedIds = new Set<string>();
+    let prev: TaskIssuance[] = [];
+    let issued = 0;
+    let accepted = 0;
+    for (let e = 1; e <= 14; e++) {
+      const issuances: TaskIssuance[] =
+        e <= 13
+          ? Array.from({ length: 20 }, (_, i) => ({
+              taskId: `q-${e}-${i}`,
+              kind: "execution" as const,
+              budgetAcuMicro: 10n * MICRO,
+              featurePoolKeys: ["q-feature"],
+              applicationPoolKeys: ["q-app"],
+            }))
+          : [];
+      const nAccept = Math.round(prev.length * acceptShare);
+      const res = computeEpoch(
+        {
+          epochNumber: e,
+          state,
+          consumedIds,
+          demandForecastAcuMicro: 200n * MICRO,
+          issuances,
+          acceptances: prev
+            .slice(0, nAccept)
+            .map((t) => ({ taskId: t.taskId, shares: [{ accountId: "q", beneficiaryId: "q", shareBp: 10_000 }] })),
+          releases: prev.slice(nAccept).map((t) => ({ taskId: t.taskId })),
+        },
+        params,
+      );
+      issued += res.funded.length;
+      accepted += nAccept;
+      state = res.state;
+      for (const id of res.consumedIds) consumedIds.add(id);
+      prev = issuances.filter((t) => res.funded.includes(t.taskId));
+    }
+    const pools = [...state.poolBalances.values()].reduce((t, v) => t + v, 0n);
+    rows.push([label, issued, accepted, fmt(wos(pools)), fmt(wos(state.securityReserve)), state.reserved.size]);
+  }
+  return table(
+    ["behaviour over 13 epochs", "tasks issued", "tasks accepted", "completion pools (WOS)", "security reserve (WOS)", "reservations left"],
+    rows,
+  );
+}
+
 export function report(policy: RewardPolicy = REWARD_POLICY_V1): string {
   const params = engineParamsFrom(policy, COMPLETION_POLICY_V1);
   const rng = mulberry32(SEED);
@@ -1053,6 +1111,9 @@ export function report(policy: RewardPolicy = REWARD_POLICY_V1): string {
   parts.push(`### N. Budget inflation by a proposer and a colluding builder (D49)\n\n${budgetInflationTable()}`);
   parts.push(`### O. Task splitting and reward stacking under one acceptance objective (D49)\n\n${splittingTable()}`);
   parts.push(`### P. Cherry-picking mispriced tasks and stale budgets (D49)\n\n${calibrationTable()}`);
+  parts.push(
+    `### Q. Failed tasks fund nothing: ancillary accrual is reserved with the task (review 05 B5)\n\n${failedTaskAccrualTable(params)}`,
+  );
   parts.push(`### D. Collusion vs pool size (D24)\n\n${collusionTable()}`);
   parts.push(`### E. Payout canaries: time to catch an always-"plausible" client (D27)\n\n${canaryTable()}`);
   parts.push(`### F. Optimistic verification: detection vs cost (D28)\n\n${optimisticTable()}`);

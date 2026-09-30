@@ -9,6 +9,8 @@ NAME="$1"
 DB="$2"
 PSQL=(docker exec -i "$NAME" psql -v ON_ERROR_STOP=1 -q -t -A -U postgres -d "$DB")
 B=00000000-0000-0000-0000-00000000000b
+D=00000000-0000-0000-0000-00000000000d
+E=00000000-0000-0000-0000-00000000000e
 X=00000000-0000-0000-0020
 
 "${PSQL[@]}" >/dev/null <<SQL
@@ -30,18 +32,44 @@ insert into wos.claim_leaves (id, cluster, beneficiary_kind, beneficiary_id, wal
 select ('$X-0000000000f' || n)::uuid, 'devnet', 'person', '$B', repeat('3', 32), amt, 1, 'sha256:' || repeat(n::text, 64)
   from (values (1, 10), (2, 10), (4, 11)) v(n, amt);
 insert into wos.entitlement_claims (entitlement_id, leaf_id, amount_base) values ('$X-0000000000e4', '$X-0000000000f4', 11);
-insert into wos.confiscations (id, beneficiary_kind, beneficiary_id, proven_excess_base, finding_ref, admin_action_id, reply_closes_at, appeal_closes_at)
+insert into wos.confiscations (id, beneficiary_kind, beneficiary_id, proven_excess_base, finding_ref, admin_action_id, reply_closes_at, appeal_closes_at, hold_expires_at)
 values ('$X-0000000000c0', 'person', '$B', 60, 'race fixture',
-        wos_test.aa('confiscate', 'confiscation', '$X-0000000000c0', '{"beneficiary_id": "$B", "proven_excess_base": 60}'), now() + interval '73 hours', now() + interval '242 hours');
+        wos_test.aa('confiscate', 'confiscation', '$X-0000000000c0', '{"beneficiary_id": "$B", "proven_excess_base": 60}'), now() + interval '73 hours', now() + interval '242 hours', now() + interval '256 hours');
 insert into wos.duty_events (offer_id, seq, account_id, epoch_number, kind, deadline_at) values ('$X-0000000000d0', 1, '$B', 20, 'offered', now() + interval '1 day');
 -- D49: epoch 21 has room for one 3-ACU task (300 WOS of 500).
-insert into wos.epochs (epoch_number, mode, cluster, starts_at, ends_at, risk_review_hours, challenge_hours, policy_versions, issuance_rate_base_per_acu, task_capacity_base)
-values (21, 'test', 'devnet', now() - interval '1 day', now() + interval '6 days', 48, 48, '{}', 100000000, 500000000);
+insert into wos.epochs (epoch_number, mode, cluster, starts_at, ends_at, risk_review_hours, challenge_hours, policy_versions, issuance_rate_base_per_acu, task_capacity_base,
+  reserve_snapshot_base, demand_forecast_acu_micro)
+values (21, 'test', 'devnet', now() - interval '1 day', now() + interval '6 days', 48, 48, '{}', 100000000, 500000000, 10000000000, 0);
 insert into wos.epoch_transitions (epoch_number, from_state, to_state, actor) values (21, null, 'OPEN', 'system');
 set session_replication_role = replica;
 insert into wos.tasks (id, kind, state, role, abu_id) values ('$X-0000000000a1', 'abu_build', 'open', 'builder', gen_random_uuid()), ('$X-0000000000a2', 'abu_build', 'open', 'builder', gen_random_uuid());
 set session_replication_role = origin;
 insert into wos.acceptance_objectives (id, kind, ref, budget_acu_micro, budget_model_version) values ('$X-0000000000b0', 'feature_criterion', 'race', 100000000, 'budget-model.v1');
+-- Reviews 04/05 races: a confiscation executed while released (R04-4), task a3 (budget vs its proposer's lease), a 50/50
+-- task allocated in two CALCULATING epochs (cross-epoch reservation). Fixtures a5/a6/c6 serve the dormant races (D55).
+set session_replication_role = replica;
+insert into wos.allocations (id, epoch_number, mode, account_id, beneficiary_kind, beneficiary_id, receipt_id, slice, pool_key, weight_micro, amount_base, explanation, explanation_sha256) values
+  ('$X-0000000000a5', 20, 'test', '$E', 'person', '$E', null, 'completion_payout', 'p', 1, 100000000, '{}', 'sha256:' || repeat('1', 64)),
+  ('$X-0000000000a6', 20, 'test', '$D', 'person', '$D', null, 'completion_payout', 'p', 1, 1000000, '{}', 'sha256:' || repeat('1', 64));
+insert into wos.tasks (id, kind, state, role, abu_id) values ('$X-0000000000a3', 'abu_build', 'open', 'builder', gen_random_uuid()), ('$X-0000000000a4', 'abu_build', 'open', 'builder', gen_random_uuid());
+insert into wos.epochs (epoch_number, mode, cluster, starts_at, ends_at, risk_review_hours, challenge_hours, policy_versions) values
+  (22, 'test', 'devnet', now() - interval '9 days', now() - interval '2 days', 48, 48, '{}'), (23, 'test', 'devnet', now() - interval '9 days', now() - interval '2 days', 48, 48, '{}');
+insert into wos.epoch_transitions (epoch_number, seq, from_state, to_state, actor, at) select e, 1, null, 'OPEN', 'system', now() - interval '9 days' from unnest(array[22, 23]) e;
+insert into wos.epoch_transitions (epoch_number, seq, from_state, to_state, actor, at) select e, 2, 'OPEN', 'CALCULATING', 'system', now() - interval '1 day' from unnest(array[22, 23]) e;
+set session_replication_role = origin;
+insert into wos.dispute_gates (allocation_id, reply_deadline_at) values ('$X-0000000000a5', now() - interval '1 day');
+insert into wos.dispute_item_resolutions (allocation_id, outcome, admin_action_id, resulting_amount_base, excess_base, recovered_base)
+values ('$X-0000000000a5', 'CLIPPED', wos_test.aa('resolve_dispute', 'allocation', '$X-0000000000a5'), 60000000, 40000000, 0);
+insert into wos.confiscations (id, beneficiary_kind, beneficiary_id, proven_excess_base, finding_ref, admin_action_id, reply_closes_at, appeal_closes_at, hold_expires_at)
+values ('$X-0000000000c5', 'person', '$D', 1000000, 'race fixture', wos_test.aa('confiscate', 'confiscation', '$X-0000000000c5', '{"beneficiary_id": "$D", "proven_excess_base": 1000000}'),
+        now() + interval '73 hours', now() + interval '242 hours', now() + interval '256 hours'),
+       ('$X-0000000000c6', 'person', '$D', 1000000, 'race fixture', wos_test.aa('confiscate', 'confiscation', '$X-0000000000c6', '{"beneficiary_id": "$D", "proven_excess_base": 1000000}'),
+        now() + interval '73 hours', now() + interval '242 hours', now() + interval '256 hours');
+insert into wos.task_budgets (task_id, objective_id, kind, budget_acu_micro, model_acu_micro, basis, budget_model_version, proposer_account_id, issued_epoch)
+values ('$X-0000000000a4', '$X-0000000000b0', 'execution', 1, 1, '{}', 'budget-model.v1', '$E', 21);  -- reserves 100
+insert into wos.work_dedup_keys (dedup_key, source) values ('work:race:a4:b', 'receipt'), ('work:race:a4:d', 'receipt');
+select wos_test.receipt('$X-0000000000e7', '$B', 'OTHER_PROTOCOL_APPROVED', 'execution', 'accepted_budget', 1, '$X-0000000000a4', 3333, 'work:race:a4:b', 21),
+       wos_test.receipt('$X-0000000000e8', '$D', 'OTHER_PROTOCOL_APPROVED', 'execution', 'accepted_budget', 1, '$X-0000000000a4', 6667, 'work:race:a4:d', 21);
 SQL
 
 fail=0
@@ -90,5 +118,22 @@ race "D49: two task issuances racing for the last epoch capacity" \
   "insert into wos.task_budgets (task_id, objective_id, kind, budget_acu_micro, model_acu_micro, basis, budget_model_version, proposer_account_id, issued_epoch) values ('$X-0000000000a1', '$X-0000000000b0', 'execution', 3000000, 3000000, '{}', 'budget-model.v1', '$B', 21);" \
   "insert into wos.task_budgets (task_id, objective_id, kind, budget_acu_micro, model_acu_micro, basis, budget_model_version, proposer_account_id, issued_epoch) values ('$X-0000000000a2', '$X-0000000000b0', 'execution', 3000000, 3000000, '{}', 'budget-model.v1', '$B', 21);" \
   "select case when sum(reserved_base) <= 500000000 then 'ok' else sum(reserved_base) || ' reserved against 500000000' end from wos.task_budgets where issued_epoch = 21;"
+# R04-3 (stake vs hold) and R04-5 (appeal vs finalization) concern dormant modules (D55: dispute stakes, appeals):
+# their pre-fix races are recorded in docs/protocol/reviews/ASTRA-REVIEW-04-05-repros-prefix.txt and deferred to activation.
+race "R04-4: a confiscation executed while its hold is released" \
+  "insert into wos.confiscation_executions (confiscation_id) values ('$X-0000000000c5');" \
+  "insert into wos.confiscation_releases (confiscation_id, reason) values ('$X-0000000000c5', 'overturned');" \
+  "select case when exists (select 1 from wos.confiscation_executions where confiscation_id = '$X-0000000000c5') and exists (select 1 from wos.confiscation_releases where confiscation_id = '$X-0000000000c5')
+               then 'executed and released' else 'ok' end;"
+race "B1/I5 (review 05): a budget racing its proposer's lease on the same task" \
+  "insert into wos.task_budgets (task_id, objective_id, kind, budget_acu_micro, model_acu_micro, basis, budget_model_version, proposer_account_id, issued_epoch) values ('$X-0000000000a3', '$X-0000000000b0', 'execution', 1000000, 1000000, '{}', 'budget-model.v1', '$B', 21);" \
+  "insert into wos.leases (task_id, account_id, device_id, state, context_plan, expires_at, hard_deadline_at) values ('$X-0000000000a3', '$B', '00000000-0000-0000-0000-0000000000db', 'active', '{}', now() + interval '30 minutes', now() + interval '3 hours');" \
+  "select case when exists (select 1 from wos.task_budgets where task_id = '$X-0000000000a3') and exists (select 1 from wos.leases where task_id = '$X-0000000000a3')
+               then 'a budget and a lease of the same task both committed' else 'ok' end;"
+race "B2 (review 05): one task's reservation allocated in two epochs concurrently" \
+  "select wos_test.alloc(gen_random_uuid(), 22, '$B', '$X-0000000000e7', 'execution', 34);" \
+  "select wos_test.alloc(gen_random_uuid(), 23, '$D', '$X-0000000000e8', 'execution', 67);" \
+  "select case when (select coalesce(sum(amount_base), 0) from wos.allocations where receipt_id in ('$X-0000000000e7', '$X-0000000000e8')) <= 100
+               then 'ok' else (select sum(amount_base) from wos.allocations where receipt_id in ('$X-0000000000e7', '$X-0000000000e8')) || ' allocated against 100' end;"
 [ "$fail" = 0 ] && echo "all concurrency races hold"
 exit "$fail"
