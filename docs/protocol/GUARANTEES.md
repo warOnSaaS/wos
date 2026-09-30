@@ -190,3 +190,15 @@ Totals: 118 v4 assertions; 45 still refused in SQL (some also by a rule); 73 mov
 ## Rules without a v4 assertion that also moved (no silent loss)
 
 Clip never raises a weight, audit outcomes only for revealed real quorums, duty events for the offered account, permanent exclusion needs governance, adapter switches need governance, Genesis dedup keys are Genesis keys, manifest admission, sponsorship approval, usage-receipt lease/run/snapshot binding: each is a function in `rules.ts` with a test in 'further write rules moved from 0007 v4 (no guarantee silently dropped)'.
+
+## Versioned additions (migration 0009: D61, the D60 delta, D63; review 09)
+
+| Guarantee | Where | Test |
+|---|---|---|
+| B1 one triage record per bug; agent decider = the lease holder of its bug_triage budget; v1-pinned budgets fail closed; no triage of one's own or a related report, or of a bug blamed on one's receipt; duplicates name an earlier acting bug; wont_fix maintainer-only; introducer, window flag, window and policy derived | SQL `check_bug_triage_decision` | db: 'D61 B1 …' ×11 |
+| B2 confirmations by an unrelated maintainer, one per kind; critical effective only once ratified | SQL `check_bug_triage_confirmation`, `bug_effective_severity`; rule `effectiveBugSeverity` | db: 'D61 B2 …' ×4; unit (work-next): 'effective severity …' |
+| B3 triage paid once confirmed and bound to the decision hash; fix at the effective severity, under its lease, not by the triager or the in-window introducer; one paid report per bug, first reporter, resolved, capped | SQL `check_bug_receipt`; rules `triageConfirmationRefusals`, `receiptRouteRefusals`, `bugReportOutcome` | db: 'D61 B3 …' ×18; unit (work-next): D61 block |
+| B4 introducer offset: the bug, the introducing receipt, the introducer, once, equal to the report's allocations, only when the pinned policy switches it on | SQL `check_bug_offset` | db: 'D61 B4 …' ×4 |
+| H1 hold labels only on cancelled releases; well-formed | SQL checks on `task_budget_releases.hold_label`; rule `holdReleaseLabelRefusals` | db: 'D60 H1 …' ×2; unit: 'a hold label …' |
+| Q1 only a queue claim earns the bonus; a task without it is allocated at most its base price | SQL `check_claim_snapshot`, deferred `check_queue_bonus`; engine `queueBasePrice` | db: 'D63 Q1 …' ×3; unit: 'D63 engine …' |
+| Red-then-green evidence, work-next ranking and eligibility, declines and cooldown, coarse limits | rules only (D51: CI data and procedure) | unit (work-next): D61, D60, D63 blocks |

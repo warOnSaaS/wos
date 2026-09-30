@@ -24,6 +24,11 @@ import {
   REVIEW_POLICY_V1,
   REWARD_POLICY_V1,
   type RewardPolicy,
+  REWARD_POLICY_V2,
+  CAPABILITY_POLICY_V2,
+  basePriceAcuMicro,
+  budgetModelMicro,
+  bugReportOutcome,
 } from "@waronsaas/contracts/protocol";
 
 export const SEED = 20260929;
@@ -1044,6 +1049,147 @@ export function failedTaskAccrualTable(params: EngineParams): string {
   );
 }
 
+// ------------------------------------------------------------------------------------------------ D61, D63 (versioned additions)
+
+/**
+ * R (D61): what each bug strategy nets, in ACU-equivalents, by the protocol's own rules (bugReportOutcome, the v2 fix
+ * budget model). A "friend" is an account the protocol does NOT know is related (an undetected Sybil or ally); a
+ * "relative" is one it does. The pair's gain excludes pay for real work done at the budget's price (the fix), and counts
+ * only the report and the severity premium. Two columns: the default (introducer offset on) and the planning note's
+ * alternative (no introducer consequence in V1).
+ */
+export function bugIncentiveTable(): string {
+  const bugs = REWARD_POLICY_V2.bugs!;
+  const w = REWARD_POLICY_V2.outcomes.bugAcuEq;
+  const model = {
+    capabilityBudgets: CAPABILITY_POLICY_V2.budgets,
+    model: REWARD_POLICY_V2.budgets.model,
+    humanReviewWeights: REWARD_POLICY_V2.humanReview.weightAcuEqMicro,
+    bugs,
+  };
+  const fixMicro = (sev: "low" | "medium" | "high" | "critical") => {
+    const r = budgetModelMicro(model, { taskKind: "abu_build", sizePoints: 2, difficultyBp: 10_000, importanceBp: 10_000, severity: sev });
+    return "modelMicro" in r ? r.modelMicro : 0n;
+  };
+  const premium = (sev: "low" | "medium" | "high" | "critical") => Number(fixMicro(sev) - fixMicro("low")) / 1e6;
+  const rec = (over: Record<string, unknown> = {}) => ({
+    outcome: "fix" as const,
+    severity: "high" as const,
+    reporterAccountId: "r",
+    introducerAccountId: "i",
+    introducedWithinOffsetWindow: true,
+    ...over,
+  });
+  const run = (o: Parameters<typeof bugReportOutcome>[0]) => bugReportOutcome(o);
+  const base = {
+    confirmations: [],
+    reporterAccountId: "r",
+    reporterRelatedAccountIds: [] as string[],
+    fixAccepted: true,
+    reportsPaidThisEpoch: 0,
+  };
+  const rows: (string | number)[][] = [];
+  const add = (
+    strategy: string,
+    sev: "low" | "medium" | "high" | "critical",
+    o: Parameters<typeof bugReportOutcome>[0],
+    fixPremium: number,
+    note: string,
+  ) => {
+    const on = run({ ...o, policy: { ...bugs, introducerOffsetEqualsReportPay: true } });
+    const off = run({ ...o, policy: { ...bugs, introducerOffsetEqualsReportPay: false } });
+    const pair = !strategy.startsWith("honest");
+    const pay = (x: typeof on) => (x.paid ? w[x.severity ?? sev] : 0) - (pair && x.introducerOffset ? w[x.severity ?? sev] : 0);
+    rows.push([strategy, sev, fmt(pay(on) + fixPremium, 2), fmt(pay(off) + fixPremium, 2), note]);
+  };
+  add(
+    "honest reporter finds a regression (unrelated to the introducer)",
+    "high",
+    { ...base, record: rec(), policy: bugs },
+    0,
+    "the reporter's pay; the unrelated introducer separately carries −20 (compensatory) when the offset is on",
+  );
+  add(
+    "plant a bug, a friend reports it (pair)",
+    "high",
+    { ...base, record: rec(), policy: bugs },
+    0,
+    "report and offset cancel for the pair",
+  );
+  add(
+    "plant a bug, a friend reports and fixes it (pair)",
+    "high",
+    { ...base, record: rec(), policy: bugs },
+    premium("high"),
+    "only the severity premium of a 2-point fix remains",
+  );
+  add(
+    "plant, a relative reports",
+    "high",
+    { ...base, reporterRelatedAccountIds: ["i"], record: rec(), policy: bugs },
+    0,
+    "refused: related to the introducer",
+  );
+  add(
+    "introducer reports its own regression in the window",
+    "high",
+    { ...base, reporterAccountId: "i", record: rec({ reporterAccountId: "i" }), policy: bugs },
+    0,
+    "refused",
+  );
+  add(
+    "introducer reports its own bug after the window",
+    "high",
+    { ...base, reporterAccountId: "i", record: rec({ reporterAccountId: "i", introducedWithinOffsetWindow: false }), policy: bugs },
+    0,
+    "paid: a late honest find",
+  );
+  add(
+    "claim critical to inflate (unconfirmed)",
+    "critical",
+    { ...base, record: rec({ severity: "critical" }), policy: bugs },
+    0,
+    "nothing until a maintainer confirms; corrected severities pay as corrected",
+  );
+  add(
+    "file a duplicate of a known bug",
+    "high",
+    { ...base, record: rec({ outcome: "duplicate" }), policy: bugs },
+    0,
+    "0: only the first reporter",
+  );
+  add(
+    "spam: a report triaged not_a_bug",
+    "low",
+    { ...base, record: rec({ outcome: "not_a_bug", severity: null }), policy: bugs },
+    0,
+    `0; ${bugs.rejectedReportsSignalAfter} rejected in 30 days raise a signal`,
+  );
+  add(
+    "a sweep with no confirmed bug",
+    "low",
+    { ...base, record: null, policy: bugs },
+    0,
+    "0: sweeps are paid only through confirmed reports",
+  );
+  return `${table(["Strategy", "Severity", "Net ACU-eq, the actor(s) (offset on, default)", "Net ACU-eq (no introducer consequence)", "Why"], rows)}
+
+Per planted bug the no-consequence column pays the pair the full report weight (up to ${bugs.maxBugReportsPaidPerAccountPerEpoch} reports per reporter per epoch); with the offset the pair keeps only the severity premium of a fix it must actually build, pass red-then-green and get through two reviews.`;
+}
+
+/** S (D63): the queue bonus. Base price = floor(budget / 1.2); what self-picking a task costs its picker. */
+export function queueBonusTable(): string {
+  const bonus = CAPABILITY_POLICY_V2.workNext!.queueBonusBp;
+  const rows = [8, 12, 30, 60].map((acu) => {
+    const q = BigInt(acu) * MICRO;
+    const b = basePriceAcuMicro(q, bonus);
+    return [acu, fmt(Number(b) / 1e6, 6), fmt(Number(q - b) / 1e6, 6), `${fmt(Number(((q - b) * 1_000_000n) / q) / 10_000, 2)}%`];
+  });
+  return `${table(["Queue price (reservation, ACU)", "Base price (self-pick, ACU)", "Queue bonus returned to R if self-picked (ACU)", "Share of the reservation"], rows)}
+
+The reservation is always the queue price, so no extra capacity is locked; a self-picked (or bonus-withheld) task returns the bonus portion to R at acceptance.`;
+}
+
 export function report(policy: RewardPolicy = REWARD_POLICY_V1): string {
   const params = engineParamsFrom(policy, COMPLETION_POLICY_V1);
   const rng = mulberry32(SEED);
@@ -1114,6 +1260,8 @@ export function report(policy: RewardPolicy = REWARD_POLICY_V1): string {
   parts.push(
     `### Q. Failed tasks fund nothing: ancillary accrual is reserved with the task (review 05 B5)\n\n${failedTaskAccrualTable(params)}`,
   );
+  parts.push(`### R. Bug self-dealing and spam (D61)\n\n${bugIncentiveTable()}`);
+  parts.push(`### S. The queue bonus: base price and self-pick (D63)\n\n${queueBonusTable()}`);
   parts.push(`### D. Collusion vs pool size (D24)\n\n${collusionTable()}`);
   parts.push(`### E. Payout canaries: time to catch an always-"plausible" client (D27)\n\n${canaryTable()}`);
   parts.push(`### F. Optimistic verification: detection vs cost (D28)\n\n${optimisticTable()}`);

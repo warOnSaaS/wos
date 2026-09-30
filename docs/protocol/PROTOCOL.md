@@ -254,3 +254,17 @@ V1 runs with a solo founder on devnet/shadow with valueless tokens. The build pl
 | Collusion/Sybil detection beyond basics | DORMANT | related-account independence, anomaly metrics | ≥ 10 outside contributors | — |
 | Confiscation beyond a simple hold | DORMANT | a bounded hold and release | first value-bearing token | F17 |
 | Genesis calibration population | DORMANT | Genesis records only | Genesis finalization (mainnet) | F21 |
+
+## 14. Versioned additions after the freeze (D62): D61, the D60 delta, D63
+
+Frozen protocol v1 is unchanged; these ship as `reward-policy.v2`, `capability-policy.v2`, contracts 5.9.0 and migration 0009 (DECISIONS D61 economy side, D63; review 09).
+
+- **D61 bugs (economy side).** Types `BUG_TRIAGE` (commissioned `bug_triage` task under a lease, bound to the TriageDecision's canonical hash, paid once confirmed: `triageConfirmationRefusals`) and `BUG_FIX` (an `abu_build`/`abu_revision` budget x a bounded severity factor at the EFFECTIVE severity; red-then-green; not the triager; not the in-window introducer). `BUG_REPORT` is paid once per bug to its first reporter when resolved (`bugReportOutcome`), capped per epoch; sweeps are paid only this way. The in-window introducer of a blamed bug is never paid for it and carries an offset equal to the report's pay (policy switch). DB: `bug_triage_decisions` (derived decider, introducer, window, policy), `bug_triage_confirmations` (maintainer: ratified, severity_corrected, resolved), receipt trigger B3, offset rule B4.
+- **D60 delta.** Held units are never offered (`workEligibilityRefusals`, `rankWorkNext`); the architecture-migration boost is a ranking term; ageing continues from the first generation through hold releases (`ageingIssueEpoch`); a hold release carries a public label `architecture_hold:ADR-nnn` / `bug_hold:BUG-n` (`holdReleaseLabelRefusals`; DB column `task_budget_releases.hold_label`, only on `cancelled`). Releasing held unstarted budgets is an ordinary cancel and reissue (no change).
+- **D63 work next.** One queue, one eligibility rule, one ranking (`rankWorkNext`) with a derived kind base; base price + 20% queue bonus pinned in `RunPolicySnapshot.claim` (engine `queueBasePrice`; DB Q1); declines and cooldown (`nextClaimTerms`); coarse limits (`ContributorLimits`); dormant `priority_vote`.
+
+| Module | Status | V1 stub | Activation trigger | Precondition |
+|---|---|---|---|---|
+| Bugs: triage, fix, first report (D61) | ACTIVE (v2) | — | — | — |
+| Work next and the queue bonus (D63) | ACTIVE (v2) | — | — | G-101 inputs |
+| Priority vote (D63) | DORMANT | the founder's focus list (F29) is the only priority input | `governance_voting` active and ≥ 25 seasoned voters | G-98 |

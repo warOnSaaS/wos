@@ -212,6 +212,7 @@ export const RewardPolicy = z.object({
           "collusion_and_sybil_detection_beyond_basics",
           "confiscation_beyond_simple_hold",
           "genesis_calibration_population",
+          "priority_vote",
         ]),
         activationTrigger: z.string().min(10),
         v1Stub: z.string().min(5),

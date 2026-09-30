@@ -31,9 +31,6 @@ import {
   rankNextUnits,
   selfPickRefusals,
   budgetModelMicro,
-  bugReportOutcome,
-  CAPABILITY_POLICY_V2,
-  REWARD_POLICY_V2,
   budgetReleaseRefusals,
   canonicalOperationFields,
   DORMANT_MODULES,
@@ -50,6 +47,7 @@ import {
   requiredReviewSeats,
   REVIEW_POLICY_V1,
   REWARD_POLICY_V1,
+  REWARD_POLICY_V2,
   reviewPolicySwitchRefusals,
   reviewSeatRefusals,
   settlementObservationRefusals,
@@ -1323,9 +1321,13 @@ describe("D54: provisional receipts finalize optimistically (review 06 R06-2: fr
 
 describe("D55: V1-active and dormant modules", () => {
   it("every dormant module has an activation trigger in the reward policy and is refused until activated", () => {
-    const listed = REWARD_POLICY_V1.modules.dormant.map((m) => m.module).sort();
+    const listed = REWARD_POLICY_V2.modules.dormant.map((m) => m.module).sort();
     expect(listed).toEqual([...DORMANT_MODULES].sort());
-    for (const m of REWARD_POLICY_V1.modules.dormant) expect(m.activationTrigger.length).toBeGreaterThan(10);
+    // v1 (frozen) lists every module but D63's priority_vote, which arrived as a versioned addition.
+    expect(REWARD_POLICY_V1.modules.dormant.map((m) => m.module).sort()).toEqual(
+      DORMANT_MODULES.filter((m) => m !== "priority_vote").sort(),
+    );
+    for (const m of REWARD_POLICY_V2.modules.dormant) expect(m.activationTrigger.length).toBeGreaterThan(10);
     refused(moduleRefusals({ module: "dispute_stakes_and_bounties", activated: [] }), /dormant in V1/);
     expect(moduleRefusals({ module: "dispute_stakes_and_bounties", activated: ["dispute_stakes_and_bounties"] })).toEqual([]);
   });

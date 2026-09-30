@@ -1,10 +1,10 @@
-# REVIEW-PACKET — Proof of Contribution design (FROZEN protocol v1 for devnet/shadow, D62; next: review 09 of the D61 addition)
+# REVIEW-PACKET — Proof of Contribution design (FROZEN protocol v1 for devnet/shadow, D62; review 09: the versioned additions D61, D60 delta, D63)
 
-Hand the bundle made by `tools/make-review-bundle.sh 08` to Astra (it contains this file, every file listed in §2 and the test output). Everything it references is on branch `ws/protocol` in `/Users/adventurini/waronsaas-protocol` (worktree of `waronsaas/wos`). The protocol is still NOT wired into authoritative reward accounting; scope stays devnet-first and mainnet stays prohibited.
+Hand the bundle made by `tools/make-review-bundle.sh 09` to Astra (it contains this file, every file listed in §2 and the test output). Everything it references is on branch `ws/protocol` in `/Users/adventurini/waronsaas-protocol` (worktree of `waronsaas/wos`). The protocol is still NOT wired into authoritative reward accounting; scope stays devnet-first and mainnet stays prohibited.
 
 **Review history** (the files in `docs/protocol/reviews/`; the bundle script derives its list from them): 01 (Amendment 02), 02, 03, **04 (bundle 04, reviewed: 11 findings)** **05 (bundle 05, commit 12509a1: B1–B10 plus the carry-forward of review 04)** and **06 (bundle 06, commit 3cddbb1: R06-1 to R06-7)** and **07 (bundle 07, commit 4dddfe7: APPROVE WITH CHANGES; R07-1 to R07-7)**. *Correction:* earlier versions of this packet and of the bundle-05 prompt said bundle 04 "was never reviewed". That was wrong: the founder ran review 04, and Astra flagged the claim in review 05. Both reviews are now in the repository and every one of their findings has a status in §3f. Review 05 examined 12509a1, before the D51 simplification (e5e4930) and D52 (6385b27); every finding was re-run against the current code first (§3f).
 
-What to read first: **§3j (review 07: status, changed paths and regression of every finding; the exact races and the accounting trace)**, then **§0 (the V1 active path)**, **§3i (review 06: status, changed paths and regression of every finding, the lifecycle trace and the challenge/finality race)**, §3h (D57, D58), then §3f (reviews 04 and 05), §3g, §3e (D51), §3d (D49). §3c (review 03) is kept for history.
+What to read first for review 09: **§3l (the versioned additions and what to check)**, then §3k. Earlier: **§3j (review 07: status, changed paths and regression of every finding; the exact races and the accounting trace)**, then **§0 (the V1 active path)**, **§3i (review 06: status, changed paths and regression of every finding, the lifecycle trace and the challenge/finality race)**, §3h (D57, D58), then §3f (reviews 04 and 05), §3g, §3e (D51), §3d (D49). §3c (review 03) is kept for history.
 
 ## 0. The V1 active path (read first)
 
@@ -47,6 +47,8 @@ Artifacts: 19 design documents, draft contracts that typecheck with 89 engine/pr
 6. `docs/protocol/GUARANTEES.md` (every v4 database assertion and the guard that rejects it now) and `docs/architecture/SECURITY.md` §6.
 7. Code: `packages/contracts/src/protocol/` (`rules.ts`, `engine.ts`, `entities.ts`, `policies.ts`, `assignment.ts`, `governance.ts`, `receipts.ts`, `usage.ts`, `machines.ts`, `data/*.json`), `packages/contracts/test/protocol.test.ts`, `packages/contracts/test/protocol-rules.test.ts`, `packages/db/migrations/0007_proof_of_contribution.sql`, `packages/db/test/db-assertions.sql` (the 0007 block at the end), `packages/db/test/concurrency.sh`, `packages/db/test/accounting-trace.mjs`, `packages/db/scripts/test-migrations.sh`, `tools/tokenomics-sim/sim.ts`, `tools/astra-03-sql-repros.sh`, `tools/astra-03-ts-probes.mjs`, `tools/astra-04-05-sql-repros.sh`, `tools/astra-04-05-ts-probes.mjs`.
 8. For context on what already exists: `docs/architecture/REVIEW-PROTOCOL.md`, `BUILD-PROTOCOL.md`, `SECURITY.md`, `packages/db/migrations/0001_init.sql`–`0006`.
+
+9. Review 09 (versioned additions): `packages/db/migrations/0009_bugs_and_maintenance.sql`, `packages/db/test/bugs-assertions.sql`, `packages/contracts/test/protocol-work-next.test.ts`, `packages/contracts/src/protocol/data/reward-policy.v2.json`, `packages/contracts/src/protocol/data/capability-policy.v2.json`; the planning side they bind to: `packages/contracts/src/bugs.ts`, `packages/contracts/src/data/bugs-policy.v1.json`, `packages/contracts/src/data/architecture-policy.v1.json`, and the architect's notes `docs/architecture/D60-PROTOCOL-DELTA.md`, `docs/architecture/D61-PROTOCOL-NOTES.md`.
 
 Reproduce: `source ~/.nvm/nvm.sh && nvm use 22 && npm run check && npm run db:test && npm run sim:tokenomics`.
 
@@ -258,15 +260,43 @@ Probes re-run first (`reviews/ASTRA-REVIEW-08-repros-prefix.txt`: R08-1 reproduc
 
 **Protocol v1 is FROZEN for devnet/shadow implementation (D62).**
 
-## 4. Questions for review 08 (narrow)
+## 3l. Versioned additions after the freeze: D61 (economy side), the D60 delta, D63 — for review 09
+
+Frozen v1 is untouched: `reward-policy.v1.json` and `capability-policy.v1.json` are byte-identical, the v1 rules (`nextUnitEligibilityRefusals`, `rankNextUnits`) are unchanged, and a budget or receipt pinned to v1 has no bug route and fails closed (rules and SQL). The additions are `reward-policy.v2`, `capability-policy.v2`, contracts 5.9.0 (5.8.0 is the frozen v1 subpath, renumbered at integration because main's 5.5.0 is D60) and migration 0009 (0008 is main's build release; they commute). Decisions: DECISIONS D61 (economy side), D63; supersession SUPERSESSION §3d; PROTOCOL §14; POLICIES §13; simulation tables R and S.
+
+| Addition | Rules / engine | SQL (0009) | Regression |
+|---|---|---|---|
+| D61 triage paid only once confirmed, per outcome; bound to the decision hash; agent under a lease | `triageConfirmationRefusals`, `receiptRouteRefusals` BUG_TRIAGE | B1 `bug_triage_decisions` (decider = lease holder, derived introducer/window/policy; duplicates name an earlier acting bug; wont_fix maintainer-only), B3 | work-next test "a triage is paid only once…", "BUG_TRIAGE…"; db "D61 B1 …", "D61 B3: a fix triage paid before…", "…not_a_bug triage paid before…", "…another decision hash" |
+| D61 critical severity effective only after a maintainer; correction penalty-free | `effectiveBugSeverity` | B2 `bug_triage_confirmations`, `bug_effective_severity` | "effective severity…"; db "D61 B2 …", "…critical bug before a maintainer confirmed critical" |
+| D61 fix: abu_build/abu_revision x bounded severity factor at the effective severity; red-then-green; not the triager; not the in-window introducer | `budgetModelMicro` severity, `receiptRouteRefusals` BUG_FIX (main's `redGreenRefusals`) | B3 | "BUG_FIX…", "a fix is an abu_build…"; db "D61 B3: …priced at another severity", "…in-window introducer fixing", "…triager fixing" |
+| D61 report: once per bug, first reporter, when resolved, per-epoch cap; sweeps only through reports | `bugReportOutcome` | B3 (dedup `bug:BUG-n`, one paid report, cap under a per-reporter lock) | "a report is paid once…"; db "D61 B3: …second paid report", "…cap" |
+| D61 introducer offset = report pay in the 14-day window (policy switch; flagged F35) | `bugReportOutcome.introducerOffset` | B4 `offsets.bug_id` | "self-dealing…"; db "D61 B4 …"; simulation R |
+| D60 delta: held units never offered; migration boost; ageing through hold releases; public hold labels | `workEligibilityRefusals`, `rankWorkNext`, `ageingIssueEpoch`, `holdReleaseLabelRefusals` | H1 `task_budget_releases.hold_label` (cancelled only) | "D60 protocol delta…"; db "D60 H1 …" |
+| D63 one queue, one eligibility rule, derived kind base, severity and migration boosts equal to the planning data, dormant bounded vote | `rankWorkNext`, `workNextPolicyRefusals`, `priorityVoteTerm`, `DORMANT_MODULES` + `priority_vote` | — | "cross-kind ranking…", "matches the planning side's rankBuildNext", "kindBase is derived…" |
+| D63 base price + 20% queue bonus; reservation = queue price; the bonus returns to R when not earned; claim pinned in the snapshot | engine `queueBasePrice`, `TaskAcceptance.claim`, `queueBonusReturnedBase`; `RunPolicySnapshot.claim`; `basePriceAcuMicro` | Q1 (snapshot check; allocations capped at the base) | "pricing by mode…", "D63 engine: …conservation holds"; db "D63 Q1 …" |
+| D63 declines and cooldown; coarse limits | `nextClaimTerms`, `ContributorLimits`, `contributorLimitsRefusals` | — | "declines…", "limits stay coarse…" |
+
+R08-1 and R08-2 remain closed (§3k): their regressions ("R07-2 repro …" rules test; db "R08-1 …", "R08-2 …") run in this commit's `npm run check` and `db:test`.
+
+Not in SQL by design (D51 engine-first): the red-then-green evidence (CI data), the work-next ranking and eligibility, the decline rule. Open: the server must publish the ranking inputs and bug records (GAPS G-102); provisional values (queue bonus, decline window, bug factors, triage budget); founder decision F35 (introducer offset on, as the brief asked, or off, as the planning note recommends).
+
+## 4. Questions for review 09 (narrow)
+
+Only: (1) the D61 economy delta, the D60 delta and D63 against §3l — does each rule and invariant do what the table says, does conservation hold with the queue bonus returned to R, and is any nearby sequence still paid that should not be (self-dealing, spam, severity inflation, cherry-picking through limits or declines)? (2) Are R08-1 and R08-2 still closed? (3) Can these additions join the frozen protocol for devnet/shadow implementation?
+
+## 4b. Questions for review 08 (narrow, historical)
 
 Only: (1) verify R07-1 to R07-7 against §3j — changed paths and named regressions — and whether a nearby sequence still passes; (2) the strengthened races (exact winner, loser reason, final state, both orderings) and the accounting trace; (3) can the protocol now be FROZEN for devnet implementation (not mainnet, not value-bearing tokens)?
 
-## 5. How to run review 08
+## 5. How to run review 09
 
 ```
-bash tools/make-review-bundle.sh 08
+bash tools/make-review-bundle.sh 09
 ```
+
+`~/Downloads/wos-protocol-review-09/`: files, bundle, `TEST-RESULTS.txt` and `PROMPT.txt` (narrow: the additions, R08 closure, D60 note).
+
+Review 08 was run the same way with `08`:
 
 `~/Downloads/wos-protocol-review-08/`: files, bundle, `TEST-RESULTS.txt` (the commit reviewed; `npm run check`; `npm run db:test` with the races and the accounting trace) and `PROMPT.txt` (the narrow confirmation). The review-07 probes: `cp docs/protocol/reviews/ASTRA-REVIEW-07-probes.mjs . && node --experimental-strip-types ASTRA-REVIEW-07-probes.mjs` (several now refuse or throw on the changed APIs; the regressions assert the corrected behaviour).
 

@@ -128,3 +128,7 @@ Policy documents are immutable versions (`policy_documents`); activation is an A
 - **Late completion corrections (M15).** A correction's pool part returns to the reserve; the part the pool already paid is attributed to the beneficiaries who received it (`recoverFromPaid`) and becomes their offsets, so a historical correction never blocks later epochs.
 - **Sponsored rounding (L16).** Lines carry exact share numerators (weight × share bp); beneficiary totals are formed before any rounding.
 
+## Versioned additions after the freeze (D61 economy side, D63)
+
+- **Bugs (D61).** A triage is a commissioned task paid its budget once the decision is confirmed; a fix is a build budget times a bounded severity factor, paid on a red-then-green merge; a report earns the outcome weight 2/6/20/50 (by effective severity) once, for the first reporter, when the bug is resolved; sweeps earn only through their confirmed reports. Within 14 days of the introducing receipt, the introducer is never paid for the bug and carries an offset equal to the report's pay (compensatory; recovered like every offset, from future allocations and the holdback).
+- **Work next (D63).** Every task has a published **base price**; claiming from the queue adds the **+20% queue bonus**. The reservation is always the queue price; when the bonus is not earned (self-pick, or the claim right after releasing an assigned task) the bonus portion returns to R at acceptance. Allocation explanations say "base price" and "+20% queue bonus".

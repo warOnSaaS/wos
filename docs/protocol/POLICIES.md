@@ -17,6 +17,7 @@ ACTIVE in V1: accounting correctness, budgets with bounds and the objective cap,
 | `collusion_and_sybil_detection_beyond_basics` | related-account independence and anomaly metrics | ≥ 10 outside contributors |
 | `confiscation_beyond_simple_hold` | a bounded simple hold and release; no execution | first value-bearing token (mainnet readiness) |
 | `genesis_calibration_population` | Genesis records only; no reference manifest | Genesis finalization (mainnet only) |
+| `priority_vote` (D63; reward-policy.v2) | the founder's focus list (F29) is the only priority input | `governance_voting` active and ≥ 25 accounts meeting the governance seasoning rules, after the G-98 preconditions |
 
 ## 1. Lifecycle of a policy version
 
@@ -109,3 +110,11 @@ Mode `founder`; activation (≥ 50 voters, ≥ 10,000,000 WOS locked ≥ 12 mont
 ## 12. Organizations (D38)
 
 Default organization share of a sponsored contributor's allocations: 100% (`DEFAULT_ORGANIZATION_SHARE_BP`), configurable per link by the org; governance per-organization cap 10% (GovernancePolicy `orgCapBp`).
+
+## 13. Versioned additions (reward-policy.v2, capability-policy.v2; D61, D60 delta, D63)
+
+v1 files are byte-identical and stay pinned for everything issued under them. v2 = v1 plus:
+- `reward-policy.v2` `acceptance`: `BUG_TRIAGE` (execution slice, task budget, lease, usage receipt; event `triage_decision_confirmed`) and `BUG_FIX` (execution, task budget, lease; `bug_fix_merged`); `BUG_REPORT` text rebound to first reporter + resolution.
+- `reward-policy.v2` `bugs`: `severityFixBp` low 10000, medium 10000, high 12500, critical 15000 (1x–2x schema bound; `maxSeverityFixBp` 15000); `maxBugReportsPaidPerAccountPerEpoch` 10; `rejectedReportsSignalAfter` 5 (30 days); `introducerWindowDays` 14 (= `epoch.revertOffsetDays`); `introducerOffsetEqualsReportPay` true (founder switch F35); `introducerReportPaid` false, `introducerMayFixWithinWindow` false, `reporterMayFix` true, `sweepsPaid` false. `modules`: + `bugs_triage_fix_and_first_report`, `work_next_queue_and_queue_bonus` active, `priority_vote` dormant.
+- `capability-policy.v2` `budgets`: + `bug_triage` 2 ACU flat (provisional). `assignment` identical to v1 (frozen, `build-next-ranking.v1`).
+- `capability-policy.v2` `workNext` (`work-next-ranking.v1`): weights reuse 100 / unlock 60 / ageing 25 per epoch capped at 8 (as F29); focus as v1; `structuralUnlock` 1 for `roadmap_review`, `feature_review`, `implementation_review`, `bug_triage`, 0 otherwise; `kindBase` = 60 x structuralUnlock (derived, checked); `severityBoost` 0/150/1000/200000 (= bugs-policy.v1); `architectureMigration` 100000 (= architecture-policy.v1); `queueBonusBp` 2000 (provisional, public AdminAction); `declines` 168 h window, cooldown after 3, 24 h; `priorityVote` dormant, subjects target/feature/bug, governance seasoning, `maxBoost` 500, `saturationWeight` 1000000.

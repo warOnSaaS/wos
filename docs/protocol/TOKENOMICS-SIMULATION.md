@@ -244,6 +244,34 @@ Seed 20260929. Policies: reward-policy.v1, review-policy.v1, completion-policy.v
 | half accepted, half abandoned | 260 | 130 | 23,894 | 7,964 | 0 |
 | every task accepted | 260 | 260 | 47,788 | 15,929 | 0 |
 
+### R. Bug self-dealing and spam (D61)
+
+| Strategy | Severity | Net ACU-eq, the actor(s) (offset on, default) | Net ACU-eq (no introducer consequence) | Why |
+| --- | --- | --- | --- | --- |
+| honest reporter finds a regression (unrelated to the introducer) | high | 20.00 | 20.00 | the reporter's pay; the unrelated introducer separately carries −20 (compensatory) when the offset is on |
+| plant a bug, a friend reports it (pair) | high | 0.00 | 20.00 | report and offset cancel for the pair |
+| plant a bug, a friend reports and fixes it (pair) | high | 2.00 | 22.00 | only the severity premium of a 2-point fix remains |
+| plant, a relative reports | high | 0.00 | 0.00 | refused: related to the introducer |
+| introducer reports its own regression in the window | high | 0.00 | 0.00 | refused |
+| introducer reports its own bug after the window | high | 20.00 | 20.00 | paid: a late honest find |
+| claim critical to inflate (unconfirmed) | critical | 0.00 | 0.00 | nothing until a maintainer confirms; corrected severities pay as corrected |
+| file a duplicate of a known bug | high | 0.00 | 0.00 | 0: only the first reporter |
+| spam: a report triaged not_a_bug | low | 0.00 | 0.00 | 0; 5 rejected in 30 days raise a signal |
+| a sweep with no confirmed bug | low | 0.00 | 0.00 | 0: sweeps are paid only through confirmed reports |
+
+Per planted bug the no-consequence column pays the pair the full report weight (up to 10 reports per reporter per epoch); with the offset the pair keeps only the severity premium of a fix it must actually build, pass red-then-green and get through two reviews.
+
+### S. The queue bonus: base price and self-pick (D63)
+
+| Queue price (reservation, ACU) | Base price (self-pick, ACU) | Queue bonus returned to R if self-picked (ACU) | Share of the reservation |
+| --- | --- | --- | --- |
+| 8 | 6.666666 | 1.333334 | 16.67% |
+| 12 | 10.000000 | 2.000000 | 16.67% |
+| 30 | 25.000000 | 5.000000 | 16.67% |
+| 60 | 50.000000 | 10.000000 | 16.67% |
+
+The reservation is always the queue price, so no extra capacity is locked; a self-picked (or bonus-withheld) task returns the bonus portion to R at acceptance.
+
 ### D. Collusion vs pool size (D24)
 
 | eligible reviewers N | ring accounts m (incl. the author) | P(both agent slots in ring) | P(all 2 payout auditors in ring) | P(slots captured, not caught by the 10% audit) | backstop (the human reviewer is admin-authorized, outside the ring by assumption) |

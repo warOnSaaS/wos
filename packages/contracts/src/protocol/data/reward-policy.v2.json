@@ -296,7 +296,9 @@
       "append_only_audit_and_admin_actions",
       "shadow_epoch_pipeline",
       "simple_hold",
-      "holdback"
+      "holdback",
+      "bugs_triage_fix_and_first_report",
+      "work_next_queue_and_queue_bonus"
     ],
     "dormant": [
       {
@@ -338,6 +340,11 @@
         "module": "genesis_calibration_population",
         "activationTrigger": "Genesis finalization (mainnet only)",
         "v1Stub": "Genesis records only; no reference manifest"
+      },
+      {
+        "module": "priority_vote",
+        "activationTrigger": "governance_voting is active and at least 25 accounts meet the governance seasoning rules (12-month lock, 6-month contribution, distributed-supply basis, organization cap), after the G-98 preconditions",
+        "v1Stub": "the founder's focus list (F29) is the only priority input to work next"
       }
     ]
   },

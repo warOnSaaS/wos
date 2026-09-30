@@ -73,6 +73,17 @@ New wording (proposal): devnet — "WOS on devnet is a test token with no moneta
 | Holdback 50% for 13 epochs as usage collateral (D40) | re-sized | recommended 20% for 6 epochs against defective work and misattribution (F15) |
 | Oracle price changes move provider shares (S8) | removed | budgets are provider-neutral; the oracle prices telemetry and the budget model |
 
+## 3d. Superseded by D63 (one queue, queue bonus; from capability-policy.v2)
+
+| D56 rule (capability-policy.v1, frozen) | Status | Replacement (capability-policy.v2 `workNext`) |
+|---|---|---|
+| Build next ranks build units only (`build-next-ranking.v1`) | **replaced** | work next ranks every claimable kind (`work-next-ranking.v1`, `rankWorkNext`) |
+| Budgets are identical in both modes | **replaced** | published base price; the queue pays base + 20% queue bonus; the reservation is the queue price, the bonus returns to R when not earned |
+| Optional `assignedOnlyWindowMinutes` (off) | **removed** from v2 | the queue bonus replaces it (v1 keeps 0) |
+| Contributor limits filter, never score | kept, tightened | limits are coarse by schema (`ContributorLimits`); nothing may name a feature, target or task |
+| Eligibility shared by self-pick and build next (R06-1) | kept | `workEligibilityRefusals` for every kind (queue, self-pick, continuous) |
+| Focus list (F29) | kept | still the only priority input in V1; `priority_vote` is dormant |
+
 ## 4. REVIEW-PROTOCOL, AGENT-POLICY, SECURITY
 
 Listed in HUMAN-REVIEW.md §8 (review), POLICIES §4 (capability classes over the brand lists, which remain the argv source), ABUSE-MODEL §1 (S-24).

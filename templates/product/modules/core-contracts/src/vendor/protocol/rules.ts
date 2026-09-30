@@ -1544,6 +1544,8 @@ export const DORMANT_MODULES = [
   "collusion_and_sybil_detection_beyond_basics",
   "confiscation_beyond_simple_hold",
   "genesis_calibration_population",
+  /** D63: priority votes on targets, features or bugs as a bounded work-next ranking term. */
+  "priority_vote",
 ] as const;
 export type DormantModule = (typeof DORMANT_MODULES)[number];
 
