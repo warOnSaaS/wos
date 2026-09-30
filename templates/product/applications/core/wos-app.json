@@ -1,0 +1,43 @@
+{
+  "protocol": "wos-app/v1",
+  "app": {
+    "id": "core",
+    "name": "wOS Core",
+    "version": "0.1.0",
+    "kind": "core",
+    "billing": "base",
+    "summary": "Identity, organizations, roles and permissions, the app and navigation registries, and per-app schema migrations. Always active."
+  },
+  "requires": { "wos": "^0.1.0", "apps": [] },
+  "provides": [],
+  "features": [],
+  "replaces": [],
+  "surfaces": {
+    "web": { "supported": true, "entry": "./web" },
+    "desktop": { "supported": false },
+    "ios": { "supported": false },
+    "android": { "supported": false },
+    "api": { "supported": true }
+  },
+  "mobile": null,
+  "data": {
+    "schema": "core",
+    "migrations": "./migrations",
+    "owns": ["environment", "organization", "user", "membership", "signin_request", "session"]
+  },
+  "permissions": [
+    { "key": "core.apps.read", "description": "See the apps active for the organization", "grantedTo": ["owner", "admin", "member"] },
+    {
+      "key": "core.apps.manage",
+      "description": "Enable and disable apps for the organization on wOS Cloud",
+      "grantedTo": ["owner", "admin"]
+    },
+    { "key": "core.profile.read", "description": "Read the signed-in identity", "grantedTo": ["owner", "admin", "member"] }
+  ],
+  "events": { "publishes": [], "consumes": [] },
+  "routes": { "ui": "/core", "api": "/apps/core" },
+  "navigation": [
+    { "id": "core.apps", "title": "APPS", "route": "/core/apps", "surfaces": ["web"], "permission": "core.apps.read", "order": 0 }
+  ],
+  "hosting": { "selfHost": { "supported": true, "services": ["postgres"] }, "hosted": { "supported": true } }
+}

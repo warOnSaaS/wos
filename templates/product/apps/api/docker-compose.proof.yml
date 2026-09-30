@@ -1,0 +1,18 @@
+# V1 proof step 8 (S-41): the same stack with NO route out of the Docker host. Every network is internal, nothing
+# is published, and a probe container drives wOS Web from inside. Run by test/self-host-docker.test.ts
+# (npm run proof:self-host).
+services:
+  core:
+    ports: !reset []
+  web:
+    ports: !reset []
+  probe:
+    image: node:22-alpine
+    volumes:
+      - ./proof:/proof:ro
+    networks: [edge]
+    entrypoint: ["node", "/proof/self-host-proof.mjs"]
+    profiles: [proof]
+networks:
+  edge:
+    internal: true

@@ -1,0 +1,26 @@
+{
+  "name": "wos-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "wOS Core: the environment API (core.waronsaas.com or self-hosted).",
+  "scripts": {
+    "build": "node build.mjs",
+    "start": "node dist/server.mjs",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "migrate": "node dist/cli.mjs migrate",
+    "proof:self-host": "WOS_DOCKER_PROOF=1 vitest run test/self-host-docker.test.ts"
+  },
+  "dependencies": {
+    "hono": "^4.13.11",
+    "postgres": "^3.4.9",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.0",
+    "esbuild": "^0.28.2",
+    "typescript": "7.0.2",
+    "vitest": "^5.0.2"
+  }
+}

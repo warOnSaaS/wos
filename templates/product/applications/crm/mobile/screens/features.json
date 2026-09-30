@@ -1,0 +1,12 @@
+{
+  "schema": "wos-screen.v1",
+  "id": "crm.features.list",
+  "app": "crm",
+  "kind": "list",
+  "resource": "/apps/crm/features",
+  "title": { "text": "CRM features in this version" },
+  "permission": "crm.status.read",
+  "list": { "fields": ["name"], "search": false, "onTap": null },
+  "sections": [],
+  "actions": []
+}
