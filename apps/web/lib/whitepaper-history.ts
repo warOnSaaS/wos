@@ -124,7 +124,7 @@ export function changesMarkdown(site: (p: string) => string): string {
     L.push(`## v${v.version}${v.current ? " (current)" : ""}${day ? `, ${day}` : ""}`, "");
     if (v.partI?.changed) L.push(`**${PART_I_FLAG}.**${v.partI.sections.length ? ` Sections: ${v.partI.sections.map((s) => s.replace(/^##\s+/, "")).join("; ")}.` : ""}${v.partI.files.length ? ` Files: ${v.partI.files.join(", ")}.` : ""}`, "");
     if (v.note) L.push(v.note, "");
-    if (v.snapshot) L.push(`- Full text: ${site(versionPath(v.version))} (source at that commit: ${v.snapshot.sourceUrl})`);
+    if (v.snapshot) L.push(`- Full text: ${site(versionPath(v.version))} (source: ${v.snapshot.sourceUrl})`);
     if (v.firstCommit && v.lastCommit) {
       L.push(`- Commits: ${v.commits?.map((c) => `${c.sha.slice(0, 7)} ${c.date.slice(0, 10)} "${c.subject}"`).join("; ")}`);
     }
