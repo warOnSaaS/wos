@@ -18,8 +18,7 @@
     "budgetPpmOfRemaining": 3327,
     "rateCeiling": {
       "initialBasePerAcu": "100000000",
-      "decayPpmPerEpoch": 3327,
-      "maxVsTrailingBp": 15000
+      "decayPpmPerEpoch": 3327
     }
   },
   "slicesBp": {
@@ -31,12 +30,8 @@
     "security_reserve": 500
   },
   "eligibility": {
-    "acceptedVerificationLevels": {
-      "devnet": ["VERIFIED", "ATTESTED"],
-      "mainnet": []
-    },
     "acceptedEvidenceClasses": {
-      "devnet": ["attested_usage", "accepted_output", "outcome"],
+      "devnet": ["accepted_budget", "outcome"],
       "mainnet": []
     },
     "requireReviewPolicySatisfied": true,
@@ -48,7 +43,7 @@
       "event": "pr_merged",
       "acceptedBy": "github merge of the qualified PR",
       "slice": "execution",
-      "weightBasis": "attested_usage_capped",
+      "weightBasis": "task_budget",
       "needsLease": true,
       "needsUsageReceipt": true
     },
@@ -57,7 +52,7 @@
       "event": "subject_merged_or_finding_upheld",
       "acceptedBy": "the subject's merge, or a material finding resolved/upheld",
       "slice": "execution",
-      "weightBasis": "attested_usage_capped",
+      "weightBasis": "task_budget",
       "needsLease": true,
       "needsUsageReceipt": true
     },
@@ -66,7 +61,7 @@
       "event": "ruling_confirmed_by_maintainer",
       "acceptedBy": "maintainer confirmation of the ruling",
       "slice": "execution",
-      "weightBasis": "attested_usage_capped",
+      "weightBasis": "task_budget",
       "needsLease": true,
       "needsUsageReceipt": true
     },
@@ -75,7 +70,7 @@
       "event": "document_merged",
       "acceptedBy": "merge of the roadmap version containing the revision",
       "slice": "planning",
-      "weightBasis": "attested_usage_capped",
+      "weightBasis": "task_budget",
       "needsLease": true,
       "needsUsageReceipt": true
     },
@@ -84,7 +79,7 @@
       "event": "document_merged",
       "acceptedBy": "merge of the contract version containing the revision",
       "slice": "planning",
-      "weightBasis": "attested_usage_capped",
+      "weightBasis": "task_budget",
       "needsLease": true,
       "needsUsageReceipt": true
     },
@@ -93,7 +88,7 @@
       "event": "subject_merged_or_finding_upheld",
       "acceptedBy": "the subject's merge (PASS) or an upheld material finding (FAIL); no review of reviews, audits sample instead",
       "slice": "human_review",
-      "weightBasis": "acu_equivalent",
+      "weightBasis": "task_budget",
       "needsLease": false,
       "needsUsageReceipt": false
     },
@@ -129,7 +124,7 @@
       "event": "audit_report_accepted",
       "acceptedBy": "schema-valid audit report on the assigned lease, whatever it concludes",
       "slice": "execution",
-      "weightBasis": "attested_usage_capped",
+      "weightBasis": "task_budget",
       "needsLease": true,
       "needsUsageReceipt": true
     },
@@ -210,9 +205,36 @@
     "relatedPartyBountyPriority": false
   },
   "holdback": {
-    "shareBp": 5000,
-    "epochs": 13,
+    "shareBp": 2000,
+    "epochs": 6,
     "forfeitOnExclusion": true
+  },
+  "budgets": {
+    "denomination": "acu",
+    "funding": "reserve_at_issuance",
+    "acceptance": "binary",
+    "qualityFactor": "none",
+    "sharesSumBp": 10000,
+    "model": {
+      "difficultyBp": {
+        "min": 5000,
+        "max": 20000
+      },
+      "importanceBp": {
+        "min": 10000,
+        "max": 15000
+      },
+      "maxWithoutHumanBp": 12500,
+      "hardMaxBp": 20000,
+      "objectiveCap": true,
+      "proposerMayNotBuild": true
+    },
+    "expiryEpochs": 4,
+    "recalibration": {
+      "everyEpochs": 13,
+      "maxChangeBp": 2000,
+      "minSamples": 20
+    }
   },
   "losses": {
     "bountyBpOfRecovered": 2000,

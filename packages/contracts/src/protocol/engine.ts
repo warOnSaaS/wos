@@ -1,29 +1,32 @@
 /**
- * DRAFT v3 (after Astra review 03) — the deterministic reward engine (docs/protocol/REWARD-PROTOCOL.md §5–§9).
+ * DRAFT v4 (budget-based execution rewards, D49; after Astra review 03) — the deterministic reward engine
+ * (docs/protocol/REWARD-PROTOCOL.md). Pure, integer-only (bigint), no clock, no I/O. Same inputs, byte-identical outputs.
  *
- * Pure, integer-only (bigint), no clock, no I/O. Same inputs, byte-identical outputs. The rewards package calls this
- * code; tools/tokenomics-sim uses it for every simulated epoch.
+ * D49: every commissioned task (build unit, planning, human review, audit, resolution) carries a reward BUDGET in ACU
+ * fixed before work starts. When the task is issued, budget x the epoch's issuance rate (WOS per ACU, decaying) is
+ * RESERVED from that epoch's task capacity; a task that does not fit is not issued (reservation at issuance — never
+ * proportional scaling). Acceptance pays exactly the reserved amount, split by the declared shares; token usage is
+ * telemetry and never changes a payout. Outcome contributions (proposals, bugs) keep weights in their own slice.
  *
- * Conserved funding equation (Astra-01 item 4, Astra-02 H1), with every balance non-negative:
+ * Conserved funding equation, every balance non-negative:
  *
- *     R + ΣP + S + I = emissionReserve,   R, P_k, S, I >= 0,   Σ holdback tranches <= I
+ *     R + ΣP + S + ΣQ + I = emissionReserve,   Σ claimable + Σ holdback <= I
  *
- * R remaining reserve, P completion pools, S security reserve, I issued to beneficiaries (released, held back, or
- * final-but-unclaimed). `computeEpoch` asserts it on its input and on its output. A3-10: the state also tracks WHO owns
- * the claimable part of I (`claimable`, per beneficiary) and each holdback tranche (with its pinned maturity and policy),
- * so every movement out of I names an owner with a balance, and Σ claimable + Σ holdback <= I:
- *   returns          identified transfers back to R: an expired unbound entitlement (from that beneficiary's claimable
- *                    balance), a cancelled pool (from P), a forfeited holdback on exit (from that beneficiary's tranches)
- *   corrections      completion accrual attributed to work later clipped or revoked: the part still in the pool returns
- *                    from P; the part already paid becomes beneficiary offsets (A3-15)
+ * R remaining reserve, P completion pools, S security reserve, Q budgets reserved for issued tasks, I issued to
+ * beneficiaries. Every movement names its source:
+ *   issuance         R -> Q (task budget x issuance rate, within the epoch's capacity for that task kind)
+ *   acceptance       Q -> I (the whole reservation, split by declared shares; holdback applies)
+ *   release/expiry   Q -> R (failed, abandoned or expired tasks; a re-issued task is re-priced)
+ *   returns          identified transfers back to R: an expired unbound entitlement (from the owner's claimable
+ *                    balance), a cancelled pool (from P), a forfeited holdback (from the owner's tranches)
+ *   corrections      completion accrual attributed to work later clipped or revoked: pool part from P, the already
+ *                    paid part as beneficiary offsets
  *   disputes         escrowed excess of a clipped/revoked allocation (from I, never released); bounty <= bountyBp x recovered
- *   confiscations    proven cheating (D39): COMPENSATORY only — holdback + unclaimed recovered never exceed the proven
- *                    excess (A3-4); bounty from the recovered amount only; any unrecovered proven excess becomes an offset
- *   claims           settled leaves leave the claimable balance (I is unchanged: the tokens are issued and delivered)
- *   write-offs       an uncollectable offset becomes a loss absorbed by later budgets (bounded per epoch, D-H4b)
+ *   confiscations    COMPENSATORY only: holdback + unclaimed recovered never exceed the proven excess
+ *   claims           settled leaves leave the claimable balance (I unchanged)
+ *   write-offs       an uncollectable offset becomes a loss absorbed by later budgets (bounded per epoch)
  * Every event id may be consumed once: duplicates inside an input, or ids in `consumedIds` (REQUIRED replay state), are refused.
  */
-import type { DistributingSlice } from "./entities.js";
 
 export const MICRO = 1_000_000n;
 export const BP = 10_000n;
@@ -69,7 +72,7 @@ export function largestRemainder(total: bigint, weights: ReadonlyArray<{ key: st
   return out;
 }
 
-/** micro-ACU of a run: floor(sum(tokens x micro-ACU-per-million) / 1e6). Categories are mutually exclusive. */
+/** micro-ACU of a run: floor(sum(tokens x micro-ACU-per-million) / 1e6). TELEMETRY since D49 (cap enforcement, budget calibration). */
 export function acuMicroFromUsage(
   usage: { inputTokens: number; cachedInputTokens: number; cacheWriteInputTokens: number; outputTokens: number },
   rate: { inputPerM: number; cachedInputPerM: number; cacheWritePerM: number; outputPerM: number },
@@ -82,7 +85,7 @@ export function acuMicroFromUsage(
   return t / MICRO;
 }
 
-/** Eligible weight of an execution contribution: min(attested, cap). Reward clipping, enforceable server-side. */
+/** min(observed, cap): the execution-stop check on telemetry (D49: usage never sets a payout). */
 export function clipToCap(attestedMicro: bigint, capMicro: bigint): bigint {
   return attestedMicro < capMicro ? attestedMicro : capMicro;
 }
@@ -103,24 +106,29 @@ export function epochBudget(remainingReserve: bigint, budgetPpm: bigint): bigint
 
 export type CompletionComponent = "implementers" | "contractAuthors" | "roadmapAuthors" | "reviewers" | "finder";
 
+/** D49: the task kinds that are commissioned with a budget; their slices form one pooled task capacity per epoch. */
+export const TASK_SLICES = ["execution", "planning", "human_review"] as const;
+export type TaskSlice = (typeof TASK_SLICES)[number];
+
 export interface EngineParams {
   emissionReserve: bigint;
   budgetPpm: bigint;
+  /** D49: the issuance rate (base units per ACU of budget) of epoch 1, decaying; fixed for a task at its issuance. */
   rateCeilingInitialBasePerAcu: bigint;
   rateCeilingDecayPpm: bigint;
-  /** Q3 timing damping: the epoch's ceiling is at most this share of the trailing realised rate (0 = off). */
-  maxRateVsTrailingBp: bigint;
-  slicesBp: Record<DistributingSlice | "completion_accrual" | "security_reserve", bigint>;
+  slicesBp: Record<TaskSlice | "outcomes" | "completion_accrual" | "security_reserve", bigint>;
   featurePoolsBp: bigint;
   applicationPoolsBp: bigint;
   completionComponentsBp: Record<CompletionComponent, bigint>;
   securityMaxShareOfReserveBp: bigint;
   maxOffsetRecoveryBp: bigint;
-  /** D40 holdback: this share of each net allocation is held for `holdbackEpochs` epochs. */
+  /** Holdback: this share of each net allocation is held for `holdbackEpochs` epochs (D40, re-sized by D49). */
   holdbackBp: bigint;
   holdbackEpochs: number;
-  /** A3-10: the reward policy version pinned on every new tranche (its maturity never follows a later policy). */
+  /** The reward policy version pinned on every new tranche (its maturity never follows a later policy). */
   holdbackPolicyVersion: string;
+  /** D49: an issued task not accepted within this many epochs is released (Q -> R) and must be re-priced to re-issue. */
+  budgetExpiryEpochs: number;
   /** Bounties are this share of amounts actually RECOVERED (D41). */
   bountyBpOfRecovered: bigint;
   /** At most this share of an epoch's budget absorbs unrecovered losses (D41); the rest carries forward. */
@@ -131,18 +139,29 @@ export interface HoldbackTranche {
   beneficiaryId: string;
   epochNumber: number;
   amount: bigint;
-  /** A3-10: fixed when the tranche is created (epoch + the holdback epochs of the policy then in force). */
+  /** Fixed when the tranche is created (epoch + the holdback epochs of the policy then in force). */
   maturesAtEpoch: number;
   policyVersion: string;
+}
+
+/** D49: a budget reserved for an issued task. */
+export interface Reservation {
+  kind: TaskSlice;
+  budgetAcuMicro: bigint;
+  amount: bigint;
+  issuedEpoch: number;
+  expiresAtEpoch: number;
 }
 
 export interface EngineState {
   remainingReserve: bigint;
   poolBalances: ReadonlyMap<string, bigint>;
   securityReserve: bigint;
+  /** D49: Q — budgets reserved for issued, not yet accepted or released tasks. */
+  reserved: ReadonlyMap<string, Reservation>;
   cumulativeIssued: bigint;
   holdback: readonly HoldbackTranche[];
-  /** A3-10: released (or matured, or bounty) but not yet claimed, per beneficiary: the only source of unclaimed returns. */
+  /** Released (or matured, or bounty) but not yet claimed, per beneficiary: the only source of unclaimed returns. */
   claimable: ReadonlyMap<string, bigint>;
   /** Outstanding offsets per beneficiary (proven excess not yet recovered). */
   offsets: ReadonlyMap<string, bigint>;
@@ -150,22 +169,40 @@ export interface EngineState {
   lossCarry: bigint;
 }
 
+/** An OUTCOME contribution (proposal incorporated, bug fixed): weight competes in the outcomes slice. */
 export interface EngineReceipt {
   receiptId: string;
   /** The contributor (the accountable person). */
   accountId: string;
   /** D38: who receives it. Shares in bp summing to 10000; default [{ beneficiaryId: accountId, shareBp: 10000 }]. */
   beneficiaries?: ReadonlyArray<{ beneficiaryId: string; shareBp: number }>;
-  slice: DistributingSlice;
+  slice: "outcomes";
   weightMicro: bigint;
+}
+
+/** D49: a task issued this epoch, in the scheduler's priority order. Pool keys are known at issuance. */
+export interface TaskIssuance {
+  taskId: string;
+  kind: TaskSlice;
+  budgetAcuMicro: bigint;
   featurePoolKeys: readonly string[];
   applicationPoolKeys: readonly string[];
+}
+
+/**
+ * D49: acceptance of an issued task. R_ij = B_i x a_i x s_ij with a_i = 1 (binary acceptance; no quality factor in
+ * V1). Shares are declared by the collaborators and sum to 10000 bp; beneficiaries follow each contributor's
+ * sponsorship split. The whole reservation is paid, whatever tokens were used.
+ */
+export interface TaskAcceptance {
+  taskId: string;
+  shares: ReadonlyArray<{ accountId: string; beneficiaryId: string; shareBp: number }>;
 }
 
 export interface PoolPayout {
   id: string;
   poolKey: string;
-  /** H13: feature pools split by components; application pools pay 100% by lifetime weight. */
+  /** Feature pools split by components; application pools pay 100% by lifetime weight. */
   kind: "feature" | "application";
   beneficiaries: ReadonlyArray<{ beneficiaryId: string; component: CompletionComponent | "lifetime"; weight: bigint }>;
 }
@@ -183,16 +220,23 @@ export interface Bounty {
 export interface EpochInput {
   epochNumber: number;
   state: EngineState;
-  /** A3-10: ids consumed by earlier epochs (replay state, REQUIRED); the database enforces the same with unique keys. */
+  /** Ids consumed by earlier epochs (replay state, REQUIRED); the database enforces the same with unique keys. */
   consumedIds: ReadonlySet<string>;
-  /** Published trailing realised execution rate (base units per ACU), for the Q3 damping. */
-  trailingRateBasePerAcu?: bigint;
-  receipts: readonly EngineReceipt[];
-  returns?: readonly EngineReturn[];
   /**
-   * A3-15: `amount` is the part still in the pool (returned to R); `recoverFromPaid` is the part the pool already paid,
-   * attributed to the beneficiaries who received it, which becomes their offsets (recovered from later gross).
+   * D49: the published demand forecast (micro-ACU of task budgets requested last epoch). The issuance rate is
+   * min(rate ceiling, task capacity / forecast), announced before issuance and fixed per task: it falls ex ante with
+   * participation, so the capacity is used without ever scaling an accepted budget afterwards.
    */
+  demandForecastAcuMicro?: bigint;
+  /** D49: tasks to issue this epoch, in priority order; those that do not fit the pooled task capacity are returned as unfunded. */
+  issuances?: readonly TaskIssuance[];
+  acceptances?: readonly TaskAcceptance[];
+  /** D49: failed, abandoned or cancelled tasks: their reservation returns to R. */
+  releases?: ReadonlyArray<{ taskId: string }>;
+  /** Outcome contributions only. */
+  receipts?: readonly EngineReceipt[];
+  returns?: readonly EngineReturn[];
+  /** `amount` is still in the pool (returned to R); `recoverFromPaid` was already paid and becomes offsets. */
   accrualCorrections?: ReadonlyArray<{
     id: string;
     poolKey: string;
@@ -220,24 +264,24 @@ export interface EpochInput {
 
 export interface AllocationLine {
   beneficiaryId: string;
-  /** The contributor of the receipt (null for bounties). */
+  /** The contributor (null for pool, security and bounty lines). */
   accountId: string | null;
+  /** The accepted task (task slices) or the outcome receipt. */
   receiptId: string | null;
-  slice: DistributingSlice | "completion_payout" | "security_payout" | "dispute_bounty" | "recovery_bounty";
+  slice: TaskSlice | "outcomes" | "completion_payout" | "security_payout" | "dispute_bounty" | "recovery_bounty";
   poolKey: string | null;
   component: string | null;
+  /** Task slices: the task budget in micro-ACU (display); outcomes: the weight. */
   weightMicro: bigint;
   amountBase: bigint;
 }
 
 export interface Entitlement {
   beneficiaryId: string;
-  /** Gross allocated this epoch (lines), offsets recovered from it, and the split into now / held. */
   gross: bigint;
   offsetRecovered: bigint;
   releasedNow: bigint;
   heldBack: bigint;
-  /** Holdback tranches that matured this epoch (released now as well). */
   maturedHoldback: bigint;
 }
 
@@ -245,10 +289,19 @@ export interface EpochResult {
   epochNumber: number;
   budget: bigint;
   absorbedLoss: bigint;
+  /** D49: the issuance rate (base units per ACU of budget) for tasks issued this epoch. */
   rateCeilingBasePerAcu: bigint;
   slices: Record<string, bigint>;
-  emittedBySlice: Record<DistributingSlice, bigint>;
-  weightBySlice: Record<DistributingSlice, bigint>;
+  /** Capacity per task slice, what was reserved from it, and the tasks that did not fit (not issued). */
+  taskCapacity: Record<TaskSlice, bigint>;
+  reservedBySlice: Record<TaskSlice, bigint>;
+  funded: string[];
+  unfunded: string[];
+  /** Paid on acceptance this epoch (Q -> I), and released or expired (Q -> R). */
+  acceptedBase: bigint;
+  releasedBase: bigint;
+  expired: string[];
+  outcomesEmitted: bigint;
   returnedToReserve: bigint;
   accruals: Map<string, bigint>;
   securityAccrual: bigint;
@@ -258,15 +311,19 @@ export interface EpochResult {
   state: EngineState;
 }
 
-const DIST: readonly DistributingSlice[] = ["execution", "planning", "human_review", "outcomes"];
-
 function sumMap(m: ReadonlyMap<string, bigint>): bigint {
   let s = 0n;
   for (const v of m.values()) s += v;
   return s;
 }
 
-/** H1: equality AND non-negative balances AND holdback within issuance. Throws on any violation. */
+function reservedTotal(m: ReadonlyMap<string, Reservation>): bigint {
+  let s = 0n;
+  for (const v of m.values()) s += v.amount;
+  return s;
+}
+
+/** Equality AND non-negative balances AND claimable + holdback within issuance. Throws on any violation. */
 export function assertConserved(emissionReserve: bigint, s: EngineState): void {
   if (s.remainingReserve < 0n) throw new EngineError(`negative reserve ${s.remainingReserve}`);
   if (s.securityReserve < 0n) throw new EngineError(`negative security reserve ${s.securityReserve}`);
@@ -274,6 +331,7 @@ export function assertConserved(emissionReserve: bigint, s: EngineState): void {
   if (s.lossCarry < 0n) throw new EngineError("negative loss carry");
   for (const [k, v] of s.poolBalances) if (v < 0n) throw new EngineError(`negative pool ${k}`);
   for (const [k, v] of s.offsets) if (v < 0n) throw new EngineError(`negative offset ${k}`);
+  for (const [k, v] of s.reserved) if (v.amount < 0n) throw new EngineError(`negative reservation ${k}`);
   for (const [k, v] of s.claimable) if (v < 0n) throw new EngineError(`negative claimable balance ${k}`);
   let held = 0n;
   for (const t of s.holdback) {
@@ -281,7 +339,7 @@ export function assertConserved(emissionReserve: bigint, s: EngineState): void {
     held += t.amount;
   }
   if (held + sumMap(s.claimable) > s.cumulativeIssued) throw new EngineError("holdback and claimable balances exceed issuance");
-  const total = s.remainingReserve + sumMap(s.poolBalances) + s.securityReserve + s.cumulativeIssued;
+  const total = s.remainingReserve + sumMap(s.poolBalances) + s.securityReserve + reservedTotal(s.reserved) + s.cumulativeIssued;
   if (total !== emissionReserve) throw new EngineError(`funding equation broken: ${total} != ${emissionReserve}`);
 }
 
@@ -291,12 +349,18 @@ export function initialState(emissionReserve: bigint): EngineState {
     remainingReserve: emissionReserve,
     poolBalances: new Map(),
     securityReserve: 0n,
+    reserved: new Map(),
     cumulativeIssued: 0n,
     holdback: [],
     claimable: new Map(),
     offsets: new Map(),
     lossCarry: 0n,
   };
+}
+
+/** D49: the base units a budget reserves at issuance: floor(budget micro-ACU x rate / 1e6). */
+export function budgetToBase(budgetAcuMicro: bigint, ratePerAcu: bigint): bigint {
+  return (budgetAcuMicro * ratePerAcu) / MICRO;
 }
 
 // ------------------------------------------------------------------------------------------------ epoch
@@ -309,16 +373,6 @@ function beneficiariesOf(r: EngineReceipt): ReadonlyArray<{ beneficiaryId: strin
   return b;
 }
 
-/** Splits a receipt's weight across its beneficiaries exactly (largest remainder, so nothing is lost). */
-function splitWeight(r: EngineReceipt): Map<string, bigint> {
-  const b = beneficiariesOf(r);
-  if (b.length === 1) return new Map([[b[0]!.beneficiaryId, r.weightMicro]]);
-  return largestRemainder(
-    r.weightMicro,
-    b.map((x) => ({ key: x.beneficiaryId, weight: BigInt(x.shareBp) })),
-  );
-}
-
 export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
   const sliceBpSum = Object.values(p.slicesBp).reduce((s, v) => s + v, 0n);
   if (sliceBpSum !== BP) throw new EngineError(`slices must sum to 10000 bp, got ${sliceBpSum}`);
@@ -327,15 +381,17 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
   if (compSum !== BP) throw new EngineError("completion components must sum to 10000 bp");
   assertConserved(p.emissionReserve, input.state);
 
-  // Every event id is consumed at most once (H1 replay).
   const consumed: string[] = [];
   const seen = new Set<string>();
   const consume = (id: string, what: string) => {
-    if (seen.has(id) || input.consumedIds?.has(id)) throw new EngineError(`${what} ${id} consumed twice`);
+    if (seen.has(id) || input.consumedIds.has(id)) throw new EngineError(`${what} ${id} consumed twice`);
     seen.add(id);
     consumed.push(id);
   };
-  for (const r of input.receipts) {
+  const receipts = input.receipts ?? [];
+  for (const r of receipts) {
+    if (r.slice !== "outcomes")
+      throw new EngineError(`${r.receiptId}: execution, planning and human review are budgeted tasks (issuances/acceptances), not weights`);
     consume(`receipt:${r.receiptId}`, "receipt");
     if (r.weightMicro < 0n) throw new EngineError(`negative weight on ${r.receiptId}`);
   }
@@ -343,22 +399,22 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
   let R = input.state.remainingReserve;
   const pools = new Map(input.state.poolBalances);
   let S = input.state.securityReserve;
+  const reserved = new Map(input.state.reserved);
   let I = input.state.cumulativeIssued;
   let tranches = input.state.holdback.map((t) => ({ ...t }));
   const claimable = new Map(input.state.claimable);
   const offsets = new Map(input.state.offsets);
-  const debitClaimable = (beneficiaryId: string, amount: bigint, why: string) => {
-    const have = claimable.get(beneficiaryId) ?? 0n;
-    if (amount > have) throw new EngineError(`${why}: ${beneficiaryId} has only ${have} claimable, not ${amount}`);
-    claimable.set(beneficiaryId, have - amount);
-  };
   let lossCarry = input.state.lossCarry;
   let returned = 0n;
   const gross = new Map<string, bigint>();
   const bountyGross = new Map<string, bigint>();
   const allocations: AllocationLine[] = [];
   const addGross = (m: Map<string, bigint>, b: string, a: bigint) => m.set(b, (m.get(b) ?? 0n) + a);
-
+  const debitClaimable = (beneficiaryId: string, amount: bigint, why: string) => {
+    const have = claimable.get(beneficiaryId) ?? 0n;
+    if (amount > have) throw new EngineError(`${why}: ${beneficiaryId} has only ${have} claimable, not ${amount}`);
+    claimable.set(beneficiaryId, have - amount);
+  };
   const takeHoldback = (beneficiaryId: string, amount: bigint, why: string) => {
     let need = amount;
     const mine = tranches.filter((t) => t.beneficiaryId === beneficiaryId).sort((a, b) => a.epochNumber - b.epochNumber);
@@ -393,7 +449,7 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
     return paid;
   };
 
-  // 1. Identified returns and accrual corrections.
+  // 1. Identified returns, accrual corrections and claims.
   for (const r of input.returns ?? []) {
     consume(r.id, "return");
     if (r.amount <= 0n) throw new EngineError(`return ${r.id} must be positive`);
@@ -431,7 +487,7 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
     debitClaimable(c.beneficiaryId, c.amount, `claim ${c.id}`);
   }
 
-  // 2. Confiscations (D39): consume identified holdback and unclaimed amounts exactly once; bounty from recovered only.
+  // 2. Confiscations (D39): compensatory; bounty from recovered only.
   for (const c of [...(input.confiscations ?? [])].sort((a, b) => cmp(a.id, b.id))) {
     consume(c.id, "confiscation");
     if (c.holdbackBase < 0n || c.unclaimedBase < 0n || c.provenExcessBase < 0n) throw new EngineError(`negative amounts in ${c.id}`);
@@ -472,59 +528,130 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
     lossCarry += w.amount;
   }
 
-  // 5. Budget, minus the bounded loss absorption (D41: unrecovered fraud reduces this epoch's pool).
+  // 5. Acceptances (D49): Q -> gross, split by declared shares (largest remainder per task, exact).
+  let acceptedBase = 0n;
+  for (const a of input.acceptances ?? []) {
+    consume(`accept:${a.taskId}`, "acceptance");
+    const res = reserved.get(a.taskId);
+    if (!res) throw new EngineError(`task ${a.taskId} has no reservation (not issued, already accepted, released or expired)`);
+    const shareSum = a.shares.reduce((t, x) => t + x.shareBp, 0);
+    if (shareSum !== 10_000 || a.shares.some((x) => !Number.isInteger(x.shareBp) || x.shareBp <= 0))
+      throw new EngineError(`declared shares of ${a.taskId} must be positive and sum to 10000`);
+    const keys = a.shares.map((x) => `${x.beneficiaryId}\u0000${x.accountId}`);
+    if (new Set(keys).size !== keys.length) throw new EngineError(`duplicate share line in ${a.taskId}`);
+    reserved.delete(a.taskId);
+    acceptedBase += res.amount;
+    const split = largestRemainder(
+      res.amount,
+      a.shares.map((x, i) => ({ key: keys[i]!, weight: BigInt(x.shareBp) })),
+    );
+    a.shares.forEach((x, i) => {
+      const amount = split.get(keys[i]!) ?? 0n;
+      allocations.push({
+        beneficiaryId: x.beneficiaryId,
+        accountId: x.accountId,
+        receiptId: a.taskId,
+        slice: res.kind,
+        poolKey: null,
+        component: null,
+        weightMicro: (res.budgetAcuMicro * BigInt(x.shareBp)) / BP,
+        amountBase: amount,
+      });
+      addGross(gross, x.beneficiaryId, amount);
+    });
+  }
+
+  // 6. Releases and expiry (D49): Q -> R.
+  let releasedBase = 0n;
+  const expired: string[] = [];
+  for (const r of input.releases ?? []) {
+    consume(`release:${r.taskId}`, "release");
+    const res = reserved.get(r.taskId);
+    if (!res) throw new EngineError(`task ${r.taskId} has no reservation to release`);
+    reserved.delete(r.taskId);
+    R += res.amount;
+    returned += res.amount;
+    releasedBase += res.amount;
+  }
+  for (const [taskId, res] of [...reserved].sort((a, b) => cmp(a[0], b[0]))) {
+    if (res.expiresAtEpoch <= input.epochNumber) {
+      reserved.delete(taskId);
+      R += res.amount;
+      returned += res.amount;
+      releasedBase += res.amount;
+      expired.push(taskId);
+    }
+  }
+
+  // 7. Budget, minus the bounded loss absorption (D41).
   const fullBudget = epochBudget(R, p.budgetPpm);
   const absorbCap = (fullBudget * p.lossAbsorptionMaxBp) / BP;
   const absorbedLoss = lossCarry < absorbCap ? lossCarry : absorbCap;
   lossCarry -= absorbedLoss;
   const budget = fullBudget - absorbedLoss;
-  R -= budget;
-  let ceiling = rateCeiling(p.rateCeilingInitialBasePerAcu, p.rateCeilingDecayPpm, input.epochNumber);
-  if (p.maxRateVsTrailingBp > 0n && input.trailingRateBasePerAcu && input.trailingRateBasePerAcu > 0n) {
-    const damped = (input.trailingRateBasePerAcu * p.maxRateVsTrailingBp) / BP;
-    if (damped < ceiling) ceiling = damped;
-  }
   const slices = Object.fromEntries(
     largestRemainder(
       budget,
       Object.entries(p.slicesBp).map(([key, weight]) => ({ key, weight })),
     ),
   ) as Record<string, bigint>;
+  const ceiling = rateCeiling(p.rateCeilingInitialBasePerAcu, p.rateCeilingDecayPpm, input.epochNumber);
+  const capacityAll = TASK_SLICES.reduce((t, k) => t + (slices[k] ?? 0n), 0n);
+  const forecast = input.demandForecastAcuMicro ?? 0n;
+  if (forecast < 0n) throw new EngineError("negative demand forecast");
+  const byDemand = forecast > 0n ? (capacityAll * MICRO) / forecast : ceiling;
+  const rate = byDemand < ceiling ? byDemand : ceiling;
 
-  const weightBySlice = Object.fromEntries(DIST.map((s) => [s, 0n])) as Record<DistributingSlice, bigint>;
-  for (const r of input.receipts) weightBySlice[r.slice] += r.weightMicro;
-  const totalWeight = DIST.reduce((s, k) => s + weightBySlice[k], 0n);
-
-  // 6. Distributing slices, rounded at BENEFICIARY level first (L18), then apportioned across that beneficiary's lines.
-  const emittedBySlice = Object.fromEntries(DIST.map((s) => [s, 0n])) as Record<DistributingSlice, bigint>;
-  for (const slice of DIST) {
-    const slice$ = slices[slice] ?? 0n;
-    const w = weightBySlice[slice];
-    const cap = (w * ceiling) / MICRO;
-    const emit = w === 0n ? 0n : slice$ < cap ? slice$ : cap;
-    emittedBySlice[slice] = emit;
-    R += slice$ - emit;
-    returned += slice$ - emit;
-    if (emit === 0n) continue;
-    // L16 (A3-16): each line carries its EXACT share numerator weight x shareBp; nothing is rounded before the
-    // beneficiary totals, so splitting a sponsored receipt cannot move base units between beneficiaries.
-    const lines = new Map<string, { beneficiaryId: string; receipt: EngineReceipt; num: bigint; display: bigint }[]>();
-    for (const r of input.receipts) {
-      if (r.slice !== slice) continue;
-      const display = splitWeight(r);
-      for (const x of beneficiariesOf(r))
-        lines.set(x.beneficiaryId, [
-          ...(lines.get(x.beneficiaryId) ?? []),
-          {
-            beneficiaryId: x.beneficiaryId,
-            receipt: r,
-            num: r.weightMicro * BigInt(x.shareBp),
-            display: display.get(x.beneficiaryId) ?? 0n,
-          },
-        ]);
+  // 8. Issuance (D49): reservation at issuance, in priority order, within the epoch's TASK CAPACITY (the execution,
+  //    planning and human-review slices pooled, so one ACU of budget costs the same whatever the task kind). A task
+  //    that does not fit is NOT issued (never scaled). Unused capacity simply stays in R.
+  const taskCapacity = Object.fromEntries(TASK_SLICES.map((k) => [k, slices[k] ?? 0n])) as Record<TaskSlice, bigint>;
+  const reservedBySlice = Object.fromEntries(TASK_SLICES.map((k) => [k, 0n])) as Record<TaskSlice, bigint>;
+  const funded: string[] = [];
+  const unfunded: string[] = [];
+  let reservedTotal$ = 0n;
+  const fundedIssuances: { iss: TaskIssuance; amount: bigint }[] = [];
+  for (const iss of input.issuances ?? []) {
+    consume(`task:${iss.taskId}`, "task issuance");
+    if (!TASK_SLICES.includes(iss.kind)) throw new EngineError(`task ${iss.taskId}: unknown kind ${iss.kind}`);
+    if (iss.budgetAcuMicro <= 0n) throw new EngineError(`task ${iss.taskId} needs a positive budget`);
+    const amount = budgetToBase(iss.budgetAcuMicro, rate);
+    if (amount === 0n || reservedTotal$ + amount > capacityAll) {
+      unfunded.push(iss.taskId);
+      continue;
     }
+    reservedBySlice[iss.kind] += amount;
+    reservedTotal$ += amount;
+    R -= amount;
+    reserved.set(iss.taskId, {
+      kind: iss.kind,
+      budgetAcuMicro: iss.budgetAcuMicro,
+      amount,
+      issuedEpoch: input.epochNumber,
+      expiresAtEpoch: input.epochNumber + p.budgetExpiryEpochs,
+    });
+    funded.push(iss.taskId);
+    fundedIssuances.push({ iss, amount });
+  }
+  const capacityTotal = TASK_SLICES.reduce((t, k) => t + taskCapacity[k], 0n);
+  const reservedNow = TASK_SLICES.reduce((t, k) => t + reservedBySlice[k], 0n);
+  returned += capacityTotal - reservedNow; // not taken from R: reported as returned for comparability
+
+  // 9. Outcomes slice: weights compete, at most `rate` per ACU-equivalent; exact share numerators per beneficiary.
+  const outcomes$ = slices.outcomes ?? 0n;
+  R -= outcomes$;
+  const outW = receipts.reduce((t, r) => t + r.weightMicro, 0n);
+  const outCap = (outW * rate) / MICRO;
+  const outcomesEmitted = outW === 0n ? 0n : outcomes$ < outCap ? outcomes$ : outCap;
+  R += outcomes$ - outcomesEmitted;
+  returned += outcomes$ - outcomesEmitted;
+  if (outcomesEmitted > 0n) {
+    const lines = new Map<string, { receipt: EngineReceipt; num: bigint }[]>();
+    for (const r of receipts)
+      for (const x of beneficiariesOf(r))
+        lines.set(x.beneficiaryId, [...(lines.get(x.beneficiaryId) ?? []), { receipt: r, num: r.weightMicro * BigInt(x.shareBp) }]);
     const byBeneficiary = largestRemainder(
-      emit,
+      outcomesEmitted,
       [...lines].map(([key, ls]) => ({ key, weight: ls.reduce((t, l) => t + l.num, 0n) })),
     );
     for (const [b, amount] of byBeneficiary) {
@@ -536,43 +663,42 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
               amount,
               ls.map((l) => ({ key: l.receipt.receiptId, weight: l.num })),
             );
-      for (const l of ls) {
+      for (const l of ls)
         allocations.push({
           beneficiaryId: b,
           accountId: l.receipt.accountId,
           receiptId: l.receipt.receiptId,
-          slice,
+          slice: "outcomes",
           poolKey: null,
           component: null,
-          weightMicro: l.display,
+          weightMicro: l.num / BP,
           amountBase: perLine.get(l.receipt.receiptId) ?? 0n,
         });
-      }
       addGross(gross, b, amount);
     }
   }
 
-  // 7. Accrual slices scale with utilisation; an empty epoch accrues nothing.
+  // 10. Accrual slices scale with utilisation of the funded slices; attributed to the pools of tasks issued now.
   const accruals = new Map<string, bigint>();
-  const distSlices = DIST.reduce((t, k) => t + (slices[k] ?? 0n), 0n);
-  const distEmitted = DIST.reduce((t, k) => t + emittedBySlice[k], 0n);
-  const scale = (x: bigint) => (distSlices === 0n ? 0n : (x * distEmitted) / distSlices);
+  const fundable = capacityTotal + outcomes$;
+  const used = reservedNow + outcomesEmitted;
+  const scale = (x: bigint) => (fundable === 0n ? 0n : (x * used) / fundable);
   const completionSlice = slices.completion_accrual ?? 0n;
   const securitySlice = slices.security_reserve ?? 0n;
-  const completion$ = totalWeight === 0n ? 0n : scale(completionSlice);
-  const security$ = totalWeight === 0n ? 0n : scale(securitySlice);
-  R += completionSlice - completion$ + (securitySlice - security$);
+  const completion$ = scale(completionSlice);
+  const security$ = scale(securitySlice);
+  R -= completion$ + security$;
   returned += completionSlice - completion$ + (securitySlice - security$);
   let securityAccrual = 0n;
-  if (totalWeight > 0n) {
+  if (used > 0n) {
     const feature$ = (completion$ * p.featurePoolsBp) / BP;
-    const accrue = (amount: bigint, keysOf: (r: EngineReceipt) => readonly string[]) => {
+    const accrue = (amount: bigint, keysOf: (i: TaskIssuance) => readonly string[]) => {
       const kw = new Map<string, bigint>();
-      for (const r of input.receipts) {
-        if (r.slice !== "execution") continue;
-        const keys = [...new Set(keysOf(r))];
+      for (const { iss, amount: a } of fundedIssuances) {
+        if (iss.kind !== "execution") continue;
+        const keys = [...new Set(keysOf(iss))];
         if (keys.length === 0) continue;
-        const each = (r.weightMicro * SHARE_SCALE) / BigInt(keys.length);
+        const each = (a * SHARE_SCALE) / BigInt(keys.length);
         for (const k of keys) kw.set(k, (kw.get(k) ?? 0n) + each);
       }
       if (kw.size === 0 || sumMap(kw) === 0n) {
@@ -588,13 +714,15 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
         pools.set(k, (pools.get(k) ?? 0n) + v);
       }
     };
-    accrue(feature$, (r) => r.featurePoolKeys);
-    accrue(completion$ - feature$, (r) => r.applicationPoolKeys);
+    accrue(feature$, (i) => i.featurePoolKeys);
+    accrue(completion$ - feature$, (i) => i.applicationPoolKeys);
     S += security$;
     securityAccrual = security$;
+  } else {
+    R += completion$ + security$;
   }
 
-  // 8. Completion pool payouts (H13: application pools pay 100% by lifetime weight).
+  // 11. Completion pool payouts (application pools pay 100% by lifetime weight).
   for (const payout of [...(input.poolPayouts ?? [])].sort((a, b) => cmp(a.poolKey, b.poolKey))) {
     consume(payout.id, "pool payout");
     const bal = pools.get(payout.poolKey) ?? 0n;
@@ -643,9 +771,7 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
     }
   }
 
-  // 9. Security payouts: weight x realised execution rate, each capped at a share of the remaining reserve balance.
-  const execW = weightBySlice.execution;
-  const rate = execW > 0n ? (emittedBySlice.execution * MICRO) / execW : ceiling;
+  // 12. Security payouts: weight x the issuance rate, each capped at a share of the security reserve.
   for (const sp of [...(input.securityPayouts ?? [])].sort((a, b) => cmp(a.id, b.id))) {
     consume(sp.id, "security payout");
     consume(`security-receipt:${sp.receiptId}`, "security receipt");
@@ -667,8 +793,7 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
     addGross(gross, sp.beneficiaryId, pay);
   }
 
-  // 10. Offsets recovered from this epoch's gross (<= maxOffsetRecoveryBp); recovered amounts return to R.
-  //     11. Holdback: the net is split into released-now and a new tranche; mature tranches are released.
+  // 13. Offsets recovered from this epoch's gross; holdback split; mature tranches released.
   const entitlements = new Map<string, Entitlement>();
   const keys = [...new Set([...gross.keys(), ...bountyGross.keys(), ...tranches.map((t) => t.beneficiaryId)])].sort(cmp);
   const matured = new Map<string, bigint>();
@@ -721,12 +846,14 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
       cmp(a.beneficiaryId, b.beneficiaryId) ||
       cmp(a.slice, b.slice) ||
       cmp(a.receiptId ?? "", b.receiptId ?? "") ||
+      cmp(a.accountId ?? "", b.accountId ?? "") ||
       cmp(a.poolKey ?? "", b.poolKey ?? ""),
   );
   const state: EngineState = {
     remainingReserve: R,
     poolBalances: pools,
     securityReserve: S,
+    reserved,
     cumulativeIssued: I,
     holdback: tranches,
     claimable,
@@ -738,10 +865,16 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
     epochNumber: input.epochNumber,
     budget,
     absorbedLoss,
-    rateCeilingBasePerAcu: ceiling,
+    rateCeilingBasePerAcu: rate,
     slices,
-    emittedBySlice,
-    weightBySlice,
+    taskCapacity,
+    reservedBySlice,
+    funded,
+    unfunded,
+    acceptedBase,
+    releasedBase,
+    expired,
+    outcomesEmitted,
     returnedToReserve: returned,
     accruals,
     securityAccrual,
@@ -759,13 +892,14 @@ export function engineParamsFrom(
     emission: {
       emissionReserveBase: string;
       budgetPpmOfRemaining: number;
-      rateCeiling: { initialBasePerAcu: string; decayPpmPerEpoch: number; maxVsTrailingBp: number };
+      rateCeiling: { initialBasePerAcu: string; decayPpmPerEpoch: number };
     };
-    slicesBp: Record<DistributingSlice | "completion_accrual" | "security_reserve", number>;
+    slicesBp: Record<TaskSlice | "outcomes" | "completion_accrual" | "security_reserve", number>;
     completion: { featurePoolsBp: number; applicationPoolsBp: number };
     security: { maxShareOfReserveBp: number };
     settlement: { maxOffsetRecoveryBp: number };
     holdback: { shareBp: number; epochs: number };
+    budgets: { expiryEpochs: number };
     losses: { bountyBpOfRecovered: number; absorptionMaxBp: number };
   },
   completion: { feature: Record<"implementersBp" | "contractAuthorsBp" | "roadmapAuthorsBp" | "reviewersBp" | "finderBp", number> },
@@ -775,7 +909,6 @@ export function engineParamsFrom(
     budgetPpm: BigInt(reward.emission.budgetPpmOfRemaining),
     rateCeilingInitialBasePerAcu: BigInt(reward.emission.rateCeiling.initialBasePerAcu),
     rateCeilingDecayPpm: BigInt(reward.emission.rateCeiling.decayPpmPerEpoch),
-    maxRateVsTrailingBp: BigInt(reward.emission.rateCeiling.maxVsTrailingBp),
     slicesBp: {
       execution: BigInt(reward.slicesBp.execution),
       planning: BigInt(reward.slicesBp.planning),
@@ -798,6 +931,7 @@ export function engineParamsFrom(
     holdbackBp: BigInt(reward.holdback.shareBp),
     holdbackEpochs: reward.holdback.epochs,
     holdbackPolicyVersion: reward.policyVersion,
+    budgetExpiryEpochs: reward.budgets.expiryEpochs,
     bountyBpOfRecovered: BigInt(reward.losses.bountyBpOfRecovered),
     lossAbsorptionMaxBp: BigInt(reward.losses.absorptionMaxBp),
   };
@@ -805,12 +939,17 @@ export function engineParamsFrom(
 
 // ------------------------------------------------------------------------------------------------ anomaly metrics (D29)
 
+/**
+ * D49: anomaly metrics now compare each accepted task's BUDGET with the peer budgets of comparable tasks (same task
+ * kind, class and size points) — the budget-inflation signal — and, where available, with the task's observed usage
+ * telemetry. `weightMicro` is the task budget; `capMicro` the model budget (deviation cap); `peerP50Micro` the peer median.
+ */
 export interface AnomalyReceipt {
   receiptId: string;
   accountId: string;
   weightMicro: bigint;
   capMicro: bigint;
-  /** Peer P50 of eligible weight for the receipt's comparable key (task kind, class, model, size points). */
+  /** Peer P50 of budgets for the task's comparable key (task kind, class, size points). */
   peerP50Micro: bigint;
   changedLines: number | null;
   peerP50MicroPerLine: bigint | null;
@@ -849,8 +988,8 @@ function isqrt(n: number): number {
 
 /**
  * Deterministic anomaly metrics per account (integers only, reproducible). rankScore puts the strongest evidence of
- * consistent over-claiming first: a skim of +10% on 40 receipts gives consistency ~ +6.3 (sign test) even though no
- * single receipt stands out; a single 3x receipt stands out on medianPeerRatioBp and capSaturationBp.
+ * consistent budget inflation first (D49): budgets +10% above peers on 40 tasks give consistency ~ +6.3 (sign test)
+ * even though no single budget stands out; a single 3x budget stands out on medianPeerRatioBp and capSaturationBp.
  */
 export function anomalyMetrics(receipts: readonly AnomalyReceipt[]): AnomalyRow[] {
   const by = new Map<string, AnomalyReceipt[]>();

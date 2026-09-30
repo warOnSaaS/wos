@@ -45,175 +45,193 @@ Seed 20260929. Policies: reward-policy.v1, review-policy.v1, completion-policy.v
 
 ### S1. 1,000 active contributors, flat
 
-| epoch | active | epoch budget (WOS) | execution emitted (WOS) | WOS per ACU | median contributor WOS/week | contributor zero WOS/week | returned to reserve | issued, % of max supply | pools + security reserve (WOS) | Codex share of execution |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | 1,001 | 3,310,365 | 1,986,219 | 99.32 | 1,442 | 2,979 | 9.9% | 0.24% | 596,263 | 39.6% |
-| 13 | 1,001 | 3,193,311 | 1,915,986 | 95.63 | 1,389 | 2,869 | 10.0% | 3.40% | 4,083,620 | 39.9% |
-| 52 | 1,001 | 2,841,954 | 1,692,156 | 84.37 | 1,225 | 2,531 | 10.7% | 12.80% | 15,316,065 | 40.2% |
-| 104 | 1,001 | 2,438,648 | 1,414,026 | 70.95 | 1,030 | 2,128 | 13.0% | 23.61% | 28,070,159 | 39.6% |
-| 208 | 1,001 | 1,813,961 | 1,011,864 | 50.17 | 729 | 1,504 | 16.3% | 40.57% | 45,622,903 | 39.5% |
-| 520 | 1,001 | 839,028 | 353,231 | 17.74 | 258 | 532 | 36.9% | 69.51% | 48,206,506 | 40.0% |
+| epoch | active | epoch budget (WOS) | execution budgets reserved (WOS) | issuance rate (WOS per ACU of budget) | median contributor WOS/week | contributor zero WOS/week | left in reserve | issued, % of max supply | pools + security reserve (WOS) | Codex share of accepted execution | tasks not issued (over capacity) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 1,001 | 3,310,365 | 1,999,860 | 100.00 | 1,452 | 0 | 9.2% | 0.00% | 601,485 | 0.0% | 0.0% |
+| 13 | 1,001 | 3,192,222 | 1,924,909 | 96.08 | 1,395 | 2,892 | 9.3% | 3.20% | 4,120,166 | 40.2% | 0.0% |
+| 52 | 1,001 | 2,839,061 | 1,692,156 | 84.37 | 1,225 | 2,539 | 10.4% | 12.68% | 15,406,205 | 39.4% | 0.0% |
+| 104 | 1,001 | 2,434,728 | 1,414,026 | 70.95 | 1,030 | 2,135 | 12.7% | 23.55% | 28,192,871 | 40.3% | 0.0% |
+| 208 | 1,001 | 1,808,449 | 1,011,864 | 50.17 | 729 | 1,509 | 15.9% | 40.60% | 45,790,456 | 40.1% | 0.0% |
+| 520 | 1,001 | 831,033 | 353,231 | 17.74 | 258 | 533 | 36.1% | 69.70% | 48,355,300 | 40.3% | 0.0% |
 
 ### S2. 10,000 active, flat
 
-| epoch | active | epoch budget (WOS) | execution emitted (WOS) | WOS per ACU | median contributor WOS/week | contributor zero WOS/week | returned to reserve | issued, % of max supply | pools + security reserve (WOS) | Codex share of execution |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | 10,001 | 3,310,365 | 1,986,219 | 9.95 | 145 | 298 | 0.0% | 0.26% | 662,073 | 39.5% |
-| 13 | 10,001 | 3,187,049 | 1,912,229 | 9.62 | 140 | 288 | 5.6% | 3.58% | 4,307,193 | 40.2% |
-| 52 | 10,001 | 2,818,793 | 1,691,276 | 8.41 | 122 | 252 | 5.5% | 13.43% | 16,108,031 | 40.0% |
-| 104 | 10,001 | 2,393,136 | 1,435,881 | 7.24 | 105 | 217 | 5.6% | 24.83% | 29,615,403 | 39.8% |
-| 208 | 10,001 | 1,724,926 | 1,034,956 | 5.22 | 76 | 156 | 5.6% | 42.97% | 48,457,115 | 40.0% |
-| 520 | 10,001 | 645,916 | 387,550 | 1.95 | 28 | 58 | 5.7% | 74.89% | 52,560,596 | 40.3% |
+| epoch | active | epoch budget (WOS) | execution budgets reserved (WOS) | issuance rate (WOS per ACU of budget) | median contributor WOS/week | contributor zero WOS/week | left in reserve | issued, % of max supply | pools + security reserve (WOS) | Codex share of accepted execution | tasks not issued (over capacity) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 10,001 | 3,310,365 | 2,098,118 | 10.51 | 153 | 0 | 4.7% | 0.00% | 631,038 | 0.0% | 0.0% |
+| 13 | 10,001 | 3,186,571 | 2,019,657 | 10.16 | 148 | 302 | 4.7% | 3.35% | 4,327,126 | 39.4% | 0.0% |
+| 52 | 10,001 | 2,815,326 | 1,784,361 | 8.88 | 129 | 265 | 4.7% | 13.31% | 16,221,768 | 39.7% | 0.0% |
+| 104 | 10,001 | 2,386,723 | 1,512,712 | 7.62 | 111 | 227 | 4.7% | 24.83% | 29,821,416 | 39.8% | 0.0% |
+| 208 | 10,001 | 1,715,335 | 1,087,184 | 5.48 | 80 | 163 | 4.7% | 43.10% | 48,748,114 | 40.0% | 0.0% |
+| 520 | 10,001 | 636,780 | 403,593 | 2.03 | 29 | 60 | 4.7% | 75.11% | 52,678,567 | 40.1% | 0.0% |
 
 ### S3. 100,000 active, flat
 
-| epoch | active | epoch budget (WOS) | execution emitted (WOS) | WOS per ACU | median contributor WOS/week | contributor zero WOS/week | returned to reserve | issued, % of max supply | pools + security reserve (WOS) | Codex share of execution |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | 100,001 | 3,310,365 | 1,986,219 | 0.99 | 14 | 29 | 0.0% | 0.26% | 662,073 | 40.4% |
-| 13 | 100,001 | 3,187,053 | 1,912,231 | 0.96 | 14 | 28 | 5.6% | 3.58% | 4,307,686 | 40.0% |
-| 52 | 100,001 | 2,818,822 | 1,691,293 | 0.85 | 12 | 25 | 5.5% | 13.43% | 16,109,743 | 39.7% |
-| 104 | 100,001 | 2,393,143 | 1,435,886 | 0.72 | 10 | 21 | 5.5% | 24.83% | 29,621,438 | 39.9% |
-| 208 | 100,001 | 1,724,922 | 1,034,953 | 0.52 | 8 | 15 | 5.5% | 42.97% | 48,468,251 | 39.8% |
-| 520 | 100,001 | 645,918 | 387,551 | 0.19 | 3 | 5 | 5.5% | 74.89% | 52,578,009 | 40.4% |
+| epoch | active | epoch budget (WOS) | execution budgets reserved (WOS) | issuance rate (WOS per ACU of budget) | median contributor WOS/week | contributor zero WOS/week | left in reserve | issued, % of max supply | pools + security reserve (WOS) | Codex share of accepted execution | tasks not issued (over capacity) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 100,001 | 3,310,365 | 2,098,117 | 1.05 | 15 | 0 | 4.7% | 0.00% | 631,038 | 0.0% | 0.0% |
+| 13 | 100,001 | 3,186,571 | 2,019,656 | 1.02 | 15 | 30 | 4.7% | 3.35% | 4,328,037 | 39.7% | 0.0% |
+| 52 | 100,001 | 2,815,326 | 1,784,361 | 0.89 | 13 | 27 | 4.7% | 13.31% | 16,225,155 | 40.4% | 0.0% |
+| 104 | 100,001 | 2,386,724 | 1,512,711 | 0.76 | 11 | 22 | 4.7% | 24.83% | 29,827,706 | 40.3% | 0.0% |
+| 208 | 100,001 | 1,715,336 | 1,087,185 | 0.54 | 8 | 16 | 4.7% | 43.10% | 48,758,954 | 40.1% | 0.0% |
+| 520 | 100,001 | 636,782 | 403,592 | 0.20 | 3 | 6 | 4.7% | 75.10% | 52,696,724 | 39.7% | 0.0% |
 
 ### S4. 1,000,000 active, flat
 
-| epoch | active | epoch budget (WOS) | execution emitted (WOS) | WOS per ACU | median contributor WOS/week | contributor zero WOS/week | returned to reserve | issued, % of max supply | pools + security reserve (WOS) | Codex share of execution |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | 1,000,001 | 3,310,365 | 1,986,219 | 0.10 | 1 | 2 | 0.0% | 0.26% | 662,073 | 40.5% |
-| 13 | 1,000,001 | 3,187,064 | 1,912,238 | 0.10 | 1 | 2 | 5.7% | 3.58% | 4,307,213 | 40.8% |
-| 52 | 1,000,001 | 2,818,822 | 1,691,293 | 0.08 | 1 | 2 | 5.6% | 13.43% | 16,109,999 | 40.2% |
-| 104 | 1,000,001 | 2,393,153 | 1,435,891 | 0.07 | 1 | 2 | 5.6% | 24.83% | 29,622,175 | 40.4% |
-| 208 | 1,000,001 | 1,724,932 | 1,034,959 | 0.05 | 1 | 1 | 5.6% | 42.97% | 48,468,874 | 40.3% |
-| 520 | 1,000,001 | 645,930 | 387,558 | 0.02 | 0 | 0 | 5.4% | 74.89% | 52,579,583 | 40.0% |
+| epoch | active | epoch budget (WOS) | execution budgets reserved (WOS) | issuance rate (WOS per ACU of budget) | median contributor WOS/week | contributor zero WOS/week | left in reserve | issued, % of max supply | pools + security reserve (WOS) | Codex share of accepted execution | tasks not issued (over capacity) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 1,000,001 | 3,310,365 | 2,098,103 | 0.10 | 2 | 0 | 4.7% | 0.00% | 631,033 | 0.0% | 0.0% |
+| 13 | 1,000,001 | 3,186,571 | 2,019,645 | 0.10 | 1 | 3 | 4.7% | 3.35% | 4,328,108 | 39.9% | 0.0% |
+| 52 | 1,000,001 | 2,815,328 | 1,784,343 | 0.09 | 1 | 2 | 4.7% | 13.31% | 16,225,427 | 40.6% | 0.0% |
+| 104 | 1,000,001 | 2,386,728 | 1,512,696 | 0.08 | 1 | 2 | 4.7% | 24.83% | 29,828,207 | 40.1% | 0.0% |
+| 208 | 1,000,001 | 1,715,343 | 1,087,182 | 0.05 | 1 | 1 | 4.7% | 43.10% | 48,759,833 | 39.6% | 0.0% |
+| 520 | 1,000,001 | 636,793 | 403,582 | 0.02 | 0 | 0 | 4.7% | 75.10% | 52,698,320 | 40.2% | 0.0% |
 
 ### S5. Extreme growth: 10 to 1,000,000 over ~2 years (logistic)
 
-| epoch | active | epoch budget (WOS) | execution emitted (WOS) | WOS per ACU | median contributor WOS/week | contributor zero WOS/week | returned to reserve | issued, % of max supply | pools + security reserve (WOS) | Codex share of execution |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | 852 | 3,310,365 | 1,706,809 | 100.00 | 1,452 | 3,000 | 22.7% | 0.20% | 512,042 | 40.0% |
-| 13 | 3,551 | 3,189,822 | 1,913,893 | 27.04 | 393 | 811 | 3.7% | 3.51% | 4,234,740 | 39.9% |
-| 52 | 276,886 | 2,814,651 | 1,688,791 | 0.30 | 4 | 9 | 3.8% | 13.54% | 16,254,044 | 40.2% |
-| 104 | 994,934 | 2,386,608 | 1,431,965 | 0.07 | 1 | 2 | 5.6% | 25.01% | 29,810,403 | 39.6% |
-| 208 | 1,000,001 | 1,720,219 | 1,032,131 | 0.05 | 1 | 1 | 5.6% | 43.10% | 48,604,804 | 39.6% |
-| 520 | 1,000,001 | 644,163 | 386,498 | 0.02 | 0 | 0 | 5.4% | 74.94% | 52,568,317 | 39.9% |
+| epoch | active | epoch budget (WOS) | execution budgets reserved (WOS) | issuance rate (WOS per ACU of budget) | median contributor WOS/week | contributor zero WOS/week | left in reserve | issued, % of max supply | pools + security reserve (WOS) | Codex share of accepted execution | tasks not issued (over capacity) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 852 | 3,310,365 | 1,706,809 | 100.00 | 1,452 | 0 | 22.5% | 0.00% | 513,346 | 0.0% | 0.0% |
+| 13 | 3,551 | 3,189,251 | 2,021,356 | 28.55 | 415 | 966 | 4.7% | 3.28% | 4,245,245 | 40.0% | 0.0% |
+| 52 | 276,886 | 2,817,694 | 1,785,857 | 0.32 | 5 | 10 | 4.7% | 13.25% | 16,151,916 | 39.9% | 0.0% |
+| 104 | 994,934 | 2,388,733 | 1,513,981 | 0.08 | 1 | 2 | 4.7% | 24.77% | 29,766,133 | 39.7% | 0.0% |
+| 208 | 1,000,001 | 1,716,783 | 1,088,099 | 0.05 | 1 | 1 | 4.7% | 43.06% | 48,713,667 | 40.3% | 0.0% |
+| 520 | 1,000,001 | 637,328 | 403,924 | 0.02 | 0 | 0 | 4.7% | 75.09% | 52,697,238 | 40.3% | 0.0% |
 
 ### S6. Low participation: contributor zero + 5 for two years, then 50
 
-| epoch | active | epoch budget (WOS) | execution emitted (WOS) | WOS per ACU | median contributor WOS/week | contributor zero WOS/week | returned to reserve | issued, % of max supply | pools + security reserve (WOS) | Codex share of execution |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | 6 | 3,310,365 | 13,069 | 100.00 | 1,452 | 3,000 | 99.4% | 0.00% | 3,919 | 30.9% |
-| 13 | 6 | 3,309,600 | 12,424 | 96.08 | 1,395 | 2,882 | 99.4% | 0.02% | 23,609 | 30.5% |
-| 52 | 6 | 3,307,316 | 11,063 | 84.37 | 1,225 | 2,531 | 99.5% | 0.09% | 76,807 | 30.3% |
-| 104 | 6 | 3,304,701 | 9,269 | 70.95 | 1,030 | 2,128 | 99.6% | 0.16% | 129,414 | 31.1% |
-| 208 | 51 | 3,272,914 | 52,139 | 50.17 | 729 | 1,504 | 97.6% | 1.03% | 1,064,423 | 39.1% |
-| 520 | 51 | 3,222,798 | 18,255 | 17.74 | 258 | 532 | 99.2% | 2.46% | 1,720,643 | 39.2% |
+| epoch | active | epoch budget (WOS) | execution budgets reserved (WOS) | issuance rate (WOS per ACU of budget) | median contributor WOS/week | contributor zero WOS/week | left in reserve | issued, % of max supply | pools + security reserve (WOS) | Codex share of accepted execution | tasks not issued (over capacity) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 6 | 3,310,365 | 13,069 | 100.00 | 1,452 | 0 | 99.4% | 0.00% | 3,930 | 0.0% | 0.0% |
+| 13 | 6 | 3,309,597 | 12,424 | 96.08 | 1,395 | 2,892 | 99.4% | 0.02% | 23,674 | 30.6% | 0.0% |
+| 52 | 6 | 3,307,308 | 11,063 | 84.37 | 1,225 | 2,539 | 99.5% | 0.08% | 77,020 | 30.6% | 0.0% |
+| 104 | 6 | 3,304,685 | 9,269 | 70.95 | 1,030 | 2,135 | 99.6% | 0.16% | 129,862 | 30.7% | 0.0% |
+| 208 | 51 | 3,272,816 | 52,139 | 50.17 | 729 | 1,509 | 97.6% | 1.02% | 1,067,405 | 38.4% | 0.0% |
+| 520 | 51 | 3,222,571 | 18,255 | 17.74 | 258 | 533 | 99.1% | 2.47% | 1,725,485 | 39.0% | 0.0% |
 
-### S7. Inference cost decline: 10,000 active, oracle follows a 40%/year price fall
+### S7. Inference cost decline: 10,000 active, the budget model recalibrates to a 40%/year price fall
 
-| epoch | active | epoch budget (WOS) | execution emitted (WOS) | WOS per ACU | median contributor WOS/week | contributor zero WOS/week | returned to reserve | issued, % of max supply | pools + security reserve (WOS) | Codex share of execution |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | 10,001 | 3,310,365 | 1,986,219 | 9.85 | 143 | 295 | 0.0% | 0.26% | 662,073 | 39.6% |
-| 13 | 10,001 | 3,187,093 | 1,912,256 | 9.57 | 139 | 287 | 5.5% | 3.58% | 4,306,237 | 40.2% |
-| 52 | 10,001 | 2,818,839 | 1,691,303 | 8.32 | 121 | 249 | 5.3% | 13.43% | 16,107,165 | 39.5% |
-| 104 | 10,001 | 2,395,024 | 1,437,014 | 11.92 | 173 | 357 | 5.5% | 24.78% | 29,559,732 | 39.7% |
-| 208 | 10,001 | 1,728,797 | 1,037,278 | 23.92 | 347 | 717 | 5.5% | 42.87% | 48,329,151 | 40.0% |
-| 520 | 10,001 | 1,164,048 | 36,077 | 17.74 | 258 | 532 | 95.4% | 60.84% | 36,781,471 | 39.4% |
+| epoch | active | epoch budget (WOS) | execution budgets reserved (WOS) | issuance rate (WOS per ACU of budget) | median contributor WOS/week | contributor zero WOS/week | left in reserve | issued, % of max supply | pools + security reserve (WOS) | Codex share of accepted execution | tasks not issued (over capacity) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 10,001 | 3,310,365 | 2,098,118 | 10.41 | 151 | 0 | 4.7% | 0.00% | 631,038 | 0.0% | 0.0% |
+| 13 | 10,001 | 3,186,571 | 2,019,657 | 10.11 | 147 | 303 | 4.7% | 3.35% | 4,327,131 | 40.0% | 0.0% |
+| 52 | 10,001 | 2,815,326 | 1,784,361 | 8.77 | 127 | 270 | 4.7% | 13.31% | 16,221,748 | 40.4% | 0.0% |
+| 104 | 10,001 | 2,386,723 | 1,512,712 | 12.55 | 109 | 227 | 4.7% | 24.83% | 29,819,279 | 39.5% | 0.0% |
+| 208 | 10,001 | 1,715,335 | 1,087,184 | 25.08 | 79 | 163 | 4.7% | 43.10% | 48,732,781 | 39.6% | 0.0% |
+| 520 | 10,001 | 1,144,135 | 35,550 | 17.74 | 3 | 5 | 95.3% | 61.40% | 37,074,322 | 40.0% | 0.0% |
 
-### S8. Provider price change: 10,000 active, Codex rates -50% from epoch 53
+### S8. Provider price change: 10,000 active, Codex rates -50% from epoch 53 (budgets are provider-neutral)
 
-| epoch | active | epoch budget (WOS) | execution emitted (WOS) | WOS per ACU | median contributor WOS/week | contributor zero WOS/week | returned to reserve | issued, % of max supply | pools + security reserve (WOS) | Codex share of execution |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | 10,001 | 3,310,365 | 1,986,219 | 9.93 | 144 | 297 | 0.0% | 0.26% | 662,073 | 40.0% |
-| 13 | 10,001 | 3,187,057 | 1,912,234 | 9.65 | 140 | 289 | 5.7% | 3.58% | 4,306,510 | 40.0% |
-| 52 | 10,001 | 2,818,811 | 1,691,286 | 8.50 | 123 | 254 | 5.6% | 13.43% | 16,106,128 | 40.3% |
-| 104 | 10,001 | 2,393,661 | 1,436,197 | 9.00 | 131 | 269 | 5.6% | 24.82% | 29,599,836 | 24.8% |
-| 208 | 10,001 | 1,725,293 | 1,035,176 | 6.49 | 94 | 194 | 5.7% | 42.96% | 48,444,743 | 25.1% |
-| 520 | 10,001 | 646,071 | 387,643 | 2.41 | 35 | 72 | 5.3% | 74.89% | 52,557,102 | 25.2% |
+| epoch | active | epoch budget (WOS) | execution budgets reserved (WOS) | issuance rate (WOS per ACU of budget) | median contributor WOS/week | contributor zero WOS/week | left in reserve | issued, % of max supply | pools + security reserve (WOS) | Codex share of accepted execution | tasks not issued (over capacity) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 10,001 | 3,310,365 | 2,098,118 | 10.49 | 152 | 0 | 4.7% | 0.00% | 631,038 | 0.0% | 0.0% |
+| 13 | 10,001 | 3,186,571 | 2,019,657 | 10.19 | 148 | 302 | 4.7% | 3.35% | 4,327,122 | 40.2% | 0.0% |
+| 52 | 10,001 | 2,815,326 | 1,784,361 | 8.96 | 130 | 270 | 4.7% | 13.31% | 16,221,732 | 40.2% | 0.0% |
+| 104 | 10,001 | 2,386,723 | 1,512,712 | 7.59 | 110 | 228 | 4.7% | 24.83% | 29,821,410 | 40.3% | 0.0% |
+| 208 | 10,001 | 1,715,335 | 1,087,184 | 5.45 | 79 | 161 | 4.7% | 43.10% | 48,748,118 | 39.9% | 0.0% |
+| 520 | 10,001 | 636,780 | 403,593 | 2.01 | 29 | 61 | 4.7% | 75.11% | 52,678,584 | 40.0% | 0.0% |
 
-### S9. Contributor zero alone for a year (founder test mode), rate ceiling ON
+### S9. Contributor zero alone (founder test mode), issuance-rate ceiling ON
 
-| epoch | active | epoch budget (WOS) | execution emitted (WOS) | WOS per ACU | median contributor WOS/week | contributor zero WOS/week | returned to reserve | issued, % of max supply | pools + security reserve (WOS) | Codex share of execution |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | 1 | 3,310,365 | 3,000 | 100.00 | 1,452 | 3,000 | 99.9% | 0.00% | 900 | 0.0% |
-| 13 | 1 | 3,310,188 | 2,882 | 96.08 | 1,395 | 2,882 | 99.9% | 0.01% | 6,166 | 0.0% |
-| 52 | 1 | 3,309,661 | 2,531 | 84.37 | 1,225 | 2,531 | 99.9% | 0.02% | 23,045 | 0.0% |
-| 104 | 1 | 3,309,057 | 2,128 | 70.95 | 1,030 | 2,128 | 99.9% | 0.04% | 42,199 | 0.0% |
-| 208 | 1 | 3,308,122 | 1,504 | 50.17 | 729 | 1,504 | 99.9% | 0.06% | 68,534 | 0.0% |
-| 520 | 1 | 3,306,663 | 532 | 17.74 | 258 | 532 | 100.0% | 0.10% | 72,472 | 0.0% |
+| epoch | active | epoch budget (WOS) | execution budgets reserved (WOS) | issuance rate (WOS per ACU of budget) | median contributor WOS/week | contributor zero WOS/week | left in reserve | issued, % of max supply | pools + security reserve (WOS) | Codex share of accepted execution | tasks not issued (over capacity) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 1 | 3,310,365 | 3,000 | 100.00 | 1,452 | 0 | 99.9% | 0.00% | 902 | 0.0% | 0.0% |
+| 13 | 1 | 3,310,188 | 2,882 | 96.08 | 1,395 | 2,892 | 99.9% | 0.00% | 6,181 | 0.0% | 0.0% |
+| 52 | 1 | 3,309,660 | 2,531 | 84.37 | 1,225 | 2,539 | 99.9% | 0.02% | 23,099 | 0.0% | 0.0% |
+| 104 | 1 | 3,309,054 | 2,128 | 70.95 | 1,030 | 2,135 | 99.9% | 0.04% | 42,296 | 0.0% | 0.0% |
+| 208 | 1 | 3,308,117 | 1,504 | 50.17 | 729 | 1,509 | 99.9% | 0.06% | 68,692 | 0.0% | 0.0% |
+| 520 | 1 | 3,306,654 | 532 | 17.74 | 258 | 533 | 100.0% | 0.10% | 72,639 | 0.0% | 0.0% |
 
-### S10. Contributor zero alone, rate ceiling OFF (why the ceiling exists)
+### S10. Contributor zero alone, ceiling OFF: the rate is capacity / demand (why the ceiling exists)
 
-| epoch | active | epoch budget (WOS) | execution emitted (WOS) | WOS per ACU | median contributor WOS/week | contributor zero WOS/week | returned to reserve | issued, % of max supply | pools + security reserve (WOS) | Codex share of execution |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | 1 | 3,310,365 | 1,986,219 | 66,207.30 | 961,527 | 1,986,219 | 0.0% | 0.26% | 662,073 | 0.0% |
-| 13 | 1 | 3,187,060 | 1,912,236 | 63,741.21 | 925,712 | 1,912,236 | 5.5% | 3.58% | 4,308,207 | 0.0% |
-| 52 | 1 | 2,818,815 | 1,691,289 | 56,376.32 | 818,752 | 1,691,289 | 5.5% | 13.43% | 16,110,486 | 0.0% |
-| 104 | 1 | 2,393,142 | 1,435,885 | 47,862.85 | 695,111 | 1,435,885 | 5.5% | 24.83% | 29,622,755 | 0.0% |
-| 208 | 1 | 1,724,933 | 1,034,959 | 34,498.67 | 501,023 | 1,034,959 | 5.5% | 42.97% | 48,469,073 | 0.0% |
-| 520 | 1 | 645,927 | 387,556 | 12,918.54 | 187,616 | 387,556 | 5.5% | 74.89% | 52,579,743 | 0.0% |
+| epoch | active | epoch budget (WOS) | execution budgets reserved (WOS) | issuance rate (WOS per ACU of budget) | median contributor WOS/week | contributor zero WOS/week | left in reserve | issued, % of max supply | pools + security reserve (WOS) | Codex share of accepted execution | tasks not issued (over capacity) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 1 | 3,310,365 | 2,098,118 | 69,937.29 | 1,015,698 | 0 | 4.7% | 0.00% | 630,892 | 0.0% | 0.0% |
+| 13 | 1 | 3,186,599 | 2,019,675 | 67,322.52 | 977,724 | 2,026,098 | 4.7% | 3.35% | 4,327,163 | 0.0% | 0.0% |
+| 52 | 1 | 2,815,431 | 1,784,428 | 59,480.95 | 863,841 | 1,790,103 | 4.7% | 13.31% | 16,222,113 | 0.0% | 0.0% |
+| 104 | 1 | 2,386,904 | 1,512,826 | 50,427.56 | 732,358 | 1,517,638 | 4.7% | 24.82% | 29,822,673 | 0.0% | 0.0% |
+| 208 | 1 | 1,715,596 | 1,087,349 | 36,245.00 | 526,385 | 1,090,808 | 4.7% | 43.09% | 48,752,283 | 0.0% | 0.0% |
+| 520 | 1 | 637,023 | 403,747 | 13,458.24 | 195,454 | 405,031 | 4.7% | 75.10% | 52,695,677 | 0.0% | 0.0% |
 
-### A. Waste behaviours, receipt by receipt (Astra-01 item 5)
+### A. Waste and fabrication: v3 usage-based pay vs D49 budget-based pay
 
-| strategy | claimed / honest | paid if never caught | P(caught per receipt) | expected gain, receipt by receipt |
+| behaviour | v3 usage-based: paid / honest if never caught | D49 budget-based: paid / honest | what limits it now |
+| --- | --- | --- | --- |
+| report every unit at the cap | 0.88 | 1.00 | usage is telemetry |
+| fabricated but consistent run logs at the cap | 1.75 | 1.00 | usage is telemetry |
+| context inflation (+50% input, real) | 1.30 | 1.00 | costs the contributor, pays nothing |
+| expensive model for easy units | 1.75 | 1.00 | costs the contributor, pays nothing |
+| one unnecessary repair loop per unit | 1.40 | 1.00 | costs the contributor, pays nothing |
+| an efficient contributor (half the typical tokens) | 0.50 | 1.00 | keeps the full budget (efficiency rewarded) |
+| task splitting (more units for one objective) | 1.10 | 1.00 | objective cap (table O) |
+| budget inflation by a colluding proposer | 1.00 | 1.00 | review, peer ranking, hard max (table N) |
+
+### A2. Fabricated usage: gain by detection rate — v3 usage-based (with holdback and recovery) vs D49 budget-based
+
+| strategy | P(caught per receipt) | planned epochs before exit | identity churn | P(caught before exit) | gain vs honest: no holdback, exclusion only | v3 gain: 50% holdback, compensatory recovery | v3 gain: 50% holdback, punitive forfeiture | D49 budget-based gain (usage is telemetry) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| cap saturation, fabricated consistent logs | 0.1% | 52 | no | 40% | 35% | 30% | 29% | 0% |
+| cap saturation, fabricated consistent logs | 0.5% | 52 | no | 93% | -40% | -50% | -54% | 0% |
+| cap saturation, fabricated consistent logs | 2.0% | 52 | no | 100% | -86% | -89% | -92% | 0% |
+| cap saturation, fabricated consistent logs | 0.5% | 13 | no | 47% | 26% | 14% | 10% | 0% |
+| cap saturation, fabricated consistent logs | 0.5% | 52 | after 4 epochs | 92% | 40% | 20% | 11% | 0% |
+| same, baselines contaminated (cap drifts +20%) | 0.1% | 52 | no | 41% | 65% | 53% | 54% | 0% |
+| same, baselines contaminated (cap drifts +20%) | 0.5% | 52 | no | 93% | -28% | -44% | -44% | 0% |
+| same, baselines contaminated (cap drifts +20%) | 2.0% | 52 | no | 100% | -82% | -89% | -90% | 0% |
+| same, baselines contaminated (cap drifts +20%) | 0.5% | 13 | no | 49% | 51% | 32% | 30% | 0% |
+| same, baselines contaminated (cap drifts +20%) | 0.5% | 52 | after 4 epochs | 93% | 68% | 36% | 33% | 0% |
+| 10% skim on every receipt | 0.1% | 52 | no | 41% | -15% | -15% | -20% | 0% |
+| 10% skim on every receipt | 0.5% | 52 | no | 93% | -62% | -61% | -71% | 0% |
+| 10% skim on every receipt | 2.0% | 52 | no | 100% | -90% | -89% | -95% | 0% |
+| 10% skim on every receipt | 0.5% | 13 | no | 48% | -22% | -19% | -32% | 0% |
+| 10% skim on every receipt | 0.5% | 52 | after 4 epochs | 93% | -12% | -11% | -31% | 0% |
+
+### N. Budget inflation by a proposer and a colluding builder (D49)
+
+| budget raised over the model | needs a human approval | consensus review catches an unjustified budget | ring units per epoch | expected extra pay per unit over 13 epochs |
 | --- | --- | --- | --- | --- |
-| cap saturation (report every unit at the cap) | 1.75 | 0.88 | 32.2% | -8% |
-| cap saturation with fabricated but consistent run logs | 1.75 | 1.75 | 25.1% | 56% |
-| context inflation (+50% input, real) | 1.30 | 1.30 | 25.1% | 22% |
-| expensive model for easy units (Fable-class rates vs Sol-class) | 1.75 | 1.75 | 28.1% | 54% |
-| one unnecessary repair loop per unit (real) | 1.40 | 1.40 | 28.1% | 29% |
-| task splitting (author splits a contract into more ABUs) | 1.10 | 1.10 | 5.0% | 10% |
-| builder + friendly reviewer (human-review weight is fixed, not builder ACU) | 1.00 | 1.00 | 0.0% | 0% |
+| +10% | no | 20% | 2 | 8.0% |
+| +10% | no | 20% | 10 | 8.0% |
+| +10% | no | 50% | 2 | 5.0% |
+| +10% | no | 50% | 10 | 5.0% |
+| +25% | no | 20% | 2 | 20.0% |
+| +25% | no | 20% | 10 | 12.3% |
+| +25% | no | 50% | 2 | 12.5% |
+| +25% | no | 50% | 10 | 7.7% |
+| +50% | yes | 20% | 2 | 14.6% |
+| +50% | yes | 20% | 10 | 10.8% |
+| +50% | yes | 50% | 2 | 9.1% |
+| +50% | yes | 50% | 10 | 6.7% |
+| +100% | yes | 20% | 2 | 26.2% |
+| +100% | yes | 20% | 10 | 20.0% |
+| +100% | yes | 50% | 2 | 16.3% |
+| +100% | yes | 50% | 10 | 12.5% |
 
-### A2. Fabrication with real recovery: holdback, confiscation, exclusion, exit, churn, collusion, contaminated baselines (H4, D39, D40)
+### O. Task splitting and reward stacking under one acceptance objective (D49)
 
-| strategy | P(caught per receipt) | planned epochs before exit | identity churn | P(caught before exit) | gain vs honest: no holdback, exclusion only | gain: 50% holdback, COMPENSATORY recovery (0007 v3) | gain: 50% holdback, PUNITIVE forfeiture (F17) |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| cap saturation, fabricated consistent logs | 0.1% | 52 | no | 40% | 35% | 30% | 29% |
-| cap saturation, fabricated consistent logs | 0.5% | 52 | no | 93% | -40% | -50% | -54% |
-| cap saturation, fabricated consistent logs | 2.0% | 52 | no | 100% | -86% | -89% | -92% |
-| cap saturation, fabricated consistent logs | 0.5% | 13 | no | 47% | 26% | 14% | 10% |
-| cap saturation, fabricated consistent logs | 0.5% | 52 | after 4 epochs | 92% | 40% | 20% | 11% |
-| same, baselines contaminated (cap drifts +20%) | 0.1% | 52 | no | 41% | 65% | 53% | 54% |
-| same, baselines contaminated (cap drifts +20%) | 0.5% | 52 | no | 93% | -28% | -44% | -44% |
-| same, baselines contaminated (cap drifts +20%) | 2.0% | 52 | no | 100% | -82% | -89% | -90% |
-| same, baselines contaminated (cap drifts +20%) | 0.5% | 13 | no | 49% | 51% | 32% | 30% |
-| same, baselines contaminated (cap drifts +20%) | 0.5% | 52 | after 4 epochs | 93% | 68% | 36% | 33% |
-| 10% skim on every receipt | 0.1% | 52 | no | 41% | -15% | -15% | -20% |
-| 10% skim on every receipt | 0.5% | 52 | no | 93% | -62% | -61% | -71% |
-| 10% skim on every receipt | 2.0% | 52 | no | 100% | -90% | -89% | -95% |
-| 10% skim on every receipt | 0.5% | 13 | no | 48% | -22% | -19% | -32% |
-| 10% skim on every receipt | 0.5% | 52 | after 4 epochs | 93% | -12% | -11% | -31% |
-
-### B. Skim attack: detection (D29)
-
-| skim per receipt | receipts per epoch | ranked (Z >= 3) within one epoch | ranked over the rolling 13 epochs | epochs until 50% likely ranked | sampled audits catch it in an epoch |
+| size points | split into k units | one unit: model budget (ACU) | k units: model budgets (ACU) | gain without the objective cap | gain with the objective cap |
 | --- | --- | --- | --- | --- | --- |
-| 5% | 3 | 0.0% | 0.7% | > 52 | 3.0% |
-| 5% | 10 | 0.2% | 1.4% | > 52 | 9.6% |
-| 5% | 30 | 0.3% | 7.2% | 51 | 26.0% |
-| 10% | 3 | 0.0% | 2.3% | > 52 | 3.0% |
-| 10% | 10 | 0.4% | 8.6% | 39 | 9.6% |
-| 10% | 30 | 0.9% | 50.0% | 13 | 26.0% |
-| 20% | 3 | 0.0% | 12.3% | 39 | 3.0% |
-| 20% | 10 | 1.2% | 57.6% | 11 | 9.6% |
-| 20% | 30 | 4.9% | 99.7% | 4 | 26.0% |
-| 50% | 3 | 0.0% | 82.6% | 10 | 3.0% |
-| 50% | 10 | 9.6% | 100.0% | 3 | 9.6% |
-| 50% | 30 | 56.0% | 100.0% | 1 | 26.0% |
+| 2 | 2 | 18.0 | 24.0 | 33% | 0% |
+| 5 | 2 | 36.0 | 42.0 | 17% | 0% |
+| 5 | 3 | 36.0 | 48.0 | 33% | 0% |
+| 5 | 5 | 36.0 | 60.0 | 67% | 0% |
+| 10 | 2 | 66.0 | 72.0 | 9% | 0% |
+| 10 | 3 | 66.0 | 78.0 | 18% | 0% |
+| 10 | 5 | 66.0 | 90.0 | 36% | 0% |
 
-An honest account with 130 receipts in the window is ranked at Z >= 3 with probability 0.10%.
+### P. Cherry-picking mispriced tasks and stale budgets (D49)
 
-### C. Skim attack: pattern-dispute economics at the S2 epoch-52 rate (8.41 WOS/ACU)
+| model overprices a task class by | cherry-picker's extra pay per effort (before recalibration) | recalibration steps to < 2% | epochs |
+| --- | --- | --- | --- |
+| +20% | 20% | 1 | 13 |
+| +50% | 50% | 2 | 26 |
+| +100% | 100% | 4 | 52 |
 
-| contributors in epoch | skim | total excess (WOS) | loss per honest contributor (WOS) | pattern-dispute bounty (WOS) | disputer stake (WOS) | disputer EV at P(uphold)=0.6 |
-| --- | --- | --- | --- | --- | --- | --- |
-| 100 | 10% | 92 | 0.92 | 18 | 2 | 10 |
-| 100 | 20% | 168 | 1.68 | 34 | 2 | 19 |
-| 1000 | 10% | 92 | 0.09 | 18 | 2 | 10 |
-| 1000 | 20% | 168 | 0.17 | 34 | 2 | 19 |
-| 10000 | 10% | 92 | 0.01 | 18 | 2 | 10 |
-| 10000 | 20% | 168 | 0.02 | 34 | 2 | 19 |
+| budget model recalibration | average overpay of the same work over two years (40%/year price fall) |
+| --- | --- |
+| never | 73.2% |
+| every 13 epochs | 6.1% |
+| every 52 epochs | 29.9% |
 
 ### D. Collusion vs pool size (D24)
 
@@ -278,24 +296,24 @@ An honest account with 130 receipts in the window is ranked at Z >= 3 with proba
 
 | allocations in one false dispute (all rejected) | stake forfeited (WOS) | share of disputer's pending | max loss per epoch at the rate limit (WOS) | audit runs it costs other contributors |
 | --- | --- | --- | --- | --- |
-| 1 | 2 | 2.0% | 7 | 2 |
-| 5 | 12 | 10.0% | 37 | 10 |
-| 25 | 25 | 20.5% | 75 | 50 |
+| 1 | 3 | 2.0% | 8 | 2 |
+| 5 | 13 | 10.0% | 39 | 10 |
+| 25 | 25 | 19.4% | 75 | 50 |
 
-### H. Genesis (reference: mean S1 rate over epochs 1–12) and provisional founder work (97.63 WOS/ACU)
+### H. Genesis (reference: mean S1 issuance rate over epochs 1–12) and provisional founder work (98.19 WOS/ACU)
 
 | retro size points (illustrative) | reference ACU | value at the reference rate (WOS) | Genesis credit after cap (WOS) | published fallback if evidence is insufficient (WOS) | cap binds |
 | --- | --- | --- | --- | --- | --- |
-| 100 | 400 | 39,051 | 39,051 | 40,000 | no |
-| 300 | 1,200 | 117,153 | 117,153 | 120,000 | no |
-| 600 | 2,400 | 234,307 | 234,307 | 240,000 | no |
-| 2000 | 8,000 | 781,023 | 781,023 | 800,000 | no |
+| 100 | 400 | 39,276 | 39,276 | 40,000 | no |
+| 300 | 1,200 | 117,828 | 117,828 | 120,000 | no |
+| 600 | 2,400 | 235,657 | 235,657 | 240,000 | no |
+| 2000 | 8,000 | 785,522 | 785,522 | 800,000 | no |
 
 | share of 26 weeks of provisional founder work later ratified | provisional ACU | live WOS once ratified | ACU that stays provisional (test WOS only) | counts toward Genesis |
 | --- | --- | --- | --- | --- |
 | 0% | 780 | 0 | 780 | 0 |
-| 50% | 780 | 38,075 | 390 | 0 |
-| 100% | 780 | 76,150 | 0 | 0 |
+| 50% | 780 | 38,294 | 390 | 0 |
+| 100% | 780 | 76,588 | 0 | 0 |
 
 ### I. Audit duty supply vs demand (D25, D28)
 
@@ -321,20 +339,20 @@ An honest account with 130 receipts in the window is ranked at Z >= 3 with proba
 
 | scenario | epoch | contributor zero: contribution weight share | contributor zero: locked weight share | alone passes routine if nobody else votes | alone passes routine (others 50% turnout, all no) | structural | governance |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| S6 | 13 | 23.0% | 71.5% | yes | no | no | no |
-| S6 | 26 | 23.1% | 71.8% | yes | no | no | no |
-| S6 | 52 | 23.1% | 72.3% | yes | no | no | no |
-| S6 | 104 | 23.1% | 73.2% | yes | no | no | no |
-| S6 | 208 | 2.9% | 30.7% | no | no | no | no |
-| S1 | 13 | 0.1% | 1.2% | no | no | no | no |
-| S1 | 26 | 0.2% | 1.3% | no | no | no | no |
-| S1 | 52 | 0.2% | 1.3% | no | no | no | no |
-| S1 | 104 | 0.1% | 1.3% | no | no | no | no |
-| S1 | 208 | 0.2% | 1.0% | no | no | no | no |
-| S5 | 13 | 0.1% | 1.0% | no | no | no | no |
-| S5 | 26 | 0.0% | 0.9% | no | no | no | no |
-| S5 | 52 | 0.0% | 0.8% | no | no | no | no |
-| S5 | 104 | 0.0% | 0.8% | no | no | no | no |
+| S6 | 13 | 23.1% | 68.0% | yes | no | no | no |
+| S6 | 26 | 23.1% | 67.8% | yes | no | no | no |
+| S6 | 52 | 23.1% | 68.0% | yes | no | no | no |
+| S6 | 104 | 23.1% | 68.9% | yes | no | no | no |
+| S6 | 208 | 2.9% | 27.2% | no | no | no | no |
+| S1 | 13 | 0.1% | 1.1% | no | no | no | no |
+| S1 | 26 | 0.2% | 1.1% | no | no | no | no |
+| S1 | 52 | 0.1% | 1.1% | no | no | no | no |
+| S1 | 104 | 0.1% | 1.1% | no | no | no | no |
+| S1 | 208 | 0.1% | 0.9% | no | no | no | no |
+| S5 | 13 | 0.1% | 0.9% | no | no | no | no |
+| S5 | 26 | 0.0% | 0.8% | no | no | no | no |
+| S5 | 52 | 0.0% | 0.7% | no | no | no | no |
+| S5 | 104 | 0.0% | 0.7% | no | no | no | no |
 | S5 | 208 | 0.0% | 0.4% | no | no | no | no |
 
 ### L. Organization concentration and the per-organization cap (D38)
@@ -346,14 +364,5 @@ An honest account with 130 receipts in the window is ranked at Z >= 3 with proba
 | 50% | 50 | 10.0% | yes | no | no |
 | 90% | 50 | 10.0% | yes | no | no |
 | 90% | 5 | 28.6% | no (tally refuses) | no | no |
-
-### M. Quiet-epoch timing under the trailing-average ceiling (Q3, A3-14)
-
-| prior realised WOS/ACU (epochs 1-4) | epoch 4 rate | trailing mean | quiet epoch 5 pays (WOS/ACU) | vs epoch 4 |
-| --- | --- | --- | --- | --- |
-| steady (100, 100, 100, 100) | 100.00 | 100.00 | 98.68 | 1.0x |
-| crowded then one very low epoch (100, 100, 100, 1) | 1.00 | 75.25 | 98.68 | 98.7x |
-| alternating (100, 1, 100, 1) | 1.00 | 50.50 | 75.75 | 75.8x |
-| recovering after two low epochs (1, 1, 100, 100) | 100.00 | 50.50 | 75.75 | 0.8x |
 
 <!-- SIM:END -->

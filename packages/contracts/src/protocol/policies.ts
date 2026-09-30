@@ -15,7 +15,6 @@ import {
   ReviewDomain,
   RiskClassId,
   U64String,
-  VerificationLevel,
 } from "./entities.js";
 
 const Bp = z.number().int().min(0).max(10_000);
@@ -73,12 +72,14 @@ export const RewardPolicy = z.object({
     emissionReserveBase: U64String,
     /** Budget(e) = floor(remainingReserve x decayPpm / 1e6). */
     budgetPpmOfRemaining: Ppm,
-    /** Rate ceiling: at most this many base units per ACU of weight in a distributing slice, decaying per epoch. */
+    /**
+     * D49 issuance rate: base units per ACU of task budget for tasks issued in epoch e (initial x (1 - decay)^(e-1)),
+     * fixed for a task at issuance, so the price of a task never depends on when it is accepted (no timing gain).
+     * Also the ceiling per ACU-equivalent in the outcomes slice and the rate of security payouts.
+     */
     rateCeiling: z.object({
       initialBasePerAcu: U64String,
       decayPpmPerEpoch: Ppm,
-      /** Q3 timing damping: an epoch's ceiling is at most this share of the trailing (4-epoch) realised rate. */
-      maxVsTrailingBp: z.number().int().nonnegative(),
     }),
   }),
   /** Epoch budget split; must sum to 10000. */
@@ -91,9 +92,10 @@ export const RewardPolicy = z.object({
     security_reserve: Bp,
   }),
   eligibility: z.object({
-    /** Which usage evidence may carry weight, per cluster. Fails closed: an empty list means nothing qualifies. */
-    acceptedVerificationLevels: z.object({ devnet: z.array(VerificationLevel), mainnet: z.array(VerificationLevel) }),
-    /** Which evidence classes may enter live epochs, per cluster (Astra-01 item 1). */
+    /**
+     * Which evidence classes may enter live epochs, per cluster. D49: payouts rest on accepted task budgets and
+     * outcomes; usage is telemetry and never an evidence class for pay. Mainnet stays empty until the readiness gate.
+     */
     acceptedEvidenceClasses: z.object({ devnet: z.array(EvidenceClass), mainnet: z.array(EvidenceClass) }),
     requireReviewPolicySatisfied: z.literal(true),
     requireWalletForClaim: z.boolean(),
@@ -105,8 +107,10 @@ export const RewardPolicy = z.object({
       event: AcceptanceEvent,
       acceptedBy: z.string().min(3),
       slice: z.enum(["execution", "planning", "human_review", "outcomes", "security_reserve", "none"]),
-      weightBasis: z.enum(["attested_usage_capped", "acu_equivalent", "none"]),
+      /** D49: commissioned tasks are paid their budget; outcomes compete by ACU-equivalent weight. */
+      weightBasis: z.enum(["task_budget", "acu_equivalent", "none"]),
       needsLease: z.boolean(),
+      /** Usage TELEMETRY is recorded (cap enforcement, calibration, signals); it never changes the payout. */
       needsUsageReceipt: z.boolean(),
     }),
   ),
@@ -124,6 +128,37 @@ export const RewardPolicy = z.object({
    * holdback only as RiskPolicy says (exclusion after proven cheating), never for an ordinary pause in contributing.
    */
   holdback: z.object({ shareBp: Bp, epochs: z.number().int().positive(), forfeitOnExclusion: z.literal(true) }),
+  /**
+   * D49 budget-based rewards. A task's budget (ACU) is fixed before work starts, from the budget model, reviewed in
+   * consensus (an unjustified budget is a material finding) and compared with peers; acceptance pays it in full.
+   */
+  budgets: z.object({
+    denomination: z.literal("acu"),
+    /** Epoch contract: budgets are reserved at issuance from the task slices; a task that does not fit is not issued. */
+    funding: z.literal("reserve_at_issuance"),
+    /** V1: binary acceptance, no quality factor q (founder decision F22 confirms). */
+    acceptance: z.literal("binary"),
+    qualityFactor: z.literal("none"),
+    /** Collaborators' declared shares sum to 10000 bp; rounding by largest remainder per task (exact). */
+    sharesSumBp: z.literal(10_000),
+    model: z.object({
+      /** budget = baseMicro + perSizePointMicro x size, x difficulty x importance (bounded multipliers), per task kind. */
+      difficultyBp: z.object({ min: Bp, max: z.number().int().positive() }),
+      importanceBp: z.object({ min: Bp, max: z.number().int().positive() }),
+      /** A budget above model x this needs a written justification AND a human approval in consensus. */
+      maxWithoutHumanBp: z.number().int().positive(),
+      /** Hard ceiling vs the model, whatever the approvals. */
+      hardMaxBp: z.number().int().positive(),
+      /** Budgets of all units under one acceptance objective never exceed the objective's budget (anti-splitting). */
+      objectiveCap: z.literal(true),
+      /** The proposer of a budget (or a related account) may not build that unit. */
+      proposerMayNotBuild: z.literal(true),
+    }),
+    /** An issued task not accepted within this many epochs is released and re-priced before re-issue. */
+    expiryEpochs: z.number().int().positive(),
+    /** The budget model is recalibrated from telemetry of ACCEPTED units at most this often, moving at most maxChangeBp. */
+    recalibration: z.object({ everyEpochs: z.number().int().positive(), maxChangeBp: Bp, minSamples: z.number().int().positive() }),
+  }),
   /** D41: bounties are paid only from amounts actually recovered; unrecovered losses reduce later budgets, bounded. */
   losses: z.object({ bountyBpOfRecovered: Bp, absorptionMaxBp: Bp, publish: z.literal(true) }),
   /**
@@ -173,9 +208,9 @@ export const RewardPolicy = z.object({
     publicAllocations: z.literal(true),
   }),
   execution: z.object({
-    /** Cap = budget from AgentCapabilityPolicy; eligible = min(attested, cap). */
+    /** The execution cap (AgentCapabilityPolicy) stops a run; it includes repairs. It is not a payout (D49). */
     capIncludesRepairs: z.literal(true),
-    /** Agent reviewer bonus per upheld/resolved material finding, as bp of the reviewer's own eligible ACU. */
+    /** Agent reviewer bonus per upheld/resolved material finding, as bp of the review task's budget. */
     upheldFindingBonusBp: Bp,
     maxPaidFindingsPerReview: z.number().int().nonnegative(),
     /** Reviews of an attempt that never merged are paid only if they raised a material finding that was upheld. */
@@ -183,8 +218,8 @@ export const RewardPolicy = z.object({
   }),
   humanReview: z.object({
     /**
-     * Fixed ACU-equivalent weight per accepted human review, by risk class, DECOUPLED from the builder's usage
-     * (Astra-01 item 5): a reviewer gains nothing from inflated builder compute. Paid in its own capped slice.
+     * D49: the BUDGET of a commissioned human review, by risk class (ACU-equivalent), independent of the builder's
+     * budget and of any usage. Reserved at issuance from the human_review slice like every other task.
      */
     weightAcuEqMicro: z.record(RiskClassId, U64String),
     /** Per material finding the reviewer raised that was upheld or fixed. */
@@ -203,7 +238,7 @@ export const RewardPolicy = z.object({
     maxProposalsPaidPerAccountPerEpoch: z.number().int().positive(),
   }),
   security: z.object({
-    /** Security payouts debit the security reserve balance: weight x current execution rate, at most maxShareBp of the balance. */
+    /** Security payouts debit the security reserve balance: weight x the epoch's issuance rate, at most maxShareBp of the balance. */
     severityAcuEq: z.object({ low: z.number().int(), medium: z.number().int(), high: z.number().int(), critical: z.number().int() }),
     maxShareOfReserveBp: Bp,
   }),
@@ -268,8 +303,9 @@ export const ReviewPolicy = z.object({
   /**
    * D25 + D27 + D28 payout audits. NOT a code review (the code passed Astra + Fable + human + CI before merge). Audit
    * quorums run in three places only: dispute gates, the mandatory sampled audits, and the ratification of PROVISIONAL
-   * founder receipts. Auditors' agents judge plausibility (usage vs diff/contract/complexity, padded repairs, context
-   * inflation, model choice, attribution, outliers vs peers); the arithmetic is the engine's and anyone can recompute it.
+   * founder receipts. Since D49 auditors' agents judge attribution, declared splits, the frozen budget record against
+   * its acceptance, duplicate or stacked units under one objective, and budget outliers vs peers — not token usage; the
+   * arithmetic is the engine's and anyone can recompute it.
    * Audit tasks are offered to claimants' clients at claim time and run on the claimant's own subscription (duty).
    */
   payoutAudit: z.object({
@@ -354,7 +390,10 @@ export const AgentCapabilityPolicy = z.object({
   taskRequirements: z.array(
     z.object({ taskKind: TaskKind, capability: CapabilityClass, minSizePointsForL4: z.number().int().positive().nullable() }),
   ),
-  /** Compute caps (authorised budget) per task, in micro-ACU. Implementation: perSizePoint x size. */
+  /**
+   * Execution caps per task, in micro-ACU: the point where a run is STOPPED (telemetry), not what it is paid (D49).
+   * Also the default budget-model inputs: budget = base + perSizePoint x size before multipliers.
+   */
   budgets: z.array(
     z.object({
       taskKind: TaskKind,
@@ -390,15 +429,15 @@ export const UsageProofPolicy = z.object({
     requireTranscriptHash: z.literal(true),
     requireModelMatch: z.boolean(),
   }),
-  /** D27 run logs: required with every AgentRun whose usage carries weight; bare numbers get a haircut. */
+  /**
+   * D27 run logs — OPTIONAL evidence since D49 (usage no longer pays): a contributor may attach one to answer an
+   * attribution or quality dispute; when attached, per-turn sums must equal the usage telemetry exactly.
+   */
   logs: z.object({
-    required: z.boolean(),
+    required: z.literal(false),
     maxBytes: z.number().int().positive(),
     maxTurns: z.number().int().positive(),
     retentionDays: z.number().int().positive(),
-    /** Weight multiplier for ATTESTED usage without a consistent run log (bare numbers). */
-    bareAttestedWeightBp: Bp,
-    /** Per-turn sums must equal the usage receipt exactly; any difference makes the run UNVERIFIED. */
     requireExactTotals: z.literal(true),
   }),
   audit: z.object({

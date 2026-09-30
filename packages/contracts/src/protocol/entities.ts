@@ -76,13 +76,14 @@ export const DISTRIBUTING_SLICES = ["execution", "planning", "human_review", "ou
 export type DistributingSlice = (typeof DISTRIBUTING_SLICES)[number];
 
 /**
- * What a receipt's weight rests on (Astra-01 items 1 and 9). Stored permanently; UI and allocations never upgrade it.
- *   attested_usage   provider usage reported by the official client (ATTESTED at best for subscription CLIs)
- *   accepted_output  weight derived from accepted output size (reference ACU), not from claimed tokens
- *   outcome          fixed ACU-equivalent weight for an outcome (proposal incorporated, bug fixed, human review)
+ * What a receipt's payout rests on. Stored permanently; UI and allocations never upgrade it. D49 removed usage as a
+ * basis for pay: provider usage is TELEMETRY (cap enforcement, budget calibration, signals).
+ *   accepted_budget  the task's reward budget, fixed before work started, paid on acceptance (build units, planning,
+ *                    commissioned reviews, audits and resolutions)
+ *   outcome          ACU-equivalent weight for an outcome (proposal incorporated, bug fixed) in the outcomes slice
  *   historical       Genesis historical credit (never mixed into epoch slices)
  */
-export const EvidenceClass = z.enum(["attested_usage", "accepted_output", "outcome", "historical"]);
+export const EvidenceClass = z.enum(["accepted_budget", "outcome", "historical"]);
 export type EvidenceClass = z.infer<typeof EvidenceClass>;
 
 /** The event that makes each contribution type accepted, and who causes it (Astra-01 item 10). */
@@ -279,18 +280,25 @@ export const ContributionReceipt = z.object({
     fableReviewSha256: Sha256.nullable(),
     humanReviewSha256s: z.array(Sha256),
   }),
-  /** Sum of eligible usage (min(attested, cap)) or the ACU-equivalent/points for outcome work. */
+  /** D49: the task budget (micro-ACU) for commissioned work, or the ACU-equivalent weight of an outcome. */
   weightMicro: U64String,
-  weightBasis: z.enum(["acu", "acu_equivalent"]),
+  weightBasis: z.enum(["task_budget", "acu_equivalent"]),
+  /** D49: the task whose budget this receipt is paid from, and this contributor's declared share of it. */
+  taskBudget: z
+    .object({
+      taskId: Uuid,
+      budgetAcuMicro: U64String,
+      issuedEpoch: z.number().int().positive(),
+      shareBp: z.number().int().min(1).max(10_000),
+    })
+    .nullable(),
   evidenceClass: EvidenceClass,
   acceptanceEvent: AcceptanceEvent,
   leaseId: Uuid.nullable(),
   leaseGeneration: z.number().int().positive().nullable(),
   runPolicySnapshotSha256s: z.array(Sha256),
-  /** Attested ACU before the cap, kept so over-cap behaviour is auditable. */
-  attestedAcuMicro: U64String,
-  capAcuMicro: U64String,
-  lowestVerificationLevel: VerificationLevel,
+  /** TELEMETRY only (D49): observed ACU and its lowest verification level; never part of the payout. */
+  telemetry: z.object({ observedAcuMicro: U64String, lowestVerificationLevel: VerificationLevel }).nullable(),
   /**
    * D38: the Contributor (the natural person above, accountable) and the Beneficiary (who receives the allocation), as
    * of qualification time. Default beneficiary is the contributor; with an active sponsorship link it is the
@@ -409,11 +417,11 @@ export const AnomalyMetrics = z.object({
 });
 export type AnomalyMetrics = z.infer<typeof AnomalyMetrics>;
 
+/** D49: disputes are about attribution, splits, acceptance, budgets and defects — never about token usage. */
 export const DisputeReason = z.enum([
-  "inflated_usage",
-  "padded_repairs",
-  "context_inflation",
-  "model_misreported",
+  "budget_mismatch",
+  "unmet_acceptance",
+  "defective_work",
   "misattribution",
   "duplicate_work",
   "split_gaming",
@@ -665,6 +673,10 @@ export const PayoutAuditPacket = z.object({
         reasoning: ReasoningLevel,
         sizePoints: z.number().int().positive().nullable(),
         usage: ProviderUsage,
+        /** D49: the frozen budget and its basis are what the line is paid; usage below is telemetry context. */
+        budgetAcuMicro: U64String,
+        budgetBasis: z.string().min(1),
+        acceptanceObjectiveRef: z.string().min(1),
         acuMicro: U64String,
         capAcuMicro: U64String,
         repairLoops: z.number().int().nonnegative(),
@@ -728,14 +740,7 @@ export const FocusAnswer = z.object({
 });
 
 /** Perturbations a payout canary applies; an auditor's finding "names" one by its judgment + reason. */
-export const PerturbationClass = z.enum([
-  "inflated_usage",
-  "padded_repairs",
-  "context_inflation",
-  "model_mismatch",
-  "duplicated_attribution",
-  "wrong_split",
-]);
+export const PerturbationClass = z.enum(["budget_mismatch", "unmet_acceptance", "split_stacking", "duplicated_attribution", "wrong_split"]);
 export type PerturbationClass = z.infer<typeof PerturbationClass>;
 
 /**
@@ -754,12 +759,12 @@ export const PayoutAuditVerdict = z.object({
           ref: z.string().regex(/^L\d{1,3}$/),
           judgment: PayoutJudgment,
           reason: PerturbationClass.nullable(),
-          /** For "inflated": the auditor's estimate of the plausible weight. */
+          /** For "inflated": the budget (micro-ACU) the auditor finds supported by the frozen budget record and acceptance. */
           plausibleAcuMicro: U64String.nullable(),
           evidence: z
             .array(
               z.object({
-                kind: z.enum(["run_log_turn", "diff_path", "baseline", "contract"]),
+                kind: z.enum(["budget_record", "acceptance_record", "run_log_turn", "diff_path", "baseline", "contract"]),
                 ref: z.string().min(1),
                 note: z.string().min(10).max(2000),
               }),
@@ -793,17 +798,16 @@ export const PayoutCanary = z.object({
   perturbatorVersion: z.string().min(1),
   seedSha256: Sha256,
   perturbation: PerturbationClass,
-  /** e.g. usage multiplied by factorBp/1e4, repair loops added, attribution duplicated. Enough to be detectable. */
+  /** e.g. the line's budget raised above its frozen record, a share moved, an attribution duplicated. Enough to be detectable. */
   magnitudeBp: z.number().int().positive(),
   retiredAfterEpoch: z.number().int().positive(),
 });
 export type PayoutCanary = z.infer<typeof PayoutCanary>;
 
 const PERTURBATION_JUDGMENT: Record<PerturbationClass, PayoutJudgment> = {
-  inflated_usage: "inflated",
-  padded_repairs: "inflated",
-  context_inflation: "inflated",
-  model_mismatch: "inflated",
+  budget_mismatch: "inflated",
+  unmet_acceptance: "inflated",
+  split_stacking: "inflated",
   duplicated_attribution: "misattributed",
   wrong_split: "misattributed",
 };
@@ -1483,3 +1487,49 @@ export const WalletBinding = z.object({
   at: Timestamp,
 });
 export type WalletBinding = z.infer<typeof WalletBinding>;
+
+// ------------------------------------------------------------------------------------------------ D49 task budgets
+
+/**
+ * D49: an acceptance objective (a feature contract criterion or a planning deliverable) with its own budget, fixed at
+ * roadmap/contract consensus. The budgets of all tasks under one objective never exceed it, so splitting a unit into
+ * more units cannot raise the total paid for the same acceptance (anti-stacking).
+ */
+export const AcceptanceObjective = z.object({
+  id: Uuid,
+  kind: z.enum(["feature_criterion", "planning_deliverable", "review_round", "audit", "resolution"]),
+  ref: z.string().min(1),
+  budgetAcuMicro: U64String,
+  consensusRoundId: Uuid.nullable(),
+  budgetModelVersion: z.string().min(1),
+});
+export type AcceptanceObjective = z.infer<typeof AcceptanceObjective>;
+
+/**
+ * D49: a task's reward budget, fixed BEFORE work starts (decomposition / contract consensus) and reviewed there (an
+ * unjustified budget is a material finding). `modelAcuMicro` is what the budget model gives; the budget may differ
+ * only within the policy's bounds and with a written justification (and a human approval above maxWithoutHumanBp).
+ * At issuance, budget x the epoch's issuance rate is reserved; acceptance pays exactly that, split by declared shares.
+ */
+export const TaskBudget = z.object({
+  taskId: Uuid,
+  objectiveId: Uuid,
+  kind: z.enum(["execution", "planning", "human_review"]),
+  budgetAcuMicro: U64String,
+  modelAcuMicro: U64String,
+  basis: z.object({
+    expectedComputeAcuMicro: U64String,
+    sizePoints: z.number().int().positive().nullable(),
+    difficultyBp: z.number().int().positive(),
+    importanceBp: z.number().int().positive(),
+    sharedDependency: z.boolean(),
+    justification: z.string().max(4000),
+  }),
+  budgetModelVersion: z.string().min(1),
+  proposerAccountId: Uuid,
+  issuedEpoch: z.number().int().positive(),
+  issuanceRateBasePerAcu: U64String,
+  reservedBase: U64String,
+  expiresEpoch: z.number().int().positive(),
+});
+export type TaskBudget = z.infer<typeof TaskBudget>;

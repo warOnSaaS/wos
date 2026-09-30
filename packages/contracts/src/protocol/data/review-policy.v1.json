@@ -189,7 +189,7 @@
     "rateBp": 500,
     "newAccountRateBp": 1500,
     "flaggedAccountRateBp": 2500,
-    "perturbations": ["inflated_usage", "padded_repairs", "context_inflation", "model_mismatch", "duplicated_attribution", "wrong_split"],
+    "perturbations": ["budget_mismatch", "unmet_acceptance", "split_stacking", "duplicated_attribution", "wrong_split"],
     "minMagnitudeBp": 15000,
     "maxUsesPerSource": 2,
     "passEffect": "revoke_unfinalized_and_flag"

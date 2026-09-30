@@ -32,11 +32,10 @@
     "divergenceFactorBp": 30000
   },
   "logs": {
-    "required": true,
+    "required": false,
     "maxBytes": 1048576,
     "maxTurns": 2000,
     "retentionDays": 365,
-    "bareAttestedWeightBp": 5000,
     "requireExactTotals": true
   }
 }
