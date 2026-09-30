@@ -6,7 +6,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { AssessmentBlock, AssessmentRecord, extractAssessmentBlock } from "../packages/contracts/src/assessment.js";
+import {
+  AssessmentBlock,
+  AssessmentRecord,
+  CURRENT_ASSESSMENT_SCHEMA,
+  extractAssessmentBlock,
+  MAX_GAPS,
+  MAX_IMPROVEMENTS,
+} from "../packages/contracts/src/assessment.js";
 
 const root = join(import.meta.dirname, "..");
 const dir = join(root, "docs/assessments");
@@ -60,10 +67,14 @@ describe("docs/assessments: every recorded run", () => {
 describe("the white paper's score block spec", () => {
   const core = readFileSync(join(root, "docs/whitepaper/WHITEPAPER.md"), "utf8");
 
-  it("its template, filled in, is a valid wos-assessment/v1 block (the paper and the contract agree)", () => {
+  it("its template, filled in, is a valid block in the schema the current contract asks for (the paper and the contract agree)", () => {
     const m = core.match(/```wos-assessment\n([\s\S]*?)\n```/);
     expect(m).not.toBeNull();
     const filled = m![1]!
+      .replace(/"<a-short-slug>"/g, '"a-short-slug"')
+      .replace(/"<the gap id it answers, or null>"/, '"a-short-slug"')
+      .replace(/"<score name>"/, '"credibility"')
+      .replace(/"<I \| II>"/, '"II"')
       .replace(/"total": <0-100>/, '"total": 50')
       .replace(/<0-20>/g, "10")
       .replace(/<0-10>/g, "5")
@@ -71,12 +82,26 @@ describe("the white paper's score block spec", () => {
       .replace(/"<([a-z_]+) \|[^>]*>"/g, '"$1"')
       .replace(/"<the Version[^>]*>"/, '"0.7"')
       .replace(/"<today, YYYY-MM-DD>"/, '"2026-10-01"')
-      .replace(/"<[^>]*>"/g, '"x"');
-    expect(AssessmentBlock.parse(JSON.parse(filled)).schema).toBe("wos-assessment/v1");
+      .replace(/"<[^>]*>"/g, '"filled in"');
+    expect(AssessmentBlock.parse(JSON.parse(filled)).schema).toBe(CURRENT_ASSESSMENT_SCHEMA);
+  });
+
+  it("declares its schema the way the runner reads it", () => {
+    expect(core.match(/"schema":\s*"(wos-assessment\/v\d+)"/)?.[1]).toBe(CURRENT_ASSESSMENT_SCHEMA);
+  });
+
+  it("the paper and Appendix D ask for gaps and improvements with the contract's caps", () => {
+    const appendices = readFileSync(join(root, "docs/whitepaper/APPENDICES.md"), "utf8");
+    expect(core).toMatch(/`gaps` lists what is missing or wrong in this paper \(at most 10/);
+    expect(core).toMatch(/`improvements` lists concrete changes that would raise your scores \(at most 10\)/);
+    expect(appendices).toMatch(/\*\*Gaps\*\* \(at most 10/);
+    expect(appendices).toMatch(/\*\*Improvements\*\* \(at most 10\)/);
+    expect(MAX_GAPS).toBe(10);
+    expect(MAX_IMPROVEMENTS).toBe(10);
   });
 
   it("asks for the trend only after scoring, and keeps it out of the paper, the companions and the pack", () => {
-    expect(core).toMatch(/Open either only after you have written your score block/);
+    expect(core).toMatch(/Open any of them only after you have written your score block/);
     const lib = readFileSync(join(root, "apps/web/lib/whitepaper.ts"), "utf8");
     const companions = lib.slice(lib.indexOf("export const COMPANIONS"), lib.indexOf("export function companionMarkdown"));
     expect(companions).not.toMatch(/assessment/i);
@@ -88,6 +113,7 @@ describe("the white paper's score block spec", () => {
 
   it("the prompt asks for the block and for the trend only after it", () => {
     expect(HANDOFF_PROMPT).toMatch(/score block/);
+    expect(HANDOFF_PROMPT).toMatch(/with the gaps and improvements it asks for/);
     expect(HANDOFF_PROMPT).toMatch(/Only after writing it, open https:\/\/waronsaas\.com\/whitepaper\/assessments\.md/);
   });
 });
@@ -98,6 +124,8 @@ describe("tools/assessments/run-reference.ts (fake claude and codex)", () => {
   let site = "";
   let livePrompt = HANDOFF_PROMPT;
   const liveVersion = "0.7";
+  /** The schema line the fake paper's template declares (null: none, like the v0.7 fixture). */
+  let liveSchema: string | null = null;
   const tmp = mkdtempSync(join(tmpdir(), "wos-ref-test-"));
   const script = join(root, "tools/assessments/run-reference.ts");
 
@@ -158,7 +186,9 @@ if [ -n "$out" ]; then cp "${d}/report.md" "$out"; else cat "${d}/report.md"; fi
       if (req.url === "/whitepaper") {
         res.end(`<html><textarea id="wp-prompt" class="prompt" readonly="" rows="16">${esc(livePrompt)}</textarea></html>`);
       } else if (req.url === "/whitepaper.md") {
-        res.end(`# warOnSaaS\n\n| Field | Value |\n|---|---|\n| Version | ${liveVersion} |\n`);
+        res.end(
+          `# warOnSaaS\n\n| Field | Value |\n|---|---|\n| Version | ${liveVersion} |\n${liveSchema ? `\n\`\`\`wos-assessment\n{\n  "schema": "${liveSchema}"\n}\n\`\`\`\n` : ""}`,
+        );
       } else {
         res.statusCode = 404;
         res.end();
@@ -238,6 +268,31 @@ if [ -n "$out" ]; then cp "${d}/report.md" "$out"; else cat "${d}/report.md"; fi
       expect(JSON.parse(readFileSync(join(r, "docs/assessments", f), "utf8")).prompt.matchedLiveSite).toBe(false);
     } finally {
       livePrompt = HANDOFF_PROMPT;
+    }
+  });
+
+  it("requires the schema the served paper's template declares (v0.9+: v2 with gaps and improvements)", async () => {
+    liveSchema = "wos-assessment/v2";
+    try {
+      const r = newRoot();
+      const v1 = await exec(["--cli", "claude", "--bin", fakeCli("claude", reportWith(block())), "--root", r]);
+      expect(v1.code).toBe(1);
+      expect(v1.stderr).toMatch(/uses wos-assessment\/v1 but the served paper specifies wos-assessment\/v2/);
+      expect(readdirSync(join(r, "docs/assessments"))).toHaveLength(0);
+
+      const v2 = {
+        ...block(),
+        schema: "wos-assessment/v2",
+        gaps: [{ id: "fake-gap-one", title: "A fake gap", concerns: "section 3", part: "I", severity: "high" }],
+        improvements: [{ id: "fake-fix-one", change: "A fake change", gap: "fake-gap-one", raises: ["evidence"] }],
+      };
+      const ok = await exec(["--cli", "claude", "--bin", fakeCli("claude", reportWith(v2)), "--root", r]);
+      expect(ok.code, ok.stderr).toBe(0);
+      const f = readdirSync(join(r, "docs/assessments")).find((x) => x.endsWith(".json"))!;
+      const rec = AssessmentRecord.parse(JSON.parse(readFileSync(join(r, "docs/assessments", f), "utf8")));
+      expect(rec.block.schema).toBe("wos-assessment/v2");
+    } finally {
+      liveSchema = null;
     }
   });
 

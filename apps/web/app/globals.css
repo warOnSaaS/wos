@@ -1113,3 +1113,119 @@ button.cmd {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* ---- Score gauges (components/Gauge.tsx): an --fg arc on a --rule track, the number in Geist Mono. Monochrome only. */
+.selfassess {
+  display: grid;
+  gap: 1.25rem;
+}
+.gauges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem 1.5rem;
+  margin: 0;
+}
+.gauges--theses {
+  gap: 1rem 2rem;
+}
+.gauges__pair {
+  display: flex;
+  gap: 0.75rem;
+}
+.gauge {
+  margin: 0;
+  display: grid;
+  justify-items: center;
+  gap: 0.4rem;
+  width: 8.5rem;
+  text-align: center;
+}
+.gauge--small {
+  width: 5.75rem;
+}
+.gauge svg {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+  max-width: 7.5rem;
+  display: block;
+}
+.gauge--small svg {
+  max-width: 4.75rem;
+}
+.gauge__track {
+  stroke: var(--rule);
+}
+.gauge__arc {
+  stroke: var(--fg);
+  stroke-linecap: butt;
+}
+.gauge__tick {
+  stroke: var(--dim);
+  stroke-width: 0.8;
+  opacity: 0.6;
+}
+.gauge__num {
+  fill: var(--fg);
+  font-family: var(--font-head), var(--font-mono), monospace;
+  font-weight: 700;
+  font-size: 26px;
+}
+.gauge--small .gauge__num {
+  font-size: 30px;
+}
+.gauge--pending .gauge__track {
+  stroke-dasharray: 3 4;
+  stroke-width: 2;
+}
+.gauge--pending .gauge__num,
+.gauge--na .gauge__num {
+  fill: var(--dim);
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+}
+.gauge--small.gauge--pending .gauge__num,
+.gauge--small.gauge--na .gauge__num {
+  font-size: 15px;
+}
+.gauge figcaption {
+  display: grid;
+  gap: 0.1rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  line-height: 1.3;
+}
+.gauge__label {
+  color: var(--fg);
+}
+.gauge__scale {
+  color: var(--dim);
+}
+.selfassess__facts {
+  margin: 0;
+}
+.selfassess--compact .gauges {
+  gap: 0.75rem 1rem;
+}
+.selfassess-note {
+  border-left: 2px solid var(--rule-strong);
+  padding-left: 0.75rem;
+}
+/* Phone width: two rings per row. */
+@media (max-width: 34rem) {
+  .gauges {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    justify-items: center;
+  }
+  .gauges__pair {
+    grid-column: span 2;
+    justify-content: center;
+  }
+  .gauge,
+  .gauge--small {
+    width: 100%;
+    max-width: 8.5rem;
+  }
+}

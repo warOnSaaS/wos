@@ -1,8 +1,11 @@
 import Link from "next/link";
 import { JsonLd } from "@/components/JsonLd";
 import { Section } from "@/components/Section";
+import { SelfAssessment } from "@/components/SelfAssessment";
 import { runDate, reportUrl } from "@/lib/assessments";
 import { parse, renderBlock } from "@/lib/markdown";
+import { GAP_REGISTER, GAPS_PATH } from "@/lib/gaps";
+import { PENDING_LABEL } from "@/lib/self-assessment";
 import { breadcrumbLd, pageMetadata } from "@/lib/seo";
 import { ASSESSMENTS_PATH, WHITEPAPER_CHANGES_MD_PATH, WHITEPAPER_CHANGES_PATH, WHITEPAPER_PATH, WHITEPAPER_READ_PATH } from "@/lib/whitepaper";
 import {
@@ -198,8 +201,32 @@ function Version({ v }: { v: HistoryVersion }) {
         <p>No changelog entry for this version was found in the paper or APPENDICES.md.</p>
       )}
 
-      <p className="label">ASSESSMENTS RECORDED AGAINST v{v.version}</p>
-      {runs.length ? <Scores runs={runs} /> : <p>No reference run recorded.</p>}
+      <p className="label">
+        SELF-ASSESSMENT OF v{v.version}
+        {v.current && !runs.length ? ` · ${PENDING_LABEL}` : ""}
+      </p>
+      {runs.length ? (
+        <>
+          <SelfAssessment run={runs.at(-1)!} version={v.version} compact headingLevel={4} />
+          <Scores runs={runs} />
+        </>
+      ) : v.current ? (
+        <>
+          <SelfAssessment run={null} version={v.version} compact headingLevel={4} />
+          <p>
+            No reference run recorded yet. Every version ships with a self-assessment; this one is recorded after v{v.version}{" "}
+            reaches the site, and the next version cannot ship until it is.
+          </p>
+        </>
+      ) : (
+        <p>No reference run recorded.</p>
+      )}
+      {GAP_REGISTER.gaps.some((g) => g.version === v.version) ? (
+        <p className="fine">
+          Gaps this version&apos;s self-assessment found, and what became of them:{" "}
+          <Link href={`${GAPS_PATH}#gaps`}>the gap register</Link>.
+        </p>
+      ) : null}
     </Section>
   );
 }

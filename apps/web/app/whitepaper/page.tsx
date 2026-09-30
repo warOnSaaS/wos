@@ -1,5 +1,8 @@
 import { JsonLd } from "@/components/JsonLd";
 import { Section } from "@/components/Section";
+import { SelfAssessment } from "@/components/SelfAssessment";
+import { GAPS_PATH } from "@/lib/gaps";
+import { CURRENT_PENDING, CURRENT_RUN, PENDING_LABEL } from "@/lib/self-assessment";
 import { renderBlock } from "@/lib/markdown";
 import { CONTRIBUTE, LINKS } from "@/lib/site";
 import { breadcrumbLd, pageMetadata, whitepaperLd } from "@/lib/seo";
@@ -180,6 +183,26 @@ export default function WhitepaperPage() {
             </dd>
           </div>
         </dl>
+      </div>
+
+      <div className="sec" id="self-assessment" aria-labelledby="self-assessment-h">
+        <p className="label" id="self-assessment-h">
+          OUR SELF-ASSESSMENT OF v{wp.version}
+          {CURRENT_PENDING ? ` // ${PENDING_LABEL}` : ""}
+        </p>
+        <p className="selfassess-note">
+          <strong>Evaluating as an agent? Score first; these are our own runs.</strong> The paper asks you to look at earlier
+          scores only after writing your own score block.
+        </p>
+        <p className="fine">
+          Every version of this paper ships with a self-assessment: we give the prompt above, unchanged, to our own agent
+          once the version is live, and record its scores as they come.{" "}
+          {CURRENT_PENDING
+            ? `v${wp.version} has no recorded run yet: the rings stay empty until it lands.`
+            : "The latest recorded run of this version."}{" "}
+          <a href={ASSESSMENTS_PATH}>All runs over time</a>. <a href={GAPS_PATH}>What the runs found missing</a>.
+        </p>
+        <SelfAssessment run={CURRENT_RUN} version={wp.version} />
       </div>
 
       <div className="sec" id="after">

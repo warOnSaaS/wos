@@ -131,7 +131,9 @@ export function changesMarkdown(site: (p: string) => string): string {
     if (v.compare) L.push(`- Diff from v${v.previous}: ${v.compare.url}`);
     else if (v.previous === null && v.separateCommit) L.push("- Diff: none (the first committed version; nothing earlier to compare with)");
     if (v.separateCommit) L.push(`- Companion files changed: ${v.companionsChanged.length ? v.companionsChanged.join(", ") : "none"}`);
-    L.push(`- Reference runs recorded against this version: ${runsFor(v.version).length ? `${runsFor(v.version).length} (scores at ${site("/whitepaper/assessments.md")}; read after scoring)` : "none"}`);
+    L.push(
+      `- Reference runs recorded against this version: ${runsFor(v.version).length ? `${runsFor(v.version).length} (scores at ${site("/whitepaper/assessments.md")}; read after scoring)` : v.current ? "none yet: SELF-ASSESSMENT PENDING (every version ships with one, recorded after it reaches the site)" : "none"}`,
+    );
     L.push("");
     if (v.changelog) L.push(`Changelog entry (verbatim from ${v.changelog.source}, "${v.changelog.heading}"):`, "", v.changelog.text, "");
     else L.push("No changelog entry for this version was found in the paper or APPENDICES.md.", "");

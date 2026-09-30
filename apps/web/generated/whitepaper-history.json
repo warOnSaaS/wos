@@ -15,13 +15,13 @@
     "docs/whitepaper/MATERIALITY.md",
     "tools/materiality/model.ts"
   ],
-  "current": "0.8",
+  "current": "0.9",
   "trackedHashes": {
-    "docs/whitepaper/WHITEPAPER.md": "sha256:4d705daaa7ccfe887d162e5f902efc5411c884d0bbc9fba81aff8940fb9669ae",
+    "docs/whitepaper/WHITEPAPER.md": "sha256:70933793d9a31674101af4ace7bccde79f26ab416f0679b41f0181e25626c49b",
     "docs/whitepaper/MATERIALITY.md": "sha256:7fb2d569ad720dc73cf524bdfe97b3b739f261d1899914838833d093fab1c528",
     "docs/whitepaper/EDGE-CASES.md": "sha256:e324564b6e4707540a96fc5edd1acc19dd60b735c6a44dfc38a65f3062e0ad43",
     "docs/whitepaper/DESIGN.md": "sha256:cd463e29fec63c5646d42954bdec0ba1bd66c88f036c730577b904ef1d81302d",
-    "docs/whitepaper/APPENDICES.md": "sha256:2f16a982f2e09b55b1b47c3b2ed5c22334025578b32da0fe6e606abb738fb2f9",
+    "docs/whitepaper/APPENDICES.md": "sha256:acb3827ac8598bb6286c03320fddc122aebb36703987e0806df540857fc39691",
     "docs/whitepaper/SOURCES.md": "sha256:61ae581178e09a8d8a51ee90b2cb47678264409b4f68bb203f012c39c9cacce1",
     "tools/materiality/model.ts": "sha256:42d9f7b2ba7fa6c80d71d08f32df20065151bbae94d7e1e1ac4a62e6dffa25f3"
   },
@@ -371,7 +371,7 @@
         "files": []
       },
       "changelog": {
-        "source": "docs/whitepaper/WHITEPAPER.md",
+        "source": "docs/whitepaper/APPENDICES.md",
         "heading": "### v0.6",
         "text": "- **Two stages, founder-directed.** An earlier version asked the evaluating agent to judge the problem partly on the project's own proof, so an early project dragged down the assessment of the problem. The core is now split. **Part I, the thesis and its materiality**, states the problem and the four theses independently of warOnSaaS and estimates the problem's size. **Part II, the approach**, describes how warOnSaaS attacks it and asks to be judged against Part I.\n- **New: materiality estimates (Part I, section 3) and a new companion file, `MATERIALITY.md`.** Sourced figures (software and SaaS spend, the Sniper List vendors' revenue, data-centre electricity, AI coding usage and cost, open-source share of code) and a transparent estimation model with every assumption named at low, central and high values: the size of the problem in money, compute and power, the duplicated share, theoretical savings at network scale net of coordination and review overhead with a rebound scenario, and worked examples for companies of 50, 500 and 5,000 staff. The model is a deterministic script in the repository (`tools/materiality/model.ts`); a test fails if its committed output drifts.\n- **The evaluation brief and Appendix D rewritten into two stages.** Stage 1 (points 1 to 4): is the problem real, how big, importance for humanity out of 100, and each thesis separately, judged as if warOnSaaS did not exist, with an explicit request not to lower the problem's importance because the project is early. Stage 2 (points 5 to 11): whether the approach is an efficient, well-targeted attack on a problem of that size and what share it could plausibly address (new section 14), credibility, readiness, edge cases handled and missed, strongest arguments, and what to do. The honesty rules are unchanged.\n- **Thesis 4 restated for Part I** as the need for a contribution primitive for machine labour; APoC as designed is judged in Part II. \"Where wOS stands\" and the per-thesis mechanisms moved from the theses to section 5, with conditions (a) to (d). Sections renumbered: Part I is sections 1 to 4, Part II sections 5 to 15."
       },
@@ -444,18 +444,38 @@
     },
     {
       "version": "0.8",
-      "current": true,
+      "current": false,
       "separateCommit": true,
-      "note": "The current version. Its commits are recorded once a newer version exists; its date is the paper's last-updated date from git.",
+      "note": null,
       "addedIn": null,
-      "firstCommit": null,
-      "lastCommit": null,
-      "commits": null,
+      "firstCommit": {
+        "sha": "6c9b7a080314779c9bdd3a98c98aa43ee14e76ed",
+        "date": "2026-09-30T12:04:40-04:00",
+        "subject": "White paper v0.8: every change publicly traceable, Part I changes flagged, scores tied to their version",
+        "url": "https://github.com/warOnSaaS/wos/commit/6c9b7a080314779c9bdd3a98c98aa43ee14e76ed"
+      },
+      "lastCommit": {
+        "sha": "6c9b7a080314779c9bdd3a98c98aa43ee14e76ed",
+        "date": "2026-09-30T12:04:40-04:00",
+        "subject": "White paper v0.8: every change publicly traceable, Part I changes flagged, scores tied to their version",
+        "url": "https://github.com/warOnSaaS/wos/commit/6c9b7a080314779c9bdd3a98c98aa43ee14e76ed"
+      },
+      "commits": [
+        {
+          "sha": "6c9b7a080314779c9bdd3a98c98aa43ee14e76ed",
+          "date": "2026-09-30T12:04:40-04:00",
+          "subject": "White paper v0.8: every change publicly traceable, Part I changes flagged, scores tied to their version",
+          "url": "https://github.com/warOnSaaS/wos/commit/6c9b7a080314779c9bdd3a98c98aa43ee14e76ed",
+          "files": [
+            "docs/whitepaper/WHITEPAPER.md"
+          ]
+        }
+      ],
       "previous": "0.7",
       "compare": {
         "from": "e30de2c94bacb661fcdf3cc3a929bcd1b3d1bf5f",
-        "to": "main",
-        "url": "https://github.com/warOnSaaS/wos/compare/e30de2c94bacb661fcdf3cc3a929bcd1b3d1bf5f...main"
+        "to": "6c9b7a080314779c9bdd3a98c98aa43ee14e76ed",
+        "url": "https://github.com/warOnSaaS/wos/compare/e30de2c94bacb661fcdf3cc3a929bcd1b3d1bf5f...6c9b7a080314779c9bdd3a98c98aa43ee14e76ed"
       },
       "filesChanged": [
         "docs/whitepaper/WHITEPAPER.md"
@@ -468,13 +488,52 @@
       },
       "changelog": {
         "source": "docs/whitepaper/WHITEPAPER.md",
-        "heading": "### v0.8 (this version)",
+        "heading": "### v0.8",
         "text": "- **Every change is publicly traceable.** A new file for agents, https://waronsaas.com/whitepaper/changes.md, lists every version of this paper, newest first: its changelog entry verbatim, the GitHub diff from the previous version, the companion files it changed, and each past version in full. It is generated from git at every build: the versions come from the Version row of this header table at each commit, never typed by hand. v0.1 is the verbatim original; it had no commit of its own.\n- **Part I changes are flagged.** A version whose diff touches Part I (sections 1 to 4), `MATERIALITY.md` or the materiality model is marked \"PART I CHANGED\", so an agent comparing its assessment with earlier ones knows the thesis or its numbers moved. Part II changes are not flagged.\n- **Scores are tied to the version they scored.** The web page for people (/whitepaper/changes on the site) shows the reference runs recorded against each version; the Markdown file for agents does not, so it cannot anchor an evaluation. Each run on the recorded trend links to the version it scored. Scores are comparable only within one version, or across versions by reading the changes between them.\n- **The rule enforces itself.** The website build fails if this file changes without a version bump and a changelog entry for the new version, or if the changelog has an entry for a version newer than the header's. The header table gains the \"Changes\" row."
       },
       "snapshot": {
         "file": "0.8.md",
         "format": "markdown",
         "sha256": "sha256:4d705daaa7ccfe887d162e5f902efc5411c884d0bbc9fba81aff8940fb9669ae",
+        "sourceUrl": "https://github.com/warOnSaaS/wos/blob/6c9b7a080314779c9bdd3a98c98aa43ee14e76ed/docs/whitepaper/WHITEPAPER.md"
+      }
+    },
+    {
+      "version": "0.9",
+      "current": true,
+      "separateCommit": true,
+      "note": "The current version. Its commits are recorded once a newer version exists; its date is the paper's last-updated date from git.",
+      "addedIn": null,
+      "firstCommit": null,
+      "lastCommit": null,
+      "commits": null,
+      "previous": "0.8",
+      "compare": {
+        "from": "6c9b7a080314779c9bdd3a98c98aa43ee14e76ed",
+        "to": "main",
+        "url": "https://github.com/warOnSaaS/wos/compare/6c9b7a080314779c9bdd3a98c98aa43ee14e76ed...main"
+      },
+      "filesChanged": [
+        "docs/whitepaper/APPENDICES.md",
+        "docs/whitepaper/WHITEPAPER.md"
+      ],
+      "companionsChanged": [
+        "docs/whitepaper/APPENDICES.md"
+      ],
+      "partI": {
+        "changed": false,
+        "sections": [],
+        "files": []
+      },
+      "changelog": {
+        "source": "docs/whitepaper/WHITEPAPER.md",
+        "heading": "### v0.9 (this version)",
+        "text": "- **Every version ships with a self-assessment** (founder directive: \"The white paper should always ship with a self-assessment, as well as rooms for improvement, gaps, etc.\"). Once a new version is live, warOnSaaS's reference run of the public prompt is recorded automatically (Claude Code on the founder's subscription; `.github/workflows/self-assessment.yml`). The website build refuses a new version while the previous one has no recorded run; v0.1 to v0.8 predate the rule and are exempt. Until the run lands, the version's self-assessment shows as pending.\n- **The score block asks for gaps and improvements** (schema `wos-assessment/v2`, contracts 5.2.0): at most 10 gaps, each with a short id, the section or thesis it concerns, Part I or II and a severity, and at most 10 improvements, each tied to a gap where it answers one. `wos-assessment/v1` blocks from earlier runs stay valid. Appendix D and the handoff prompt ask for them.\n- **Gaps are tracked across versions.** A gap register (https://waronsaas.com/assessments/gaps.md, read after scoring) lists every gap from the latest run of each version as open, addressed or declined with a reason. A changelog entry may cite gap ids: \"Gaps addressed: `id`\" or \"Gap declined: `id`: reason\". Matching is by exact id only. The build warns when a new version leaves a high-severity gap of the previous run unmentioned.\n- The v0.6 changelog entry moved to `APPENDICES.md` to keep the core under twelve thousand words."
+      },
+      "snapshot": {
+        "file": "0.9.md",
+        "format": "markdown",
+        "sha256": "sha256:70933793d9a31674101af4ace7bccde79f26ab416f0679b41f0181e25626c49b",
         "sourceUrl": "https://github.com/warOnSaaS/wos/blob/main/docs/whitepaper/WHITEPAPER.md"
       }
     }

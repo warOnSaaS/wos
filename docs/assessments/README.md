@@ -1,12 +1,13 @@
 # White paper assessments: reference runs
 
-Each file pair here is one reference run of the white paper's evaluation brief, run by the founder on his own
-subscriptions with `tools/assessments/run-reference.ts`:
+Each file pair here is one reference run of the white paper's evaluation brief (the paper's self-assessment), run on
+the founder's own subscriptions with `tools/assessments/run-reference.ts`: by `.github/workflows/self-assessment.yml`
+(Claude, once per paper version, since v0.9) or by the founder by hand (Codex runs always):
 
 - `<date>-v<paper version>-<model>.json`: an `AssessmentRecord` (`wos-assessment-record/v1`,
   `packages/contracts/src/assessment.ts`): source `reference run by warOnSaaS`, which CLI and model ran it, the
-  sha256 of the exact prompt, the paper version the site served, the raw score block and the validated
-  `wos-assessment/v1` block.
+  sha256 of the exact prompt, the paper version the site served, the raw score block and the validated block
+  (`wos-assessment/v1` for paper v0.7 and v0.8; `wos-assessment/v2`, with gaps and improvements, from v0.9).
 - `<same stem>.md`: the agent's full report, verbatim.
 
 Rules:
@@ -19,5 +20,8 @@ Rules:
   https://waronsaas.com/whitepaper/assessments.md (the trend an evaluating agent reads only after scoring).
   `tests/assessments.test.ts` validates every file here against the contract.
 - Anti-anchoring: no score from here may appear in the white paper, its companions or the full pack.
+- Every paper version needs at least one run here before the next version can ship (v0.1 to v0.8 exempt); the gap
+  register (https://waronsaas.com/assessments/gaps) is derived from the latest run of each version and the paper's
+  changelog.
 
 How to run one: see `tools/assessments/README.md`.

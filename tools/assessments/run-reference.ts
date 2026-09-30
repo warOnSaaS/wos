@@ -1,6 +1,8 @@
 /**
- * warOnSaaS reference run of the white paper's evaluation brief. RUN BY THE FOUNDER ONLY, on his own machine:
- * it spends his Claude or ChatGPT subscription. Never run it in CI, in tests (they use fake CLIs) or from an agent.
+ * warOnSaaS reference run of the white paper's evaluation brief (the paper's self-assessment). It spends the founder's
+ * Claude or ChatGPT subscription, so only two callers run it: the founder by hand, and
+ * .github/workflows/self-assessment.yml (Claude only, on his CLAUDE_CODE_OAUTH_TOKEN, once per paper version after it
+ * reaches the site). Never run it in tests (they use fake CLIs) or from a coding agent.
  *
  *   node tools/assessments/run-reference.ts --cli claude            # Claude Code, Opus
  *   node tools/assessments/run-reference.ts --cli codex             # Codex CLI, GPT-6-Astra
@@ -13,10 +15,12 @@
  *   3. Runs the CLI once, non-interactively, in an empty temporary directory (so the agent cannot see this
  *      repository or earlier runs before it scores), with web access, the prompt on stdin.
  *   4. Finds the report's `wos-assessment` block and validates it (packages/contracts/src/assessment.ts). A missing
- *      or invalid block, or a block naming another paper version than the site served, is not recorded; the report
- *      is kept in a temporary file for you to read.
+ *      or invalid block, a block naming another paper version than the site served, or a block in another schema than
+ *      the one the served paper's template specifies (v0.9 onwards: wos-assessment/v2, with gaps and improvements) is
+ *      not recorded; the report is kept in a temporary file for you to read.
  *   5. Writes docs/assessments/<day>-v<version>-<cli>-<model>.json (validated AssessmentRecord) and the verbatim
- *      report as the sibling .md, then refreshes apps/web/generated/assessments.json via scripts/sync-shared.mjs.
+ *      report as the sibling .md, then refreshes apps/web/generated/assessments.json and gap-register.json via
+ *      scripts/sync-shared.mjs.
  *   6. With --commit, commits exactly those files as adventurini <anthonydventurini@gmail.com>. It never pushes.
  *
  * It never edits, fills or adjusts a score.
@@ -118,6 +122,11 @@ export function livePrompt(html: string): string | null {
   return m ? decode(m[1]!).replace(/^\n/, "") : null;
 }
 
+/** The schema the paper's score block template declares ("schema": "wos-assessment/vN"), or null if it has none. */
+export function servedSchema(md: string): string | null {
+  return md.match(/"schema":\s*"(wos-assessment\/v\d+)"/)?.[1] ?? null;
+}
+
 /** The Version row of the paper's header table. */
 export function servedVersion(md: string): string | null {
   return md.match(/^\|\s*Version\s*\|\s*([0-9]+\.[0-9]+(?:\.[0-9]+)?)\s*\|/m)?.[1] ?? null;
@@ -190,8 +199,10 @@ export async function runReference(o: Options, log: (s: string) => void = consol
     matchedLiveSite = true;
   }
 
-  // 2. The version the site serves.
-  const served = servedVersion(await getText(`${o.site}/whitepaper.md`));
+  // 2. The version the site serves, and the score block schema its template asks for.
+  const servedMd = await getText(`${o.site}/whitepaper.md`);
+  const served = servedVersion(servedMd);
+  const schema = servedSchema(servedMd);
   if (!served) return { ok: false, error: `${o.site}/whitepaper.md has no Version row`, keptReport: null };
   log(`paper served: v${served}; running ${o.cli} (${o.model}); this spends your subscription and can take a while`);
 
@@ -218,6 +229,14 @@ export async function runReference(o: Options, log: (s: string) => void = consol
     return {
       ok: false,
       error: `the block says paper v${found.block.paperVersion} but the site served v${served} (pass --accept-version-mismatch to record it anyway)`,
+      keptReport: keep(),
+    };
+  }
+
+  if (schema && found.block.schema !== schema) {
+    return {
+      ok: false,
+      error: `the block uses ${found.block.schema} but the served paper specifies ${schema} (the lists it asks for would be missing)`,
       keptReport: keep(),
     };
   }
@@ -251,7 +270,11 @@ export async function runReference(o: Options, log: (s: string) => void = consol
   if (o.syncSite) execFileSync(process.execPath, [join(web, "scripts", "sync-shared.mjs")], { cwd: web, stdio: "inherit" });
 
   // 6. Optional commit of exactly these files.
-  const files = [json, md, ...(o.syncSite ? [join(web, "generated", "assessments.json")] : [])];
+  const files = [
+    json,
+    md,
+    ...(o.syncSite ? [join(web, "generated", "assessments.json"), join(web, "generated", "gap-register.json")] : []),
+  ];
   if (o.commit) {
     execFileSync("git", ["add", "--", ...files], { cwd: o.root });
     execFileSync(
