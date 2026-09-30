@@ -1,0 +1,15 @@
+# Astra review 08 — probes re-run on the PRE-FIX code, commit f5d7f7a, 2026-09-30T17:10Z. R08-1 reproduces (RATIFIED and FINAL_BY_SILENCE refused); R07 lines are fixed baselines.
+
+{"name":"R07-1_valid_fallback","result":[]}
+{"name":"R07-1_unknown_risk_refused","result":["the ReviewPolicy has 0 rules for risk class unknown-risk (exactly one is required)"]}
+{"name":"R07-1_wrong_capability_version_refused","result":["the capability policy used is not the one the snapshot pinned"]}
+{"name":"R07-1_wrong_provider_refused","result":["claude_cli/gpt-6-astra is not a qualified (provider, model) for the astra seat"]}
+{"name":"R07-5_machine_endpoints_declared","result":[]}
+{"name":"R07-6_in_epoch_hold_and_release","result":{"holds":{},"claimable":{"alice":"100"},"consumed":["hold:h","hold-release:h"]}}
+{"name":"R08-1_allocation_challenge_ACTIVE","result":[]}
+{"name":"R08-1_allocation_challenge_RATIFIED","result":["the free allocation challenge is for ACTIVE receipts (provisional ones use their D54 publication)"]}
+{"name":"R08-1_allocation_challenge_FINAL_BY_SILENCE","result":["the free allocation challenge is for ACTIVE receipts (provisional ones use their D54 publication)"]}
+{"name":"R08-1_old_D54_window_already_closed","result":["the receipt is already final"]}
+{"name":"R07-7_confirmed_ruling_records","result":[{"rulingId":"r","findingId":"f","raisedByLab":"openai","resolvedByLab":"human","outcome":"upheld"}]}
+{"name":"R07-7_unconfirmed_ruling_refused","error":"ruling r is awaiting_maintainer, not confirmed"}
+{"name":"R08-2_missing_expiry_row_sql","result":"ERROR:  current transaction is aborted, commands ignored until end of transaction block"}
