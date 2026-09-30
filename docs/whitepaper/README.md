@@ -45,7 +45,7 @@ https://waronsaas.com/whitepaper/changes (for agents: https://waronsaas.com/whit
 
 ## The handoff prompt
 
-The prompt on /whitepaper lives in `apps/web/lib/handoff-prompt.ts` (`HANDOFF_PROMPT`, and a one-line `HANDOFF_PROMPT_SHORT` for the llms files; re-exported by `apps/web/lib/whitepaper.ts`). It has no imports because `tools/assessments/run-reference.ts` sends exactly that text to the founder's agents. Keep its two stages and eleven points in step with the paper's instructions to the evaluating agent. Only chat links whose pre-fill was verified in a browser may carry the prompt (today: ChatGPT `?q=`); others open the chat and the user pastes.
+The prompt on /whitepaper lives in `apps/web/lib/handoff-prompt.ts` (`HANDOFF_PROMPT`, and a one-line `HANDOFF_PROMPT_SHORT` for the llms files; re-exported by `apps/web/lib/whitepaper.ts`). It has no imports because `tools/assessments/run-reference.ts` sends exactly that text to the founder's agents. Keep its two stages and eleven points in step with the paper's instructions to the evaluating agent. After the score block and the trend comparison it asks the agent whether its human wants to take part and, only if so, to fetch https://waronsaas.com/contribute.md (the steps on /contribute, generated from `apps/web/lib/contribute.ts`) and walk them through it; contribute.md is not part of the paper, so changing it needs no version bump. Only chat links whose pre-fill was verified in a browser may carry the prompt (today: ChatGPT `?q=`); others open the chat and the user pastes.
 
 ## Assessments (since v0.7)
 

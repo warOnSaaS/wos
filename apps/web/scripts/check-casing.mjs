@@ -12,6 +12,7 @@
  *     Exactly "WOS": mis-cased forms (Wos, wos, WoS) still fail there.
  *   - "wos" only as the CLI command (wos build|login|…, "the wos command"), the Postgres schema ("wos Postgres")
  *     or a branch/check (wos/...); repository names waronsaas/wos and waronsaas/product
+ *   - the install scripts served at /install.sh and /install.ps1: shell and PowerShell code, skipped entirely
  * Also fails if any built CSS uses text-transform, because CSS re-casing would
  * make rendered text differ from the text checked here.
  *
@@ -57,7 +58,7 @@ const css = files.filter((f) => f.includes(join(".next", "static")) && f.endsWit
 
 // Lowercase `wos` is the CLI binary and the Postgres schema: allowed as "wos <subcommand>",
 // "the wos command", "wos Postgres schema" and "wos/<branch-or-check>".
-const CLI_SUB = /^(\s+(build|login|status|roadmap|propose|resolve|review|logout|link-github|command|Postgres)\b|\s+--[a-z]|\/)/;
+const CLI_SUB = /^(\s+(build|login|status|roadmap|propose|resolve|review|logout|link-github|apps|tasks|abus|work|events|orgs|resume|release|help|command|Postgres)\b|\s+--[a-z]|\/)/;
 const errors = [];
 
 function scrub(text) {
@@ -93,9 +94,14 @@ const TOKEN_SYMBOL_PAGES = new Set([
 ]);
 const TOKEN_SYMBOL_PREFIXES = ["whitepaper/v/"];
 
+// The install scripts are shell and PowerShell code (paths, variables, file names), not copy; their messages to people
+// say wOS. They are served verbatim from apps/web/install/.
+const CODE_BODIES = new Set(["install.sh.body", "install.ps1.body"]);
+
 for (const f of pages) {
   const raw = readFileSync(f, "utf8");
   const rel = relative(join(root, "server", "app"), f).split("\\").join("/");
+  if (CODE_BODIES.has(rel)) continue;
   const symbolOk = TOKEN_SYMBOL_PAGES.has(rel) || TOKEN_SYMBOL_PREFIXES.some((p) => rel.startsWith(p));
   const text = scrub(f.endsWith(".html") ? renderedText(raw) : raw);
   for (const m of text.matchAll(/waronsaas/gi)) {

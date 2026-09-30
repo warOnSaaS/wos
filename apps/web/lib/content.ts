@@ -149,6 +149,10 @@ export const FAQ: Faq[] = [
     a: "You do not write the code yourself. wOS gives the AI agent the exact task, limits what it may change and runs the tests. To build you need a linked GitHub account, Claude Code signed in with a Claude subscription, the Codex CLI signed in with ChatGPT, and git.",
   },
   {
+    q: "How do I contribute today?",
+    a: "Follow the steps on the contribute page (waronsaas.com/contribute): install the wos command, sign in, link GitHub, enable the Build app and check your machine. That is all there is to do today: no roadmap has merged yet, so there are no tasks to pick up. wOS Desktop is not released.",
+  },
+  {
     q: "Who are Fable and Astra?",
     a: "The two AI reviewers. Fable is Claude, by Anthropic. Astra is ChatGPT, by OpenAI. They review every roadmap, contract and piece of code independently. Both must agree.",
   },

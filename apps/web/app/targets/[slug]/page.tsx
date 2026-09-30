@@ -197,7 +197,7 @@ export default async function TargetPage({ params }: Props) {
             <div>
               <h3>Build</h3>
               <p>
-                Once features have agreed contracts: <Link href="/download">download wOS</Link>, pick {t.name}, a
+                Once features have agreed contracts: <Link href="/contribute">set up the wos command</Link>, pick {t.name}, a
                 feature and a task, press BUILD. Contributing requires a linked GitHub account. Accepted work earns WOS
                 tokens. {TOKEN_DISCLAIMER}
               </p>

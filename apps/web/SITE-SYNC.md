@@ -46,10 +46,14 @@ outside `apps/web/` changed. Never edit `docs/whitepaper/WHITEPAPER-v0.1-origina
 5. **Small diffs.** Change the sentences that are now wrong or missing. Do not restyle or rewrite pages
    that are still accurate. If nothing on the site is out of date, change nothing.
 6. **No italic, no colour, no new pages** unless a shipped feature has nowhere to be described.
-7. **Contribution status stays honest.** `CONTRIBUTE` in `apps/web/lib/site.ts` (shown on /whitepaper and in the llms
-   files) and the white paper's section 16 say that neither wOS Desktop nor the wos command is released. Change that
-   only when a signed Desktop release exists on GitHub Releases or `@waronsaas/cli` is published on npm, and cite it;
-   then update both places (and "designed, not built" for BUILD NEXT and `wos build --next` only when that code is on main).
+7. **Contribution status stays honest.** The steps and the "works / not yet" lines live in `apps/web/lib/contribute.ts`
+   (rendered on /contribute, /contribute.md and in the llms files); `CONTRIBUTE` and `DOWNLOADS` in `apps/web/lib/site.ts`
+   (on /whitepaper, /download and the home page) and the white paper's section 16 say the same. The wos command's
+   release state is never typed: `apps/web/lib/cli-release.ts` reads the newest `cli@` release from the GitHub API.
+   wOS Desktop stays "not released yet" (no download link) until a signed `desktop-v*` release exists on GitHub
+   Releases; cite it when you change that. Change "there is no work to pick up" only when `wos tasks` can return a
+   task (a roadmap or Feature Contract merged in waronsaas/product), and "designed, not built" for the work-next queue
+   only when that code is on main. Every command shown must exist in `wos --help`.
 8. **Assessments are data, not copy.** Never write, edit or summarise a score from `docs/assessments/` into any page,
    the white paper or the llms files. /assessments, /assessments/gaps and /whitepaper/assessments.md render them from
    the files, and the score rings on /whitepaper and /whitepaper/changes are drawn from the same files.

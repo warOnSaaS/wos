@@ -32,6 +32,7 @@ export function Footer() {
             <li><Link href="/briefing">Briefing</Link></li>
             <li><Link href="/whitepaper">White paper</Link></li>
             <li><Link href="/how-it-works">Procedure and rules</Link></li>
+            <li><Link href="/contribute">How to contribute</Link></li>
             <li><Link href="/download">Download</Link></li>
             <li><Link href="/tokens">Tokens</Link></li>
             <li><Link href="/leaderboard">Leaderboard</Link></li>

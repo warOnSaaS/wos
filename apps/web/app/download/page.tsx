@@ -1,88 +1,45 @@
 import Link from "next/link";
-import { pageMetadata, desktopAppLd } from "@/lib/seo";
+import { pageMetadata } from "@/lib/seo";
 import { DownloadBlock } from "@/components/DownloadBlock";
 import { Section } from "@/components/Section";
-import { JsonLd } from "@/components/JsonLd";
-import { CLI, TOKEN_DISCLAIMER } from "@/lib/site";
+import { getCliRelease } from "@/lib/cli-release";
 
 export const metadata = pageMetadata({
-  title: "Download wOS Desktop and the wOS CLI",
+  title: "Download wOS",
   description:
-    "Download wOS Desktop for macOS or Linux, or install the wOS CLI with npm; Windows is coming later. Sign in with your email; link GitHub to contribute.",
+    "wOS Desktop is not released yet. The wos command installs with one line once its first release is out; the page reads the release state from GitHub. How to contribute: /contribute.",
   path: "/download",
 });
 
-export default function Download() {
+// The CLI's release state comes from the GitHub API (lib/cli-release.ts), refreshed hourly.
+export const revalidate = 3600;
+
+export default async function Download() {
+  const release = await getCliRelease();
   return (
     <>
       <div className="title">
         <p className="label">EQUIPMENT // wOS</p>
         <h1>Download wOS</h1>
         <p>
-          wOS is the build tool. Pick a target, a feature and a task. Press BUILD. Your local Claude Code does the work
-          under wOS’s checks.
+          wOS is the build tool. It gives your own Claude Code or Codex CLI one small task at a time and checks the
+          work. Today it is the wos command; wOS Desktop is not released yet.
         </p>
+        <div className="cmds-row">
+          <Link className="cmd" href="/contribute">HOW TO CONTRIBUTE</Link>
+        </div>
       </div>
 
       <Section n="01" title="EQUIPMENT" id="equipment">
-        <DownloadBlock />
+        <DownloadBlock release={release} />
       </Section>
 
       <Section n="02" title="SETUP" id="setup">
-        <ol className="proc">
-          <li>
-            <span className="proc__n" aria-hidden="true">01</span>
-            <div>
-              <h3>Install wOS</h3>
-              <p>
-                Download wOS Desktop for macOS or Linux (Windows is coming later), or run <code>{CLI.install}</code>.
-              </p>
-            </div>
-          </li>
-          <li>
-            <span className="proc__n" aria-hidden="true">02</span>
-            <div>
-              <h3>Sign in</h3>
-              <p>
-                Sign in with your email (<code>wos login</code>). A magic link is sent to you. No GitHub account is needed
-                to sign in.
-              </p>
-            </div>
-          </li>
-          <li>
-            <span className="proc__n" aria-hidden="true">03</span>
-            <div>
-              <h3>Link GitHub to contribute</h3>
-              <p>To contribute (build, review, propose), link a GitHub account.</p>
-            </div>
-          </li>
-          <li>
-            <span className="proc__n" aria-hidden="true">04</span>
-            <div>
-              <h3>Install the build tools</h3>
-              <p>
-                Claude Code, signed in with a Claude subscription. The Codex CLI, signed in with ChatGPT, for reviews.
-                git. Check with <code>wos status</code>.
-              </p>
-            </div>
-          </li>
-          <li>
-            <span className="proc__n" aria-hidden="true">05</span>
-            <div>
-              <h3>Build</h3>
-              <p>
-                Desktop: pick a target, a feature and a task, press BUILD. CLI: <code>wos build &lt;task-id&gt;</code>.
-                Accepted work earns WOS tokens. {TOKEN_DISCLAIMER}
-              </p>
-            </div>
-          </li>
-        </ol>
-        <p className="fine">
-          The AI runs on your machine with your own Claude and ChatGPT sign-ins. <Link href="/how-it-works">Procedure</Link>.
+        <p>
+          The steps, with an honest status of what works today, are on <Link href="/contribute">one page</Link>. The AI
+          runs on your machine with your own Claude and ChatGPT sign-ins. <Link href="/how-it-works">Procedure</Link>.
         </p>
       </Section>
-
-      <JsonLd data={desktopAppLd} />
     </>
   );
 }

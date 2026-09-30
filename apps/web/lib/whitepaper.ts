@@ -38,6 +38,7 @@ export const ASSESSMENTS_MD_PATH = "/whitepaper/assessments.md";
 export const ASSESSMENTS_PATH = "/assessments";
 export {
   ASSESSMENTS_MD_URL,
+  CONTRIBUTE_MD_URL,
   HANDOFF_PROMPT,
   HANDOFF_PROMPT_SHORT,
   WHITEPAPER_MD_URL,

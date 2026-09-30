@@ -93,9 +93,8 @@ export const desktopAppLd = {
   applicationCategory: "DeveloperApplication",
   operatingSystem: "macOS, Linux",
   description:
-    "The warOnSaaS desktop app. Pick a target, a feature and a build unit, press BUILD, and your local Claude Code builds it under wOS’s checks.",
+    "The warOnSaaS desktop app, not released yet. Pick a target, a feature and a build unit, press BUILD, and your local Claude Code builds it under wOS’s checks.",
   url: abs("/download"),
-  downloadUrl: LINKS.releases,
   publisher: { "@id": `${SITE_URL}/#organization` },
 };
 

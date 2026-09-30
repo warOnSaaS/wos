@@ -163,12 +163,12 @@ export default async function WosDossier() {
       <Section n="06" title="HOW TO CONTRIBUTE" id="contribute">
         <p>
           The same way as any target, once the process is live: propose changes to the canonical roadmap, then build and
-          review leased units. Until the control plane is deployed there is nothing to lease.
+          review leased units. No roadmap has merged yet, so there is nothing to lease.
         </p>
         <div className="cmds-row">
           <Link className="cmd" href="/drilldown/waronsaas">DRILLDOWN</Link>
           <Link className="cmd" href="/briefing">FULL BRIEFING</Link>
-          <Link className="cmd" href="/download">DOWNLOAD wOS</Link>
+          <Link className="cmd" href="/contribute">HOW TO CONTRIBUTE</Link>
         </div>
       </Section>
 

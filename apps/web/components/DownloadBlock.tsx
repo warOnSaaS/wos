@@ -1,12 +1,34 @@
+import Link from "next/link";
+import { type CliRelease, cliReleaseLine, INSTALL } from "@/lib/cli-release";
 import { CLI, DOWNLOADS, PREREQUISITES, SIGN_IN } from "@/lib/site";
 
-/** Equipment: desktop builds, CLI, requirements. Used on / and /download. */
-export function DownloadBlock() {
+/** Equipment: Desktop (not released), the wos command (release state from GitHub), requirements. Used on / and /download. */
+export function DownloadBlock({ release }: { release: CliRelease }) {
   return (
     <div className="equip">
       <div>
+        <h3>wOS CLI</h3>
+        <p>{cliReleaseLine(release)}</p>
+        <pre className="term">
+          <code>{INSTALL.unix}</code>
+          {"\n"}
+          <code>{INSTALL.windows}</code>
+        </pre>
+        <dl className="clist">
+          {CLI.commands.map((c) => (
+            <div key={c.cmd}>
+              <dt><code>{c.cmd}</code></dt>
+              <dd>{c.what}</dd>
+            </div>
+          ))}
+        </dl>
+        <p className="fine">
+          <Link href="/contribute">How to contribute, step by step</Link>.
+        </p>
+      </div>
+      <div>
         <h3>wOS Desktop</h3>
-        <p>Pick a target, a feature and a task. Press BUILD. macOS and Linux in V1.</p>
+        <p>Not released yet. It will run the same work with a Build button: pick a target, a feature and a task.</p>
         <ul className="dl">
           {DOWNLOADS.map((d) => (
             <li key={d.os}>
@@ -24,19 +46,6 @@ export function DownloadBlock() {
             </li>
           ))}
         </ul>
-      </div>
-      <div>
-        <h3>wOS CLI</h3>
-        <p>Install with npm.</p>
-        <pre className="term"><code>{CLI.install}</code></pre>
-        <dl className="clist">
-          {CLI.commands.map((c) => (
-            <div key={c.cmd}>
-              <dt><code>{c.cmd}</code></dt>
-              <dd>{c.what}</dd>
-            </div>
-          ))}
-        </dl>
       </div>
       <div>
         <h3>Requirements</h3>

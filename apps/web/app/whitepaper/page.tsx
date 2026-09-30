@@ -5,6 +5,7 @@ import { GAPS_PATH } from "@/lib/gaps";
 import { CURRENT_PENDING, CURRENT_RUN, PENDING_LABEL } from "@/lib/self-assessment";
 import { renderBlock } from "@/lib/markdown";
 import { CONTRIBUTE, LINKS } from "@/lib/site";
+import { CONTRIBUTE_MD_PATH, CONTRIBUTE_PATH } from "@/lib/contribute";
 import { breadcrumbLd, pageMetadata, whitepaperLd } from "@/lib/seo";
 import {
   AGENT_LINKS,
@@ -216,28 +217,15 @@ export default function WhitepaperPage() {
         <div className="contribute" id="contribute">
           <p className="label">WANT TO CONTRIBUTE?</p>
           <p>
-            <strong>{CONTRIBUTE.status}</strong> <a href={LINKS.repo}>Repository</a>. <a href="/download">What is coming</a>.{" "}
-            <a href={`mailto:${CONTRIBUTE.email}`}>{CONTRIBUTE.email}</a>.
+            <strong>{CONTRIBUTE.summary}</strong>
           </p>
-          <p>Two ways, one account, the same work:</p>
-          <ul className="dash">
-            <li>
-              <span>{CONTRIBUTE.desktop}</span>
-            </li>
-            <li>
-              <span>
-              The wos command, for the terminal: {CONTRIBUTE.cli.map((c, i) => (
-                <span key={c}>
-                  {i ? ", then " : ""}
-                  <code>{c}</code>
-                </span>
-              ))}{" "}
-              ({CONTRIBUTE.cliNext}).
-              </span>
-            </li>
-          </ul>
+          <p>
+            The steps with the wos command, and what works today: <a href={CONTRIBUTE_PATH}>how to contribute</a>. For
+            your agent: <a href={CONTRIBUTE_MD_PATH}>contribute.md</a>; the prompt above asks it to walk you through it.
+          </p>
           <p className="fine">
-            {CONTRIBUTE.needs} <a href="/how-it-works">How the work flows</a>.
+            {CONTRIBUTE.needs} <a href="/how-it-works">How the work flows</a>. <a href={LINKS.repo}>Repository</a>.{" "}
+            <a href={`mailto:${CONTRIBUTE.email}`}>{CONTRIBUTE.email}</a>.
           </p>
         </div>
       </div>

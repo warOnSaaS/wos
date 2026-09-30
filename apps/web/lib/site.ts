@@ -22,32 +22,37 @@ export const LINKS = {
   claudeCode: "https://docs.anthropic.com/en/docs/claude-code/overview",
   codexCli: "https://github.com/openai/codex",
   git: "https://git-scm.com/downloads",
+  node: "https://nodejs.org",
   githubSignup: "https://github.com/signup",
 } as const;
 
-/** wOS Desktop downloads. V1 ships macOS and Linux; Windows is coming later (href null). */
+/** wOS Desktop downloads. NOT RELEASED: there is no signed Desktop release yet, so nothing links to a download.
+ *  Give each an href only when a signed desktop-v* release exists (SITE-SYNC.md rule). Windows follows macOS and Linux. */
 export const DOWNLOADS: { os: string; file: string; label: string; href: string | null }[] = [
-  { os: "macOS", file: ".dmg", label: "DOWNLOAD — MACOS", href: LINKS.releases },
-  { os: "Linux", file: ".AppImage", label: "DOWNLOAD — LINUX", href: LINKS.releases },
-  { os: "Windows", file: "coming later", label: "WINDOWS", href: null },
+  { os: "macOS", file: "not released yet", label: "MACOS", href: null },
+  { os: "Linux", file: "not released yet", label: "LINUX", href: null },
+  { os: "Windows", file: "not released yet", label: "WINDOWS", href: null },
 ];
 
+/** The wos command. Its install line and release state live in lib/cli-release.ts (read from GitHub at build). */
 export const CLI = {
-  packageName: "@waronsaas/cli",
-  install: "npm install -g @waronsaas/cli",
   commands: [
-    { cmd: "wos login", what: "Sign in with your email. A magic link is sent to you." },
-    { cmd: "wos status", what: "Check that Claude Code, the Codex CLI and git are ready." },
-    { cmd: "wos build <task-id>", what: "Claim a build unit and build it." },
+    { cmd: "wos login", what: "Sign in with your email. wOS mails you an 8-character code." },
+    { cmd: "wos link-github", what: "Link your GitHub account. Required to contribute." },
+    { cmd: "wos apps enable build", what: "Enable the Build app." },
+    { cmd: "wos status", what: "Check that git, Claude Code and the Codex CLI are ready." },
+    { cmd: "wos tasks", what: "List the open tasks you could take." },
+    { cmd: "wos build <abu>", what: "Lease one build unit and build it with your agent." },
   ],
 } as const;
 
-/** Sign-in is by email magic link for everyone. GitHub is required only to contribute. */
+/** Sign-in is by an emailed code for everyone. GitHub is required only to contribute. */
 export const SIGN_IN =
-  "Sign in with your email. To contribute (build, review, propose), link a GitHub account.";
+  "Sign in with your email: wOS mails you an 8-character code. To contribute (build, review, propose), link a GitHub account.";
 
 export const PREREQUISITES: { name: string; href: string | null }[] = [
-  { name: "An email address, for sign-in by magic link", href: null },
+  { name: "An email address, for sign-in by an emailed code", href: null },
+  { name: "Node.js 22.12 or later, for the wos command", href: LINKS.node },
   { name: "A GitHub account, linked to wOS. Required only to contribute (build, review, propose)", href: LINKS.githubSignup },
   { name: "Claude Code, installed and signed in with a Claude subscription", href: LINKS.claudeCode },
   { name: "The Codex CLI, signed in with ChatGPT (used for reviews)", href: LINKS.codexCli },
@@ -63,22 +68,20 @@ export const NAV = [
   { href: "/tokens", label: "TOKENS" },
   { href: "/leaderboard", label: "LEADERBOARD" },
   { href: "/faq", label: "FAQ" },
+  { href: "/contribute", label: "CONTRIBUTE" },
   { href: "/download", label: "DOWNLOAD" },
 ] as const;
 
 /**
- * How to contribute, as told on /whitepaper (and in the white paper's section 16). HONEST STATUS: update `released`
- * and `status` only when a signed Desktop release or the npm package actually exists (SITE-SYNC.md rule).
+ * How to contribute, as told on /whitepaper (and in the white paper's section 16). The steps and the honest status live
+ * on /contribute and /contribute.md (lib/contribute.ts); the CLI's release state is read from GitHub at build.
  */
 export const CONTRIBUTE = {
-  released: false,
-  status:
-    "Not open yet. There is no signed wOS Desktop release, and the wos command is not published on npm. Today you can watch or star the repository, read the download page for what is coming, or email us to be told when it opens.",
   email: "hello@waronsaas.com",
+  summary:
+    "Sign-in, GitHub linking and the Build app work today with the wos command. There is no work to pick up yet: no roadmap or Feature Contract has merged, so there are no build units. wOS Desktop is not released.",
   desktop:
-    "wOS Desktop with the Build app: pick a target, a feature and a build unit, and press BUILD. Or press BUILD NEXT to take the next unit wOS ranks for you (designed, not built yet).",
-  cli: ["npm install -g @waronsaas/cli", "wos login", "wos link-github", "wos status", "wos build <unit>"],
-  cliNext: "or wos build --next, optionally continuous until you stop it or reach your own limits (designed, not built yet)",
+    "wOS Desktop with the Build app: pick a target, a feature and a build unit, and press BUILD (not released yet).",
   needs:
     "An email address, a GitHub account, and your own AI subscription: Claude Code, or the Codex CLI with ChatGPT. wOS never sees your AI credentials; you work within your own subscription's limits.",
 } as const;

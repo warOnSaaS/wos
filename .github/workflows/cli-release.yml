@@ -1,0 +1,151 @@
+# wOS CLI release: installable without npm (the @waronsaas npm scope is a founder to-do).
+#
+# On a tag cli@<version> (e.g. cli@0.1.0): packs one tarball per platform with apps/cli/scripts/release-pack.mjs
+# (dist/wos.mjs with every JS dependency inlined, plus the @napi-rs/keyring binding for that platform, fetched at
+# the URL and integrity hash pinned in package-lock.json) and SHA256SUMS; installs each tarball on its own OS with
+# the same install script waronsaas.com serves (apps/web/install/install.sh and install.ps1) and runs wos --version;
+# only then creates the GitHub Release with the tarballs and SHA256SUMS attached.
+# On a pull request touching the CLI, the install scripts or this file: the same pack and install smoke, no release.
+#
+# Secrets: none but GITHUB_TOKEN, and only the release job can write (contents: write).
+# The website reads the newest cli@ release from the GitHub API (apps/web/lib/cli-release.ts): until one exists,
+# waronsaas.com says "not released yet", and install.sh refuses with the same message.
+#
+# Release (coordinator): git tag cli@0.1.0 <commit on main> && git push origin cli@0.1.0
+name: cli-release
+
+on:
+  push:
+    tags: ["cli@*"]
+  pull_request:
+    paths:
+      - "apps/cli/**"
+      - "apps/web/install/**"
+      - "packages/contracts/**"
+      - "packages/orchestrator/**"
+      - "package-lock.json"
+      - ".github/workflows/cli-release.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cli-release-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  pack:
+    name: pack tarballs and SHA256SUMS
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: version from the tag
+        id: v
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          IS_TAG: ${{ startsWith(github.ref, 'refs/tags/cli@') }}
+          RUN: ${{ github.run_number }}
+        run: |
+          if [ "$IS_TAG" = "true" ]; then v="${REF_NAME#cli@}"; else v="0.0.0-ci.$RUN"; fi
+          echo "$v" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$' || { echo "bad version: $v (tag must be cli@<semver>)"; exit 1; }
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+      - run: npm ci --ignore-scripts
+      - run: npx tsc -b apps/cli
+      - run: node apps/cli/scripts/release-pack.mjs --version "${{ steps.v.outputs.version }}" --out out
+      - run: cat out/SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wos-cli
+          path: out/
+          if-no-files-found: error
+
+  smoke:
+    name: install and run (${{ matrix.target }})
+    needs: pack
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: darwin-arm64, os: macos-15 }
+          - { target: darwin-x64, os: macos-15-intel }
+          - { target: linux-x64, os: ubuntu-latest }
+          - { target: linux-arm64, os: ubuntu-24.04-arm }
+          - { target: win32-x64, os: windows-latest }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          sparse-checkout: apps/web/install
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          name: wos-cli
+          path: out
+      - name: install.sh from the local release files
+        if: runner.os != 'Windows'
+        env:
+          WOS_INSTALL_FROM: ${{ github.workspace }}/out
+          WOS_VERSION: ${{ needs.pack.outputs.version }}
+        run: |
+          sh apps/web/install/install.sh
+          out="$("$HOME/.local/bin/wos" --version)"
+          echo "$out"
+          case "$out" in "$WOS_VERSION (contracts "*) ;; *) echo "unexpected: $out"; exit 1 ;; esac
+          "$HOME/.local/bin/wos" --help > /dev/null
+      - name: install.ps1 from the local release files
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          WOS_INSTALL_FROM: ${{ github.workspace }}\out
+          WOS_VERSION: ${{ needs.pack.outputs.version }}
+        run: |
+          ./apps/web/install/install.ps1
+          $out = & "$env:LOCALAPPDATA\wos\bin\wos.cmd" --version
+          Write-Host $out
+          if (-not "$out".StartsWith("$env:WOS_VERSION (contracts ")) { throw "unexpected: $out" }
+
+  release:
+    name: GitHub Release
+    if: startsWith(github.ref, 'refs/tags/cli@')
+    needs: [pack, smoke]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: wos-cli
+          path: out
+      - name: verify the checksums once more
+        run: cd out && sha256sum -c SHA256SUMS
+      - name: publish to github.com/warOnSaaS/wos/releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.pack.outputs.version }}
+        run: |
+          cat > notes.md <<EOF
+          wOS CLI $VERSION. Needs Node.js 22.12 or later.
+
+          macOS and Linux: \`curl -fsSL https://waronsaas.com/install.sh | sh\`
+          Windows (PowerShell): \`irm https://waronsaas.com/install.ps1 | iex\`
+
+          Each tarball holds dist/wos.mjs and the OS keychain binding for its platform. Checksums: SHA256SUMS.
+          Then: https://waronsaas.com/contribute
+          EOF
+          gh release create "$TAG" out/*.tar.gz out/SHA256SUMS --repo "${{ github.repository }}" --title "wOS CLI $VERSION" --notes-file notes.md
