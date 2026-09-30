@@ -1,0 +1,29 @@
+# wOS Mobile: V1 proof step 6 on a device, against a self-hosted wOS Core with WOS_APPS=crm.
+# Needs env WOS_CORE_URL (reachable from the simulator), WOS_EMAIL (an allowed address) and WOS_CODE (the code that
+# Core emailed; the verification workstream reads it from the Core's test mailer). Not run by anything yet.
+appId: com.waronsaas.wos
+---
+- launchApp:
+    clearState: true
+- tapOn:
+    id: "env-address"
+- inputText: ${WOS_CORE_URL}
+- tapOn:
+    id: "env-connect"
+- tapOn:
+    id: "signin-email"
+- inputText: ${WOS_EMAIL}
+- tapOn:
+    id: "signin-send"
+- tapOn:
+    id: "signin-code"
+- inputText: ${WOS_CODE}
+- tapOn:
+    id: "signin-redeem"
+- tapOn:
+    id: "nav-crm.home"
+- assertVisible:
+    id: "screen-crm.features.list"
+- assertVisible:
+    id: "list-empty"
+- assertVisible: "0 RECORDS"

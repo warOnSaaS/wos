@@ -1,0 +1,12 @@
+# wOS Mobile: first launch shows environment selection (for the verification workstream's Maestro runs, D13).
+# Run by .github/wos/maestro.mjs against a Release build; no account and no network needed.
+appId: com.waronsaas.wos
+---
+- launchApp:
+    clearState: true
+- assertVisible: "wOS"
+- assertVisible: "ENVIRONMENT"
+- assertVisible:
+    id: "env-cloud"
+- assertVisible:
+    id: "env-address"

@@ -1,0 +1,20 @@
+{
+  "expo": {
+    "name": "wOS",
+    "slug": "wos",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0b0b0b",
+    "ios": {
+      "bundleIdentifier": "com.waronsaas.wos",
+      "supportsTablet": true,
+      "config": { "usesNonExemptEncryption": false }
+    },
+    "android": {
+      "package": "com.waronsaas.wos",
+      "predictiveBackGestureEnabled": false
+    },
+    "plugins": ["expo-secure-store"]
+  }
+}

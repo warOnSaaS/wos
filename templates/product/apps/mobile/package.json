@@ -1,0 +1,38 @@
+{
+  "name": "wos-mobile",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "index.ts",
+  "description": "wOS Mobile: the ONE iOS and Android app (Expo managed workflow). Apps are bundled modules activated by ActiveApps; their screens are wos-screen.v1 data.",
+  "scripts": {
+    "start": "expo start",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "export": "expo export --platform ios --platform android --output-dir dist"
+  },
+  "dependencies": {
+    "@expo-google-fonts/geist-mono": "^0.4.3",
+    "@expo-google-fonts/jetbrains-mono": "^0.4.1",
+    "expo": "~57.0.26",
+    "expo-font": "~57.0.4",
+    "expo-secure-store": "~57.0.4",
+    "expo-status-bar": "~57.0.1",
+    "react": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-safe-area-context": "~5.7.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.2",
+    "typescript": "7.0.2",
+    "vitest": "^5.0.2"
+  },
+  "expo": {
+    "install": {
+      "exclude": [
+        "typescript"
+      ]
+    }
+  }
+}
