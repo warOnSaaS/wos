@@ -87,6 +87,9 @@ export function cliCommand(o: Options, workdir: string, outFile: string): { cmd:
         "WebSearch",
         "--strict-mcp-config",
         "--no-session-persistence",
+        // No CLAUDE.md, skills, plugins, hooks or other personal customizations, so the founder's own
+        // instructions and memory cannot colour the assessment.
+        "--safe-mode",
       ],
       fromFile: false,
     };
