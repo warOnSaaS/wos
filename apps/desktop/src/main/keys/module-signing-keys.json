@@ -1,4 +1,13 @@
 {
   "schema": "wos-module-signing-keys.v1",
-  "keys": []
+  "keys": [
+    {
+      "keyId": "wos-module-2026",
+      "publicKey": "oyk5NtDEf7MJVXvMPShinHksa/DmX6PrlvFprf0OF3g="
+    },
+    {
+      "keyId": "wos-module-2026-next",
+      "publicKey": "Ad/kV4M8YtcMVqPsqCBG6eT99ibSapJ8TIwxNNKRWCw="
+    }
+  ]
 }
