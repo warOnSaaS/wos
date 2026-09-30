@@ -336,6 +336,8 @@ Start from the merged `integration-2a` (contracts 4.2.0). Use the REAL packages,
 
 Amendment 01 lands before any Wave 3 work sets module boundaries. Every workstream merges `main` at 5.0.0 first.
 
+**Wave 3a builds against contracts 5.2.0** (architect, 2026-09-30). Every Wave 3a workstream merges `main` at 5.2.0 or later before it starts. The `AppRoutes` contracts are freeze-checked at 5.2.0, and section 12.4 lists what each workstream imports. A change to anything in 12.4 is a blocker and a versioned contract change.
+
 Migration 0006 is applied to production by the coordinator. Nothing in Wave 3 applies migrations to production.
 
 ### 12.1 Who builds what
@@ -353,7 +355,7 @@ Migration 0006 is applied to production by the coordinator. Nothing in Wave 3 ap
 | context-policy | Author and reviewer prompts carry required surfaces and capabilities. New material rule: a remote-code loader on any surface (S-38). The builder may write `applications/**` only inside its scope. |
 | web (public site) | Show each target's mapped applications and link to wOS Web. Never show business navigation. Copy: one wOS; Windows download (D17). |
 | rewards | No change. |
-| architect | `computeApplicationProgress` in contracts; gate reviews; the Build manifest in `apps/desktop/src/apps/build/wos-app.json` together with desktop. |
+| architect | `computeApplicationProgress` in contracts; gate reviews; the Build manifest in `apps/desktop/src/apps/build/wos-app.json` together with desktop. **Done at 5.2.0** (section 12.4). |
 
 ### 12.2 V1 proof (Amendment 01): each step and who proves it
 
@@ -374,3 +376,24 @@ CRM functionality is whatever the roadmap has really built. The proof shows the 
 1. control-plane AppRoutes, the Build gate, and suite-shell's Core descriptor and `ActiveApps` come first. Their contracts are frozen, so desktop, mobile-runtime and the web shell build against them in parallel.
 2. verification's `module-release` follows once desktop's installer can verify a test-key package.
 3. The spec's final integration test runs after proof steps 1–9 pass, contributing through the Build app.
+
+### 12.4 Wave 3a interfaces (contracts 5.2.0)
+
+Every name below is exported from `@waronsaas/contracts` unless it says `/canonical`. Import these names; do not copy the schemas. Suite-shell and mobile-runtime live in the product repo, so they vendor them the way `templates/product/.github/wos/wos-ci-lib.mjs` vendors verification.
+
+**Shared rules** (all five workstreams):
+- The registry lists only apps with a current published release. `core` and `build` have registry rows from 0006 but no release until one is published. Until then they are absent from `listApps`, `getApp` (404) and `OrgApps`, but their entitlements exist and gate.
+- Build's release: a maintainer publishes `apps/desktop/src/apps/build/wos-app.json` through `publishAppRelease`, with `desktopPackage: null`, `desktopPackageUrl: null` and source `waronsaas/wos`. The control plane accepts a null package only for `build`.
+- Environment tokens (C-8) are compact EdDSA JWS. The header is `EnvironmentTokenHeader`, the claims are `EnvironmentTokenClaims`, the lifetime is exactly `ENVIRONMENT_TOKEN_TTL_SECONDS` (900) and verifiers allow `ENVIRONMENT_TOKEN_SKEW_SECONDS` (60) of skew. Keys use the C-5 encoding (`EnvironmentKey`). Every `CoreRoutes` call carries `Authorization: Bearer <environment token>` on wOS Cloud, and `Bearer <Core local session>` on a self-hosted Core.
+- Clients re-read `ActiveApps` on start, on focus, on each token refresh, and every `ACTIVE_APPS_REFRESH_SECONDS` (60) while open.
+- Build is not an environment feature. Desktop and the CLI decide Build from `listOrgApps` / the claim gate on api.waronsaas.com, never from `ActiveApps`.
+
+| Workstream | Uses (exact exports) | Serves or produces |
+|---|---|---|
+| control-plane | `AppRoutes` (all 13: `listApps`, `getApp`, `getAppRelease`, `getApplicationProgress`, `getEnvironmentKeys`, `listMyOrganizations`, `createOrganization`, `listOrgApps`, `enableApp`, `disableApp`, `issueEnvironmentToken`, `publishAppRelease`, `yankAppRelease`); `AppRegistryEntry`, `AppReleaseView`, `ApplicationProgressView`, `OrgApps`, `OrgAppView`, `AppEntitlement`, `OrganizationView`, `EnvironmentKey`, `EnvironmentTokenClaims`, `EnvironmentTokenHeader`, `ENVIRONMENT_TOKEN_TTL_SECONDS`; `EntitlementMachine`, `AppReleaseMachine`; `WosAppManifest`, `ModulePackage`, `activeAppIds`, `satisfiesRange`, `compareSemVer`, `BUILD_APP_ID`, `CORE_APP_ID`, `WOS_CLOUD_ENVIRONMENT_ID`; `computeApplicationProgress`, `ApplicationProgressInput`, `ApplicationFeatureInput`; `TargetSummary.apps`; `/canonical`: `signEnvironmentToken`, `verifyModulePackage`, `canonicalSha256` | `{ ...Routes, ...AppRoutes }`, with sample paths for `:app` and `:version` in the route-contract test; `NOT_ENTITLED` on the three claims. `getApplicationProgress` takes features from the current release manifest, else `applications/<app>/wos-app.json` on the product default branch, else none (basis `none`, all 0). It answers for any app in the registry or `target_apps`. The proof-step-9 DB test toggles CRM's entitlement and asserts the Salesforce snapshot is unchanged. |
+| suite-shell | `EnvironmentDescriptor`, `EnvironmentAuth`, `CoreRoutes`, `ActiveApps`, `ActivationSource`, `WosAppManifest`, `activeAppIds`, `satisfiesRange`, `EnvironmentTokenClaims`, `EnvironmentKey`, `OrgApps`, `OrgAppView` (web shell Your Apps / Available Apps through `listOrgApps`/`enableApp`/`disableApp`), `MobileScreen`, `ScreenListData`, `ScreenRecordData`, `ScreenFormBody`, `ScreenInvokeResult`, `WOS_CLOUD_ENVIRONMENT_ID`, `HOSTS`; `/canonical`: `verifyEnvironmentToken` | `/.well-known/wos-environment`, `/v1/core/apps`, `/v1/core/apps/:app/screens`, and app APIs that answer screens with the screen data envelopes; manifests for `core`, `contacts`, `crm` whose screens show only what is built |
+| desktop | `apps/desktop/src/apps/build/wos-app.json` (register Build's navigation and `build.contribute` only under S-40); `EnvironmentDescriptor`, `ActiveApps`, `ACTIVE_APPS_REFRESH_SECONDS`, `AppRoutes.listOrgApps`/`enableApp`/`disableApp`/`listMyOrganizations`/`getApp`/`getAppRelease`/`issueEnvironmentToken`, `AppRegistryEntry`, `AppReleaseView`, `OrgApps`, `ModuleBundle`, `ModulePackage`, `ModuleInstallMachine`, `WosAppManifest`, `satisfiesRange`, `compareSemVer`, `BUILD_APP_ID`; `/canonical`: `verifyModulePackage`, `sha256Of` | the module installer: download one `ModuleBundle`, check `sha256Of(bytes)`, then `verifyModulePackage`, every file hash, and contents equal to the file list; the version from `ActiveApps`, resolved through `getAppRelease`; a yanked state triggers rollback |
+| mobile-runtime | `EnvironmentDescriptor`, `EnvironmentAuth`, `CoreRoutes`, `ActiveApps`, `ACTIVE_APPS_REFRESH_SECONDS`, `AppRoutes.issueEnvironmentToken`, `WosAppManifest` (navigation filtered by `ios`/`android`), `MobileScreen`, `ScreenAction`, `ScreenSection`, `ScreenListData`, `ScreenRecordData`, `ScreenFormBody`, `ScreenInvokeResult`, `WOS_CLOUD_ENVIRONMENT_ID`, `HOSTS` | the renderer for list, detail and form, with the HTTP semantics in the `ScreenListData` doc comment in wos-app.ts (search `?q=`, `?cursor=`, `:id` substitution, related list at `<detail resource>/<relationship>`, `select` from `options`) |
+| cli | `AppRoutes.listMyOrganizations`, `listOrgApps`, `enableApp`, `disableApp`; `OrganizationView`, `OrgApps`, `OrgAppView`, `BUILD_APP_ID`; the `NOT_ENTITLED` error code | `wos orgs`, `wos apps`, `wos apps enable build` on the personal org (`kind: "personal"`, listed first) and the `NOT_ENTITLED` explanation |
+
+The web workstream (public site) also uses `TargetSummary.apps` and `getApplicationProgress`, rendered with `formatPercent`: 0% shows as 0%.

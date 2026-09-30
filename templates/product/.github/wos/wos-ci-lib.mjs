@@ -1024,6 +1024,7 @@ const anyString = /^[\s\S]{0,}$/;
 const integer = /^-?\d+$/;
 const number$2 = /^-?\d+(?:\.\d+)?$/;
 const boolean$1 = /^(?:true|false)$/i;
+const _null$2 = /^null$/i;
 const lowercase = /^[^A-Z]*$/;
 const uppercase = /^[^a-z]*$/;
 
@@ -1834,6 +1835,22 @@ const $ZodBoolean = /*@__PURE__*/ $constructor("$ZodBoolean", (inst, def) => {
 		if (typeof input === "boolean") return payload;
 		payload.issues.push({
 			expected: "boolean",
+			code: "invalid_type",
+			input,
+			inst
+		});
+		return payload;
+	};
+});
+const $ZodNull = /*@__PURE__*/ $constructor("$ZodNull", (inst, def) => {
+	$ZodType.init(inst, def);
+	inst._zod.pattern = _null$2;
+	inst._zod.values = /* @__PURE__ */ new Set([null]);
+	inst._zod.parse = (payload, _ctx) => {
+		const input = payload.value;
+		if (input === null) return payload;
+		payload.issues.push({
+			expected: "null",
 			code: "invalid_type",
 			input,
 			inst
@@ -3523,6 +3540,13 @@ function _boolean(Class, params) {
 	});
 }
 // @__NO_SIDE_EFFECTS__
+function _null$1(Class, params) {
+	return new Class({
+		type: "null",
+		...normalizeParams(params)
+	});
+}
+// @__NO_SIDE_EFFECTS__
 function _unknown(Class) {
 	return new Class({ type: "unknown" });
 }
@@ -4282,6 +4306,13 @@ const numberProcessor = (schema, ctx, _json, params) => {
 };
 const booleanProcessor = (_schema, _ctx, json, _params) => {
 	json.type = "boolean";
+};
+const nullProcessor = (_schema, ctx, json, _params) => {
+	if (ctx.target === "openapi-3.0") {
+		json.type = "string";
+		json.nullable = true;
+		json.enum = [null];
+	} else json.type = "null";
 };
 const neverProcessor = (_schema, _ctx, json, _params) => {
 	json.not = {};
@@ -5164,6 +5195,14 @@ const ZodBoolean = /*@__PURE__*/ $constructor("ZodBoolean", (inst, def) => {
 function boolean(params) {
 	return _boolean(ZodBoolean, params);
 }
+const ZodNull = /*@__PURE__*/ $constructor("ZodNull", (inst, def) => {
+	$ZodNull.init(inst, def);
+	ZodType.init(inst, def);
+	inst._zod.processJSONSchema = (ctx, json, params) => nullProcessor(inst, ctx, json, params);
+});
+function _null(params) {
+	return _null$1(ZodNull, params);
+}
 const ZodUnknown = /*@__PURE__*/ $constructor("ZodUnknown", (inst, def) => {
 	$ZodUnknown.init(inst, def);
 	ZodType.init(inst, def);
@@ -5861,6 +5900,22 @@ const ModulePackage = object({
 		message: "entry is not in files"
 	});
 });
+const ModuleBundle = object({
+	schema: literal("wos-module-bundle.v1"),
+	package: ModulePackage,
+	contents: array(object({
+		path: string().regex(/^[A-Za-z0-9._/-]+$/),
+		base64: string()
+	})).min(1)
+}).superRefine((b, ctx) => {
+	const listed = b.package.files.map((f) => f.path).sort();
+	const got = b.contents.map((c) => c.path).sort();
+	if (listed.length !== got.length || listed.some((p, i) => p !== got[i])) ctx.addIssue({
+		code: "custom",
+		path: ["contents"],
+		message: "contents must list exactly the package's files"
+	});
+});
 const Availability = object({
 	available: boolean(),
 	version: SemVer.nullable()
@@ -5894,6 +5949,57 @@ const AppRegistryEntry = object({
 	selfHost: object({ compatible: boolean() }),
 	hosted: object({ compatible: boolean() }),
 	publishedAt: Timestamp
+});
+const AppReleaseView = object({
+	app: AppId,
+	version: SemVer,
+	state: _enum(["published", "yanked"]),
+	manifest: WosAppManifest,
+	manifestSha256: Sha256,
+	desktopPackage: object({
+		url: url(),
+		sha256: Sha256,
+		keyId: string()
+	}).nullable(),
+	source: object({
+		repo: RepoFullName,
+		tag: string(),
+		commit: string().regex(/^[0-9a-f]{40}$/)
+	}),
+	publishedAt: Timestamp,
+	yankedAt: Timestamp.nullable(),
+	yankReason: string().nullable()
+});
+const Bp = number$1().int().min(0).max(1e4);
+const Points = number$1().int().nonnegative();
+const ApplicationProgressView = object({
+	app: AppId,
+	basis: _enum([
+		"release",
+		"default_branch",
+		"none"
+	]),
+	manifestVersion: SemVer.nullable(),
+	builtBp: Bp,
+	relevantPoints: Points,
+	mergedPoints: Points,
+	complete: boolean(),
+	surfaces: array(object({
+		surface: ProductSurface,
+		relevantPoints: Points,
+		mergedPoints: Points,
+		builtBp: Bp,
+		acceptancePassed: boolean(),
+		complete: boolean()
+	})),
+	features: array(object({
+		feature: FeatureKey,
+		contractVersion: number$1().int().positive().nullable(),
+		relevantPoints: Points,
+		mergedPoints: Points
+	})),
+	targets: array(TargetSlug),
+	computedAt: Timestamp
 });
 const OrganizationKind = _enum(["personal", "team"]);
 const OrganizationSlug = string().regex(/^[a-z0-9](?:[a-z0-9-]{1,38}[a-z0-9])$/);
@@ -5958,6 +6064,17 @@ const EnvironmentTokenClaims = object({
 	apps: array(AppId),
 	iat: number$1().int(),
 	exp: number$1().int()
+});
+const ENVIRONMENT_TOKEN_TYP = "wos-env+jwt";
+const EnvironmentTokenHeader = object({
+	alg: literal("EdDSA"),
+	typ: literal(ENVIRONMENT_TOKEN_TYP),
+	kid: string().regex(/^wos-env-\d{4}(?:-[a-z0-9]+)?$/)
+});
+const EnvironmentKey = object({
+	kid: EnvironmentTokenHeader.shape.kid,
+	alg: literal("EdDSA"),
+	publicKey: string().regex(/^[A-Za-z0-9+/]{43}=$/, "base64 of a raw 32-byte Ed25519 key")
 });
 const ActivationSource = _enum([
 	"core",
@@ -6053,7 +6170,17 @@ const FieldSpec = object({
 		"select",
 		"readonly"
 	]).default("readonly"),
-	required: boolean().default(false)
+	required: boolean().default(false),
+	options: array(object({
+		value: string().min(1).max(80),
+		label: string().min(1).max(60)
+	})).min(1).max(50).optional()
+}).superRefine((f, ctx) => {
+	if (f.input === "select" !== (f.options !== void 0)) ctx.addIssue({
+		code: "custom",
+		path: ["options"],
+		message: "a select input (and only a select) has options"
+	});
 });
 const ScreenSection = discriminatedUnion("type", [object({
 	type: literal("fields"),
@@ -6097,6 +6224,20 @@ const MobileScreen = object({
 		for (const sec of s.sections) if (sec.type === "fields" && sec.fields.every((f) => f.input === "readonly")) issue(["sections"], "a form needs at least one input field");
 	}
 });
+const ScreenValue = union([
+	string(),
+	number$1(),
+	boolean(),
+	_null()
+]);
+const ScreenRecord = record(FieldName, ScreenValue).and(object({ id: string().min(1) }));
+const ScreenListData = object({
+	items: array(ScreenRecord),
+	nextCursor: string().min(1).nullable()
+});
+const ScreenRecordData = object({ item: ScreenRecord });
+const ScreenFormBody = object({ values: record(FieldName, ScreenValue) });
+const ScreenInvokeResult = object({ message: string().max(280).nullable() });
 
 //#endregion
 //#region packages/contracts/dist/state-machines.js
@@ -8104,7 +8245,8 @@ const TargetSummary = object({
 		available: boolean(),
 		url: url().nullable()
 	}),
-	selfHostable: boolean()
+	selfHostable: boolean(),
+	apps: array(string().regex(/^[a-z][a-z0-9-]{1,30}[a-z0-9]$/)).optional()
 });
 const AppFeatureSummary = object({
 	key: FeatureKey,
@@ -9614,6 +9756,33 @@ const AppRoutes = {
 		errors: ["NOT_FOUND"],
 		summary: "One registry entry."
 	}),
+	getAppRelease: route({
+		method: "GET",
+		path: "/v1/public/apps/:app/releases/:version",
+		auth: "public",
+		idempotent: false,
+		params: object({
+			app: AppId,
+			version: SemVer
+		}),
+		query: None,
+		body: None,
+		response: AppReleaseView,
+		errors: ["NOT_FOUND"],
+		summary: "One released version, published or yanked (contracts 5.2.0): Desktop's package lookup and yank check."
+	}),
+	getApplicationProgress: route({
+		method: "GET",
+		path: "/v1/public/apps/:app/progress",
+		auth: "public",
+		idempotent: false,
+		params: AppParams,
+		query: None,
+		body: None,
+		response: ApplicationProgressView,
+		errors: ["NOT_FOUND"],
+		summary: "Application progress from computeApplicationProgress (contracts 5.2.0); independent of any entitlement."
+	}),
 	getEnvironmentKeys: route({
 		method: "GET",
 		path: "/v1/public/environment-keys",
@@ -9622,11 +9791,7 @@ const AppRoutes = {
 		params: None,
 		query: None,
 		body: None,
-		response: object({ keys: array(object({
-			kid: string(),
-			alg: literal("EdDSA"),
-			publicKey: string()
-		})) }),
+		response: object({ keys: array(EnvironmentKey) }),
 		errors: [],
 		summary: "Public keys hosted wOS Core uses to verify environment tokens (current and next, for rotation)."
 	}),

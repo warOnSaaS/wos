@@ -138,3 +138,23 @@ MINOR, additive. No route, no migration.
   - `AssessmentRecord` (`wos-assessment-record/v1`): one reference run stored as `docs/assessments/<id>.json` with the verbatim report in `<id>.md`; source is only `reference run by warOnSaaS` (founder, 2026-09-30: no reader submissions).
   - `extractAssessmentBlock(report)`: finds the last fenced `wos-assessment` block (or a `json` block declaring the schema) and validates it; never guesses values.
 - Golden files that embed the contracts version (context-engine manifest hashes, CLI golden output) re-recorded for 5.1.0; no other change in them.
+
+## 5.2.0 — 2026-09-30 (Wave 3a architect: application progress, Build manifest, AppRoutes freeze check)
+
+MINOR, additive. No migration. Wave 3a (control-plane, suite-shell, desktop, mobile-runtime, cli) builds against 5.2.0; WORKSTREAMS section 12.4 lists each workstream's exports.
+- `progress.ts`: `computeApplicationProgress(ApplicationProgressInput)` with `ApplicationFeatureInput`, `ApplicationSurface`, `ApplicationProgress`, `ApplicationSurfaceProgress`, `ApplicationFeatureProgress` (WOS-APP-PROTOCOL section 11). Size points only, no weights of its own; a supported surface is capped at 99% until every feature with a requirement on it passed acceptance for at least one profile and every app feature has a merged contract; overall is the size-point-weighted mean, capped at 99% until every supported surface is complete; 0 with no merged work. Its input and `ProgressInput` are disjoint and neither has an organization, entitlement or install field; a type-level test freezes that (V1 proof step 9). progress.ts keeps its single import so apps/web's vendored copy still builds.
+- Build's manifest `apps/desktop/src/apps/build/wos-app.json` (`build@0.1.0`: free, desktop only, `/build`, permission `build.contribute`, three navigation entries, no features, not self-hostable), validated by a contracts test.
+- `wos-app.ts`:
+  - Environment token wire format: `EnvironmentTokenHeader` (`alg` EdDSA, `typ` `wos-env+jwt`, `kid` `wos-env-NNNN`), `EnvironmentKey` (C-5 public key), `ENVIRONMENT_TOKEN_TTL_SECONDS` 900, `ENVIRONMENT_TOKEN_SKEW_SECONDS` 60, `ACTIVE_APPS_REFRESH_SECONDS` 60. Hosted Core takes the token as `Authorization: Bearer`.
+  - `ModuleBundle` (`wos-module-bundle.v1`): the one JSON file Desktop downloads (signed `ModulePackage` plus base64 file contents).
+  - `AppReleaseView` (one version, published or yanked) and `ApplicationProgressView`.
+  - wos-screen.v1 data contract: `ScreenRecord`, `ScreenListData`, `ScreenRecordData`, `ScreenFormBody`, `ScreenInvokeResult`, and the HTTP semantics of each screen kind and action (doc comment).
+  - `FieldSpec.options` for `select` inputs: required for select and only for select. This refinement tightens the schema. It is recorded as MINOR by architect decision because no `wos-screen.v1` file exists anywhere yet (the 3.1.0 precedent).
+  - Clarified: `AppRegistryEntry` is built from the current release, so an app with no published release (core and build after 0006) is not listed, and `getApp` returns 404 for it. Its entitlement still exists and still gates.
+- `canonical.ts` C-8: `signEnvironmentToken`, `verifyEnvironmentToken` (compact EdDSA JWS over canonical JSON, base64url).
+- `api.ts` `AppRoutes`: `getAppRelease` (`GET /v1/public/apps/:app/releases/:version`), `getApplicationProgress` (`GET /v1/public/apps/:app/progress`); `getEnvironmentKeys` responds with `EnvironmentKey[]` (tightened; no producer existed); `publishAppRelease` documents the Build exception (no desktop package, source waronsaas/wos).
+- `domain.ts`: `TargetSummary.apps?` (and so `TargetDetail.apps?`): the target's applications from `target_apps`.
+- Regenerated, no other change: context-engine manifest golden hashes and CLI golden output (they embed the contracts version), the vendored validator bundle `templates/product/.github/wos/wos-ci-lib.mjs`, `apps/web/generated/contracts-progress.ts`.
+- Version note: `ws/self-assess` (b2ff2b2, not on main) also calls itself 5.2.0. This entry reached main first, so that branch renumbers to 5.3.0 when it merges.
+
+Affected workstreams: control-plane, suite-shell, desktop, mobile-runtime, cli (section 12.4), and web (`TargetSummary.apps`, `getApplicationProgress`).

@@ -1,6 +1,6 @@
 # WOS-APP protocol, version `wos-app/v1`
 
-Status: frozen at contracts 5.0.0 (Amendment 01, D16, D17), 2026-09-29. Owner: Lead Architect.
+Status: frozen at contracts 5.0.0 (Amendment 01, D16, D17), 2026-09-29; Wave 3a additions at 5.2.0, 2026-09-30 (application progress, Build manifest, token wire format, module bundle, screen data). Owner: Lead Architect.
 
 The ground truth is `packages/contracts/src/wos-app.ts` (schemas and pure helpers), plus:
 - `canonical.ts` C-6: package signing.
@@ -137,6 +137,8 @@ Loading rules (S-38):
 
 A self-hosted environment can mirror packages anywhere. The pinned key makes the download location irrelevant to trust.
 
+**Download format (5.2.0).** The package URL is ONE JSON file, a `ModuleBundle` (`wos-module-bundle.v1`): the signed `ModulePackage` plus every file's bytes in base64. The registry's `package.sha256` is `sha256Of` the downloaded bytes, a transport check only. Trust comes from `verifyModulePackage`, each file's sha256, and `contents` listing exactly the package's files. Desktop resolves the version `ActiveApps` names through `getAppRelease` (`GET /v1/public/apps/:app/releases/:version`), which also reports a yank. Build has no package: it is in the binary.
+
 ## 7. Entitlements (wOS Cloud only)
 
 - **`AppEntitlement` scope.** One per (organization, kind-app application). There is no row until the first enable, which the API reports as `available`.
@@ -157,6 +159,11 @@ A self-hosted environment can mirror packages anywhere. The pinned key makes the
 - **Choosing an environment.** Clients default to wOS Cloud (`https://core.waronsaas.com`, id `WOS_CLOUD_ENVIRONMENT_ID`). They can instead be pointed at `https://wos.example-company.com` from Settings → Environment.
 - **Sessions are per environment.** Signing in to one never signs in to another.
 - **Auth: `wos_cloud`.** The user signs in with the wOS account (D8: email link). The client then exchanges its control-plane session for an **environment token**: `issueEnvironmentToken`, a 15-minute EdDSA JWS, audience = environment id, claims `EnvironmentTokenClaims` = account, org, role, active apps. Hosted Core verifies it with `GET /v1/public/environment-keys` and trusts the org and app claims.
+- **Token wire format (5.2.0, C-8).** A compact JWS: `base64url(canonicalJson(header)).base64url(canonicalJson(claims)).base64url(Ed25519 signature)`, with no padding.
+  - The header is `{ alg: "EdDSA", typ: "wos-env+jwt", kid }`, and `exp - iat` is exactly 900 seconds.
+  - Verifiers allow 60 s of clock skew and check that `aud` is their environment id.
+  - `signEnvironmentToken` and `verifyEnvironmentToken` in `@waronsaas/contracts/canonical` are the only implementation.
+  - Hosted Core takes the token as `Authorization: Bearer <token>` on every `CoreRoutes` call. A self-hosted Core takes its own local session token the same way.
 - **Auth: `local`.** The self-hosted Core's own sign-in: an email link through the operator's SMTP. Accounts, organizations and memberships live in that Core.
 - **Auth: `oidc`.** The operator's identity provider. Core maps the subject to its own users.
 - **Self-hosted activation.** The operator's configuration decides what is active: `WOS_APPS=crm,chat` or Core's admin screen. `ActiveApps.source` is `self_host_config`. A self-hosted Core never calls wOS Cloud to decide what may run; network access to wOS Cloud is optional and only for registry lookups and package downloads.
@@ -174,6 +181,16 @@ The V1 runtime renders three kinds of screen:
 
 Actions are a fixed set: `call`, `email`, `open_screen`, `create`, `edit`, `delete`, and `invoke` (a POST to the app's own `/apps/<id>/...` route). Every screen and action names a declared permission. A screen reads only from the app's own API resource.
 
+- **Data (5.2.0).** A screen reads only its app's API. The requests are:
+  - list: `GET <resource>?q=&cursor=` returns `ScreenListData` (`items`, `nextCursor`).
+  - detail: `GET` with `:id` substituted returns `ScreenRecordData`.
+  - related list: `GET <detail resource>/<relationship>`.
+  - create: `POST` a `ScreenFormBody`.
+  - edit: `PATCH` a `ScreenFormBody`.
+  - delete: `DELETE`.
+  - invoke: `POST` returns `ScreenInvokeResult`.
+
+  Records are flat, keyed by field name, with an `id`. A `select` input carries its fixed `options`.
 - **No code in screens.** There are no expressions, scripts or URLs outside the app's API. Anything a screen cannot express is written as a normal React Native component in the app's bundled mobile module, where it is reviewed like any code and shipped in the next store build.
 - **Deferred primitives.** Charts, tables, filters beyond search, notifications UI and relationship editing come after V1, added to the screen schema as MINOR changes when a Feature Contract needs them. We are not building a low-code platform.
 
@@ -196,7 +213,10 @@ Actions are a fixed set: `call`, `email`, `open_screen`, `create`, `edit`, `dele
   - For each surface S the app supports, take the ABUs of the merged build graphs of the app's `features` whose requirements are tagged S. Weight them by size points, count those merged, and cap S below 100% until every feature's acceptance on S passed for at least one profile.
   - Overall is the size-point-weighted mean across the app's supported surfaces.
   - It uses no new weights and no mock numbers: an app with no merged work shows 0%.
-  - The function `computeApplicationProgress` joins `progress.ts` at the start of Wave 3 (a MINOR change).
+  - `computeApplicationProgress` is in `progress.ts` (5.2.0) and is published by `GET /v1/public/apps/:app/progress` (`ApplicationProgressView`).
+  - A supported surface with no work keeps the overall below 100%.
+  - An app feature with no merged contract keeps every surface below 100%.
+- **Independence is structural.** `computeAppProgress` (target) and `computeApplicationProgress` (application) take disjoint inputs. Neither takes an organization, an entitlement or an install state, and contracts tests freeze their input types.
 
 ## 12. Self-host and hosted requirements (per app)
 

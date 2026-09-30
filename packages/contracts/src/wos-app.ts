@@ -254,12 +254,39 @@ export const ModulePackage = z
   });
 export type ModulePackage = z.infer<typeof ModulePackage>;
 
+/**
+ * contracts 5.2.0: the ONE file Desktop downloads for a desktop module (`AppRegistryEntry.surfaces.desktop.package.url`,
+ * `AppReleaseView.desktopPackage.url`). JSON, so no archive parser is needed: the signed `ModulePackage` plus every
+ * file's bytes as standard base64. `package.sha256` in the registry is sha256Of(the downloaded bytes) (transport check);
+ * trust comes only from `verifyModulePackage` against pinned keys and each file's sha256 in the package (S-37).
+ * The installer rejects a bundle whose `contents` paths differ from `package.files` in any way.
+ */
+export const ModuleBundle = z
+  .object({
+    schema: z.literal("wos-module-bundle.v1"),
+    package: ModulePackage,
+    contents: z.array(z.object({ path: z.string().regex(/^[A-Za-z0-9._/-]+$/), base64: z.string() })).min(1),
+  })
+  .superRefine((b, ctx) => {
+    const listed = b.package.files.map((f) => f.path).sort();
+    const got = b.contents.map((c) => c.path).sort();
+    if (listed.length !== got.length || listed.some((p, i) => p !== got[i]))
+      ctx.addIssue({ code: "custom", path: ["contents"], message: "contents must list exactly the package's files" });
+  });
+export type ModuleBundle = z.infer<typeof ModuleBundle>;
+
 // ---------------------------------------------------------------------------------------------
 // App registry (control plane; public)
 // ---------------------------------------------------------------------------------------------
 
 const Availability = z.object({ available: z.boolean(), version: SemVer.nullable() });
 
+/**
+ * One registry entry, built from the app's current (latest published, not yanked) release manifest. Apps with no
+ * such release (e.g. `core` and `build` right after migration 0006, whose registry rows have no current version)
+ * are not listed by `listApps`, not returned by `getApp` (404) and not in `OrgApps`; their entitlements still exist
+ * and still gate (contracts 5.2.0 clarification).
+ */
 export const AppRegistryEntry = z.object({
   id: AppId,
   name: z.string(),
@@ -274,7 +301,7 @@ export const AppRegistryEntry = z.object({
   replaces: z.array(TargetSlug),
   surfaces: z.object({
     web: Availability,
-    /** The signed package to download for the current version (null when desktop is unsupported). */
+    /** The signed package (a `ModuleBundle` file) for the current version; null when desktop is unsupported and for Build (bundled in Desktop, D16). */
     desktop: Availability.extend({
       package: z.object({ url: z.url(), sha256: Sha256, keyId: z.string() }).nullable(),
     }),
@@ -288,6 +315,68 @@ export const AppRegistryEntry = z.object({
   publishedAt: Timestamp,
 });
 export type AppRegistryEntry = z.infer<typeof AppRegistryEntry>;
+
+/**
+ * contracts 5.2.0: one released version (`GET /v1/public/apps/:app/releases/:version`). Desktop resolves the package
+ * of the version `ActiveApps` names (which may be older than `currentVersion`) and learns whether its active version
+ * was yanked. `desktopPackage` is null when the version has no desktop package: desktop unsupported, or Build, which
+ * is bundled in the Desktop binary and never downloaded (D16, S-40).
+ */
+export const AppReleaseView = z.object({
+  app: AppId,
+  version: SemVer,
+  state: z.enum(["published", "yanked"]),
+  manifest: WosAppManifest,
+  manifestSha256: Sha256,
+  desktopPackage: z.object({ url: z.url(), sha256: Sha256, keyId: z.string() }).nullable(),
+  source: z.object({ repo: RepoFullName, tag: z.string(), commit: z.string().regex(/^[0-9a-f]{40}$/) }),
+  publishedAt: Timestamp,
+  yankedAt: Timestamp.nullable(),
+  yankReason: z.string().nullable(),
+});
+export type AppReleaseView = z.infer<typeof AppReleaseView>;
+
+/**
+ * contracts 5.2.0: `GET /v1/public/apps/:app/progress`, the public view of `computeApplicationProgress` (progress.ts).
+ * The features and surfaces come from the app's current release manifest (`basis: "release"`), else from
+ * `applications/<app>/wos-app.json` on the product repo's default branch (`"default_branch"`), else there are none
+ * (`"none"`, everything 0). Any app id named by the registry or by `target_apps` answers; others are 404.
+ * Never cached per organization: it is the same for everyone and independent of entitlements.
+ */
+const Bp = z.number().int().min(0).max(10_000);
+const Points = z.number().int().nonnegative();
+export const ApplicationProgressView = z.object({
+  app: AppId,
+  basis: z.enum(["release", "default_branch", "none"]),
+  /** The manifest version the features were read from; null for basis none. */
+  manifestVersion: SemVer.nullable(),
+  builtBp: Bp,
+  relevantPoints: Points,
+  mergedPoints: Points,
+  complete: z.boolean(),
+  surfaces: z.array(
+    z.object({
+      surface: ProductSurface,
+      relevantPoints: Points,
+      mergedPoints: Points,
+      builtBp: Bp,
+      acceptancePassed: z.boolean(),
+      complete: z.boolean(),
+    }),
+  ),
+  features: z.array(
+    z.object({
+      feature: FeatureKey,
+      contractVersion: z.number().int().positive().nullable(),
+      relevantPoints: Points,
+      mergedPoints: Points,
+    }),
+  ),
+  /** Targets that map to this app (`target_apps`), for links back to the Sniper List. */
+  targets: z.array(TargetSlug),
+  computedAt: Timestamp,
+});
+export type ApplicationProgressView = z.infer<typeof ApplicationProgressView>;
 
 // ---------------------------------------------------------------------------------------------
 // Organizations and entitlements (wOS Cloud)
@@ -383,6 +472,40 @@ export const EnvironmentTokenClaims = z.object({
 });
 export type EnvironmentTokenClaims = z.infer<typeof EnvironmentTokenClaims>;
 
+/**
+ * contracts 5.2.0: the environment token's wire format, fixed so the control plane (mints), hosted wOS Core
+ * (verifies) and clients (refresh) agree. A compact JWS: base64url(canonicalJson(header)) "." base64url(canonicalJson
+ * (claims)) "." base64url(Ed25519 signature over the first two parts), no padding. `signEnvironmentToken` and
+ * `verifyEnvironmentToken` in `@waronsaas/contracts/canonical` are the only implementation.
+ *
+ * Hosted Core accepts it as `Authorization: Bearer <token>` on every `CoreRoutes` call (`auth: "environment_session"`);
+ * a self-hosted Core accepts its own local session token the same way. Clients refresh it before `exp` and re-read
+ * `ActiveApps` on every refresh.
+ */
+export const ENVIRONMENT_TOKEN_TYP = "wos-env+jwt" as const;
+/** Lifetime of an environment token: exactly 15 minutes (exp - iat). */
+export const ENVIRONMENT_TOKEN_TTL_SECONDS = 900 as const;
+/** Clock skew a verifier tolerates on iat and exp. */
+export const ENVIRONMENT_TOKEN_SKEW_SECONDS = 60 as const;
+/** Clients re-read `ActiveApps` at least this often while open (and on start, focus and token refresh). */
+export const ACTIVE_APPS_REFRESH_SECONDS = 60 as const;
+
+export const EnvironmentTokenHeader = z.object({
+  alg: z.literal("EdDSA"),
+  typ: z.literal(ENVIRONMENT_TOKEN_TYP),
+  /** Id of the control plane's signing key, listed by `getEnvironmentKeys`. */
+  kid: z.string().regex(/^wos-env-\d{4}(?:-[a-z0-9]+)?$/),
+});
+export type EnvironmentTokenHeader = z.infer<typeof EnvironmentTokenHeader>;
+
+/** One entry of `GET /v1/public/environment-keys`. `publicKey` is C-5 encoded: standard base64 of the raw 32 bytes. */
+export const EnvironmentKey = z.object({
+  kid: EnvironmentTokenHeader.shape.kid,
+  alg: z.literal("EdDSA"),
+  publicKey: z.string().regex(/^[A-Za-z0-9+/]{43}=$/, "base64 of a raw 32-byte Ed25519 key"),
+});
+export type EnvironmentKey = z.infer<typeof EnvironmentKey>;
+
 /** Where an active app's activation comes from; self-hosted activation never consults wOS Cloud. */
 export const ActivationSource = z.enum(["core", "entitlement", "dependency", "self_host_config"]);
 
@@ -436,12 +559,23 @@ export const ScreenAction = z.discriminatedUnion("kind", [
   }),
 ]);
 
-const FieldSpec = z.object({
-  field: FieldName,
-  label: z.string().max(60).optional(),
-  input: z.enum(["text", "email", "phone", "number", "date", "select", "readonly"]).default("readonly"),
-  required: z.boolean().default(false),
-});
+const FieldSpec = z
+  .object({
+    field: FieldName,
+    label: z.string().max(60).optional(),
+    input: z.enum(["text", "email", "phone", "number", "date", "select", "readonly"]).default("readonly"),
+    required: z.boolean().default(false),
+    /** contracts 5.2.0: the fixed choices of a `select` input (required for, and only for, select). */
+    options: z
+      .array(z.object({ value: z.string().min(1).max(80), label: z.string().min(1).max(60) }))
+      .min(1)
+      .max(50)
+      .optional(),
+  })
+  .superRefine((f, ctx) => {
+    if ((f.input === "select") !== (f.options !== undefined))
+      ctx.addIssue({ code: "custom", path: ["options"], message: "a select input (and only a select) has options" });
+  });
 
 export const ScreenSection = z.discriminatedUnion("type", [
   z.object({ type: z.literal("fields"), fields: z.array(FieldSpec).min(1) }),
@@ -478,6 +612,35 @@ export const MobileScreen = z
           issue(["sections"], "a form needs at least one input field");
   });
 export type MobileScreen = z.infer<typeof MobileScreen>;
+
+/**
+ * contracts 5.2.0: the data a `wos-screen.v1` runtime exchanges with the app's API. Every screen reads only its own
+ * `resource` under `/apps/<app>/`, with the environment session as bearer:
+ *
+ *   list     GET <resource>[?q=<search>][&cursor=<nextCursor>]          -> ScreenListData
+ *   detail   GET <resource> with `:id` replaced by the tapped record's id -> ScreenRecordData
+ *   related  GET <detail resource>/<relationship>                         -> ScreenListData, rendered with the
+ *            related_list's `screen` (a list screen)
+ *   create   POST <form screen resource> with ScreenFormBody              -> ScreenRecordData
+ *   edit     PATCH <form screen resource, :id replaced> with ScreenFormBody -> ScreenRecordData
+ *   delete   DELETE <detail resource>                                     -> 204
+ *   invoke   POST <endpoint, :id replaced> with {}                        -> ScreenInvokeResult
+ *
+ * Records are flat objects keyed by FieldName with an `id`. Values are strings, numbers, booleans or null; dates are
+ * ISO 8601 strings. Errors use the wOS `ApiError` envelope. Nothing in a screen or a response is executed.
+ */
+const ScreenValue = z.union([z.string(), z.number(), z.boolean(), z.null()]);
+export const ScreenRecord = z.record(FieldName, ScreenValue).and(z.object({ id: z.string().min(1) }));
+export type ScreenRecord = z.infer<typeof ScreenRecord>;
+export const ScreenListData = z.object({ items: z.array(ScreenRecord), nextCursor: z.string().min(1).nullable() });
+export type ScreenListData = z.infer<typeof ScreenListData>;
+export const ScreenRecordData = z.object({ item: ScreenRecord });
+export type ScreenRecordData = z.infer<typeof ScreenRecordData>;
+export const ScreenFormBody = z.object({ values: z.record(FieldName, ScreenValue) });
+export type ScreenFormBody = z.infer<typeof ScreenFormBody>;
+/** What the runtime shows after an `invoke` action (plain text, never markup). */
+export const ScreenInvokeResult = z.object({ message: z.string().max(280).nullable() });
+export type ScreenInvokeResult = z.infer<typeof ScreenInvokeResult>;
 
 // ---------------------------------------------------------------------------------------------
 // Pure helpers shared by every client and the control plane

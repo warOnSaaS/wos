@@ -1,0 +1,60 @@
+{
+  "protocol": "wos-app/v1",
+  "app": {
+    "id": "build",
+    "name": "Build",
+    "version": "0.1.0",
+    "kind": "app",
+    "billing": "free",
+    "summary": "Contribute to warOnSaaS: browse the Sniper List, claim work, run your agents and review others' work."
+  },
+  "requires": { "wos": ">=0.1.0", "apps": [] },
+  "provides": [],
+  "features": [],
+  "replaces": [],
+  "surfaces": {
+    "web": { "supported": false },
+    "desktop": { "supported": true, "entry": "./renderer" },
+    "ios": { "supported": false },
+    "android": { "supported": false },
+    "api": { "supported": false }
+  },
+  "mobile": null,
+  "data": { "schema": "app_build", "migrations": null, "owns": [] },
+  "permissions": [
+    {
+      "key": "build.contribute",
+      "description": "Use Build in this organization: claim work, run agents, submit and review",
+      "grantedTo": ["owner", "admin", "member"]
+    }
+  ],
+  "events": { "publishes": [], "consumes": [] },
+  "routes": { "ui": "/build", "api": null },
+  "navigation": [
+    {
+      "id": "build.targets",
+      "title": "SNIPER LIST",
+      "route": "/build/targets",
+      "surfaces": ["desktop"],
+      "permission": "build.contribute",
+      "order": 10
+    },
+    {
+      "id": "build.work",
+      "title": "MY WORK",
+      "route": "/build/work",
+      "surfaces": ["desktop"],
+      "permission": "build.contribute",
+      "order": 20
+    },
+    {
+      "id": "build.contributions",
+      "title": "CONTRIBUTIONS",
+      "route": "/build/contributions",
+      "surfaces": ["desktop"],
+      "permission": "build.contribute",
+      "order": 30
+    }
+  ],
+  "hosting": { "selfHost": { "supported": false, "services": [] }, "hosted": { "supported": true } }
+}

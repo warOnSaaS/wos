@@ -35,6 +35,9 @@ import { DomainEvent } from "./events.js";
 import {
   AppId,
   AppRegistryEntry,
+  AppReleaseView,
+  ApplicationProgressView,
+  EnvironmentKey,
   EnvironmentTokenClaims,
   ModulePackage,
   OrganizationSlug,
@@ -43,7 +46,7 @@ import {
   OrgAppView,
   WosAppManifest,
 } from "./wos-app.js";
-import { AbuKey, Cursor, FeatureKey, GitSha, Page, Sha256, TargetSlug, Timestamp, Uuid } from "./primitives.js";
+import { AbuKey, Cursor, FeatureKey, GitSha, Page, SemVer, Sha256, TargetSlug, Timestamp, Uuid } from "./primitives.js";
 
 /**
  * The control-plane HTTP API, as a typed route map. Base URL: https://api.waronsaas.com
@@ -935,6 +938,30 @@ export const AppRoutes = {
     errors: ["NOT_FOUND"],
     summary: "One registry entry.",
   }),
+  getAppRelease: route({
+    method: "GET",
+    path: "/v1/public/apps/:app/releases/:version",
+    auth: "public",
+    idempotent: false,
+    params: z.object({ app: AppId, version: SemVer }),
+    query: None,
+    body: None,
+    response: AppReleaseView,
+    errors: ["NOT_FOUND"],
+    summary: "One released version, published or yanked (contracts 5.2.0): Desktop's package lookup and yank check.",
+  }),
+  getApplicationProgress: route({
+    method: "GET",
+    path: "/v1/public/apps/:app/progress",
+    auth: "public",
+    idempotent: false,
+    params: AppParams,
+    query: None,
+    body: None,
+    response: ApplicationProgressView,
+    errors: ["NOT_FOUND"],
+    summary: "Application progress from computeApplicationProgress (contracts 5.2.0); independent of any entitlement.",
+  }),
   getEnvironmentKeys: route({
     method: "GET",
     path: "/v1/public/environment-keys",
@@ -943,7 +970,7 @@ export const AppRoutes = {
     params: None,
     query: None,
     body: None,
-    response: z.object({ keys: z.array(z.object({ kid: z.string(), alg: z.literal("EdDSA"), publicKey: z.string() })) }),
+    response: z.object({ keys: z.array(EnvironmentKey) }),
     errors: [],
     summary: "Public keys hosted wOS Core uses to verify environment tokens (current and next, for rotation).",
   }),
@@ -1028,7 +1055,12 @@ export const AppRoutes = {
     query: None,
     body: z.object({
       manifest: WosAppManifest,
-      /** Required when the manifest supports desktop; the control plane verifies it like Desktop does (S-37). */
+      /**
+       * Required when the manifest supports desktop; the control plane verifies it like Desktop does (S-37).
+       * Exception (contracts 5.2.0): `build` is bundled in the Desktop binary (D16, S-40), so its release has both
+       * desktopPackage and desktopPackageUrl null, source repo waronsaas/wos, and the manifest committed at
+       * apps/desktop/src/apps/build/wos-app.json. A maintainer publishes it when that manifest's version changes.
+       */
       desktopPackage: ModulePackage.nullable(),
       desktopPackageUrl: z.url().nullable(),
       source: z.object({ repo: z.string(), tag: z.string(), commit: GitSha }),

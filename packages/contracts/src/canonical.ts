@@ -27,11 +27,20 @@
  *  C-6 manifestSha256 = canonicalSha256(manifest without `manifestSha256`);
  *      provenance record hash = canonicalSha256(parsed ProvenanceRecord).
  *  C-7 gitBlobOid = SHA-1 of "blob <byteLength>\0" + bytes (what `git hash-object` prints).
+ *  C-8 Environment tokens (5.2.0): compact EdDSA JWS over canonicalJson(header) and canonicalJson(claims), base64url
+ *      without padding; keys in the C-5 encoding (signEnvironmentToken, verifyEnvironmentToken).
  */
 import { createHash, createPrivateKey, createPublicKey, type KeyObject, sign, verify } from "node:crypto";
 import { AgentRunRecord, Changeset, type ChangesetFile, ContextManifest, ProvenanceRecord } from "./agent-io.js";
 import type { Sha256 } from "./primitives.js";
-import { ModulePackage } from "./wos-app.js";
+import {
+  ENVIRONMENT_TOKEN_SKEW_SECONDS,
+  ENVIRONMENT_TOKEN_TTL_SECONDS,
+  ENVIRONMENT_TOKEN_TYP,
+  EnvironmentTokenClaims,
+  EnvironmentTokenHeader,
+  ModulePackage,
+} from "./wos-app.js";
 
 // ---------------------------------------------------------------------------------------------- C-1
 
@@ -221,4 +230,65 @@ export function verifyModulePackage(input: unknown, pinnedKeys: Readonly<Record<
   else if (!verifyEd25519(key, modulePackageSigningPayload(pkg), pkg.signature.value)) reasons.push("signature: invalid");
   if (canonicalSha256(pkg.manifest) !== pkg.manifestSha256) reasons.push("manifestSha256 does not match the manifest");
   return reasons;
+}
+
+// ---------------------------------------------------------------------------------------------- C-8
+// Environment tokens (contracts 5.2.0; WOS-APP-PROTOCOL section 8). A compact JWS with EdDSA:
+//   base64url(canonicalJson(header)) "." base64url(canonicalJson(claims)) "." base64url(Ed25519(first two parts))
+// base64url without padding. The control plane mints, hosted wOS Core verifies, with keys in the C-5 encoding.
+
+const b64url = (buf: Uint8Array | string) => Buffer.from(buf).toString("base64url");
+
+/** Mints an environment token. `claims.exp - claims.iat` must be exactly ENVIRONMENT_TOKEN_TTL_SECONDS. */
+export function signEnvironmentToken(claims: EnvironmentTokenClaims, kid: string, privateKey: KeyObject): string {
+  const c = EnvironmentTokenClaims.parse(claims);
+  if (c.exp - c.iat !== ENVIRONMENT_TOKEN_TTL_SECONDS) throw new RangeError(`exp - iat must be ${ENVIRONMENT_TOKEN_TTL_SECONDS}`);
+  const header = EnvironmentTokenHeader.parse({ alg: "EdDSA", typ: ENVIRONMENT_TOKEN_TYP, kid });
+  const input = `${b64url(canonicalJson(header))}.${b64url(canonicalJson(c))}`;
+  return `${input}.${b64url(sign(null, Buffer.from(input), privateKey))}`;
+}
+
+export type EnvironmentTokenVerification = { ok: true; claims: EnvironmentTokenClaims } | { ok: false; reason: string };
+
+/**
+ * Verifies an environment token for ONE environment: format, header, a known key (kid -> C-5 public key), the
+ * signature, the claims schema, `aud` equal to the environment id, lifetime at most ENVIRONMENT_TOKEN_TTL_SECONDS,
+ * and `iat`/`exp` against `nowSeconds` with ENVIRONMENT_TOKEN_SKEW_SECONDS of skew.
+ */
+export function verifyEnvironmentToken(
+  token: string,
+  keys: Readonly<Record<string, string>>,
+  expected: { environmentId: string; nowSeconds: number },
+): EnvironmentTokenVerification {
+  const parts = token.split(".");
+  if (parts.length !== 3 || parts.some((p) => !/^[A-Za-z0-9_-]+$/.test(p))) return { ok: false, reason: "malformed token" };
+  const [h, c, sig] = parts as [string, string, string];
+  let header: unknown;
+  let body: unknown;
+  try {
+    header = JSON.parse(Buffer.from(h, "base64url").toString("utf8"));
+    body = JSON.parse(Buffer.from(c, "base64url").toString("utf8"));
+  } catch {
+    return { ok: false, reason: "malformed token" };
+  }
+  const hp = EnvironmentTokenHeader.safeParse(header);
+  if (!hp.success) return { ok: false, reason: "bad header" };
+  const key = keys[hp.data.kid];
+  if (!key) return { ok: false, reason: `unknown key ${hp.data.kid}` };
+  let valid = false;
+  try {
+    const signature = Buffer.from(sig, "base64url");
+    valid = signature.length === 64 && verify(null, Buffer.from(`${h}.${c}`), devicePublicKeyFromBase64(key), signature);
+  } catch {
+    valid = false;
+  }
+  if (!valid) return { ok: false, reason: "invalid signature" };
+  const cp = EnvironmentTokenClaims.safeParse(body);
+  if (!cp.success) return { ok: false, reason: "bad claims" };
+  const claims = cp.data;
+  if (claims.aud !== expected.environmentId) return { ok: false, reason: "wrong audience" };
+  if (claims.exp - claims.iat > ENVIRONMENT_TOKEN_TTL_SECONDS || claims.exp <= claims.iat) return { ok: false, reason: "bad lifetime" };
+  if (claims.iat > expected.nowSeconds + ENVIRONMENT_TOKEN_SKEW_SECONDS) return { ok: false, reason: "issued in the future" };
+  if (claims.exp <= expected.nowSeconds - ENVIRONMENT_TOKEN_SKEW_SECONDS) return { ok: false, reason: "expired" };
+  return { ok: true, claims };
 }
