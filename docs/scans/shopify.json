@@ -1,0 +1,963 @@
+{
+  "schema": "wos-scan.v0",
+  "label": "SCAN — unreviewed, 2026-09-30",
+  "reviewed": false,
+  "countsTowardProgress": false,
+  "target": {
+    "id": "TGT-05",
+    "slug": "shopify",
+    "name": "Shopify"
+  },
+  "scannedAt": "2026-09-30",
+  "scope": {
+    "included": "The Shopify commerce platform: admin, online store, checkout and Shopify Payments, POS, Markets, B2B, and Shopify-made apps that ship with it (Inbox, Messaging/Email, Flow, Forms, Subscriptions, Search & Discovery etc.), plus Shopify Plus features. Plans as shown on shopify.com/pricing: Basic, Grow, Advanced, Plus; Starter documented on a separate help page.",
+    "excluded": [
+      "Shop consumer app as a buyer product (only covered as a sales channel)",
+      "Shopify for enterprise / Commerce Components and the Agentic, Lite and Retail plans (listed in help but not on the pricing compare table)",
+      "Shopify Partner Program and Partner Dashboard tooling beyond Plus sandbox stores",
+      "Shopify Academy, Shopify Community and support offerings",
+      "Hardware catalogue for POS (only mentioned)",
+      "Third-party App Store apps"
+    ]
+  },
+  "clientApps": [
+    {
+      "surface": "web",
+      "name": "Shopify admin",
+      "platforms": "Web browser",
+      "sources": ["https://help.shopify.com/en/manual"]
+    },
+    {
+      "surface": "ios",
+      "name": "Shopify: Ecommerce business",
+      "platforms": "iPhone, iPad, Apple Watch",
+      "sources": ["https://apps.apple.com/us/app/shopify-ecommerce-business/id371294472"]
+    },
+    {
+      "surface": "ios",
+      "name": "Shopify Point of Sale (POS)",
+      "platforms": "iPhone, iPad, iPod touch",
+      "sources": ["https://apps.apple.com/us/app/shopify-point-of-sale-pos/id686830644"]
+    },
+    {
+      "surface": "android",
+      "name": "Shopify POS",
+      "platforms": "Android (Shopify states POS runs on iOS or Android)",
+      "sources": ["https://help.shopify.com/en/manual/apps/apps-by-shopify"]
+    }
+  ],
+  "api": {
+    "style": "GraphQL (Admin, Storefront, Customer Account) plus REST Admin API; webhooks/events; Shopify Functions; Liquid and Ajax for themes",
+    "notes": "All APIs require tokens and scopes. GraphQL Admin uses calculated query cost and REST uses request-based leaky buckets, both sized by plan (pricing page: Standard, up to 2x on Advanced, up to 10x on Plus). Also Payments Apps, Partner, Multipass, ShopifyQL and Web Pixel APIs.",
+    "sources": ["https://shopify.dev/docs/api", "https://shopify.dev/docs/api/usage/limits", "https://www.shopify.com/pricing"]
+  },
+  "capabilities": [
+    {
+      "id": "online-storefront",
+      "vendorName": "Online store",
+      "description": "Hosted online store with themes, pages, blog, unlimited hosting, custom domain and free SSL; Starter gets only the Spotlight theme and default pages.",
+      "surfaces": ["web"],
+      "lowestTier": "Basic",
+      "tierNote": "Starter plan has a reduced store (Spotlight theme, product links, no collections)",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.shopify.com/pricing",
+        "https://help.shopify.com/en/manual/intro-to-shopify/pricing-plans/plans-features/shopify-starter-plan",
+        "https://help.shopify.com/en/manual"
+      ]
+    },
+    {
+      "id": "product-catalog",
+      "vendorName": "Products",
+      "description": "Products with variants, collections, digital products, gift card products and bundles (Shopify Bundles app); unlimited products.",
+      "surfaces": ["web", "ios", "api"],
+      "lowestTier": "Basic",
+      "tierNote": "Starter cannot group products into collections",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://help.shopify.com/en/manual/products", "https://www.shopify.com/pricing", "https://shopify.dev/docs/api"]
+    },
+    {
+      "id": "inventory-management",
+      "vendorName": "Inventory management",
+      "description": "Stock tracking across locations (10 on Basic–Advanced, 200 on Plus), barcode scanning in the mobile app and POS inventory counts; Stocky adds forecasting, stocktakes and transfers.",
+      "surfaces": ["web", "ios", "api"],
+      "lowestTier": "Basic",
+      "tierNote": "location count varies by plan",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.shopify.com/pricing",
+        "https://apps.apple.com/us/app/shopify-ecommerce-business/id371294472",
+        "https://help.shopify.com/en/manual/apps/apps-by-shopify"
+      ]
+    },
+    {
+      "id": "checkout-payments",
+      "vendorName": "Shopify checkout",
+      "description": "Hosted cart and checkout with Shop Pay, abandoned-checkout recovery and checkout customization via Checkout Blocks and extensions; full customization and high-volume checkout are Plus only.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Basic",
+      "tierNote": "checkout customization Limited below Plus",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.shopify.com/pricing",
+        "https://help.shopify.com/en/manual/apps/apps-by-shopify",
+        "https://help.shopify.com/en/manual"
+      ]
+    },
+    {
+      "id": "payments-acceptance",
+      "vendorName": "Shopify Payments",
+      "description": "Built-in card, wallet, local-method and USDC acceptance online and in person with per-plan card rates; third-party gateways incur a transaction fee (2% Basic down to 0.2% Plus). Payments Apps API for payment partners.",
+      "surfaces": ["web", "ios", "api"],
+      "lowestTier": "Basic",
+      "tierNote": "rates fall on higher plans; some features require Shopify Payments",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.shopify.com/pricing",
+        "https://apps.apple.com/us/app/shopify-point-of-sale-pos/id686830644",
+        "https://shopify.dev/docs/api"
+      ]
+    },
+    {
+      "id": "order-management",
+      "vendorName": "Orders",
+      "description": "View, edit, refund and return orders, including self-serve returns from the order status page, draft orders and printing with Order Printer; mobile app processes fulfilments and refunds.",
+      "surfaces": ["web", "ios", "api"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://help.shopify.com/en/manual/fulfillment",
+        "https://help.shopify.com/en/manual/fulfillment/managing-orders",
+        "https://apps.apple.com/us/app/shopify-ecommerce-business/id371294472"
+      ]
+    },
+    {
+      "id": "shipping-fulfillment",
+      "vendorName": "Shipping and fulfillment",
+      "description": "Shipping rates, discounted label purchase and printing, shipping insurance, local delivery and pickup, Shopify Fulfillment Network 3PL connections; third-party calculated rates are an add-on on Grow and included from Advanced.",
+      "surfaces": ["web", "ios"],
+      "lowestTier": "Basic",
+      "tierNote": "3rd-party calculated rates: Grow add-on, Advanced included; unavailable on Starter",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.shopify.com/pricing",
+        "https://help.shopify.com/en/manual/fulfillment/setup/delivery-methods/local-delivery",
+        "https://help.shopify.com/en/manual/apps/apps-by-shopify"
+      ]
+    },
+    {
+      "id": "point-of-sale",
+      "vendorName": "Shopify POS",
+      "description": "In-person selling on iOS and Android with shared catalogue, customer profiles, returns/exchanges across channels, staff PINs and roles, local delivery orders and hardware; POS Pro is $89/mo per location, Plus includes 20 locations.",
+      "surfaces": ["ios", "android"],
+      "lowestTier": "Basic",
+      "tierNote": "casual in-person sales on all plans; POS Pro paid per location; not on Starter",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.shopify.com/pricing",
+        "https://apps.apple.com/us/app/shopify-point-of-sale-pos/id686830644",
+        "https://help.shopify.com/en/manual/apps/apps-by-shopify"
+      ]
+    },
+    {
+      "id": "discounts-promotions",
+      "vendorName": "Discounts and gift cards",
+      "description": "Discount codes, automatic discounts, bundles and selling gift cards; custom discount logic via Shopify Functions.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Basic",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.shopify.com/pricing",
+        "https://help.shopify.com/en/manual/apps/apps-by-shopify",
+        "https://shopify.dev/docs/api"
+      ]
+    },
+    {
+      "id": "customer-accounts",
+      "vendorName": "Customers and customer accounts",
+      "description": "Customer records with search, buyer accounts with order history, store credit, and the Customer Account API.",
+      "surfaces": ["web", "ios", "api"],
+      "lowestTier": "Basic",
+      "tierNote": "pricing page lists unlimited contacts on all compared plans",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://help.shopify.com/en/manual/customers", "https://shopify.dev/docs/api"]
+    },
+    {
+      "id": "multichannel-selling",
+      "vendorName": "Sales channels",
+      "description": "Selling on Facebook, Instagram, TikTok, Google/YouTube, the Shop app, Amazon/other marketplaces via Marketplace Connect, Temu, Buy Button and WordPress; Shopify Collective for supplier/retailer dropshipping.",
+      "surfaces": ["web", "ios"],
+      "lowestTier": "Basic",
+      "tierNote": "marketplace sync free to 50 orders/month then 1% up to $99/mo",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://help.shopify.com/en/manual/online-sales-channels",
+        "https://www.shopify.com/pricing",
+        "https://help.shopify.com/en/manual/apps/apps-by-shopify"
+      ]
+    },
+    {
+      "id": "b2b-wholesale",
+      "vendorName": "Shopify B2B",
+      "description": "Companies as buyers, catalogs with custom pricing, payment terms, quantity rules, B2B draft orders and B2B checkout, in a blended or B2B-only store.",
+      "surfaces": ["web"],
+      "lowestTier": "Basic",
+      "tierNote": "up to 3 B2B catalogs below Plus; unlimited on Plus",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://help.shopify.com/en/manual/b2b", "https://www.shopify.com/pricing"]
+    },
+    {
+      "id": "subscriptions-recurring-billing",
+      "vendorName": "Shopify Subscriptions",
+      "description": "Free Shopify app for recurring purchase plans with discounts, subscription analytics and customer self-serve skip/cancel, online and on POS.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://help.shopify.com/en/manual/products/purchase-options/shopify-subscriptions",
+        "https://help.shopify.com/en/manual/apps/apps-by-shopify"
+      ]
+    },
+    {
+      "id": "international-selling",
+      "vendorName": "Shopify Markets",
+      "description": "Markets per country/region with local domains, local currency pricing, local payment methods and estimated/collected duties; Managed Markets on the Plus page.",
+      "surfaces": ["web"],
+      "lowestTier": "Basic",
+      "tierNote": "local currencies and payment methods require Shopify Payments",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.shopify.com/pricing",
+        "https://help.shopify.com/en/manual/international",
+        "https://www.shopify.com/plus/pricing"
+      ]
+    },
+    {
+      "id": "multi-currency-localization",
+      "vendorName": "Translate storefront and local currencies",
+      "description": "Storefront translation (Translate & Adapt app) and prices shown in local currencies.",
+      "surfaces": ["web"],
+      "lowestTier": "Basic",
+      "tierNote": "local currencies require Shopify Payments",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.shopify.com/pricing", "https://help.shopify.com/en/manual/apps/apps-by-shopify"]
+    },
+    {
+      "id": "sales-tax",
+      "vendorName": "Shopify Tax",
+      "description": "Automated sales tax calculation, tax liability tracking, VAT validation and automated filing in eligible regions (US, EU, UK, Canada); Basic tax elsewhere; advanced tax platform is an add-on.",
+      "surfaces": ["web"],
+      "lowestTier": "Basic",
+      "tierNote": "advanced tax platform is an add-on",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.shopify.com/pricing", "https://help.shopify.com/en/manual/taxes"]
+    },
+    {
+      "id": "users-teams",
+      "vendorName": "Staff and collaborators",
+      "description": "Staff accounts (none extra on Basic, up to 5 on Grow, 15 on Advanced, unlimited on Plus), invitations, bulk user import and third-party collaborator accounts.",
+      "surfaces": ["web"],
+      "lowestTier": "Grow",
+      "tierNote": "additional staff accounts; Starter and Basic have none",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.shopify.com/pricing", "https://help.shopify.com/en/manual/your-account/users"]
+    },
+    {
+      "id": "roles-permissions",
+      "vendorName": "Roles and permissions",
+      "description": "Roles assigned to users with granular permissions, collaborator permission scopes and POS staff roles; custom user groups on Plus.",
+      "surfaces": ["web", "ios"],
+      "lowestTier": null,
+      "tierNote": "custom user groups Plus only",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://help.shopify.com/en/manual/your-account/users",
+        "https://www.shopify.com/pricing",
+        "https://apps.apple.com/us/app/shopify-point-of-sale-pos/id686830644"
+      ]
+    },
+    {
+      "id": "sso-identity",
+      "vendorName": "Advanced security (SAML, SCIM)",
+      "description": "Two-step authentication for all users; on Plus organizations SAML SSO with an identity provider, SCIM provisioning and enforced two-step authentication after domain verification.",
+      "surfaces": ["web"],
+      "lowestTier": "Plus",
+      "tierNote": "SAML/SCIM Plus only; two-step auth on all plans",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://help.shopify.com/en/manual/your-account/users/security/advanced-security-features",
+        "https://help.shopify.com/en/manual/your-account/users/security"
+      ]
+    },
+    {
+      "id": "audit-log",
+      "vendorName": "Activity logs",
+      "description": "User-management activity log, recent login history per user and a store activity log of admin changes.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": "access limited to eligible users per plan requirements page (not fetched)",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://help.shopify.com/en/manual/your-account/users/security/user-management-activity-log"]
+    },
+    {
+      "id": "data-import-export",
+      "vendorName": "CSV import/export and Store Migration",
+      "description": "CSV import/export of products, customers and users, Store Migration app from other platforms, and Data Exporter for tax compliance.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://help.shopify.com/en/manual/products",
+        "https://help.shopify.com/en/manual/customers",
+        "https://help.shopify.com/en/manual/apps/apps-by-shopify"
+      ]
+    },
+    {
+      "id": "custom-fields-objects",
+      "vendorName": "Metafields and metaobjects",
+      "description": "Custom fields on products, customers, orders and more, plus multi-field custom objects.",
+      "surfaces": ["web", "api"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://help.shopify.com/en/manual/custom-data"]
+    },
+    {
+      "id": "developer-platform",
+      "vendorName": "Shopify apps, Functions and Liquid",
+      "description": "Custom apps on the APIs, Liquid theme language, Shopify Functions for backend logic, web pixel and UI extensions; custom functions are Plus only.",
+      "surfaces": ["api"],
+      "lowestTier": "Basic",
+      "tierNote": "custom apps have limited data on Basic; custom functions Plus only",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://shopify.dev/docs/api", "https://www.shopify.com/pricing"]
+    },
+    {
+      "id": "headless-commerce",
+      "vendorName": "Headless / Hydrogen",
+      "description": "Storefront API, Hydrogen framework and the Headless channel for custom storefronts; 1 headless storefront below Plus, 25 on Plus.",
+      "surfaces": ["api"],
+      "lowestTier": "Basic",
+      "tierNote": "1 headless storefront below Plus, 25 on Plus",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://shopify.dev/docs/api",
+        "https://help.shopify.com/en/manual/apps/apps-by-shopify",
+        "https://www.shopify.com/pricing"
+      ]
+    },
+    {
+      "id": "api-webhooks",
+      "vendorName": "Admin GraphQL API and webhooks",
+      "description": "GraphQL Admin API (plus REST Admin API), Storefront, Customer Account, Payments Apps and Partner APIs, and events/webhooks; cost-based leaky-bucket limits that scale by plan.",
+      "surfaces": ["api"],
+      "lowestTier": "Basic",
+      "tierNote": "API limits Standard; up to 2x Advanced; up to 10x Plus",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://shopify.dev/docs/api", "https://shopify.dev/docs/api/usage/limits", "https://www.shopify.com/pricing"]
+    },
+    {
+      "id": "app-marketplace",
+      "vendorName": "Shopify App Store",
+      "description": "Directory of third-party and Shopify-made apps; Plus Certified apps on Plus. Starter restricts many apps.",
+      "surfaces": ["web"],
+      "lowestTier": "Basic",
+      "tierNote": "Plus Certified apps Plus only",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.shopify.com/pricing",
+        "https://help.shopify.com/en/manual/apps/apps-by-shopify",
+        "https://help.shopify.com/en/manual/intro-to-shopify/pricing-plans/plans-features/shopify-starter-plan"
+      ]
+    },
+    {
+      "id": "workflow-automation",
+      "vendorName": "Shopify Flow",
+      "description": "Free automation app with triggers, conditions and actions across store and apps; Send HTTP Request on Grow and above. Launchpad (Plus only) schedules sales, drops and restocks.",
+      "surfaces": ["web"],
+      "lowestTier": "Basic",
+      "tierNote": "HTTP request action from Grow; Launchpad Plus only",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://help.shopify.com/en/manual/shopify-flow", "https://help.shopify.com/en/manual/apps/apps-by-shopify"]
+    },
+    {
+      "id": "reporting-dashboards",
+      "vendorName": "Analytics and reports",
+      "description": "Analytics dashboard, 200+ real-time reports, custom analytics and ShopifyQL querying (ShopifyQL Notebooks on the Plus page); Google Analytics integration.",
+      "surfaces": ["web", "ios", "api"],
+      "lowestTier": "Starter",
+      "tierNote": "report types vary by plan",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.shopify.com/pricing",
+        "https://help.shopify.com/en/manual/intro-to-shopify/pricing-plans/plans-features/shopify-starter-plan",
+        "https://help.shopify.com/en/manual/reports-and-analytics"
+      ]
+    },
+    {
+      "id": "financial-reports",
+      "vendorName": "Finance and profit reports",
+      "description": "Finances and profit reports among the built-in reports.",
+      "surfaces": ["web"],
+      "lowestTier": "Starter",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://help.shopify.com/en/manual/intro-to-shopify/pricing-plans/plans-features/shopify-starter-plan"]
+    },
+    {
+      "id": "ai-assistant",
+      "vendorName": "Sidekick",
+      "description": "AI assistant in desktop and mobile admin (chat, voice, screen share) that analyses data, edits products, manages orders, drafts content and builds custom apps, with review before changes apply.",
+      "surfaces": ["web", "ios"],
+      "lowestTier": "Basic",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://help.shopify.com/en/manual/shopify-admin/productivity-tools/sidekick",
+        "https://www.shopify.com/pricing",
+        "https://apps.apple.com/us/app/shopify-ecommerce-business/id371294472"
+      ]
+    },
+    {
+      "id": "ai-agents",
+      "vendorName": "Inbox agent and Knowledge Base",
+      "description": "Inbox agent answers shopper chat questions automatically from catalogue, policies and Knowledge Base; the Knowledge Base app controls FAQs AI shopping agents use.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://help.shopify.com/en/manual/inbox", "https://help.shopify.com/en/manual/apps/apps-by-shopify"]
+    },
+    {
+      "id": "agentic-commerce",
+      "vendorName": "Agentic storefronts / Sell in AI chats",
+      "description": "Products discoverable and purchasable in ChatGPT, Google AI Mode/Gemini, Microsoft Copilot and Meta surfaces, with order attribution by AI channel.",
+      "surfaces": ["web"],
+      "lowestTier": "Basic",
+      "tierNote": "on by default for eligible stores",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://help.shopify.com/en/manual/online-sales-channels/agentic-storefronts", "https://www.shopify.com/pricing"]
+    },
+    {
+      "id": "email-marketing",
+      "vendorName": "Shopify Messaging (email campaigns)",
+      "description": "Email campaigns to unlimited contacts from the Growth page.",
+      "surfaces": ["web"],
+      "lowestTier": "Basic",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.shopify.com/pricing",
+        "https://help.shopify.com/en/manual/promoting-marketing/shopify-messaging",
+        "https://help.shopify.com/en/manual/apps/apps-by-shopify"
+      ]
+    },
+    {
+      "id": "sms-messaging",
+      "vendorName": "Shopify Messaging (SMS)",
+      "description": "Pay-per-send SMS marketing campaigns.",
+      "surfaces": ["web"],
+      "lowestTier": "Basic",
+      "tierNote": "pay per send",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.shopify.com/pricing", "https://help.shopify.com/en/manual/apps/apps-by-shopify"]
+    },
+    {
+      "id": "marketing-automation",
+      "vendorName": "Marketing automations",
+      "description": "Marketing automations including abandoned checkout recovery.",
+      "surfaces": ["web"],
+      "lowestTier": "Basic",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://www.shopify.com/pricing"]
+    },
+    {
+      "id": "segmentation-lists",
+      "vendorName": "Customer segmentation",
+      "description": "Customer segments of customers sharing characteristics, used for marketing.",
+      "surfaces": ["web", "ios"],
+      "lowestTier": "Basic",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.shopify.com/pricing",
+        "https://help.shopify.com/en/manual/customers",
+        "https://apps.apple.com/us/app/shopify-ecommerce-business/id371294472"
+      ]
+    },
+    {
+      "id": "forms",
+      "vendorName": "Shopify Forms",
+      "description": "Sign-up and lead capture forms on the online store that grow the email list.",
+      "surfaces": ["web"],
+      "lowestTier": "Basic",
+      "tierNote": "pricing page row: Capture customer leads",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://help.shopify.com/en/manual/apps/apps-by-shopify", "https://www.shopify.com/pricing"]
+    },
+    {
+      "id": "live-chat-messaging",
+      "vendorName": "Shopify Inbox",
+      "description": "Online store chat with customers, instant answers, availability hours and automatic first replies, conversation analytics.",
+      "surfaces": ["web"],
+      "lowestTier": "Basic",
+      "tierNote": "pricing page row: Chat with customers",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://help.shopify.com/en/manual/inbox",
+        "https://help.shopify.com/en/manual/inbox/chat-settings-and-appearance/availability-and-first-reply",
+        "https://www.shopify.com/pricing"
+      ]
+    },
+    {
+      "id": "macros-canned-responses",
+      "vendorName": "Inbox quick replies",
+      "description": "Saved quick replies staff use when composing chat messages.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://help.shopify.com/en/manual/inbox/configure-inbox/quick-replies"]
+    },
+    {
+      "id": "seo-tools",
+      "vendorName": "SEO",
+      "description": "SEO guidance and settings for the online store.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://help.shopify.com/en/manual"]
+    },
+    {
+      "id": "search",
+      "vendorName": "Search & Discovery; admin search",
+      "description": "Search & Discovery app customises storefront search, filters and recommendations; admin customer search.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://help.shopify.com/en/manual/apps/apps-by-shopify", "https://help.shopify.com/en/manual/customers"]
+    },
+    {
+      "id": "ads-management",
+      "vendorName": "Shopify Audiences and Shop Campaigns",
+      "description": "Shopify Audiences boosts ad performance across Meta, Google, TikTok, Pinterest, Snapchat and Criteo (optimization Plus only); Shop Campaigns for paid acquisition; Google and social campaigns from the mobile app.",
+      "surfaces": ["web", "ios"],
+      "lowestTier": "Basic",
+      "tierNote": "Shop Campaigns all plans; Audiences optimization Plus only",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://help.shopify.com/en/manual/apps/apps-by-shopify",
+        "https://www.shopify.com/pricing",
+        "https://apps.apple.com/us/app/shopify-ecommerce-business/id371294472"
+      ]
+    },
+    {
+      "id": "affiliate-influencer",
+      "vendorName": "Shopify Collabs",
+      "description": "Finding and working with creators, influencers and affiliates.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://help.shopify.com/en/manual/apps/apps-by-shopify"]
+    },
+    {
+      "id": "invoicing",
+      "vendorName": "Draft order invoices and VAT invoicing",
+      "description": "Send invoices for draft orders with a checkout link; VAT invoicing; custom invoices with Order Printer.",
+      "surfaces": ["web"],
+      "lowestTier": "Basic",
+      "tierNote": "pricing row: VAT validation & invoicing",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://help.shopify.com/en/manual/fulfillment/managing-orders/create-orders/send-draft",
+        "https://www.shopify.com/pricing",
+        "https://help.shopify.com/en/manual/apps/apps-by-shopify"
+      ]
+    },
+    {
+      "id": "accounts-payable",
+      "vendorName": "Shopify Bill Pay",
+      "description": "Pay business bills from Shopify Balance, debit/credit card or ACH.",
+      "surfaces": ["web"],
+      "lowestTier": "Basic",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://help.shopify.com/en/manual/apps/apps-by-shopify", "https://www.shopify.com/pricing"]
+    },
+    {
+      "id": "business-banking-financing",
+      "vendorName": "Shopify Balance, Capital, Credit",
+      "description": "Merchant money account with earnings rate (2.52%, 3.54% on Plus), Shopify Capital funding and Shopify Credit Visa card; up to 6 Balance accounts in the mobile app.",
+      "surfaces": ["web", "ios"],
+      "lowestTier": "Basic",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.shopify.com/pricing",
+        "https://help.shopify.com/en/manual",
+        "https://apps.apple.com/us/app/shopify-ecommerce-business/id371294472"
+      ]
+    },
+    {
+      "id": "purchasing-procurement",
+      "vendorName": "Stocky purchase orders",
+      "description": "Stocky app: demand forecasting, purchase orders, stocktakes and stock transfers.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://help.shopify.com/en/manual/apps/apps-by-shopify"]
+    },
+    {
+      "id": "mobile-app",
+      "vendorName": "Shopify app and Shopify POS app",
+      "description": "Shopify admin app for iPhone, iPad and Apple Watch (products, orders, labels, Balance, campaigns) and Shopify Point of Sale app; Android listings exist but could not be read.",
+      "surfaces": ["ios", "android"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://apps.apple.com/us/app/shopify-ecommerce-business/id371294472",
+        "https://apps.apple.com/us/app/shopify-point-of-sale-pos/id686830644",
+        "https://help.shopify.com/en/manual/apps/apps-by-shopify"
+      ]
+    },
+    {
+      "id": "notifications",
+      "vendorName": "Order notifications",
+      "description": "Real-time sales and order notifications in the mobile app; Sidekick notifies on background task completion.",
+      "surfaces": ["ios", "web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://apps.apple.com/us/app/shopify-ecommerce-business/id371294472",
+        "https://help.shopify.com/en/manual/shopify-admin/productivity-tools/sidekick"
+      ]
+    },
+    {
+      "id": "admin-console",
+      "vendorName": "Organization settings",
+      "description": "Organization admin to manage multiple stores, store switcher, organization permissions, users and billing; default for Plus, available when you create an organization; Plus includes up to 9 free expansion stores.",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": "organization features by default on Plus; expansion stores Plus",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://help.shopify.com/en/manual/organization-settings",
+        "https://help.shopify.com/en/manual/your-account/manage-orgs-and-stores",
+        "https://www.shopify.com/pricing"
+      ]
+    },
+    {
+      "id": "sandbox-environments",
+      "vendorName": "Plus sandbox stores",
+      "description": "Plus sandbox organizations/stores for Plus Partners to build and demo; Plus also lists testing new features before launch.",
+      "surfaces": ["web"],
+      "lowestTier": "Plus",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://help.shopify.com/en/partners/dashboard/managing-stores/plus-sandbox-organizations",
+        "https://www.shopify.com/pricing"
+      ]
+    },
+    {
+      "id": "compliance-security",
+      "vendorName": "Security and fraud",
+      "description": "Free SSL, built-in fraud analysis and Fraud Control app, bot protection (Plus), Customer Privacy API for consent, and compliance guidance (GPSR, price indication directive).",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Basic",
+      "tierNote": "fraud analysis requires Shopify Payments; bot protection Plus only",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://www.shopify.com/pricing",
+        "https://help.shopify.com/en/manual/apps/apps-by-shopify",
+        "https://shopify.dev/docs/api"
+      ]
+    },
+    {
+      "id": "native-integrations",
+      "vendorName": "Google Analytics, Mailchimp and WordPress",
+      "description": "Vendor-documented integrations with Google Analytics, Mailchimp and WordPress (Sell on WordPress).",
+      "surfaces": ["web"],
+      "lowestTier": null,
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://help.shopify.com/en/manual/reports-and-analytics",
+        "https://help.shopify.com/en/manual/customers",
+        "https://help.shopify.com/en/manual/apps/apps-by-shopify"
+      ]
+    }
+  ],
+  "limits": [
+    "Pricing page compare table covers Basic, Grow, Advanced and Plus only; Starter comes from a separate help page, and the help plan list also names Lite, Retail, Shopify for enterprise and Agentic plans that were not scanned.",
+    "Google Play listings for the Shopify and Shopify POS apps returned no readable content, so Android surfaces are asserted only where Shopify's own help says Android.",
+    "Several help pages (Inbox root, Online store Forms, POS Pro, Messaging) returned only navigation; details came from search snippets or the pricing page.",
+    "Plan requirements pages for users/activity log and Subscriptions eligibility were not fetched; those lowestTier values are null.",
+    "About 33 WebFetch calls used, above the ~25 guide; 4 WebSearch calls.",
+    "No injected instructions seen in fetched pages."
+  ],
+  "failures": [
+    {
+      "kind": "fetch",
+      "what": "https://play.google.com/store/apps/details?id=com.shopify.mobile",
+      "result": "empty/truncated"
+    },
+    {
+      "kind": "fetch",
+      "what": "https://play.google.com/store/apps/details?id=com.shopify.pos&hl=en_US",
+      "result": "empty/truncated"
+    },
+    {
+      "kind": "fetch",
+      "what": "https://help.shopify.com/en/manual/shopify-inbox",
+      "result": "navigation only"
+    },
+    {
+      "kind": "fetch",
+      "what": "https://help.shopify.com/en/manual/online-store/forms",
+      "result": "not the Forms page"
+    },
+    {
+      "kind": "fetch",
+      "what": "https://help.shopify.com/en/manual/sell-in-person/pos-pro",
+      "result": "navigation hub only, no Pro vs Lite detail"
+    }
+  ],
+  "dataExport": {
+    "extraction": {
+      "full": "partial",
+      "incremental": "yes",
+      "apiBased": "yes",
+      "note": "Admin CSV exports cover products, customers, orders, transactions and inventory but omit product images and some store data; the GraphQL Admin API with async bulk query operations (JSONL) reaches core objects, subject to scopes (orders older than 60 days need read_all_orders, which Shopify must approve). Products, orders and customers queries accept updated_at range filters, and webhooks exist but Shopify says delivery is not guaranteed and tells apps to run reconciliation jobs."
+    },
+    "exportOptions": [
+      {
+        "name": "Export products (CSV)",
+        "description": "Product and variant data, customised SEO title/description, fulfillment service and inventory tracker. Product images are not included in the CSV.",
+        "formats": ["CSV"],
+        "limits": "Browser download when every product has fewer than 100 variants; emailed if any product exceeds 100 variants or for full catalogue exports. Exporting thousands of variants can time out, so the docs say to split the export with filters. No row limit stated.",
+        "lowestTier": null,
+        "sources": ["https://help.shopify.com/en/manual/products/import-export/export-products"]
+      },
+      {
+        "name": "Export customers (CSV)",
+        "description": "Standard customer fields (name, email, phone, address, marketing preferences), with optional customer tags and supported metafields. Order information is not in the customer CSV.",
+        "formats": ["CSV"],
+        "limits": "Up to 50 customers download in the browser; more than 50 are emailed. Exported CSV files are limited to 15 MB.",
+        "lowestTier": null,
+        "sources": ["https://help.shopify.com/en/manual/customers/import-export-customers"]
+      },
+      {
+        "name": "Export orders / Export transaction histories (CSV)",
+        "description": "Full order data (extra line items on separate rows, historical prices as of order creation), or transactions only. The transaction history covers captured payments only, not authorizations.",
+        "formats": ["CSV"],
+        "limits": "Up to 50 orders or the current page download; more than 50, or export by date, is emailed to the user and the store owner. The docs say fewer than 100,000 items may finish in under an hour and 400,000 items around 4 hours.",
+        "lowestTier": null,
+        "sources": ["https://help.shopify.com/en/manual/fulfillment/managing-orders/exporting-orders"]
+      },
+      {
+        "name": "Inventory CSV export",
+        "description": "Current inventory quantities per variant for one location or all locations, as 'All states' (a row per location with every inventory state) or 'Available' (locations as columns).",
+        "formats": ["CSV"],
+        "limits": "The inventory CSV can't exceed 15 MB.",
+        "lowestTier": null,
+        "sources": ["https://help.shopify.com/en/manual/products/inventory/getting-started-with-inventory/inventory-csv"]
+      },
+      {
+        "name": "Download theme",
+        "description": "Theme code download. It does not include products, collections, menus, pages, blog posts, images or other files in Content > Files.",
+        "formats": ["unknown"],
+        "limits": "Purchased Theme Store themes are licensed only to the store that bought them. The page does not say how the download is delivered.",
+        "lowestTier": null,
+        "sources": ["https://help.shopify.com/en/manual/online-store/themes/managing-themes/duplicating-themes"]
+      }
+    ],
+    "apis": [
+      {
+        "name": "GraphQL Admin API bulk query operations (bulkOperationRunQuery)",
+        "kind": "bulk-export",
+        "description": "An async job runs any supported query and returns a signed JSONL download URL that expires after one week. From API version 2026-01, up to five bulk queries per app per shop can run at once (one per type before that). Each query allows at most five connections, nested at most two levels deep; the connections must implement Node, and the top-level node/nodes fields can't be used. A job must finish within 10 days or it is marked failed. Bulk operations don't have the single-query max cost or the rate limits.",
+        "sources": [
+          "https://shopify.dev/docs/api/usage/bulk-operations/queries",
+          "https://shopify.dev/docs/apps/build/apis/graphql-admin/rate-limits.md"
+        ]
+      },
+      {
+        "name": "GraphQL Admin API connection queries with search syntax (updated_at filter)",
+        "kind": "incremental",
+        "description": "The products, orders and customers queries accept updated_at range filters in the query argument (for example updated_at:>'2020-10-21T23:39:20Z'). The search syntax docs warn that range queries on large collections may be slow or time out when the search field differs from the sort key. Pagination caps at 25,000 objects, including for count queries.",
+        "sources": [
+          "https://shopify.dev/docs/api/usage/search-syntax.md",
+          "https://shopify.dev/docs/api/admin-graphql/latest/queries/products.md",
+          "https://shopify.dev/docs/api/admin-graphql/latest/queries/orders.md",
+          "https://shopify.dev/docs/api/admin-graphql/latest/queries/customers.md",
+          "https://shopify.dev/docs/api/usage/limits"
+        ]
+      },
+      {
+        "name": "Webhooks",
+        "kind": "webhooks-events",
+        "description": "Topic subscriptions (for example orders/create, products/update) delivered to an HTTPS URL, Google Pub/Sub or Amazon EventBridge; they are HMAC-signed and deduplicated with X-Shopify-Webhook-Id. Ordering is not guaranteed within or across topics, and neither is delivery, so Shopify tells apps to run periodic reconciliation jobs.",
+        "sources": ["https://shopify.dev/docs/apps/build/webhooks.md"]
+      },
+      {
+        "name": "GraphQL Admin API",
+        "kind": "read-api",
+        "description": "The main read API for all store objects. Every request carries an access token in the X-Shopify-Access-Token header. Queries that cost too much return an error pointing to bulk operations.",
+        "sources": ["https://shopify.dev/docs/api/admin-graphql/latest.md"]
+      }
+    ],
+    "auth": {
+      "models": ["oauth-app", "personal-token", "admin-consent"],
+      "notes": "Apps use access tokens with declared access scopes. read_orders/write_orders cover only orders from the last 60 days; older orders need read_all_orders, which Shopify must approve, and several other scopes also need approval. Protected customer data: a public app must request level 1 (customer data without name, address, phone, email) and level 2 (with those fields) in the Partner Dashboard, pass review, and take part in data protection reviews for level 2. Custom apps always get both levels; admin-created custom apps get level 2 depending on plan, and the help centre says Custom Level 2 PII apps need the Grow plan or higher and are unavailable on Basic. Custom apps are now created in the Dev Dashboard by the store owner or staff with the App development > Develop permission (collaborators can't); legacy custom apps created before 2026-01-01 remain.",
+      "sources": [
+        "https://shopify.dev/docs/api/usage/access-scopes.md",
+        "https://shopify.dev/docs/apps/launch/protected-customer-data.md",
+        "https://help.shopify.com/en/manual/apps/app-types/custom-apps",
+        "https://shopify.dev/docs/api/admin-graphql/latest.md"
+      ]
+    },
+    "rateLimits": {
+      "summary": "GraphQL Admin API: calculated query cost in a leaky bucket per app and store. Restore rates are Standard 100 points/second, Advanced Shopify 200, Shopify Plus 1000, Shopify for enterprise (Commerce Components) 2000. A single query may not exceed 1,000 points. The example response shows maximumAvailable 1000 and restoreRate 50. Bulk operations are exempt from the max cost and rate limits. Array inputs max 250 items; pagination caps at 25,000 objects. Once a store has 500,000 variants, at most 10,000 new variants per day (not on Plus). REST per-plan numbers were not captured.",
+      "sources": [
+        "https://shopify.dev/docs/apps/build/apis/graphql-admin/rate-limits.md",
+        "https://shopify.dev/docs/api/usage/limits",
+        "https://shopify.dev/docs/api/admin-graphql/latest.md"
+      ]
+    },
+    "hardToExtract": [
+      {
+        "dataClass": "attachments-files",
+        "detail": "The product CSV does not include product images. Theme downloads exclude images and other files in Content > Files, so media has to come through the API or a separate download.",
+        "sources": [
+          "https://help.shopify.com/en/manual/products/import-export/export-products",
+          "https://help.shopify.com/en/manual/online-store/themes/managing-themes/duplicating-themes"
+        ]
+      },
+      {
+        "dataClass": "history-audit",
+        "detail": "Order history older than 60 days needs the read_all_orders scope, which Shopify must approve. Exported transaction history includes captured payments only, not authorizations.",
+        "sources": [
+          "https://shopify.dev/docs/api/usage/access-scopes.md",
+          "https://help.shopify.com/en/manual/fulfillment/managing-orders/exporting-orders"
+        ]
+      },
+      {
+        "dataClass": "permissions",
+        "detail": "Customer name, address, email and phone are protected fields. A public importer app needs a level 2 request, review and data protection reviews. Custom apps have access, but admin-created custom apps need the Grow plan or higher.",
+        "sources": [
+          "https://shopify.dev/docs/apps/launch/protected-customer-data.md",
+          "https://help.shopify.com/en/manual/apps/app-types/custom-apps"
+        ]
+      },
+      {
+        "dataClass": "metadata-config",
+        "detail": "The theme download excludes products, collections, menus, pages and blog posts, so online-store content has to be exported separately. The customer CSV has no order data, and its Total Spent/Total Orders columns are read-only store data.",
+        "sources": [
+          "https://help.shopify.com/en/manual/online-store/themes/managing-themes/duplicating-themes",
+          "https://help.shopify.com/en/manual/customers/import-export-customers"
+        ]
+      },
+      {
+        "dataClass": "other",
+        "detail": "Large admin CSV exports arrive by email rather than direct download, and 15 MB caps apply to customer and inventory CSVs, so a full UI export of a big store is manual and multi-file.",
+        "sources": [
+          "https://help.shopify.com/en/manual/customers/import-export-customers",
+          "https://help.shopify.com/en/manual/products/inventory/getting-started-with-inventory/inventory-csv"
+        ]
+      }
+    ],
+    "migrationTools": [
+      {
+        "name": "Store Migration app (and the migrating-to-Shopify guides)",
+        "direction": "into-vendor",
+        "description": "An App Store app plus guides for moving products, customers, historical orders, gift cards/store credits, blogs and pages from Amazon, Clover, Etsy, eBay, GoDaddy, Lightspeed, Square, Squarespace, Wix and WooCommerce. The page documents no route out of Shopify.",
+        "sources": ["https://help.shopify.com/en/manual/migrating-to-shopify/store-importer"]
+      }
+    ],
+    "limits": [
+      "SCAN — unreviewed, 2026-09-30. Several help.shopify.com facts come from WebFetch summaries, not raw text; shopify.dev facts were read from the raw .md pages with curl.",
+      "The per-plan REST Admin API bucket numbers and the Storefront limits were not captured.",
+      "Not checked: extraction of Shopify Flow automations, analytics/report data, payouts, gift cards, discounts, metaobjects or the Theme (asset) API; no claim is made about these.",
+      "The store-importer URL was summarised as a general 'migrating to Shopify' page naming a 'Store Migration' app; the app's exact capabilities were not detailed there.",
+      "No official out-of-Shopify migration tooling seen; the one page checked documents none.",
+      "No injected instructions noticed in fetched pages."
+    ],
+    "failures": [
+      {
+        "kind": "fetch",
+        "what": "https://shopify.dev/docs/api/admin-graphql (HTML via curl)",
+        "result": "JS-rendered; rate-limit section not in the HTML, used the .md variant instead"
+      },
+      {
+        "kind": "fetch",
+        "what": "https://shopify.dev/docs/api/admin-graphql/rate-limits",
+        "result": "no rate-limit text; the real page is /docs/apps/build/apis/graphql-admin/rate-limits"
+      }
+    ]
+  }
+}

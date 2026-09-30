@@ -1,0 +1,1058 @@
+{
+  "schema": "wos-scan.v0",
+  "label": "SCAN — unreviewed, 2026-09-30",
+  "reviewed": false,
+  "countsTowardProgress": false,
+  "target": {
+    "id": "TGT-02",
+    "slug": "hubspot",
+    "name": "HubSpot"
+  },
+  "scannedAt": "2026-09-30",
+  "scope": {
+    "included": "The HubSpot customer platform at catalog level: Smart CRM (Starter/Professional/Enterprise), Free Tools, Marketing Hub, Sales Hub, Service Hub, Content Hub, Data Hub and Revenue Hub (renamed from Commerce Hub; Professional and Enterprise only), plus Breeze AI agents, as listed in HubSpot's Product & Services Catalog.",
+    "excluded": [
+      "HubSpot Work (Beta) and Work agents: beta project/document workspace, not scanned beyond its catalog row",
+      "AEO (Beta) as a standalone product: folded into seo-tools only",
+      "Small Business Bundle and seat/credit pricing: packaging, not capabilities",
+      "Consulting, onboarding, training and migration services: services, not software",
+      "HubSpot Academy, Community and partner (Solutions Partner) programme: not product capabilities",
+      "Legacy pricing models and legacy (pre-2024) editions",
+      "HubSpot Capital financing (powered by Stripe): financing offer, not a software capability",
+      "Clearbit/Breeze Intelligence as a separate brand: covered only as data-enrichment and buyer-intent rows"
+    ]
+  },
+  "clientApps": [
+    {
+      "surface": "web",
+      "name": "HubSpot (web app)",
+      "platforms": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog"]
+    },
+    {
+      "surface": "ios",
+      "name": "HubSpot",
+      "platforms": "iPhone and iPad; also listed for Mac (Apple silicon) and Apple Vision",
+      "sources": ["https://apps.apple.com/us/app/hubspot/id1107711722"]
+    },
+    {
+      "surface": "android",
+      "name": "HubSpot",
+      "platforms": "Android",
+      "sources": ["https://play.google.com/store/apps/details?id=com.hubspot.android"]
+    },
+    {
+      "surface": "browser_extension",
+      "name": "HubSpot Sales Chrome extension",
+      "platforms": "Chrome (for Gmail)",
+      "sources": [
+        "https://knowledge.hubspot.com/connected-email/how-to-install-hubspot-sales",
+        "https://knowledge.hubspot.com/connected-email/get-started-with-the-hubspot-sales-chrome-extension"
+      ]
+    },
+    {
+      "surface": "email_addin",
+      "name": "HubSpot Sales Office 365 add-in",
+      "platforms": "Outlook for Mac, Outlook for Windows, Outlook on the web (Microsoft 365-hosted mailboxes)",
+      "sources": ["https://knowledge.hubspot.com/connected-email/how-to-install-hubspot-sales"]
+    },
+    {
+      "surface": "email_addin",
+      "name": "HubSpot Sales Outlook desktop add-in",
+      "platforms": "Classic Outlook for Windows only; in maintenance mode",
+      "sources": [
+        "https://knowledge.hubspot.com/connected-email/how-to-install-hubspot-sales",
+        "https://knowledge.hubspot.com/connected-email/get-started-with-the-outlook-desktop-add-in"
+      ]
+    }
+  ],
+  "api": {
+    "style": "REST (JSON) with date-based versions (e.g. /crm/objects/2026-09/...), OpenAPI specs; webhooks and a webhooks journal; UI extensions; remote and developer MCP servers",
+    "notes": "Auth by OAuth for multi-account apps, static access tokens for single-account apps, service keys (Beta) and personal access keys for the CLI. Catalog limits: 100 requests/10s and 250,000 calls/day on Free and Starter, 190/10s and 650,000/day on Professional, 1,000,000/day on Enterprise, raisable with API Limit Increases.",
+    "sources": [
+      "https://developers.hubspot.com/docs/api-reference/overview",
+      "https://developers.hubspot.com/docs/apps/developer-platform/build-apps/authentication/overview.md",
+      "https://developers.hubspot.com/docs/llms.txt",
+      "https://legal.hubspot.com/hubspot-product-and-services-catalog"
+    ]
+  },
+  "capabilities": [
+    {
+      "id": "contacts",
+      "vendorName": "Contact management",
+      "description": "Contact records with properties, website activity and a record timeline in Smart CRM.",
+      "surfaces": ["web", "ios", "android", "api"],
+      "lowestTier": "Free Tools",
+      "tierNote": "Free Tools include up to the stated record limits",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://legal.hubspot.com/hubspot-product-and-services-catalog",
+        "https://developers.hubspot.com/docs/llms.txt",
+        "https://play.google.com/store/apps/details?id=com.hubspot.android"
+      ]
+    },
+    {
+      "id": "organizations",
+      "vendorName": "Companies",
+      "description": "Company records that group contacts, deals and activity.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Free Tools",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog", "https://developers.hubspot.com/docs/llms.txt"]
+    },
+    {
+      "id": "leads",
+      "vendorName": "Leads / Prospects",
+      "description": "A leads object (API) plus the Prospects tool showing which companies visit the site; lead work is done in the Sales workspace.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Free Tools",
+      "tierNote": "Prospects tool in Free Tools; Sales workspace is Sales Hub Professional; no catalog row names the leads object's tier",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog", "https://developers.hubspot.com/docs/llms.txt"]
+    },
+    {
+      "id": "activities",
+      "vendorName": "Tasks & activities / Record timeline / Task queues",
+      "description": "Calls, emails, meetings and notes logged on each record's timeline, plus tasks with owners, task queues and repeating tasks.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Free Tools",
+      "tierNote": "Task queues from Sales Hub Starter / Service Hub Starter; repeating tasks from Smart CRM Starter",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog", "https://developers.hubspot.com/docs/llms.txt"]
+    },
+    {
+      "id": "pipelines-deals",
+      "vendorName": "Deals and Pipelines",
+      "description": "Deals moving through configurable pipelines, also used for other objects; deal splits and deal journeys at Sales Hub Enterprise.",
+      "surfaces": ["web", "ios", "android", "api"],
+      "lowestTier": "Free Tools",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://legal.hubspot.com/hubspot-product-and-services-catalog",
+        "https://developers.hubspot.com/docs/llms.txt",
+        "https://play.google.com/store/apps/details?id=com.hubspot.android"
+      ]
+    },
+    {
+      "id": "quotes-cpq",
+      "vendorName": "Quotes and CPQ tools",
+      "description": "Quotes built from products with quote templates, flat-rate and tiered pricing, AI-generated quotes and signable attachments; quote rules at Enterprise. E-signature on quotes (25 signatures per user per month at Professional).",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Revenue Hub Professional",
+      "tierNote": "Quotes now sit in Revenue Hub (formerly Commerce Hub); quote rules Revenue Hub Enterprise",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog", "https://developers.hubspot.com/docs/llms.txt"]
+    },
+    {
+      "id": "products-price-books",
+      "vendorName": "Product library and Price books",
+      "description": "A product library for line items, plus price books for different price lists.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Free Tools",
+      "tierNote": "Price books from Revenue Hub Professional",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog", "https://developers.hubspot.com/docs/llms.txt"]
+    },
+    {
+      "id": "forecasting",
+      "vendorName": "Forecasting",
+      "description": "Default and custom forecasts and forecast reporting built from CRM data.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Sales Hub Professional",
+      "tierNote": "Also in Service Hub Professional",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog", "https://developers.hubspot.com/docs/llms.txt"]
+    },
+    {
+      "id": "lead-scoring",
+      "vendorName": "Lead scoring",
+      "description": "Configurable fit and engagement scores for contacts and companies; AI recommendations at Enterprise.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Marketing Hub Professional",
+      "tierNote": "Also Sales Hub Professional; lead scoring API is in the 2027-03 beta",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog", "https://developers.hubspot.com/docs/llms.txt"]
+    },
+    {
+      "id": "sales-sequences",
+      "vendorName": "Sequences",
+      "description": "Multi-step email, task and LinkedIn-action sequences with per-user daily send limits.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Sales Hub Professional",
+      "tierNote": "Also Service Hub Professional",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog", "https://developers.hubspot.com/docs/llms.txt"]
+    },
+    {
+      "id": "sales-engagement-tools",
+      "vendorName": "Email tracking, templates, snippets, documents",
+      "description": "Seller tools: 1-to-1 email with open/click tracking, email templates, canned snippets, email scheduling, 1:1 video messaging, sales documents with engagement tracking, and the inbox extensions/add-ins.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Free Tools",
+      "tierNote": "Documents from Smart CRM / Sales Hub Starter",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://legal.hubspot.com/hubspot-product-and-services-catalog",
+        "https://knowledge.hubspot.com/connected-email/how-to-install-hubspot-sales"
+      ]
+    },
+    {
+      "id": "contracts-renewals",
+      "vendorName": "Contracts",
+      "description": "Contract objects created automatically, with changes, renewals and ACV/ARR/MRR tracking.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Free Tools",
+      "tierNote": "Contract imports (Beta) in Revenue Hub Professional",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog", "https://developers.hubspot.com/docs/llms.txt"]
+    },
+    {
+      "id": "customer-portal",
+      "vendorName": "Customer portal / Billing portal (Beta)",
+      "description": "A logged-in portal where customers view, open and reply to tickets and read the knowledge base; a separate billing portal (Beta) for invoices, subscriptions and payment methods.",
+      "surfaces": ["web"],
+      "lowestTier": "Service Hub Professional",
+      "tierNote": "Billing portal (Beta) is Revenue Hub Professional",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog"]
+    },
+    {
+      "id": "email-marketing",
+      "vendorName": "Email marketing",
+      "description": "Bulk marketing emails with a drag-and-drop editor, personalization tokens, templates and email health reporting; send limit is a multiple of the marketing contact tier. Transactional email (single-send API) is a Marketing Hub Professional add-on.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Free Tools",
+      "tierNote": "Free Tools version is limited; Marketing Hub Starter 5x, Professional 10x, Enterprise 20x contact tier per month",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog", "https://developers.hubspot.com/docs/llms.txt"]
+    },
+    {
+      "id": "marketing-automation",
+      "vendorName": "Email automation / Omni-channel marketing automation",
+      "description": "Automated nurture actions after form fills and email engagement; omni-channel marketing workflows with behavioral events at higher tiers.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Free Tools",
+      "tierNote": "Free Tools and Starter limited to 10 automated actions; omni-channel automation from Marketing Hub Professional",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog", "https://developers.hubspot.com/docs/llms.txt"]
+    },
+    {
+      "id": "workflow-automation",
+      "vendorName": "Workflows (Sales/Support automation, Programmable automation)",
+      "description": "Workflows with triggers and actions across CRM objects, including scheduled and webhook triggers, custom-coded actions and workflow extensions from apps.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Sales Hub Starter",
+      "tierNote": "Starter: up to 50 workflows with restricted triggers/actions (also Service Hub Starter); custom code/webhooks from Data Hub Professional",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog", "https://developers.hubspot.com/docs/llms.txt"]
+    },
+    {
+      "id": "segmentation-lists",
+      "vendorName": "CRM segments",
+      "description": "Static and dynamically updating segments (lists) of contacts and other records, with segment analytics (Beta).",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Free Tools",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog", "https://developers.hubspot.com/docs/llms.txt"]
+    },
+    {
+      "id": "website-cms",
+      "vendorName": "Website pages, Landing pages, Blog (Content Hub)",
+      "description": "Website pages, landing pages, blog, themes, custom domains, multi-language content, HubDB dynamic pages, memberships, podcasts and multisites on HubSpot-managed hosting.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Free Tools",
+      "tierNote": "Free Tools up to 30 website pages; HubDB and memberships from Content Hub Professional; multisites Content Hub Enterprise",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog", "https://developers.hubspot.com/docs/llms.txt"]
+    },
+    {
+      "id": "social-media",
+      "vendorName": "Social media",
+      "description": "Schedule and publish to Facebook, Instagram, LinkedIn, YouTube and X, monitor conversations and track social interactions in the CRM.",
+      "surfaces": ["web"],
+      "lowestTier": "Marketing Hub Professional",
+      "tierNote": "Social media approvals at Marketing Hub Enterprise",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog"]
+    },
+    {
+      "id": "ads-management",
+      "vendorName": "Ad management and Ad retargeting",
+      "description": "Connect Google, Meta, Microsoft, TikTok, Reddit, LinkedIn and ChatGPT ad accounts, sync audiences and see which ads create customers.",
+      "surfaces": ["web"],
+      "lowestTier": "Free Tools",
+      "tierNote": "Audience count grows by tier; Ads Limit Increase for Marketing Hub Professional/Enterprise",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog"]
+    },
+    {
+      "id": "campaigns-attribution",
+      "vendorName": "Campaign reporting and attribution",
+      "description": "Campaigns grouping marketing assets, contact-create attribution, and multi-touch revenue attribution with seven models.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Marketing Hub Professional",
+      "tierNote": "Multi-touch revenue attribution at Marketing Hub Enterprise",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog", "https://developers.hubspot.com/docs/llms.txt"]
+    },
+    {
+      "id": "seo-tools",
+      "vendorName": "SEO recommendations, SEO analytics and AEO (Beta)",
+      "description": "SEO issue detection, Google Search Console integration, SEO analytics, and AEO (Beta) tracking brand visibility in AI answers.",
+      "surfaces": ["web"],
+      "lowestTier": "Free Tools",
+      "tierNote": "SEO analytics and AEO (Beta) from Marketing Hub Professional",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog"]
+    },
+    {
+      "id": "sms-messaging",
+      "vendorName": "WhatsApp integration and SMS add-ons",
+      "description": "WhatsApp messaging from the inbox and marketing tools, and SMS for marketing or sales/service via add-ons (US numbers).",
+      "surfaces": ["web"],
+      "lowestTier": "Marketing Hub Professional",
+      "tierNote": "WhatsApp also Service Hub Professional; SMS is a paid add-on (Marketing Hub Professional, Sales/Service Hub Professional), US only",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog"]
+    },
+    {
+      "id": "customer-data-platform",
+      "vendorName": "Data studio (Beta) and Data warehouse integrations",
+      "description": "Build datasets from external sources and CRM data and activate them in segments, workflows and reports; connect a data warehouse.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Data Hub Professional",
+      "tierNote": "Data warehouse integrations at Data Hub Enterprise",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog", "https://developers.hubspot.com/docs/llms.txt"]
+    },
+    {
+      "id": "video-hosting",
+      "vendorName": "Video hosting & management",
+      "description": "Host and manage videos for use in marketing and content, plus video creation and editing.",
+      "surfaces": ["web"],
+      "lowestTier": "Marketing Hub Professional",
+      "tierNote": "Also Content Hub / Service Hub Professional; limits vary by hub",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog"]
+    },
+    {
+      "id": "forms",
+      "vendorName": "Forms",
+      "description": "Standalone, embedded and collected forms with multi-step, consent and conditional logic at higher tiers.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Free Tools",
+      "tierNote": "Conditional logic and custom validation from Marketing Hub Professional",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog", "https://developers.hubspot.com/docs/llms.txt"]
+    },
+    {
+      "id": "calendar-scheduling",
+      "vendorName": "Meeting scheduling",
+      "description": "Booking links that show availability and let contacts book meetings.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Free Tools",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog", "https://developers.hubspot.com/docs/llms.txt"]
+    },
+    {
+      "id": "email-calendar-sync",
+      "vendorName": "Gmail, Outlook, and Microsoft Exchange integrations",
+      "description": "Connect a Gmail, Outlook or Exchange inbox to send and log email; task calendar sync from Starter.",
+      "surfaces": ["web"],
+      "lowestTier": "Free Tools",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://legal.hubspot.com/hubspot-product-and-services-catalog",
+        "https://knowledge.hubspot.com/connected-email/how-to-install-hubspot-sales"
+      ]
+    },
+    {
+      "id": "phone-calling",
+      "vendorName": "Calling",
+      "description": "In-app calling with HubSpot-provided numbers, IVR and a Calling SDK for third-party VoIP providers; mobile app caller ID.",
+      "surfaces": ["web", "ios", "android", "api"],
+      "lowestTier": "Sales Hub Starter",
+      "tierNote": "500 min/month at Starter; also Service Hub Starter; IVR from Professional; Calling SDK in Free Tools",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog", "https://developers.hubspot.com/docs/llms.txt"]
+    },
+    {
+      "id": "meeting-recording",
+      "vendorName": "Notetaker, Call recording and transcription, Conversation intelligence",
+      "description": "Notetaker captures and summarizes customer conversations (in-person notetaker Beta is iOS only); call recording, transcription and conversation intelligence with coaching playlists.",
+      "surfaces": ["web", "ios", "api"],
+      "lowestTier": "Sales Hub Starter",
+      "tierNote": "Notetaker at Starter; call recording/transcription and conversation intelligence from Sales Hub Professional (also Service Hub)",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://legal.hubspot.com/hubspot-product-and-services-catalog",
+        "https://developers.hubspot.com/docs/llms.txt",
+        "https://apps.apple.com/us/app/hubspot/id1107711722"
+      ]
+    },
+    {
+      "id": "ticketing",
+      "vendorName": "Ticketing, Help desk, Macros",
+      "description": "Tickets assigned, prioritized and tracked centrally; the Help desk workspace handles tickets from every channel, with canned snippets and one-click macros; AI quality assurance score (Beta) at Enterprise.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Free Tools",
+      "tierNote": "Help desk and macros from Service Hub Professional; quality assurance score Service Hub Enterprise",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog", "https://developers.hubspot.com/docs/llms.txt"]
+    },
+    {
+      "id": "omnichannel-routing",
+      "vendorName": "Conversation routing / Skills-based ticket routing",
+      "description": "Shared inbox that routes incoming chats, email and messages to the right rep; skills-based routing and capacity limits at higher tiers.",
+      "surfaces": ["web", "ios", "android"],
+      "lowestTier": "Service Hub Starter",
+      "tierNote": "Also Sales Hub Starter; skills-based ticket routing Service Hub Enterprise; mobile inbox in the HubSpot mobile app",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog"]
+    },
+    {
+      "id": "live-chat-messaging",
+      "vendorName": "Live chat, Conversational bots, Facebook Messenger",
+      "description": "Website live chat, bots, Facebook Messenger and Instagram DMs in the shared inbox; custom channels via API.",
+      "surfaces": ["web", "ios", "android", "api"],
+      "lowestTier": "Free Tools",
+      "tierNote": "Instagram DMs from Marketing Hub Professional",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog", "https://developers.hubspot.com/docs/llms.txt"]
+    },
+    {
+      "id": "knowledge-base",
+      "vendorName": "Knowledge base",
+      "description": "Self-service help articles, with knowledge base SSO and a knowledge base agent (Beta).",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Service Hub Professional",
+      "tierNote": "Knowledge base API is in the 2027-03 beta",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog", "https://developers.hubspot.com/docs/llms.txt"]
+    },
+    {
+      "id": "sla-management",
+      "vendorName": "SLAs",
+      "description": "Service level targets on tickets and conversations; conditional SLAs at Enterprise.",
+      "surfaces": ["web"],
+      "lowestTier": "Service Hub Professional",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog"]
+    },
+    {
+      "id": "csat-surveys",
+      "vendorName": "Customer feedback surveys",
+      "description": "CSAT, NPS and CES surveys plus custom surveys and post-chat feedback.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Service Hub Professional",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog", "https://developers.hubspot.com/docs/llms.txt"]
+    },
+    {
+      "id": "users-teams",
+      "vendorName": "User management and Teams",
+      "description": "Add, deactivate and remove users; organize users into teams.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Free Tools",
+      "tierNote": "Teams from Smart CRM Professional (10 teams); team hierarchy at Enterprise",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog", "https://developers.hubspot.com/docs/llms.txt"]
+    },
+    {
+      "id": "roles-permissions",
+      "vendorName": "Custom user permissions, Permission sets, Field-level permissions",
+      "description": "Per-user access to tools and records, permission templates, custom permission sets at Enterprise, and field-level permissions.",
+      "surfaces": ["web"],
+      "lowestTier": "Free Tools",
+      "tierNote": "Custom permission sets and field-level permissions at Enterprise",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog"]
+    },
+    {
+      "id": "sso-identity",
+      "vendorName": "Single sign-on, 2FA and SCIM provisioning",
+      "description": "SSO login, required two-factor authentication on paid accounts, and SCIM user provisioning from an identity provider.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Smart CRM Professional",
+      "tierNote": "SSO in every hub's Professional edition; SCIM requires a Professional or Enterprise account",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://legal.hubspot.com/hubspot-product-and-services-catalog",
+        "https://developers.hubspot.com/docs/apps/developer-platform/add-features/scim",
+        "https://knowledge.hubspot.com/account-security/set-up-two-factor-authentication-for-your-hubspot-login"
+      ]
+    },
+    {
+      "id": "audit-log",
+      "vendorName": "Account audit logs / Activity logging",
+      "description": "Activity history of user actions (approvals, content updates, CRM object updates, security activity), readable through an API.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Enterprise",
+      "tierNote": "Docs say 'Enterprise only' without naming a hub; the API spec lists tier FREE; content activity logging is Content Hub Enterprise",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://developers.hubspot.com/docs/api-reference/latest/account/audit-logs/get-audit-logs",
+        "https://legal.hubspot.com/hubspot-product-and-services-catalog"
+      ]
+    },
+    {
+      "id": "compliance-security",
+      "vendorName": "Sensitive Data",
+      "description": "Store sensitive data such as government ID and, under a BAA, HIPAA-subject PHI; custom domain security settings.",
+      "surfaces": ["web"],
+      "lowestTier": "Smart CRM Enterprise",
+      "tierNote": "Sensitive Data is Enterprise across hubs; HIPAA PHI not available in all areas",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog"]
+    },
+    {
+      "id": "data-import-export",
+      "vendorName": "CRM import and CRM export",
+      "description": "Import and export CRM data in files; imports/exports APIs.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Free Tools",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog", "https://developers.hubspot.com/docs/llms.txt"]
+    },
+    {
+      "id": "custom-fields-objects",
+      "vendorName": "Custom properties, Calculated properties, Custom objects",
+      "description": "Custom properties on every tier, calculated/roll-up properties from Professional, and custom objects at Enterprise.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Free Tools",
+      "tierNote": "Custom objects Enterprise in every hub",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog", "https://developers.hubspot.com/docs/llms.txt"]
+    },
+    {
+      "id": "developer-platform",
+      "vendorName": "Developer platform: CLI, projects, UI extensions, serverless functions",
+      "description": "HubSpot CLI and projects, UI extensions (app cards, app pages), serverless functions, and a developer MCP server.",
+      "surfaces": ["api"],
+      "lowestTier": null,
+      "tierNote": "Serverless functions listed at Content Hub Enterprise",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://developers.hubspot.com/docs/_llms/apps/platform.md",
+        "https://developers.hubspot.com/docs/llms.txt",
+        "https://legal.hubspot.com/hubspot-product-and-services-catalog"
+      ]
+    },
+    {
+      "id": "sandbox-environments",
+      "vendorName": "Standard sandbox account",
+      "description": "One standard sandbox for testing changes, with record import limits.",
+      "surfaces": ["web"],
+      "lowestTier": "Smart CRM Enterprise",
+      "tierNote": "Enterprise in every hub",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog"]
+    },
+    {
+      "id": "mobile-app",
+      "vendorName": "HubSpot mobile app",
+      "description": "iOS and Android app for records, deals, email, inbox, business card scanning, caller ID and notetaker.",
+      "surfaces": ["ios", "android"],
+      "lowestTier": "Free Tools",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://legal.hubspot.com/hubspot-product-and-services-catalog",
+        "https://apps.apple.com/us/app/hubspot/id1107711722",
+        "https://play.google.com/store/apps/details?id=com.hubspot.android"
+      ]
+    },
+    {
+      "id": "api-webhooks",
+      "vendorName": "Public APIs and Webhooks",
+      "description": "Date-versioned REST APIs across CRM, marketing, CMS, conversations, commerce and automation, plus webhook subscriptions and a webhooks journal.",
+      "surfaces": ["api"],
+      "lowestTier": "Free Tools",
+      "tierNote": "API call limits scale by tier; webhook workflow actions from Data Hub Professional",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": [
+        "https://developers.hubspot.com/docs/api-reference/overview",
+        "https://developers.hubspot.com/docs/llms.txt",
+        "https://legal.hubspot.com/hubspot-product-and-services-catalog"
+      ]
+    },
+    {
+      "id": "app-marketplace",
+      "vendorName": "HubSpot Marketplace",
+      "description": "Directory of apps that connect to HubSpot.",
+      "surfaces": ["web"],
+      "lowestTier": "Free Tools",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog"]
+    },
+    {
+      "id": "native-integrations",
+      "vendorName": "Data sync, Salesforce, Slack, QuickBooks, Xero, LinkedIn",
+      "description": "HubSpot-built connectors: two-way data sync, Salesforce, Slack, QuickBooks Online, Xero (Beta), LinkedIn Sales Navigator.",
+      "surfaces": ["web"],
+      "lowestTier": "Free Tools",
+      "tierNote": "Salesforce integration from Professional",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog"]
+    },
+    {
+      "id": "reporting-dashboards",
+      "vendorName": "Reporting dashboard and Custom reporting",
+      "description": "Dashboards and standard reports on every tier; custom report builder, revenue analytics and customer journey analytics at higher tiers.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Free Tools",
+      "tierNote": "Custom reporting from Professional; reporting API is in the 2027-03 beta",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog", "https://developers.hubspot.com/docs/llms.txt"]
+    },
+    {
+      "id": "ai-assistant",
+      "vendorName": "Breeze Assistant",
+      "description": "AI assistant across HubSpot for insights on leads and customers, content generation and routine tasks.",
+      "surfaces": ["web"],
+      "lowestTier": "Free Tools",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog"]
+    },
+    {
+      "id": "ai-agents",
+      "vendorName": "Breeze agents (Customer, Prospecting, Data, Content, Revenue, Custom agents)",
+      "description": "Autonomous agents for support, prospecting, data upkeep, content, collections and more, plus an agent builder for custom agents; consume HubSpot Credits.",
+      "surfaces": ["web"],
+      "lowestTier": "Any Starter, Professional, or Enterprise-edition product",
+      "tierNote": "Customer agent is Professional in the hub tables; several agents are Beta",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog"]
+    },
+    {
+      "id": "multi-currency-localization",
+      "vendorName": "Multiple currencies and Multi-language content",
+      "description": "Multiple currencies on records and multi-language website content.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Free Tools",
+      "tierNote": "Multiple currencies from Smart CRM Starter (5); multi-language content in Free Tools (3 languages)",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog", "https://developers.hubspot.com/docs/llms.txt"]
+    },
+    {
+      "id": "data-quality-dedup",
+      "vendorName": "Duplicate management and Data quality",
+      "description": "AI duplicate detection and merge, required fields, property validation, data quality overview and automation.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Smart CRM Professional",
+      "tierNote": "Data quality automation from Data Hub Professional",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog", "https://developers.hubspot.com/docs/llms.txt"]
+    },
+    {
+      "id": "approvals",
+      "vendorName": "Deal, email, content, social and quote approvals",
+      "description": "Approval flows on quotes, deals, marketing email, content and social posts.",
+      "surfaces": ["web"],
+      "lowestTier": "Revenue Hub Professional",
+      "tierNote": "Standard quote approvals; deal/email/content approvals at Enterprise",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog"]
+    },
+    {
+      "id": "payments-acceptance",
+      "vendorName": "HubSpot payments and Stripe payment processing",
+      "description": "Accept card and ACH payments via payment links, B2B checkout and stored payment methods; Affirm and Klarna options.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Free Tools",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog", "https://developers.hubspot.com/docs/llms.txt"]
+    },
+    {
+      "id": "invoicing",
+      "vendorName": "Invoices, Automated invoice reminders, Credit memos, Tax rates",
+      "description": "Create and send invoices (including e-invoices, Beta) with tax rates on line items, automated reminders on open invoices and credit memos.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Free Tools",
+      "tierNote": "Automated sales tax from Revenue Hub Professional",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog", "https://developers.hubspot.com/docs/llms.txt"]
+    },
+    {
+      "id": "subscriptions-recurring-billing",
+      "vendorName": "Subscriptions",
+      "description": "Collect, manage and report on recurring payments, with automatic retries.",
+      "surfaces": ["web", "api"],
+      "lowestTier": "Free Tools",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog", "https://developers.hubspot.com/docs/llms.txt"]
+    },
+    {
+      "id": "customer-health-scores",
+      "vendorName": "Health scores",
+      "description": "Company or contact health scores from behavior and demographic data, with reporting and automation.",
+      "surfaces": ["web"],
+      "lowestTier": "Service Hub Professional",
+      "tierNote": null,
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog"]
+    },
+    {
+      "id": "data-enrichment",
+      "vendorName": "Automatic, bulk and continuous enrichment",
+      "description": "Enrich company and contact records with attributes, automatically or in bulk.",
+      "surfaces": ["web"],
+      "lowestTier": "Smart CRM Starter",
+      "tierNote": "Enrichment is described as consuming HubSpot Credits",
+      "status": "confirmed",
+      "unconfirmedReason": null,
+      "sources": ["https://legal.hubspot.com/hubspot-product-and-services-catalog"]
+    }
+  ],
+  "limits": [
+    "Tiers come from parsing the HTML edition tables in the Product & Services Catalog (checkmark cells per Starter/Professional/Enterprise column); a mis-parsed cell is possible and was spot-checked for about 20 rows only.",
+    "hubspot.com/pricing pages were not fetched; the catalog was used as the tier source instead.",
+    "Where a feature appears in several hubs, lowestTier names one hub and the tierNote names others; 'Free Tools' is HubSpot's name for the free edition.",
+    "The Google Play listing returned only a short marketing description; mobile feature surfaces rest on the catalog's 'HubSpot mobile app' and 'Mobile inbox' rows plus the store descriptions.",
+    "The knowledge-base page for mobile app features returned 404.",
+    "The audit logs API doc says 'Enterprise only' but its spec lists tier FREE; lowestTier is recorded as 'Enterprise' without a hub name.",
+    "The 2FA claim (required on Starter, Professional and Enterprise) comes from a search result summary, not a fetched page.",
+    "No injected instructions were seen in fetched pages.",
+    "Capped at 60 catalog-level rows: goals, marketing events, orders, ABM, buyer intent and 1:1 video are folded into other rows or omitted (all are in the catalog)."
+  ],
+  "failures": [
+    {
+      "kind": "fetch",
+      "what": "https://knowledge.hubspot.com/mobile/what-can-i-do-with-the-hubspot-mobile-app",
+      "result": "404"
+    },
+    {
+      "kind": "fetch",
+      "what": "https://play.google.com/store/apps/details?id=com.hubspot.android",
+      "result": "WebFetch returned truncated content; a direct fetch gave only a short description"
+    }
+  ],
+  "dataExport": {
+    "extraction": {
+      "full": "partial",
+      "incremental": "yes",
+      "apiBased": "yes",
+      "note": "Core CRM records, properties, associations, activities, files and conversations are readable by UI export and REST APIs, but the account backup excludes associations and activity data, property history is capped at 45 (contacts) or 20 (other objects) revisions, and workflow exports omit history and email data. Deltas are available via search filters on lastmodifieddate/hs_lastmodifieddate, webhooks (creation, deletion, merge, restore, propertyChange, associationChange) and a webhooks journal holding the past three days of events."
+    },
+    "exportOptions": [
+      {
+        "name": "Export records",
+        "description": "Exports records (appointments, calls, contacts, companies, courses, custom objects, deals, listings, marketing events, payments, tickets) with current property values and associations (up to 1,000 associated record IDs per association column plus the associated record name); by default only properties in the current view.",
+        "formats": ["CSV", "XLSX", "XLS"],
+        "limits": "Up to 3 simultaneous exports and 300 per rolling 24 hours; CSV/XLSX over 1,000,000 rows delivered as multiple files in a zip; XLS limited to 65,535 rows and 256 columns, XLSX 16,384 columns; CSV zipped above 2MB; download link emailed, expires after 30 days; export permissions required.",
+        "lowestTier": "All products and plans",
+        "sources": ["https://knowledge.hubspot.com/import-and-export/export-records"]
+      },
+      {
+        "name": "Backup & Restore (CRM data backup)",
+        "description": "Account backup of records and property values for contacts, companies, deals, tickets, custom objects, products, calls, conversations and tasks; a .zip with one CSV per object. Associations and activity data aren't included; sensitive-data property values are included.",
+        "formats": ["CSV (zipped)"],
+        "limits": "Once per week on Starter or Professional; once every 24 hours on Enterprise; recurring scheduled backups (weekly or every two weeks) Enterprise only; Super Admin required; download within 14 days; changes made while processing may be missing.",
+        "lowestTier": "Starter (Marketing, Sales, Service, Data or Content Hub)",
+        "sources": ["https://knowledge.hubspot.com/object-settings/back-up-crm-data"]
+      },
+      {
+        "name": "Export property history",
+        "description": "Per-property export of current and historical values with change timestamps (UTC), optionally with source information (which user or tool made the change); only records that had or have a value for the property.",
+        "formats": ["unknown (a file format is chosen in the dialog)"],
+        "limits": "Revision history is capped: contact properties up to 45 revisions; company, deal, ticket and custom object properties up to 20 revisions. Requires CRM Export and [Object] Edit All permissions; link delivered by email.",
+        "lowestTier": "All products and plans",
+        "sources": ["https://knowledge.hubspot.com/properties/export-property-history"]
+      },
+      {
+        "name": "Export properties",
+        "description": "Spreadsheet of all properties across all objects: name, internal name, type, description, group, options, creator, usages and fill rate (per search-result summary of the knowledge base).",
+        "formats": ["unknown"],
+        "limits": null,
+        "lowestTier": null,
+        "sources": [
+          "https://knowledge.hubspot.com/properties/organize-and-export-properties",
+          "https://knowledge.hubspot.com/account-management/export-your-content-and-data"
+        ]
+      },
+      {
+        "name": "Files tool export",
+        "description": "Selected files and folders from the Files tool exported as a .zip; download link sent by email and notification centre.",
+        "formats": ["ZIP"],
+        "limits": "Super Admin permissions required; files selected manually (checkboxes / marquee select).",
+        "lowestTier": "All products and plans",
+        "sources": ["https://knowledge.hubspot.com/files/organize-your-files-with-folders"]
+      },
+      {
+        "name": "Workflows spreadsheet export",
+        "description": "Spreadsheet listing workflows: name, active state, enrollment counts, goal conversion, create/modify dates and users, workflow type; images of individual workflows can also be exported.",
+        "formats": ["spreadsheet (format not stated)", "image"],
+        "limits": "Excludes performance data, workflow history, and data from emails used in the workflow.",
+        "lowestTier": null,
+        "sources": ["https://knowledge.hubspot.com/account-management/export-your-content-and-data"]
+      },
+      {
+        "name": "Other per-tool exports (hub page)",
+        "description": "The 'Export your content and data' hub links per-tool exports: activity history, audit logs, users, contracts, invoices, payments, products, quotes, subscriptions, web pages/posts/templates (HTML), HubDB, sitemap, URL redirects, tasks, segments, forms, campaigns, social, SMS, marketing email performance data, knowledge base articles.",
+        "formats": ["varies"],
+        "limits": "Page states there is no way to merge all the data between HubSpot accounts; the way to move assets is export then import or recreate.",
+        "lowestTier": null,
+        "sources": ["https://knowledge.hubspot.com/account-management/export-your-content-and-data"]
+      }
+    ],
+    "apis": [
+      {
+        "name": "Exports API (/crm/exports/2026-09/export/async)",
+        "kind": "bulk-export",
+        "description": "Async export of an object index VIEW (with CRM-search filterGroups/sorts/query) or a LIST, for standard or custom objects (by objectTypeId); up to four associated object types per request, optional association labels and internal names/values; poll task status (PENDING/PROCESSING/COMPLETE/CANCELED) and download via an unauthenticated URL that expires five minutes after the status request. Limits: 30 exports per rolling 24 hours, one at a time; CSV/XLSX over 1,000,000 rows (XLS over 65,535) split into a zip; 1,000 associations per row unless overridden. Requires crm.export scope; under OAuth the installing user must be a Super Admin.",
+        "sources": ["https://developers.hubspot.com/docs/api-reference/latest/crm/exports/guide.md"]
+      },
+      {
+        "name": "CRM object APIs (list, get, batch read)",
+        "kind": "read-api",
+        "description": "Per-object REST endpoints (/crm/objects/2026-09/{object}) for contacts, companies, deals, tickets, activities (calls, emails, meetings, notes, tasks, postal mail), commerce objects and custom objects; list pages up to 100 records with an 'after' cursor, an archived flag, and propertiesWithHistory for current plus historical values (which reduces the max records per request). Batch operations are limited to 100 records and batch read cannot return associations. Notes carry hs_attachment_ids referencing files.",
+        "sources": [
+          "https://developers.hubspot.com/docs/api-reference/latest/crm/objects/contacts/guide.md",
+          "https://developers.hubspot.com/docs/api-reference/latest/crm/objects/contacts/get-contacts.md",
+          "https://developers.hubspot.com/docs/api-reference/latest/crm/activities/notes/guide.md",
+          "https://developers.hubspot.com/docs/api-reference/latest/crm/understanding-the-crm.md"
+        ]
+      },
+      {
+        "name": "CRM Search API",
+        "kind": "incremental",
+        "description": "POST /crm/objects/2026-09/{object}/search with filters on properties such as lastmodifieddate (contacts) or hs_lastmodifieddate (other objects) gives an updated-since query. Limits: 5 requests per second per account, 200 per page, 10,000 total results per query (paging beyond returns 400), 3,000-character body, max 5 filterGroups / 18 filters; archived records never appear and new updates may lag; responses carry no rate-limit headers.",
+        "sources": ["https://developers.hubspot.com/docs/api-reference/latest/crm/search-the-crm.md"]
+      },
+      {
+        "name": "Associations API (v4)",
+        "kind": "read-api",
+        "description": "Batch read associations between records (1,000 inputs per batch read request) including labels; association schema endpoints for definitions/labels. Needed separately because object batch read omits associations.",
+        "sources": [
+          "https://developers.hubspot.com/docs/api-reference/latest/crm/associations/associate-records/guide.md",
+          "https://developers.hubspot.com/docs/api-reference/latest/crm/understanding-the-crm.md"
+        ]
+      },
+      {
+        "name": "Webhooks API (legacy public apps) / app webhooks config",
+        "kind": "webhooks-events",
+        "description": "Subscriptions for contact, company, deal, ticket (plus products, line items, conversations) events: creation, deletion, merge, restore, propertyChange, associationChange, privacyDeletion (contacts). Up to 100 events per request, concurrency limit 10, retries up to 10 times over 24 hours. The management endpoints in this guide apply only to legacy public apps; project-based apps configure webhooks in app config.",
+        "sources": ["https://developers.hubspot.com/docs/api-reference/latest/webhooks/guide.md"]
+      },
+      {
+        "name": "Webhooks journal, management and snapshots APIs (2026-09)",
+        "kind": "incremental",
+        "description": "Subscribe to object events and read them back in chronological order from a journal covering the past three days; snapshots API creates point-in-time snapshots of CRM objects. Uses a client credentials token plus the object read scopes; journal API limited to 100 requests per second per app; described as more performant than CRM search for checking object changes.",
+        "sources": [
+          "https://developers.hubspot.com/docs/api-reference/latest/webhooks-journal/guide.md",
+          "https://developers.hubspot.com/docs/apps/developer-platform/build-apps/authentication/overview.md"
+        ]
+      },
+      {
+        "name": "Workflows API (BETA, 2027-03-beta)",
+        "kind": "read-api",
+        "description": "Fetch, create and delete workflows (automation scope; sensitive-data scopes needed for workflows referencing sensitive properties). Beta under Developer Beta Terms and subject to change.",
+        "sources": ["https://developers.hubspot.com/docs/api-reference/2027-03-beta/automation/workflows/guide.md"]
+      },
+      {
+        "name": "Conversations API",
+        "kind": "read-api",
+        "description": "Inboxes, channels, threads and messages; the knowledge base names it as the way to export inbox data and past chat transcripts.",
+        "sources": [
+          "https://developers.hubspot.com/docs/_llms/apis/2026-09.md",
+          "https://knowledge.hubspot.com/account-management/export-your-content-and-data"
+        ]
+      },
+      {
+        "name": "Other APIs listed in the doc index (not read in detail)",
+        "kind": "other",
+        "description": "Files API, audit logs API (Enterprise only), owners, pipelines, schemas, properties, lists, imports, marketing emails, sequences and email templates appear in the 2026-09 API index; details not verified in this scan.",
+        "sources": ["https://developers.hubspot.com/docs/_llms/apis.md", "https://developers.hubspot.com/docs/_llms/apis/2026-09.md"]
+      }
+    ],
+    "auth": {
+      "models": ["oauth-app", "personal-token", "other"],
+      "notes": "Apps distributed to multiple accounts must use OAuth (distribution 'marketplace', or 'private' for up to 10 allowlisted accounts) with a self-hosted OAuth backend; single-account apps use a static auth access token (distribution 'private'); client credentials tokens serve only the webhooks journal API; personal access keys authenticate the CLI. The exports API's crm.export scope can only be granted over OAuth by a Super Admin. Marketplace listing requires error responses under 5% of daily requests.",
+      "sources": [
+        "https://developers.hubspot.com/docs/apps/developer-platform/build-apps/authentication/overview.md",
+        "https://developers.hubspot.com/docs/api-reference/latest/crm/exports/guide.md",
+        "https://developers.hubspot.com/docs/developer-tooling/platform/usage-guidelines.md"
+      ]
+    },
+    "rateLimits": {
+      "summary": "Marketplace-distributed OAuth apps: 110 requests every 10 seconds per installing account (excluding CRM Search), not raised by the API limit increase. Privately distributed apps: Free/Starter 100 per 10s per app and 250,000/day per account; Professional 190/10s and 625,000/day; Enterprise 190/10s and 1,000,000/day; with API Limit Increase 250/10s and +1,000,000/day per increase (max two). Daily limit resets at midnight account time zone; 429 on breach. CRM Search: 5 requests/second per account, 10,000 results per query. Associations: 500,000/day on Professional and Enterprise (max 1,000,000 with increase), burst 100/10s Free/Starter, 150/10s Pro/Enterprise (200 with increase). Exports API: 30 exports per rolling 24h, one at a time. Webhooks journal: 100 requests/second per app.",
+      "sources": [
+        "https://developers.hubspot.com/docs/developer-tooling/platform/usage-guidelines.md",
+        "https://developers.hubspot.com/docs/api-reference/latest/crm/search-the-crm.md",
+        "https://developers.hubspot.com/docs/api-reference/latest/crm/associations/associate-records/guide.md",
+        "https://developers.hubspot.com/docs/api-reference/latest/crm/exports/guide.md",
+        "https://developers.hubspot.com/docs/api-reference/latest/webhooks-journal/guide.md"
+      ]
+    },
+    "hardToExtract": [
+      {
+        "dataClass": "history-audit",
+        "detail": "Property history keeps only 45 revisions for contact properties and 20 for company, deal, ticket and custom object properties (including API changes), so older values are gone; UI export is per property. Audit logs API is Enterprise only.",
+        "sources": [
+          "https://knowledge.hubspot.com/properties/export-property-history",
+          "https://developers.hubspot.com/docs/_llms/apis/2026-09.md"
+        ]
+      },
+      {
+        "dataClass": "other",
+        "detail": "The account CRM backup excludes associations and activity data, so relationships and timelines need separate record exports or the associations/activity APIs; object batch read cannot return associations.",
+        "sources": [
+          "https://knowledge.hubspot.com/object-settings/back-up-crm-data",
+          "https://developers.hubspot.com/docs/api-reference/latest/crm/objects/contacts/guide.md"
+        ]
+      },
+      {
+        "dataClass": "automations-workflows",
+        "detail": "UI workflow export is a summary spreadsheet or images, without performance data, history or email data; the workflow definitions API is beta (2027-03-beta) under beta terms.",
+        "sources": [
+          "https://knowledge.hubspot.com/account-management/export-your-content-and-data",
+          "https://developers.hubspot.com/docs/api-reference/2027-03-beta/automation/workflows/guide.md"
+        ]
+      },
+      {
+        "dataClass": "other",
+        "detail": "Inbox/chat transcripts have no UI bulk export: the knowledge base says to use the Conversations API, copy manually, print to PDF or use a third-party tool. Marketing emails: the hub page lists only performance/recipient data exports, not content.",
+        "sources": ["https://knowledge.hubspot.com/account-management/export-your-content-and-data"]
+      },
+      {
+        "dataClass": "attachments-files",
+        "detail": "Files export is a manual Super Admin selection zipped from the Files tool; record attachments are referenced by ID (e.g. hs_attachment_ids on notes) and are not in the record export or backup per the pages read.",
+        "sources": [
+          "https://knowledge.hubspot.com/files/organize-your-files-with-folders",
+          "https://developers.hubspot.com/docs/api-reference/latest/crm/activities/notes/guide.md",
+          "https://knowledge.hubspot.com/object-settings/back-up-crm-data"
+        ]
+      },
+      {
+        "dataClass": "other",
+        "detail": "Deletions are invisible to search-based delta sync (archived records never appear in search); deletes must come from webhooks or the journal (which keeps only three days) or archived=true list reads. Search also caps each query at 10,000 results, so large deltas must be sliced by date.",
+        "sources": [
+          "https://developers.hubspot.com/docs/api-reference/latest/crm/search-the-crm.md",
+          "https://developers.hubspot.com/docs/api-reference/latest/webhooks-journal/guide.md",
+          "https://developers.hubspot.com/docs/api-reference/latest/crm/objects/contacts/get-contacts.md"
+        ]
+      }
+    ],
+    "migrationTools": [
+      {
+        "name": "Import tool / Imports API",
+        "direction": "into-vendor",
+        "description": "Spreadsheet imports mapping columns to properties for one or multiple objects and their associations; an imports API appears in the API index.",
+        "sources": [
+          "https://knowledge.hubspot.com/import-and-export/understand-the-import-tool",
+          "https://developers.hubspot.com/docs/llms.txt"
+        ]
+      },
+      {
+        "name": "HubSpot Smart Transfer",
+        "direction": "into-vendor",
+        "description": "Maps another app's objects and properties to HubSpot, creates properties and pipelines, syncs records, and runs a one-time transfer of remaining data (per search-result summary).",
+        "sources": ["https://knowledge.hubspot.com/integrations/transfer-data-from-other-apps-using-hubspot-smart-transfer"]
+      },
+      {
+        "name": "CRM migration by HubSpot's Replatforming Team",
+        "direction": "into-vendor",
+        "description": "Migration service requested through the account representative (per search-result summary).",
+        "sources": ["https://knowledge.hubspot.com/integrations/understand-hubspot-s-crm-migration-process"]
+      },
+      {
+        "name": "Partner migration services (Import2, SyncMatters)",
+        "direction": "into-vendor",
+        "description": "Third-party migration services named in HubSpot's 'import from another CRM' article (per search-result summary).",
+        "sources": ["https://knowledge.hubspot.com/articles/kcs_article/contacts/how-do-i-import-from-another-crm"]
+      }
+    ],
+    "limits": [
+      "SCAN — unreviewed, 2026-09-30. No out-of-vendor migration tool was found; outbound is export/backup/API only.",
+      "UI record export limits (3 concurrent, 300 per 24h) differ from the Exports API limits (1 at a time, 30 per 24h); both are as stated on their own pages.",
+      "The product scan hubspot.json says 650,000/day on Professional; the usage-guidelines page fetched today says 625,000/day. This file uses 625,000.",
+      "Smart Transfer, Replatforming Team, partner services and the export-properties details come from WebSearch result summaries, not fetched pages.",
+      "WebFetch summaries (export-records page, export hub) were used for some numbers; the backup, property-history, files, and all developer docs were read as raw text via curl.",
+      "Did not read Files API, audit logs, marketing emails, imports or conversations guides in detail; whether marketing email content (HTML) is retrievable by API is not confirmed.",
+      "Fetched docs contain 'Documentation Index' notes aimed at LLMs; treated as data, no instructions followed."
+    ],
+    "failures": [
+      {
+        "kind": "fetch",
+        "what": "https://developers.hubspot.com/docs/specs/... OpenAPI JSON (automation v4 beta, crm-objects, marketing-emails, files, legacy workflows v3)",
+        "result": "'Asset not found' / empty"
+      },
+      {
+        "kind": "fetch",
+        "what": "https://developers.hubspot.com/docs/api-reference/latest/crm/objects/guide.md",
+        "result": "358-byte stub, no content"
+      }
+    ]
+  }
+}
