@@ -1,0 +1,218 @@
+{
+  "record": "wos-assessment-record/v1",
+  "id": "2026-09-30-v0.9-claude-opus",
+  "source": "reference run by warOnSaaS",
+  "recordedAt": "2026-09-30T19:16:28.749Z",
+  "runner": {
+    "cli": "claude",
+    "cliVersion": "2.1.286 (Claude Code)",
+    "requestedModel": "opus"
+  },
+  "prompt": {
+    "sha256": "sha256:16ea529f9f9e56f33658de760830325018dc1c2bf0e7b913d2936e7a1079f0fb",
+    "matchedLiveSite": true
+  },
+  "servedPaperVersion": "0.9",
+  "reportFile": "2026-09-30-v0.9-claude-opus.md",
+  "rawBlock": "{\n  \"schema\": \"wos-assessment/v2\",\n  \"paperVersion\": \"0.9\",\n  \"evaluator\": { \"model\": \"claude-opus-5-5\", \"product\": \"Claude Agent SDK (Claude Code CLI harness)\" },\n  \"date\": \"2026-09-30\",\n  \"stage1\": {\n    \"problemReal\": \"partly\",\n    \"importance\": { \"total\": 57, \"impact\": 12, \"breadth\": 15, \"urgency\": 11, \"evidence\": 9, \"tractability\": 10 },\n    \"theses\": {\n      \"control\": { \"importance\": 8, \"compelling\": 6, \"confidence\": \"medium\" },\n      \"efficiency\": { \"importance\": 5, \"compelling\": 4, \"confidence\": \"medium\" },\n      \"softwareEngineering\": { \"importance\": 7, \"compelling\": 6, \"confidence\": \"medium\" },\n      \"apoc\": { \"importance\": 5, \"compelling\": 3, \"confidence\": \"low\" }\n    },\n    \"confidence\": \"medium\"\n  },\n  \"stage2\": {\n    \"effectiveness\": 15,\n    \"credibility\": 25,\n    \"readiness\": \"prototype\",\n    \"verdict\": \"watch\",\n    \"confidence\": \"medium\"\n  },\n  \"gaps\": [\n    { \"id\": \"existing-oss-suites-ignored\", \"title\": \"Existing open-source business apps (Odoo, ERPNext, Twenty, Mattermost, Zulip, Chatwoot, Documenso) are not analysed\", \"concerns\": \"section 11\", \"part\": \"II\", \"severity\": \"high\" },\n    { \"id\": \"rent-vs-duplication-double-count\", \"title\": \"SaaS is already build-once-reuse; rent and duplication are partly the same problem viewed twice\", \"concerns\": \"thesis 2\", \"part\": \"I\", \"severity\": \"high\" },\n    { \"id\": \"bottleneck-is-adoption-not-code\", \"title\": \"Barriers to replacing SaaS are migration, trust, support and compliance, yet effort goes to reward accounting\", \"concerns\": \"section 5\", \"part\": \"II\", \"severity\": \"high\" },\n    { \"id\": \"duplication-share-unsourced\", \"title\": \"Duplicated share A7 and business-app share A6 are unmeasured, and 'duplicated' is not defined counterfactually\", \"concerns\": \"section 3\", \"part\": \"I\", \"severity\": \"medium\" },\n    { \"id\": \"apoc-necessity-overstated\", \"title\": \"Thesis 4 ignores that Linux, Postgres and Kubernetes were built via employment and foundations, without a primitive\", \"concerns\": \"thesis 4\", \"part\": \"I\", \"severity\": \"medium\" },\n    { \"id\": \"subscription-terms-risk\", \"title\": \"Running network work on consumer Claude/ChatGPT plans may breach terms or rate limits; employer IP not covered\", \"concerns\": \"section 8\", \"part\": \"II\", \"severity\": \"medium\" },\n    { \"id\": \"rent-is-not-all-waste\", \"title\": \"Rent pays for hosting, security, compliance and support; the removable surplus is well below the in-scope total\", \"concerns\": \"section 3\", \"part\": \"I\", \"severity\": \"medium\" },\n    { \"id\": \"protocol-unverifiable\", \"title\": \"Reward protocol, D18-D52 and most edge-case tests are on an unpublished branch and cannot be checked\", \"concerns\": \"section 6\", \"part\": \"II\", \"severity\": \"medium\" },\n    { \"id\": \"maintenance-and-ops-unfunded\", \"title\": \"Budgets pay for new units; long-term maintenance, security patching, certifications and on-call are unfunded\", \"concerns\": \"section 9\", \"part\": \"II\", \"severity\": \"medium\" },\n    { \"id\": \"self-referential-evaluation\", \"title\": \"Reference assessments run on the founder's own agents; paper optimised for LLM evaluators risks Goodhart effects\", \"concerns\": \"section 15\", \"part\": \"II\", \"severity\": \"low\" }\n  ],\n  \"improvements\": [\n    { \"id\": \"compare-and-reuse-oss\", \"change\": \"Add a related-work section on open-source business suites, with a build-vs-fork-vs-contribute decision for wOS CRM, and reuse them in the Feature Catalog where licences permit.\", \"gap\": \"existing-oss-suites-ignored\", \"raises\": [\"credibility\", \"effectiveness\"] },\n    { \"id\": \"net-out-saas-dedup\", \"change\": \"Define 'duplicated' counterfactually (work a shared catalog would have prevented) and net out work already avoided by renting SaaS; show rent and duplication without overlap.\", \"gap\": \"rent-vs-duplication-double-count\", \"raises\": [\"evidence\"] },\n    { \"id\": \"measure-duplication\", \"change\": \"Run a small measurement of A6/A7: sample agent-authored PRs in business repositories and classify them as generic versus company-specific.\", \"gap\": \"duplication-share-unsourced\", \"raises\": [\"evidence\", \"tractability\"] },\n    { \"id\": \"product-before-protocol\", \"change\": \"Ship one narrow module end to end (a CRM contacts and pipeline slice with import and export) under a maintainer-led process before investing more in token accounting.\", \"gap\": \"bottleneck-is-adoption-not-code\", \"raises\": [\"effectiveness\", \"credibility\"] },\n    { \"id\": \"surplus-not-rent\", \"change\": \"Estimate the removable surplus (vendor margin, sales and marketing, unused seats) separately from total in-scope rent, using filings.\", \"gap\": \"rent-is-not-all-waste\", \"raises\": [\"evidence\"] },\n    { \"id\": \"publish-protocol-branch\", \"change\": \"Publish ws/protocol with its test suite runnable in CI so the draft edge-case claims become verifiable.\", \"gap\": \"protocol-unverifiable\", \"raises\": [\"credibility\"] },\n    { \"id\": \"legal-read-subscriptions\", \"change\": \"Obtain and publish a legal read on consumer-plan terms, employer IP and copyright of agent-generated code before any contributor runs.\", \"gap\": \"subscription-terms-risk\", \"raises\": [\"credibility\"] },\n    { \"id\": \"baseline-experiment-first\", \"change\": \"Run experiment C (token versus funded bounty versus reputation only) and a maintainer-led baseline before the devnet token work.\", \"gap\": \"apoc-necessity-overstated\", \"raises\": [\"credibility\", \"effectiveness\"] },\n    { \"id\": \"independent-reference-runs\", \"change\": \"Have reference assessments run by third parties on accounts the founder does not control, and publish their prompts unchanged.\", \"gap\": \"self-referential-evaluation\", \"raises\": [\"credibility\"] }\n  ]\n}",
+  "block": {
+    "paperVersion": "0.9",
+    "evaluator": {
+      "model": "claude-opus-5-5",
+      "product": "Claude Agent SDK (Claude Code CLI harness)"
+    },
+    "date": "2026-09-30",
+    "stage1": {
+      "problemReal": "partly",
+      "importance": {
+        "total": 57,
+        "impact": 12,
+        "breadth": 15,
+        "urgency": 11,
+        "evidence": 9,
+        "tractability": 10
+      },
+      "theses": {
+        "control": {
+          "importance": 8,
+          "compelling": 6,
+          "confidence": "medium"
+        },
+        "efficiency": {
+          "importance": 5,
+          "compelling": 4,
+          "confidence": "medium"
+        },
+        "softwareEngineering": {
+          "importance": 7,
+          "compelling": 6,
+          "confidence": "medium"
+        },
+        "apoc": {
+          "importance": 5,
+          "compelling": 3,
+          "confidence": "low"
+        }
+      },
+      "confidence": "medium"
+    },
+    "stage2": {
+      "effectiveness": 15,
+      "credibility": 25,
+      "readiness": "prototype",
+      "verdict": "watch",
+      "confidence": "medium"
+    },
+    "schema": "wos-assessment/v2",
+    "gaps": [
+      {
+        "id": "existing-oss-suites-ignored",
+        "title": "Existing open-source business apps (Odoo, ERPNext, Twenty, Mattermost, Zulip, Chatwoot, Documenso) are not analysed",
+        "concerns": "section 11",
+        "part": "II",
+        "severity": "high"
+      },
+      {
+        "id": "rent-vs-duplication-double-count",
+        "title": "SaaS is already build-once-reuse; rent and duplication are partly the same problem viewed twice",
+        "concerns": "thesis 2",
+        "part": "I",
+        "severity": "high"
+      },
+      {
+        "id": "bottleneck-is-adoption-not-code",
+        "title": "Barriers to replacing SaaS are migration, trust, support and compliance, yet effort goes to reward accounting",
+        "concerns": "section 5",
+        "part": "II",
+        "severity": "high"
+      },
+      {
+        "id": "duplication-share-unsourced",
+        "title": "Duplicated share A7 and business-app share A6 are unmeasured, and 'duplicated' is not defined counterfactually",
+        "concerns": "section 3",
+        "part": "I",
+        "severity": "medium"
+      },
+      {
+        "id": "apoc-necessity-overstated",
+        "title": "Thesis 4 ignores that Linux, Postgres and Kubernetes were built via employment and foundations, without a primitive",
+        "concerns": "thesis 4",
+        "part": "I",
+        "severity": "medium"
+      },
+      {
+        "id": "subscription-terms-risk",
+        "title": "Running network work on consumer Claude/ChatGPT plans may breach terms or rate limits; employer IP not covered",
+        "concerns": "section 8",
+        "part": "II",
+        "severity": "medium"
+      },
+      {
+        "id": "rent-is-not-all-waste",
+        "title": "Rent pays for hosting, security, compliance and support; the removable surplus is well below the in-scope total",
+        "concerns": "section 3",
+        "part": "I",
+        "severity": "medium"
+      },
+      {
+        "id": "protocol-unverifiable",
+        "title": "Reward protocol, D18-D52 and most edge-case tests are on an unpublished branch and cannot be checked",
+        "concerns": "section 6",
+        "part": "II",
+        "severity": "medium"
+      },
+      {
+        "id": "maintenance-and-ops-unfunded",
+        "title": "Budgets pay for new units; long-term maintenance, security patching, certifications and on-call are unfunded",
+        "concerns": "section 9",
+        "part": "II",
+        "severity": "medium"
+      },
+      {
+        "id": "self-referential-evaluation",
+        "title": "Reference assessments run on the founder's own agents; paper optimised for LLM evaluators risks Goodhart effects",
+        "concerns": "section 15",
+        "part": "II",
+        "severity": "low"
+      }
+    ],
+    "improvements": [
+      {
+        "id": "compare-and-reuse-oss",
+        "change": "Add a related-work section on open-source business suites, with a build-vs-fork-vs-contribute decision for wOS CRM, and reuse them in the Feature Catalog where licences permit.",
+        "gap": "existing-oss-suites-ignored",
+        "raises": [
+          "credibility",
+          "effectiveness"
+        ]
+      },
+      {
+        "id": "net-out-saas-dedup",
+        "change": "Define 'duplicated' counterfactually (work a shared catalog would have prevented) and net out work already avoided by renting SaaS; show rent and duplication without overlap.",
+        "gap": "rent-vs-duplication-double-count",
+        "raises": [
+          "evidence"
+        ]
+      },
+      {
+        "id": "measure-duplication",
+        "change": "Run a small measurement of A6/A7: sample agent-authored PRs in business repositories and classify them as generic versus company-specific.",
+        "gap": "duplication-share-unsourced",
+        "raises": [
+          "evidence",
+          "tractability"
+        ]
+      },
+      {
+        "id": "product-before-protocol",
+        "change": "Ship one narrow module end to end (a CRM contacts and pipeline slice with import and export) under a maintainer-led process before investing more in token accounting.",
+        "gap": "bottleneck-is-adoption-not-code",
+        "raises": [
+          "effectiveness",
+          "credibility"
+        ]
+      },
+      {
+        "id": "surplus-not-rent",
+        "change": "Estimate the removable surplus (vendor margin, sales and marketing, unused seats) separately from total in-scope rent, using filings.",
+        "gap": "rent-is-not-all-waste",
+        "raises": [
+          "evidence"
+        ]
+      },
+      {
+        "id": "publish-protocol-branch",
+        "change": "Publish ws/protocol with its test suite runnable in CI so the draft edge-case claims become verifiable.",
+        "gap": "protocol-unverifiable",
+        "raises": [
+          "credibility"
+        ]
+      },
+      {
+        "id": "legal-read-subscriptions",
+        "change": "Obtain and publish a legal read on consumer-plan terms, employer IP and copyright of agent-generated code before any contributor runs.",
+        "gap": "subscription-terms-risk",
+        "raises": [
+          "credibility"
+        ]
+      },
+      {
+        "id": "baseline-experiment-first",
+        "change": "Run experiment C (token versus funded bounty versus reputation only) and a maintainer-led baseline before the devnet token work.",
+        "gap": "apoc-necessity-overstated",
+        "raises": [
+          "credibility",
+          "effectiveness"
+        ]
+      },
+      {
+        "id": "independent-reference-runs",
+        "change": "Have reference assessments run by third parties on accounts the founder does not control, and publish their prompts unchanged.",
+        "gap": "self-referential-evaluation",
+        "raises": [
+          "credibility"
+        ]
+      }
+    ]
+  }
+}
