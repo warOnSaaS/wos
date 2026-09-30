@@ -1,9 +1,25 @@
 {
   "ref": "main",
-  "head": "f34867acf8c6b02bdf4cf1bf97187e14b46b561d",
+  "head": "c51b3eb3815650084358946188ae2b4aa34988c4",
   "complete": true,
-  "count": 57,
+  "count": 59,
   "commits": [
+    {
+      "sha": "c51b3eb3815650084358946188ae2b4aa34988c4",
+      "short": "c51b3eb",
+      "date": "2026-09-30T10:21:59-04:00",
+      "day": "2026-09-30",
+      "subject": "Website: white paper v0.4 copy, handoff prompt asks about the four theses",
+      "url": "https://github.com/warOnSaaS/wos/commit/c51b3eb3815650084358946188ae2b4aa34988c4"
+    },
+    {
+      "sha": "bd69f28936939d2e7b4dd3733a5b924820907ebe",
+      "short": "bd69f28",
+      "date": "2026-09-30T10:21:25-04:00",
+      "day": "2026-09-30",
+      "subject": "White paper v0.4: four theses (control, efficiency, future of SE, APoC)",
+      "url": "https://github.com/warOnSaaS/wos/commit/bd69f28936939d2e7b4dd3733a5b924820907ebe"
+    },
     {
       "sha": "f34867acf8c6b02bdf4cf1bf97187e14b46b561d",
       "short": "f34867a",

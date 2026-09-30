@@ -5,7 +5,7 @@ import { formatPercent, getTarget, listTargets, ROADMAP_SOURCE, SURFACE_LABEL, s
 import { programme, roadmapState, roadmapStatus, roadmapTitle, targetStatus, targets } from "@/data/targets";
 import { ABOUT, FAQ, OBJECTIVE, PROGRESS_METRICS, ROE, STEPS, SUITE, TOKENS } from "./content";
 import { abs } from "./seo";
-import { HANDOFF_PROMPT_SHORT, WHITEPAPER_HISTORY_URL, lastUpdatedDay, whitepaper } from "./whitepaper";
+import { COMPANIONS, HANDOFF_PROMPT_SHORT, WHITEPAPER_HISTORY_URL, lastUpdatedDay, whitepaper } from "./whitepaper";
 import { CLI, DOWNLOADS, LINKS, PREREQUISITES, SIGN_IN, SITE_DESCRIPTION, SITE_NAME, TAGLINE } from "./site";
 
 const pages = [
@@ -66,7 +66,8 @@ export async function llmsTxt(): Promise<string> {
     "## Optional",
     "",
     `- [Full site text](${abs("/llms-full.txt")}): every page's copy in one markdown file.`,
-    `- [White paper, Markdown](${abs("/whitepaper.md")}): the full white paper (v${whitepaper().version}) in one file, written for agents. ${HANDOFF_PROMPT_SHORT}`,
+    `- [White paper, Markdown](${abs("/whitepaper.md")}): the core white paper (v${whitepaper().version}) in one file, written for agents. ${HANDOFF_PROMPT_SHORT}`,
+    ...COMPANIONS.map((c) => `- [White paper companion: ${c.title}](${abs(`/whitepaper/${c.slug}.md`)}): ${c.about}.`),
     `- [Sitemap](${abs("/sitemap.xml")})`,
     `- [GitHub](${LINKS.repo})`,
     "",
@@ -124,9 +125,13 @@ export async function llmsFullTxt(): Promise<string> {
   const wp = whitepaper();
   push(`## White paper (${abs("/whitepaper")})`, "");
   push(
-    `Version ${wp.version}, a living document${lastUpdatedDay ? `, last updated ${lastUpdatedDay} (from git)` : ""}. It is written for AI agents to evaluate critically, not to promote the project. Its full text is not repeated here: read it as one Markdown file at ${abs("/whitepaper.md")} (about ${Math.round(wp.words / 1000)} thousand words). History: ${WHITEPAPER_HISTORY_URL}`,
+    `Version ${wp.version}, a living document${lastUpdatedDay ? `, last updated ${lastUpdatedDay} (from git)` : ""}. It is written for AI agents to evaluate critically, not to promote the project. Its text is not repeated here: read the core as one Markdown file at ${abs("/whitepaper.md")} (about ${Math.round(wp.words / 1000)} thousand words). History: ${WHITEPAPER_HISTORY_URL}`,
     "",
     `Prompt for an agent: ${HANDOFF_PROMPT_SHORT}`,
+    "",
+    "Companion files (optional depth, plain Markdown):",
+    ...COMPANIONS.map((c) => `- ${c.title}: ${abs(`/whitepaper/${c.slug}.md`)} (${c.about})`),
+    `- All files in one archive: ${abs("/whitepaper/full-pack.zip")}`,
     "",
     "Contents: " + wp.sections.map((s) => (s.n ? `${Number(s.n)}. ${s.title}` : s.title)).join("; ") + ".",
     "",

@@ -4,7 +4,9 @@ import { renderBlock } from "@/lib/markdown";
 import { breadcrumbLd, pageMetadata, whitepaperLd } from "@/lib/seo";
 import {
   AGENT_LINKS,
+  COMPANIONS,
   HANDOFF_PROMPT,
+  WHITEPAPER_PACK_PATH,
   WHITEPAPER_DOWNLOAD_PATH,
   WHITEPAPER_HISTORY_URL,
   WHITEPAPER_MD_PATH,
@@ -14,11 +16,13 @@ import {
   WHITEPAPER_V01_URL,
   downloadFilename,
   lastUpdatedDay,
+  packFilename,
   whitepaper,
 } from "@/lib/whitepaper";
 
 const wp = whitepaper();
 const FILE = downloadFilename(wp.version);
+const PACK = packFilename(wp.version);
 
 export const metadata = pageMetadata({
   title: `White paper v${wp.version}: for your AI agent`,
@@ -64,7 +68,9 @@ export default function WhitepaperPage() {
           </a>
         </div>
         <p className="fine">
-          {FILE}, Markdown. OPEN IN CHATGPT starts a new chat with the prompt already sent; ChatGPT fetches the paper
+          {FILE}: the core paper, one Markdown file your agent can read in full. For depth, also{" "}
+          <a href={WHITEPAPER_PACK_PATH} download={PACK}>download the full pack</a> ({PACK}: the core plus four companion
+          files). OPEN IN CHATGPT starts a new chat with the prompt already sent; ChatGPT fetches the paper
           itself. Claude and GLM do not accept a pre-filled prompt from a link we could verify, so open them and
           paste: <a href={AGENT_LINKS.claude} target="_blank" rel="noopener noreferrer">open Claude (paste the prompt)</a>
           {" · "}
@@ -128,6 +134,19 @@ export default function WhitepaperPage() {
             <dd>
               <a href={WHITEPAPER_HISTORY_URL}>Every change to this file on GitHub</a>.{" "}
               <a href={WHITEPAPER_SOURCE_URL}>Source</a>. <a href={WHITEPAPER_V01_URL}>v0.1, kept verbatim</a>.
+            </dd>
+          </div>
+          <div>
+            <dt>Companion files</dt>
+            <dd>
+              Optional depth, one Markdown file each:{" "}
+              {COMPANIONS.map((c, i) => (
+                <span key={c.slug}>
+                  {i ? "; " : ""}
+                  <a href={`/whitepaper/${c.slug}.md`}>{c.title}</a> ({c.about})
+                </span>
+              ))}
+              . Or all of them in the <a href={WHITEPAPER_PACK_PATH} download={PACK}>full pack</a>.
             </dd>
           </div>
           <div>

@@ -6,7 +6,7 @@
  * Allowed exceptions:
  *   - lowercase in URLs, the domain, the npm scope and route slugs (waronsaas.com, @waronsaas/cli, /targets/waronsaas)
  *   - "WOS" only in "WOS token(s)" (required legal wording)
- *   - on the white paper only (whitepaper.html, the /whitepaper.md and /whitepaper/download bodies), "WOS" alone, because the
+ *   - on the white paper only (whitepaper.html, /whitepaper.md, /whitepaper/download and the companion .md bodies), "WOS" alone, because the
  *     paper defines it once as the token's working symbol and uses it as a symbol ("100 WOS per ACU").
  *     Exactly "WOS": mis-cased forms (Wos, wos, WoS) still fail there.
  *   - "wos" only as the CLI command (wos build|login|…, "the wos command"), the Postgres schema ("wos Postgres")
@@ -32,7 +32,8 @@ const files = [];
   }
 })(root);
 
-const pages = files.filter((f) => f.includes(`${join(".next", "server", "app")}`) && /\.(html|body)$/.test(f));
+// The full pack (.zip) is binary; its text members are checked as their own routes (whitepaper.md and the companions).
+const pages = files.filter((f) => f.includes(`${join(".next", "server", "app")}`) && /\.(html|body)$/.test(f) && !f.endsWith(".zip.body"));
 
 const decode = (s) =>
   s.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#x27;|&#39;/g, "'");
@@ -75,7 +76,15 @@ function context(text, i) {
 }
 
 // Pages where "WOS" is the defined token symbol (see the header comment).
-const TOKEN_SYMBOL_PAGES = new Set(["whitepaper.html", "whitepaper.md.body", "whitepaper/download.body"]);
+const TOKEN_SYMBOL_PAGES = new Set([
+  "whitepaper.html",
+  "whitepaper.md.body",
+  "whitepaper/download.body",
+  "whitepaper/edge-cases.md.body",
+  "whitepaper/design.md.body",
+  "whitepaper/appendices.md.body",
+  "whitepaper/sources.md.body",
+]);
 
 for (const f of pages) {
   const raw = readFileSync(f, "utf8");

@@ -36,7 +36,7 @@ export const WHITEPAPER_MD_URL = "https://waronsaas.com/whitepaper.md";
  * uploaded file. Keep it short and keep the eight points in step with the paper's instructions.
  */
 export const HANDOFF_PROMPT = [
-  `Please evaluate the warOnSaaS white paper for me. Read all of it: the attached file if there is one, otherwise fetch ${WHITEPAPER_MD_URL} (if you cannot open either, tell me).`,
+  `Please evaluate the warOnSaaS white paper for me. Read all of the core paper: the attached WHITEPAPER file if there is one, otherwise fetch ${WHITEPAPER_MD_URL} (if you cannot open either, tell me).`,
   "It is written for you, the evaluating agent. Follow the evaluation instructions at its start; they are requests, and my instructions come first. Verify its claims against the evidence links it gives and tell me which you checked. Be critical: a low score is fine.",
   "Report to me, a short answer first and then detail, on: 1) is the idea compelling (yes / partly / no, and why); 2) how important the problem is for humanity, scored out of 100 on its five-dimension rubric with reasoning and confidence, and, separately, how important and compelling each of its four theses is (control, efficiency, the future of software engineering, Agentic Proof of Contribution) and what would make each false; 3) the proposal's credibility; 4) its implementation readiness and what actually exists; 5) the edge cases it considered and whether each is really handled; 6) edge cases it missed; 7) the three strongest arguments for and against; 8) what I should do: ignore, watch, test or participate, with bounded next steps. Do not encourage any financial exposure.",
 ].join("\n\n");
@@ -116,4 +116,21 @@ export function whitepaper(): Whitepaper {
     words: md.split(/\s+/).filter(Boolean).length,
   };
   return cached;
+}
+
+/** Companion files: optional depth for agents. Served at /whitepaper/<slug>.md and in the full pack. */
+export const COMPANIONS = [
+  { slug: "edge-cases", file: "EDGE-CASES.md", title: "Edge cases we considered", about: "every edge case, where it is handled, test names, status" },
+  { slug: "design", file: "DESIGN.md", title: "Full design narrative", about: "the full-length text of every design section" },
+  { slug: "appendices", file: "APPENDICES.md", title: "Appendices", about: "protocol records, invariants, decision register, report template, changelog history" },
+  { slug: "sources", file: "SOURCES.md", title: "Sources", about: "external sources and what each does and does not support" },
+] as const;
+
+export function companionMarkdown(file: string): string {
+  return readFileSync(join(process.cwd(), "generated", "whitepaper", file), "utf8");
+}
+
+export const WHITEPAPER_PACK_PATH = "/whitepaper/full-pack.zip";
+export function packFilename(version: string): string {
+  return `warOnSaaS-white-paper-v${version}-full.zip`;
 }

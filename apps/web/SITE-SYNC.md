@@ -12,8 +12,8 @@ after merges to main. You propose; a human merges. You never push to main.
 
 ## What you may change
 
-Files under `apps/web/`, and one file outside it: `docs/whitepaper/WHITEPAPER.md` (the white paper; see
-"The white paper" below). In practice almost always one or more of:
+Files under `apps/web/`, and the white paper outside it: `docs/whitepaper/WHITEPAPER.md` (the core) and its
+companions `EDGE-CASES.md`, `DESIGN.md`, `APPENDICES.md`, `SOURCES.md` (see "The white paper" below). In practice almost always one or more of:
 
 | Page | Copy lives in |
 |---|---|
@@ -26,7 +26,7 @@ Files under `apps/web/`, and one file outside it: `docs/whitepaper/WHITEPAPER.md
 
 Do not touch: numbers or progress (they come from the live API and the roadmap file), `apps/web/generated/**`
 (written by build scripts), `apps/web/scripts/**`, the design system (`globals.css`, components), anything
-outside `apps/web/` except `docs/whitepaper/WHITEPAPER.md`. The workflow rejects the PR if any other file
+outside `apps/web/` except those white paper files. The workflow rejects the PR if any other file
 outside `apps/web/` changed. Never edit `docs/whitepaper/WHITEPAPER-v0.1-original.txt` (history).
 
 ## Rules (the founder's, non-negotiable)
@@ -63,7 +63,8 @@ labels that are now wrong (something the paper calls DESIGNED is now BUILT, or t
 
 When the paper is wrong or out of date, propose precise edits in the same PR:
 
-- Change only the sentences that are wrong. Keep the structure, the agent instructions, the report format
+- Keep the core (`WHITEPAPER.md`) under 12,000 words; put detail in the matching companion file and never drop
+  a claim from both. Change only the sentences that are wrong. Keep the structure, the agent instructions, the report format
   and the changelog history.
 - Add a changelog entry at the top of the "Changelog" section: the new version, then one line per change
   with its source file (e.g. `- Holdback set to 20% for 6 epochs (source: docs/DECISIONS.md D51).`).
