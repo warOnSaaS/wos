@@ -6062,6 +6062,7 @@ const EnvironmentTokenClaims = object({
 	org: Uuid,
 	role: OrgRole,
 	apps: array(AppId),
+	permissions: array(string().regex(/^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9_]*){1,3}$/)).max(500).optional(),
 	iat: number$1().int(),
 	exp: number$1().int()
 });
@@ -7264,6 +7265,157 @@ const BugMachine = machine({
 			event: "reopen",
 			actor: ["maintainer"],
 			guard: "the regression test passes but the bug reproduces; reason recorded"
+		}
+	]
+});
+const OrgInviteStates = [
+	"pending",
+	"accepted",
+	"declined",
+	"revoked",
+	"expired"
+];
+const OrgInviteMachine = machine({
+	name: "org_invite",
+	states: OrgInviteStates,
+	initial: ["pending"],
+	terminal: [
+		"accepted",
+		"declined",
+		"revoked",
+		"expired"
+	],
+	transitions: [
+		{
+			from: "pending",
+			to: "accepted",
+			event: "accept",
+			actor: ["account"],
+			guard: "now < expires_at; the caller's account email equals the invite email (normalized; INVITE_EMAIL_MISMATCH otherwise); the membership is created in the same transaction (an existing membership keeps its role); within the members quota"
+		},
+		{
+			from: "pending",
+			to: "declined",
+			event: "decline",
+			actor: ["account"],
+			guard: "the caller's account email equals the invite email"
+		},
+		{
+			from: "pending",
+			to: "revoked",
+			event: "revoke",
+			actor: ["account"],
+			guard: "caller is the inviter or an owner or admin of the organization"
+		},
+		{
+			from: "pending",
+			to: "expired",
+			event: "expire",
+			actor: ["system"],
+			guard: "now >= expires_at (7 days after creation)"
+		}
+	]
+});
+const OrgDomainStates = [
+	"pending",
+	"verified",
+	"failed",
+	"lapsed",
+	"removed"
+];
+const OrgDomainMachine = machine({
+	name: "org_domain",
+	states: OrgDomainStates,
+	initial: ["pending"],
+	terminal: ["failed", "removed"],
+	transitions: [
+		{
+			from: "pending",
+			to: "verified",
+			event: "verify",
+			actor: ["system", "account"],
+			guard: "the TXT record _wos-verification.<domain> holds this domain's token; no other organization holds the domain verified (DOMAIN_CLAIMED)"
+		},
+		{
+			from: "pending",
+			to: "failed",
+			event: "fail",
+			actor: ["system"],
+			guard: "the record was not seen within the verify window (7 days)"
+		},
+		{
+			from: "verified",
+			to: "lapsed",
+			event: "lapse",
+			actor: ["system"],
+			guard: "the daily re-check failed for 7 consecutive days; the join policy stops applying"
+		},
+		{
+			from: "lapsed",
+			to: "verified",
+			event: "reverify",
+			actor: ["system", "account"],
+			guard: "the record is seen again and no other organization verified the domain meanwhile"
+		},
+		{
+			from: "pending",
+			to: "removed",
+			event: "remove",
+			actor: ["account"],
+			guard: "caller is an owner"
+		},
+		{
+			from: "verified",
+			to: "removed",
+			event: "remove",
+			actor: ["account"],
+			guard: "caller is an owner; memberships made by auto-join are kept"
+		},
+		{
+			from: "lapsed",
+			to: "removed",
+			event: "remove",
+			actor: ["account", "system"],
+			guard: "caller is an owner, or another organization verified the domain"
+		}
+	]
+});
+const OrgJoinRequestStates = [
+	"pending",
+	"approved",
+	"denied",
+	"withdrawn"
+];
+const OrgJoinRequestMachine = machine({
+	name: "org_join_request",
+	states: OrgJoinRequestStates,
+	initial: ["pending"],
+	terminal: [
+		"approved",
+		"denied",
+		"withdrawn"
+	],
+	transitions: [
+		{
+			from: "pending",
+			to: "approved",
+			event: "approve",
+			actor: ["account"],
+			guard: "caller is an owner or admin; the requester's email is still on a verified domain of the organization; membership as member in the same transaction; within quota"
+		},
+		{
+			from: "pending",
+			to: "denied",
+			event: "deny",
+			actor: ["account"],
+			guard: "caller is an owner or admin"
+		},
+		{
+			from: "pending",
+			to: "withdrawn",
+			event: "withdraw",
+			actor: ["account"],
+			guard: "caller is the requester"
 		}
 	]
 });
@@ -8953,6 +9105,56 @@ const DomainEventBody = discriminatedUnion("type", [
 		accountId: Uuid,
 		role: OrgRole.nullable()
 	}),
+	e("organization.invite_changed", "private", {
+		organizationId: Uuid,
+		inviteId: Uuid,
+		role: OrgRole,
+		state: _enum([
+			"pending",
+			"accepted",
+			"declined",
+			"revoked",
+			"expired"
+		])
+	}),
+	e("organization.domain_changed", "private", {
+		organizationId: Uuid,
+		domainId: Uuid,
+		domain: string(),
+		state: _enum([
+			"pending",
+			"verified",
+			"failed",
+			"lapsed",
+			"removed"
+		]),
+		joinPolicy: _enum([
+			"off",
+			"request",
+			"auto_join"
+		])
+	}),
+	e("organization.join_request_changed", "private", {
+		organizationId: Uuid,
+		requestId: Uuid,
+		accountId: Uuid,
+		state: _enum([
+			"pending",
+			"approved",
+			"denied",
+			"withdrawn"
+		])
+	}),
+	e("organization.permission_override_changed", "private", {
+		organizationId: Uuid,
+		app: AppId,
+		overrides: number$1().int().min(0)
+	}),
+	e("account.github_signed_in", "private", {
+		accountId: Uuid,
+		created: boolean(),
+		linked: boolean()
+	}),
 	e("architecture.impact_computed", "public", {
 		documentId: Uuid,
 		recordId: string().regex(/^ADR-\d{3}$/),
@@ -9080,6 +9282,222 @@ const EventConsumer = _enum([
 ]);
 
 //#endregion
+//#region packages/contracts/dist/identity.js
+const GithubSignInFlow = _enum(["device", "web"]);
+const SignInClientKind = _enum([
+	"web",
+	"desktop",
+	"cli",
+	"web_app",
+	"mobile"
+]);
+const GithubSignInStartBody = object({
+	clientKind: SignInClientKind,
+	deviceName: string().max(100).nullable(),
+	devicePublicKey: string().max(100).nullable()
+});
+const GithubSignInStartResponse = discriminatedUnion("flow", [object({
+	flow: literal("device"),
+	signInId: Uuid,
+	pollSecret: string().min(32),
+	userCode: string(),
+	verificationUri: url(),
+	intervalSeconds: number$1().int().positive(),
+	expiresAt: Timestamp
+}), object({
+	flow: literal("web"),
+	signInId: Uuid,
+	pollSecret: string().min(32).nullable(),
+	authorizeUrl: url(),
+	expiresAt: Timestamp
+})]);
+const GithubSignInPollBody = object({
+	signInId: Uuid,
+	pollSecret: string().nullable(),
+	emailProofCode: string().regex(/^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/).nullable()
+});
+const OrgInviteState = _enum([
+	"pending",
+	"accepted",
+	"declined",
+	"revoked",
+	"expired"
+]);
+const OrgInvite = object({
+	id: Uuid,
+	organizationId: Uuid,
+	email: email(),
+	role: OrgRole,
+	invitedBy: Uuid,
+	state: OrgInviteState,
+	createdAt: Timestamp,
+	expiresAt: Timestamp,
+	rowVersion: number$1().int().min(0)
+});
+const INVITE_TTL_DAYS = 7;
+const OrgMemberView = object({
+	accountId: Uuid,
+	handle: string().nullable(),
+	displayName: string().nullable(),
+	email: email(),
+	role: OrgRole,
+	via: _enum([
+		"created",
+		"invite",
+		"domain_auto_join",
+		"join_request",
+		"scim"
+	]),
+	joinedAt: Timestamp,
+	rowVersion: number$1().int().min(0)
+});
+const DomainName = string().max(253).regex(/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/, "a lowercase DNS name");
+const JoinPolicy = _enum([
+	"off",
+	"request",
+	"auto_join"
+]);
+const OrgDomainState = _enum([
+	"pending",
+	"verified",
+	"failed",
+	"lapsed",
+	"removed"
+]);
+const OrgDomain = object({
+	id: Uuid,
+	organizationId: Uuid,
+	domain: DomainName,
+	state: OrgDomainState,
+	joinPolicy: JoinPolicy,
+	txt: object({
+		name: string(),
+		value: string()
+	}),
+	verifiedAt: Timestamp.nullable(),
+	lastCheckedAt: Timestamp.nullable(),
+	rowVersion: number$1().int().min(0)
+});
+const OrgJoinRequestState = _enum([
+	"pending",
+	"approved",
+	"denied",
+	"withdrawn"
+]);
+const OrgJoinRequest = object({
+	id: Uuid,
+	organizationId: Uuid,
+	accountId: Uuid,
+	email: email(),
+	state: OrgJoinRequestState,
+	createdAt: Timestamp,
+	rowVersion: number$1().int().min(0)
+});
+const PermissionOverride = object({
+	app: AppId,
+	permission: PermissionKey,
+	role: OrgRole,
+	granted: boolean()
+});
+const PosInt = number$1().int().positive();
+const DormantModuleName = _enum([
+	"sso",
+	"scim",
+	"audit_export"
+]);
+const IdentityPolicy = object({
+	schema: literal("wos-identity-policy.v1"),
+	rateLimits: object({
+		perAccount: object({
+			requestsPerMinute: PosInt,
+			signInStartsPerHour: PosInt,
+			invitesPerHour: PosInt
+		}),
+		perOrg: object({ requestsPerMinute: PosInt }),
+		perIp: object({ signInStartsPerHour: PosInt })
+	}),
+	plans: object({ free: object({
+		membersPerOrg: PosInt,
+		pendingInvitesPerOrg: PosInt,
+		verifiedDomainsPerOrg: PosInt,
+		teamOrgsOwnedPerAccount: PosInt,
+		invitesPerDayPerOrg: PosInt
+	}) }),
+	abuse: object({
+		newOrgInviteCap: object({
+			hours: PosInt,
+			invites: PosInt
+		}),
+		removedMemberReinviteCooldownHours: PosInt,
+		disposableDomains: array(DomainName)
+	}),
+	domains: object({
+		publicEmailDomains: array(DomainName).min(1),
+		verifyWindowDays: PosInt,
+		recheckHours: PosInt,
+		lapseAfterFailingDays: PosInt
+	}),
+	invites: object({ ttlDays: literal(7) }),
+	modules: record(DormantModuleName, object({
+		status: _enum(["dormant", "active"]),
+		trigger: string().min(20),
+		activatedBy: string().nullable()
+	}))
+});
+const OrgSsoConnection = object({
+	id: Uuid,
+	organizationId: Uuid,
+	protocol: _enum(["oidc", "saml"]),
+	domainIds: array(Uuid).min(1),
+	enforcement: _enum(["optional", "required"]),
+	oidc: object({
+		issuer: url(),
+		clientId: string().min(1),
+		clientSecretRef: string().min(1)
+	}).nullable(),
+	saml: object({
+		entityId: string().min(1),
+		ssoUrl: url(),
+		certificatePem: string().min(100)
+	}).nullable(),
+	maxSessionAgeHours: number$1().int().positive().max(12),
+	state: _enum([
+		"draft",
+		"testing",
+		"active",
+		"disabled"
+	])
+}).superRefine((c, ctx) => {
+	if (c.protocol === "oidc" !== (c.oidc !== null) || c.protocol === "saml" !== (c.saml !== null)) ctx.addIssue({
+		code: "custom",
+		path: ["protocol"],
+		message: "exactly the chosen protocol's settings"
+	});
+});
+const ScimToken = object({
+	id: Uuid,
+	organizationId: Uuid,
+	prefix: string().length(8),
+	createdAt: Timestamp,
+	lastUsedAt: Timestamp.nullable(),
+	revokedAt: Timestamp.nullable()
+});
+const AuditExportRequest = object({
+	id: Uuid,
+	organizationId: Uuid,
+	from: Timestamp,
+	to: Timestamp,
+	format: literal("jsonl"),
+	state: _enum([
+		"queued",
+		"ready",
+		"expired",
+		"failed"
+	]),
+	downloadUrl: url().nullable()
+});
+
+//#endregion
 //#region packages/contracts/dist/api.js
 const ApiErrorCode = _enum([
 	"UNAUTHENTICATED",
@@ -9103,7 +9521,14 @@ const ApiErrorCode = _enum([
 	"INTERNAL",
 	"NOT_ENTITLED",
 	"DEPENDENCY_NOT_ENABLED",
-	"DEPENDENT_ENABLED"
+	"DEPENDENT_ENABLED",
+	"GITHUB_EMAIL_UNVERIFIED",
+	"LAST_OWNER",
+	"DOMAIN_CLAIMED",
+	"PUBLIC_EMAIL_DOMAIN",
+	"INVITE_EMAIL_MISMATCH",
+	"QUOTA_EXCEEDED",
+	"MODULE_DORMANT"
 ]);
 const ApiError = object({ error: object({
 	code: ApiErrorCode,
@@ -10199,6 +10624,433 @@ const AppRoutes = {
 		response: Ok,
 		errors: ["NOT_FOUND", "CONFLICT"],
 		summary: "AppReleaseMachine yank; clients roll back to their previous version."
+	})
+};
+const OrgMemberParams = object({
+	id: Uuid,
+	account: Uuid
+});
+const OrgInviteParams = object({
+	id: Uuid,
+	invite: Uuid
+});
+const OrgDomainParams = object({
+	id: Uuid,
+	domain: Uuid
+});
+const OrgJoinParams = object({
+	id: Uuid,
+	request: Uuid
+});
+const RowVersioned = object({ expectedRowVersion: number$1().int().min(0) });
+const IdentityRoutes = {
+	startGithubSignIn: route({
+		method: "POST",
+		path: "/v1/auth/github/start",
+		auth: "public",
+		idempotent: false,
+		params: None,
+		query: None,
+		body: GithubSignInStartBody,
+		response: GithubSignInStartResponse,
+		errors: [
+			"VALIDATION_FAILED",
+			"RATE_LIMITED",
+			"UPSTREAM_GITHUB"
+		],
+		summary: "Starts GitHub sign-in (device flow for desktop, cli, mobile; web flow for web, web_app), bound to a pollSecret (S-2)."
+	}),
+	pollGithubSignIn: route({
+		method: "POST",
+		path: "/v1/auth/github/poll",
+		auth: "public",
+		idempotent: false,
+		params: None,
+		query: None,
+		body: GithubSignInPollBody,
+		response: discriminatedUnion("status", [
+			object({ status: literal("pending") }),
+			object({ status: literal("denied") }),
+			object({ status: literal("expired") }),
+			object({
+				status: literal("email_proof_required"),
+				emailMasked: string()
+			}),
+			object({
+				status: literal("signed_in"),
+				accessToken: string(),
+				accessExpiresAt: Timestamp,
+				refreshToken: string(),
+				refreshExpiresAt: Timestamp,
+				deviceId: Uuid.nullable(),
+				created: boolean(),
+				me: Me,
+				csrfToken: string().min(16).optional()
+			})
+		]),
+		errors: [
+			"UNAUTHENTICATED",
+			"GITHUB_RESERVED",
+			"GITHUB_EMAIL_UNVERIFIED",
+			"FORBIDDEN",
+			"RATE_LIMITED",
+			"UPSTREAM_GITHUB"
+		],
+		summary: "Completes GitHub sign-in with the starting client's pollSecret: signs in, creates the account, or asks for proof of the matching email (never auto-merges)."
+	}),
+	createInvite: route({
+		method: "POST",
+		path: "/v1/orgs/:id/invites",
+		auth: "account",
+		idempotent: true,
+		params: IdParams,
+		query: None,
+		body: object({
+			email: email().max(254),
+			role: OrgRole
+		}),
+		response: OrgInvite,
+		errors: [
+			"NOT_FOUND",
+			"FORBIDDEN",
+			"CONFLICT",
+			"QUOTA_EXCEEDED",
+			"RATE_LIMITED",
+			"VALIDATION_FAILED"
+		],
+		summary: "Owners and admins invite by email with a role (only owners invite owners); 7 days; emails a link to wOS Web."
+	}),
+	listInvites: route({
+		method: "GET",
+		path: "/v1/orgs/:id/invites",
+		auth: "account",
+		idempotent: false,
+		params: IdParams,
+		query: None,
+		body: None,
+		response: object({ items: array(OrgInvite) }),
+		errors: ["NOT_FOUND", "FORBIDDEN"],
+		summary: "The organization's invites (owners and admins)."
+	}),
+	revokeInvite: route({
+		method: "POST",
+		path: "/v1/orgs/:id/invites/:invite/revoke",
+		auth: "account",
+		idempotent: true,
+		params: OrgInviteParams,
+		query: None,
+		body: RowVersioned,
+		response: OrgInvite,
+		errors: [
+			"NOT_FOUND",
+			"FORBIDDEN",
+			"CONFLICT"
+		],
+		summary: "OrgInviteMachine revoke."
+	}),
+	listMyInvites: route({
+		method: "GET",
+		path: "/v1/me/invites",
+		auth: "account",
+		idempotent: false,
+		params: None,
+		query: None,
+		body: None,
+		response: object({ items: array(OrgInvite.extend({ organization: OrganizationView.omit({ role: true }) })) }),
+		errors: [],
+		summary: "Pending invites to the caller's email."
+	}),
+	respondToInvite: route({
+		method: "POST",
+		path: "/v1/me/invites/:id",
+		auth: "account",
+		idempotent: true,
+		params: IdParams,
+		query: None,
+		body: object({ decision: _enum(["accept", "decline"]) }),
+		response: OrgInvite,
+		errors: [
+			"NOT_FOUND",
+			"CONFLICT",
+			"INVITE_EMAIL_MISMATCH",
+			"QUOTA_EXCEEDED"
+		],
+		summary: "Accept (creates the membership in the same transaction) or decline; the account's email must equal the invite's."
+	}),
+	listMembers: route({
+		method: "GET",
+		path: "/v1/orgs/:id/members",
+		auth: "account",
+		idempotent: false,
+		params: IdParams,
+		query: None,
+		body: None,
+		response: object({ items: array(OrgMemberView) }),
+		errors: ["NOT_FOUND", "FORBIDDEN"],
+		summary: "Members of an organization (members only)."
+	}),
+	changeMemberRole: route({
+		method: "POST",
+		path: "/v1/orgs/:id/members/:account/role",
+		auth: "account",
+		idempotent: true,
+		params: OrgMemberParams,
+		query: None,
+		body: RowVersioned.extend({ role: OrgRole }),
+		response: OrgMemberView,
+		errors: [
+			"NOT_FOUND",
+			"FORBIDDEN",
+			"CONFLICT",
+			"LAST_OWNER"
+		],
+		summary: "Owners change any role; admins change member <-> admin (memberActionRefusals)."
+	}),
+	removeMember: route({
+		method: "POST",
+		path: "/v1/orgs/:id/members/:account/remove",
+		auth: "account",
+		idempotent: true,
+		params: OrgMemberParams,
+		query: None,
+		body: RowVersioned,
+		response: Ok,
+		errors: [
+			"NOT_FOUND",
+			"FORBIDDEN",
+			"CONFLICT",
+			"LAST_OWNER"
+		],
+		summary: "Owners remove anyone, admins remove members; data is kept; a domain auto-join exclusion is recorded."
+	}),
+	leaveOrganization: route({
+		method: "POST",
+		path: "/v1/orgs/:id/leave",
+		auth: "account",
+		idempotent: true,
+		params: IdParams,
+		query: None,
+		body: None,
+		response: Ok,
+		errors: [
+			"NOT_FOUND",
+			"FORBIDDEN",
+			"LAST_OWNER"
+		],
+		summary: "The caller leaves; the last owner cannot; a domain auto-join exclusion is recorded."
+	}),
+	addDomain: route({
+		method: "POST",
+		path: "/v1/orgs/:id/domains",
+		auth: "account",
+		idempotent: true,
+		params: IdParams,
+		query: None,
+		body: object({
+			domain: DomainName,
+			joinPolicy: JoinPolicy
+		}),
+		response: OrgDomain,
+		errors: [
+			"NOT_FOUND",
+			"FORBIDDEN",
+			"PUBLIC_EMAIL_DOMAIN",
+			"DOMAIN_CLAIMED",
+			"QUOTA_EXCEEDED",
+			"VALIDATION_FAILED"
+		],
+		summary: "Owners add a domain to verify by DNS TXT (domainVerificationRecord)."
+	}),
+	listDomains: route({
+		method: "GET",
+		path: "/v1/orgs/:id/domains",
+		auth: "account",
+		idempotent: false,
+		params: IdParams,
+		query: None,
+		body: None,
+		response: object({ items: array(OrgDomain) }),
+		errors: ["NOT_FOUND", "FORBIDDEN"],
+		summary: "The organization's domains with their TXT records and state (owners and admins)."
+	}),
+	verifyDomain: route({
+		method: "POST",
+		path: "/v1/orgs/:id/domains/:domain/verify",
+		auth: "account",
+		idempotent: true,
+		params: OrgDomainParams,
+		query: None,
+		body: None,
+		response: OrgDomain,
+		errors: [
+			"NOT_FOUND",
+			"FORBIDDEN",
+			"DOMAIN_CLAIMED",
+			"RATE_LIMITED"
+		],
+		summary: "Checks the TXT record now (also checked by the cron); the first organization to verify a domain owns it."
+	}),
+	updateDomain: route({
+		method: "POST",
+		path: "/v1/orgs/:id/domains/:domain",
+		auth: "account",
+		idempotent: true,
+		params: OrgDomainParams,
+		query: None,
+		body: RowVersioned.extend({
+			joinPolicy: JoinPolicy.optional(),
+			remove: literal(true).optional()
+		}),
+		response: OrgDomain,
+		errors: [
+			"NOT_FOUND",
+			"FORBIDDEN",
+			"CONFLICT"
+		],
+		summary: "Owners set the join policy or remove the domain."
+	}),
+	listJoinableOrganizations: route({
+		method: "GET",
+		path: "/v1/me/joinable-orgs",
+		auth: "account",
+		idempotent: false,
+		params: None,
+		query: None,
+		body: None,
+		response: object({ items: array(OrganizationView.omit({ role: true }).extend({ domain: DomainName })) }),
+		errors: [],
+		summary: "Organizations whose verified domain matches the caller's email with join policy request (domainJoinOutcome)."
+	}),
+	requestToJoin: route({
+		method: "POST",
+		path: "/v1/me/joinable-orgs/:id/request",
+		auth: "account",
+		idempotent: true,
+		params: IdParams,
+		query: None,
+		body: None,
+		response: OrgJoinRequest,
+		errors: [
+			"NOT_FOUND",
+			"FORBIDDEN",
+			"CONFLICT",
+			"RATE_LIMITED"
+		],
+		summary: "Asks to join an organization the caller may request."
+	}),
+	decideJoinRequest: route({
+		method: "POST",
+		path: "/v1/orgs/:id/join-requests/:request",
+		auth: "account",
+		idempotent: true,
+		params: OrgJoinParams,
+		query: None,
+		body: RowVersioned.extend({ decision: _enum(["approve", "deny"]) }),
+		response: OrgJoinRequest,
+		errors: [
+			"NOT_FOUND",
+			"FORBIDDEN",
+			"CONFLICT",
+			"QUOTA_EXCEEDED"
+		],
+		summary: "Owners and admins approve (membership as member) or deny."
+	}),
+	getAppPermissions: route({
+		method: "GET",
+		path: "/v1/orgs/:id/apps/:app/permissions",
+		auth: "account",
+		idempotent: false,
+		params: object({
+			id: Uuid,
+			app: AppId
+		}),
+		query: None,
+		body: None,
+		response: object({
+			overrides: array(PermissionOverride),
+			effective: object({
+				owner: array(string()),
+				admin: array(string()),
+				member: array(string())
+			})
+		}),
+		errors: ["NOT_FOUND", "FORBIDDEN"],
+		summary: "The manifest's grants, the organization's overrides and the effective grants per role (effectiveGrants)."
+	}),
+	setAppPermissions: route({
+		method: "POST",
+		path: "/v1/orgs/:id/apps/:app/permissions",
+		auth: "account",
+		idempotent: true,
+		params: object({
+			id: Uuid,
+			app: AppId
+		}),
+		query: None,
+		body: object({
+			overrides: array(PermissionOverride).max(200),
+			expectedRowVersion: number$1().int().min(0).nullable()
+		}),
+		response: object({ overrides: array(PermissionOverride) }),
+		errors: [
+			"NOT_FOUND",
+			"FORBIDDEN",
+			"CONFLICT",
+			"VALIDATION_FAILED"
+		],
+		summary: "Owners and admins replace the overrides; undeclared permissions are refused; core.* stays with owners."
+	}),
+	getSsoConnection: route({
+		method: "GET",
+		path: "/v1/orgs/:id/sso",
+		auth: "account",
+		idempotent: false,
+		params: IdParams,
+		query: None,
+		body: None,
+		response: object({ items: array(OrgSsoConnection) }),
+		errors: [
+			"NOT_FOUND",
+			"FORBIDDEN",
+			"MODULE_DORMANT"
+		],
+		summary: "DORMANT (D50): SSO connections of an organization."
+	}),
+	createScimToken: route({
+		method: "POST",
+		path: "/v1/orgs/:id/scim/tokens",
+		auth: "account",
+		idempotent: false,
+		params: IdParams,
+		query: None,
+		body: None,
+		response: ScimToken.extend({ token: string().min(32) }),
+		errors: [
+			"NOT_FOUND",
+			"FORBIDDEN",
+			"MODULE_DORMANT"
+		],
+		summary: "DORMANT (D50): a SCIM bearer token, shown once."
+	}),
+	requestAuditExport: route({
+		method: "POST",
+		path: "/v1/orgs/:id/audit-exports",
+		auth: "account",
+		idempotent: true,
+		params: IdParams,
+		query: None,
+		body: object({
+			from: Timestamp,
+			to: Timestamp
+		}),
+		response: AuditExportRequest,
+		errors: [
+			"NOT_FOUND",
+			"FORBIDDEN",
+			"MODULE_DORMANT",
+			"VALIDATION_FAILED"
+		],
+		summary: "DORMANT (D50): a JSONL export of the organization's audit events."
 	})
 };
 
@@ -11347,11 +12199,104 @@ var bugs_policy_v1_default = {
 };
 
 //#endregion
+//#region packages/contracts/dist/data/identity-policy.v1.json
+var identity_policy_v1_default = {
+	schema: "wos-identity-policy.v1",
+	rateLimits: {
+		"perAccount": {
+			"requestsPerMinute": 600,
+			"signInStartsPerHour": 10,
+			"invitesPerHour": 30
+		},
+		"perOrg": { "requestsPerMinute": 3e3 },
+		"perIp": { "signInStartsPerHour": 30 }
+	},
+	plans: { "free": {
+		"membersPerOrg": 25,
+		"pendingInvitesPerOrg": 50,
+		"verifiedDomainsPerOrg": 5,
+		"teamOrgsOwnedPerAccount": 10,
+		"invitesPerDayPerOrg": 100
+	} },
+	abuse: {
+		"newOrgInviteCap": {
+			"hours": 24,
+			"invites": 10
+		},
+		"removedMemberReinviteCooldownHours": 24,
+		"disposableDomains": [
+			"mailinator.com",
+			"guerrillamail.com",
+			"10minutemail.com",
+			"temp-mail.org",
+			"yopmail.com",
+			"trashmail.com"
+		]
+	},
+	domains: {
+		"publicEmailDomains": [
+			"gmail.com",
+			"googlemail.com",
+			"outlook.com",
+			"hotmail.com",
+			"live.com",
+			"msn.com",
+			"yahoo.com",
+			"ymail.com",
+			"icloud.com",
+			"me.com",
+			"mac.com",
+			"aol.com",
+			"proton.me",
+			"protonmail.com",
+			"pm.me",
+			"gmx.com",
+			"gmx.de",
+			"web.de",
+			"mail.com",
+			"zoho.com",
+			"yandex.com",
+			"yandex.ru",
+			"mail.ru",
+			"qq.com",
+			"163.com",
+			"126.com",
+			"fastmail.com",
+			"hey.com",
+			"tutanota.com",
+			"tuta.io"
+		],
+		"verifyWindowDays": 7,
+		"recheckHours": 24,
+		"lapseAfterFailingDays": 7
+	},
+	invites: { "ttlDays": 7 },
+	modules: {
+		"sso": {
+			"status": "dormant",
+			"trigger": "a paying enterprise customer's signed order that requires SSO (D50); activated by a public AdminAction",
+			"activatedBy": null
+		},
+		"scim": {
+			"status": "dormant",
+			"trigger": "a paying enterprise customer's signed order that requires SCIM provisioning (D50); activated by a public AdminAction",
+			"activatedBy": null
+		},
+		"audit_export": {
+			"status": "dormant",
+			"trigger": "a paying enterprise customer's signed order that requires audit export (D50); activated by a public AdminAction",
+			"activatedBy": null
+		}
+	}
+};
+
+//#endregion
 //#region packages/contracts/dist/data.js
 const AGENT_POLICY_V1 = AgentPolicyDocument.parse(agent_policy_v1_default);
 const REWARD_SCHEDULE_V1 = RewardSchedule.parse(reward_schedule_v1_default);
 const ARCHITECTURE_POLICY_V1 = ArchitecturePolicy.parse(architecture_policy_v1_default);
 const BUGS_POLICY_V1 = BugsPolicy.parse(bugs_policy_v1_default);
+const IDENTITY_POLICY_V1 = IdentityPolicy.parse(identity_policy_v1_default);
 
 //#endregion
 //#region packages/contracts/dist/canonical.js

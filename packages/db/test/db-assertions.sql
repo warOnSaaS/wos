@@ -445,6 +445,55 @@ begin
 end $$;
 reset role;
 
+-- ---- 0012 identity and organizations (Amendment 04, contracts 5.12.0) -------------------------------
+insert into wos.memberships (organization_id, account_id, role, via)
+select id, '00000000-0000-0000-0000-00000000000b', 'admin', 'invite' from wos.organizations where slug = 'acme';
+do $$ begin
+  if (select plan from wos.organizations where slug = 'acme') <> 'free' then raise exception 'every organization starts on plan free'; end if;
+end $$;
+select wos_test.expect_error($$insert into wos.org_invites (organization_id, email_normalized, role, invited_by, expires_at)
+  select id, 'x@example.com', 'member', '00000000-0000-0000-0000-00000000000a', now() + interval '7 days'
+    from wos.organizations where personal_account_id = '00000000-0000-0000-0000-00000000000a'$$, 'an invite to a personal organization', 'personal');
+insert into wos.org_invites (organization_id, email_normalized, role, invited_by, expires_at)
+select id, 'new@acme.test', 'member', '00000000-0000-0000-0000-00000000000a', now() + interval '7 days' from wos.organizations where slug = 'acme';
+select wos_test.expect_error($$insert into wos.org_invites (organization_id, email_normalized, role, invited_by, expires_at)
+  select id, 'new@acme.test', 'admin', '00000000-0000-0000-0000-00000000000a', now() + interval '7 days' from wos.organizations where slug = 'acme'$$,
+  'a second pending invite to one address', 'org_invites_one_pending');
+select wos_test.expect_error($$insert into wos.org_invites (organization_id, email_normalized, role, invited_by, expires_at)
+  select id, 'late@acme.test', 'member', '00000000-0000-0000-0000-00000000000a', now() + interval '8 days' from wos.organizations where slug = 'acme'$$,
+  'an invite longer than 7 days');
+insert into wos.org_domains (organization_id, domain, token_hash, state, verified_at)
+select id, 'acme.test', '\x01', 'verified', now() from wos.organizations where slug = 'acme';
+do $$
+declare other uuid := gen_random_uuid();
+begin
+  insert into wos.organizations (id, slug, name, kind) values (other, 'rival', 'Rival', 'team');
+  insert into wos.memberships (organization_id, account_id, role) values (other, '00000000-0000-0000-0000-00000000000b', 'owner');
+  begin
+    insert into wos.org_domains (organization_id, domain, token_hash, state, verified_at) values (other, 'acme.test', '\x02', 'verified', now());
+    raise exception 'a domain was verified by two organizations';
+  exception when unique_violation then null;
+  end;
+  raise notice 'ok: 0012 plan free, invites team-only and one pending per address, a domain verified by one organization';
+end $$;
+set role wos_app;
+select set_config('wos.actor_kind', 'contributor', false);
+select set_config('wos.actor_id', '00000000-0000-0000-0000-00000000000b', false);
+select wos_test.expect_error($$update wos.memberships set role = 'owner' where account_id = '00000000-0000-0000-0000-00000000000b'
+  and organization_id = (select id from wos.organizations where slug = 'acme')$$, 'an admin making an owner (itself)', 'admins do not manage owners');
+select wos_test.expect_error($$update wos.memberships set via = 'scim' where account_id = '00000000-0000-0000-0000-00000000000a'
+  and organization_id = (select id from wos.organizations where slug = 'acme')$$, 'an admin changing an owner''s membership', 'admins do not manage owners');
+delete from wos.memberships where account_id = '00000000-0000-0000-0000-00000000000b'
+  and organization_id = (select id from wos.organizations where slug = 'acme');
+do $$ begin
+  if exists (select 1 from wos.memberships m join wos.organizations o on o.id = m.organization_id
+              where o.slug = 'acme' and m.account_id = '00000000-0000-0000-0000-00000000000b') then
+    raise exception 'an admin could not leave';
+  end if;
+  raise notice 'ok: 0012 admins never manage owners; anyone may leave';
+end $$;
+reset role;
+
 -- ============================================================================================
 -- 0007 (DRAFT v5, D51 engine-first) Proof of Contribution — the HARD INVARIANTS kept in SQL (migration section I).
 -- Every Astra review 02/03 repro and D49 rule is rejected either here (label names the repro) or by the rule the service

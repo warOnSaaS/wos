@@ -12,7 +12,7 @@
  * Every persisted record that embeds a contract shape (context manifests, events, ledger
  * entries, provenance) also stores the contracts version it was written under.
  */
-export const CONTRACTS_VERSION = "5.11.0" as const;
+export const CONTRACTS_VERSION = "5.12.0" as const;
 
 /** Version of the deterministic context format. Bumped by the context-engine owner via blocker. */
 export const CONTEXT_FORMAT_VERSION = "ctx-1" as const;

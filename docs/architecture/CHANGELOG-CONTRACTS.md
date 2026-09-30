@@ -346,3 +346,39 @@ MINOR, additive, plus production migration 0011.
 - Regenerated: the product template's vendored contracts, goldens.
 
 Affected workstreams: control-plane, mobile-runtime, suite-shell (vendored contracts).
+
+## 5.12.0 — 2026-09-30 (Amendment 04: identity and organizations, D65; D64 order)
+
+MINOR, additive, plus production migration 0012.
+- New module `identity.ts`:
+  - GitHub sign-in: `GithubSignInStartBody` / `Response`, `GithubSignInPollBody`, `resolveGithubSignIn` (never merges), `githubSignInFlowFor`, `GITHUB_SIGNIN_LANDING`;
+  - invites and members: `OrgInvite`, `OrgMemberView`, `memberActionRefusals`;
+  - domains and joining: `OrgDomain`, `DomainName`, `JoinPolicy`, `domainVerificationRecord`, `isBlockedDomain`, `emailDomain`, `domainJoinOutcome`, `OrgJoinRequest`;
+  - permissions: `PermissionOverride`, `effectiveGrants`;
+  - policy: `IdentityPolicy`, `quotaRefusal`;
+  - dormant: `OrgSsoConnection`, `ScimToken`, `AuditExportRequest`, `AUDIT_EVENT_TYPES`, `DormantModuleName`.
+- `IdentityRoutes` in `api.ts` (23 routes; the three enterprise routes answer `MODULE_DORMANT`).
+- `ApiErrorCode` gains `GITHUB_EMAIL_UNVERIFIED`, `LAST_OWNER`, `DOMAIN_CLAIMED`, `PUBLIC_EMAIL_DOMAIN`, `INVITE_EMAIL_MISMATCH`, `QUOTA_EXCEEDED` and `MODULE_DORMANT`. The control plane's `HTTP_STATUS` maps them.
+- `EnvironmentTokenClaims.permissions` (optional).
+- State machines `OrgInviteMachine`, `OrgDomainMachine`, `OrgJoinRequestMachine`.
+- Events `organization.invite_changed`, `organization.domain_changed`, `organization.join_request_changed`, `organization.permission_override_changed`, `account.github_signed_in` (all private).
+- Policy data `identity-policy.v1.json` (`IDENTITY_POLICY_V1`):
+  - rate limits;
+  - plan `free` quotas (members 25, pending invites 50, verified domains 5, team organizations owned 10, invites per day 100);
+  - abuse guards;
+  - public and disposable domains;
+  - SSO, SCIM and audit export dormant.
+- Migration `0012_identity_and_organizations.sql` (**production**):
+  - new tables `github_signin_requests`, `org_invites`, `org_domains`, `org_join_requests`, `org_join_exclusions`, `org_app_permissions`;
+  - new columns `organizations.plan` and `memberships.via`;
+  - trigger `memberships_rules_actor`;
+  - RLS;
+  - db assertions.
+- Docs:
+  - `docs/AMENDMENT-04-IDENTITY-AND-ORGANIZATIONS.md`;
+  - DECISIONS D64, D65;
+  - SECURITY S-44..S-46;
+  - WORKSTREAMS 17;
+  - AGENTS.md "Next" (D64).
+
+Affected workstreams: control-plane, suite-shell, desktop, cli, mobile-runtime, web, verification (section 17).

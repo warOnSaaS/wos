@@ -467,6 +467,14 @@ export const EnvironmentTokenClaims = z.object({
   role: OrgRole,
   /** Active app ids for this org at issue time: core, enabled apps and the modules they require. */
   apps: z.array(AppId),
+  /**
+   * contracts 5.12.0 (Amendment 04 section 5): the permission keys granted to the subject in the active apps, after the
+   * organization's overrides (`effectiveGrants`). Absent: hosted Core uses the manifests' default grants.
+   */
+  permissions: z
+    .array(z.string().regex(/^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9_]*){1,3}$/))
+    .max(500)
+    .optional(),
   iat: z.number().int(),
   exp: z.number().int(),
 });

@@ -5,6 +5,8 @@ import { AgentPolicyDocument } from "./agent-policy.js";
 import bugsJson from "./data/bugs-policy.v1.json" with { type: "json" };
 import { ArchitecturePolicy } from "./architecture.js";
 import { BugsPolicy } from "./bugs.js";
+import identityJson from "./data/identity-policy.v1.json" with { type: "json" };
+import { IdentityPolicy } from "./identity.js";
 import { RewardSchedule } from "./rewards.js";
 
 /** The V1 Agent Policy document, parsed (throws at import if the data file is invalid). */
@@ -18,3 +20,6 @@ export const ARCHITECTURE_POLICY_V1: ArchitecturePolicy = ArchitecturePolicy.par
 
 /** D61 (contracts 5.7.0): severity boosts in build next, critical-bug holds, triage and regression rules. */
 export const BUGS_POLICY_V1: BugsPolicy = BugsPolicy.parse(bugsJson);
+
+/** Amendment 04 (contracts 5.12.0): rate limits, plan quotas, abuse guards, domain rules, dormant enterprise modules. */
+export const IDENTITY_POLICY_V1: IdentityPolicy = IdentityPolicy.parse(identityJson);

@@ -474,3 +474,17 @@ Additive. The D60 hold is now `WorkHoldMachine` (`work_hold`); `ArchitectureHold
   - a workstream may add the dependencies its own app declares;
   - the template lockfile may only gain packages, never change or remove existing ones, outside an integration gate;
   - anything shared by two apps, anything native beyond Expo's managed modules, and any change to an existing version is a blocker.
+
+## 17. Amendment 04 identity and organizations: who builds what (contracts 5.12.0, migration 0012)
+
+The architect wrote the contracts, the migration and the rulings; the workstreams implement. Order: control-plane first (its routes are the interface), then the clients in parallel. Everything is additive; no Wave 3a interface changed. The new `ApiErrorCode` members are mapped in the control plane's `HTTP_STATUS`.
+
+| Workstream | Implements | Uses |
+|---|---|---|
+| control-plane | `IdentityRoutes` (GitHub sign-in with `resolveGithubSignIn` and the email proof; invites and `OrgInviteMachine`; members with `memberActionRefusals`; domains with the DNS TXT check in a cron, `OrgDomainMachine`, `isBlockedDomain`, the lapse rule; join requests; `domainJoinOutcome` at every sign-in, recording `org_join_exclusions` on leave or remove; permission overrides with `effectiveGrants`, the `permissions` claim in environment tokens); rate limits and quotas from `IDENTITY_POLICY_V1` (`QUOTA_EXCEEDED`, `Retry-After`); dormant routes answering `MODULE_DORMANT`; the five new events. Tests per route with the harness, including the never-merge cases. | `identity.ts`, `IdentityRoutes`, `IDENTITY_POLICY_V1`, migration 0012 |
+| suite-shell (wOS Web and Core) | wOS Web: "Sign in with GitHub" (web_app, landing `/sign-in/github`), invites page `/invites/<id>`, organization settings (members, invites, domains with the TXT record, join requests, app permissions). Core: the `permissions` claim when present; self-hosted Core's one organization with invites and member management over `/v1/core/org/...` (their contracts come from the architect when you start) and `WOS_ALLOWED_EMAIL_DOMAINS`. | `IdentityRoutes`, `effectiveGrants`, `GITHUB_SIGNIN_LANDING` |
+| desktop | "Sign in with GitHub" (device flow); Your organizations: invites to accept or decline, leave; members and roles for owners and admins. | `IdentityRoutes.startGithubSignIn`, `pollGithubSignIn`, `listMyInvites`, `respondToInvite`, `leaveOrganization`, `listMembers`, `changeMemberRole`, `removeMember` |
+| cli | `wos login --github` (device flow), `wos orgs invites`, `wos orgs invite <org> <email> --role`, `wos orgs members`, `wos orgs leave`. | the same routes |
+| mobile-runtime | "Sign in with GitHub" (device flow, clientKind mobile); pending invites; leave. Tokens in expo-secure-store (S-4). | `startGithubSignIn`, `pollGithubSignIn`, `listMyInvites`, `respondToInvite`, `leaveOrganization` |
+| web (public site) | `/auth/github` landing for clientKind web (cookie pollSecret, S-5); "Sign in with GitHub" beside the email code (copy is a founder decision, amendment section 10). | `startGithubSignIn`, `pollGithubSignIn` |
+| verification | adversarial tests: an unverified GitHub email never links; a forwarded invite fails for another account; a domain claimed twice; an admin managing owners; rate limits and quotas. | S-44..S-46 |

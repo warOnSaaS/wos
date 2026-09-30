@@ -121,6 +121,28 @@ export const DomainEventBody = z.discriminatedUnion("type", [
   // One product (Amendment 01, contracts 5.0.0). Organization data is private; the registry is public.
   e("organization.created", "private", { organizationId: Uuid, kind: OrganizationKind, ownerAccountId: Uuid }),
   e("organization.member_changed", "private", { organizationId: Uuid, accountId: Uuid, role: OrgRole.nullable() }),
+  // Amendment 04 (contracts 5.12.0). Private: they carry organization structure, never an email address.
+  e("organization.invite_changed", "private", {
+    organizationId: Uuid,
+    inviteId: Uuid,
+    role: OrgRole,
+    state: z.enum(["pending", "accepted", "declined", "revoked", "expired"]),
+  }),
+  e("organization.domain_changed", "private", {
+    organizationId: Uuid,
+    domainId: Uuid,
+    domain: z.string(),
+    state: z.enum(["pending", "verified", "failed", "lapsed", "removed"]),
+    joinPolicy: z.enum(["off", "request", "auto_join"]),
+  }),
+  e("organization.join_request_changed", "private", {
+    organizationId: Uuid,
+    requestId: Uuid,
+    accountId: Uuid,
+    state: z.enum(["pending", "approved", "denied", "withdrawn"]),
+  }),
+  e("organization.permission_override_changed", "private", { organizationId: Uuid, app: AppId, overrides: z.number().int().min(0) }),
+  e("account.github_signed_in", "private", { accountId: Uuid, created: z.boolean(), linked: z.boolean() }),
   // D60 (contracts 5.5.0): architecture records. The impact is computed by computeArchitectureImpact, never an agent.
   e("architecture.impact_computed", "public", {
     documentId: Uuid,
