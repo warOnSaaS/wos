@@ -44,6 +44,7 @@ import {
   readSession,
   SESSION_KEY,
   type StoredSession,
+  sessionAccessToken,
   signAgentRunWithDevice,
   signChangesetWithDevice,
   writeSession,
@@ -116,14 +117,8 @@ export class OrchestratorImpl {
   // ------------------------------------------------------------------------------ session
 
   private async accessToken(): Promise<string | null> {
-    const s = await readSession(this.deps.secrets);
-    if (!s) return null;
-    if (Date.parse(s.accessExpiresAt) - 60_000 > this.now().getTime()) return s.accessToken;
-    if (Date.parse(s.refreshExpiresAt) <= this.now().getTime()) return null;
-    const r = await this.api.call("refreshSession", { body: { refreshToken: s.refreshToken } });
-    const next: StoredSession = { ...s, ...r };
-    await writeSession(this.deps.secrets, next);
-    return next.accessToken;
+    // Shared single-flight refresh (session.ts): other readers of the same SecretStore never race this one.
+    return sessionAccessToken(this.deps.secrets, (refreshToken) => this.api.call("refreshSession", { body: { refreshToken } }), this.now);
   }
 
   private async session(): Promise<StoredSession> {

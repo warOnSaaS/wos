@@ -12,7 +12,15 @@ import { OrchestratorImpl } from "./orchestrator.js";
 
 export { ApiCallError, createApiClient } from "./api-client.js";
 export { createNodeProcessRunner } from "./process-runner.js";
-export { idempotencyKey } from "./session.js";
+export {
+  createSessionReader,
+  idempotencyKey,
+  type RefreshedTokens,
+  SESSION_KEY,
+  type SessionReader,
+  type StoredSession,
+  sessionAccessToken,
+} from "./session.js";
 
 /** Where the session lives: OS keychain (Electron safeStorage in Desktop, @napi-rs/keyring in CLI). */
 export interface SecretStore {

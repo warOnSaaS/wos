@@ -39,6 +39,81 @@ export async function writeSession(secrets: SecretStore, s: StoredSession): Prom
   await secrets.set(SESSION_KEY, JSON.stringify(s));
 }
 
+/** Refreshes this long before the access token expires. */
+export const SESSION_REFRESH_MARGIN_MS = 60_000;
+
+/** The tokens `refreshSession` returns (Routes.refreshSession.response). */
+export interface RefreshedTokens {
+  accessToken: string;
+  accessExpiresAt: string;
+  refreshToken: string;
+  refreshExpiresAt: string;
+}
+
+/**
+ * One refresh at a time per SecretStore, shared by every reader in the process. The control plane rotates refresh
+ * tokens and revokes the whole session family when a rotated token is presented again (S-4), so two uncoordinated
+ * refreshers (the orchestrator and Desktop's app-shell client, say) would sign the user out.
+ */
+const inflight = new WeakMap<SecretStore, Promise<string | null>>();
+
+/**
+ * The current access token, refreshed a minute before expiry; null when signed out or the refresh token expired.
+ * This is the orchestrator's own rule, exported so clients that call routes the `Orchestrator` interface does not
+ * cover (AppRoutes: organizations, apps, environment tokens) share the session instead of reading the keychain entry
+ * by name. `refresh` calls `refreshSession`; `now` is the clock.
+ */
+export async function sessionAccessToken(
+  secrets: SecretStore,
+  refresh: (refreshToken: string) => Promise<RefreshedTokens>,
+  now: () => Date = () => new Date(),
+): Promise<string | null> {
+  const s = await readSession(secrets);
+  if (!s) return null;
+  const t = now().getTime();
+  if (Date.parse(s.accessExpiresAt) - SESSION_REFRESH_MARGIN_MS > t) return s.accessToken;
+  if (Date.parse(s.refreshExpiresAt) <= t) return null;
+  const running = inflight.get(secrets);
+  if (running) return running;
+  const p = (async () => {
+    // Re-read inside the flight: another reader may have refreshed between our read and now.
+    const cur = (await readSession(secrets)) ?? s;
+    if (Date.parse(cur.accessExpiresAt) - SESSION_REFRESH_MARGIN_MS > now().getTime()) return cur.accessToken;
+    const r = await refresh(cur.refreshToken);
+    const next: StoredSession = { ...cur, ...r };
+    await writeSession(secrets, next);
+    return next.accessToken;
+  })();
+  inflight.set(secrets, p);
+  try {
+    return await p;
+  } finally {
+    if (inflight.get(secrets) === p) inflight.delete(secrets);
+  }
+}
+
+/**
+ * A reader over the orchestrator's session for clients outside the `Orchestrator` interface (Desktop's app shell;
+ * the CLI's `wos apps` can switch to it). It never writes a session except through the shared refresh above.
+ */
+export interface SessionReader {
+  /** The stored session (device id and expiries), or null when signed out. Never shown to a renderer. */
+  read(): Promise<StoredSession | null>;
+  /** A valid access token, refreshed through the shared single flight, or null when signed out. */
+  accessToken(): Promise<string | null>;
+}
+
+export function createSessionReader(opts: {
+  secrets: SecretStore;
+  refresh: (refreshToken: string) => Promise<RefreshedTokens>;
+  now?: () => Date;
+}): SessionReader {
+  return {
+    read: () => readSession(opts.secrets),
+    accessToken: () => sessionAccessToken(opts.secrets, opts.refresh, opts.now),
+  };
+}
+
 /** Ed25519 device key (PKCS#8 PEM in the keychain), created on first use. Public key in the C-5 wire format. */
 export async function deviceKey(secrets: SecretStore): Promise<{ privateKey: KeyObject; publicKeyBase64: string }> {
   let pem = await secrets.get(DEVICE_KEY);
