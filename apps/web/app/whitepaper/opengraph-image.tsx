@@ -14,7 +14,7 @@ export default async function Image() {
       mark={await markDataUrl()}
       kicker="WHITE PAPER"
       title="Budget-based Proof of Contribution"
-      subtitle="An open execution layer for business software. For agents to evaluate."
+      subtitle="Written for your AI agent: download it, hand it over, get a critical evaluation."
       rows={[
         { label: "VERSION", value: wp.version },
         { label: "STATUS", value: "LIVING" },

@@ -6,7 +6,7 @@
  * Allowed exceptions:
  *   - lowercase in URLs, the domain, the npm scope and route slugs (waronsaas.com, @waronsaas/cli, /targets/waronsaas)
  *   - "WOS" only in "WOS token(s)" (required legal wording)
- *   - on the white paper only (whitepaper.html and the /whitepaper.md body), "WOS" alone, because the
+ *   - on the white paper only (whitepaper.html, the /whitepaper.md and /whitepaper/download bodies), "WOS" alone, because the
  *     paper defines it once as the token's working symbol and uses it as a symbol ("100 WOS per ACU").
  *     Exactly "WOS": mis-cased forms (Wos, wos, WoS) still fail there.
  *   - "wos" only as the CLI command (wos build|login|…, "the wos command"), the Postgres schema ("wos Postgres")
@@ -75,7 +75,7 @@ function context(text, i) {
 }
 
 // Pages where "WOS" is the defined token symbol (see the header comment).
-const TOKEN_SYMBOL_PAGES = new Set(["whitepaper.html", "whitepaper.md.body"]);
+const TOKEN_SYMBOL_PAGES = new Set(["whitepaper.html", "whitepaper.md.body", "whitepaper/download.body"]);
 
 for (const f of pages) {
   const raw = readFileSync(f, "utf8");

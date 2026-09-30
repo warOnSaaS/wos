@@ -4,7 +4,7 @@
 
 | File | What it is |
 |---|---|
-| `WHITEPAPER.md` | The current version (Markdown). Rendered at https://waronsaas.com/whitepaper and served raw for agents at https://waronsaas.com/whitepaper.md |
+| `WHITEPAPER.md` | The current version (Markdown), written for AI agents. https://waronsaas.com/whitepaper is a handoff page (download, prompt, open in an agent) with the full text collapsed below; https://waronsaas.com/whitepaper.md serves it inline for browsing agents; https://waronsaas.com/whitepaper/download serves it as `warOnSaaS-white-paper-v<version>.md`. |
 | `WHITEPAPER-v0.1-original.txt` | The founder's v0.1, verbatim. Never edited; kept for history. |
 
 ## How the website gets it
@@ -30,3 +30,7 @@ A human merges the pull request. The agent never invents evidence: every figure 
 - `warOnSaaS` and `wOS` always; `WOS` only for the token; lowercase only inside URLs and identifiers.
 - Never promise token value, returns or dates.
 - Keep the agent instructions and the report format framed as requests, not commands.
+
+## The handoff prompt
+
+The prompt on /whitepaper lives in `apps/web/lib/whitepaper.ts` (`HANDOFF_PROMPT`, and a one-line `HANDOFF_PROMPT_SHORT` for the llms files). Keep its eight points in step with the paper's instructions to the evaluating agent. Only chat links whose pre-fill was verified in a browser may carry the prompt (today: ChatGPT `?q=`); others open the chat and the user pastes.

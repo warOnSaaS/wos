@@ -863,3 +863,84 @@ footer {
 .wp a {
   overflow-wrap: anywhere;
 }
+
+/* White paper handoff block (/whitepaper): the page is for handing the paper to an agent. */
+.handoff > * + * {
+  margin-top: 1.5rem;
+}
+.handoff-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
+  gap: 0.75rem;
+  padding-top: 1rem;
+  border-top: 2px solid var(--rule-strong);
+}
+.cmd--big {
+  display: block;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--fg);
+  color: var(--fg);
+  font-size: clamp(0.9375rem, 2.2vw, 1.0625rem);
+  text-align: center;
+}
+.cmd--big:hover {
+  background: var(--fg);
+  color: var(--bg);
+  text-decoration: none;
+}
+button.cmd {
+  font: inherit;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  background: transparent;
+  cursor: pointer;
+}
+.cmd[hidden] {
+  display: none;
+}
+.prompt {
+  display: block;
+  width: 100%;
+  max-width: var(--measure);
+  font: inherit;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--fg);
+  background: var(--cell);
+  border: 1px solid var(--rule);
+  padding: 1rem;
+  resize: vertical;
+}
+.handoff > .label {
+  display: block;
+}
+.steps {
+  max-width: var(--measure);
+}
+.steps li {
+  display: grid;
+  grid-template-columns: 2.5rem minmax(0, 1fr);
+  padding: 0.6rem 0;
+  border-top: 1px solid var(--rule);
+}
+.steps__n {
+  font-family: var(--font-head), var(--font-mono), monospace;
+  font-weight: 700;
+  color: var(--fg);
+}
+.fulltext > summary {
+  cursor: pointer;
+  font-family: var(--font-head), var(--font-mono), monospace;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--fg);
+  padding: 1rem 0;
+  border-top: 2px solid var(--rule-strong);
+  border-bottom: 1px solid var(--rule);
+}
+.fulltext[open] > summary {
+  margin-bottom: 2.5rem;
+}
+.fulltext .brief {
+  padding: 0;
+}

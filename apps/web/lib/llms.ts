@@ -5,12 +5,12 @@ import { formatPercent, getTarget, listTargets, ROADMAP_SOURCE, SURFACE_LABEL, s
 import { programme, roadmapState, roadmapStatus, roadmapTitle, targetStatus, targets } from "@/data/targets";
 import { ABOUT, FAQ, OBJECTIVE, PROGRESS_METRICS, ROE, STEPS, SUITE, TOKENS } from "./content";
 import { abs } from "./seo";
-import { WHITEPAPER_HISTORY_URL, lastUpdatedDay, whitepaper } from "./whitepaper";
+import { HANDOFF_PROMPT_SHORT, WHITEPAPER_HISTORY_URL, lastUpdatedDay, whitepaper } from "./whitepaper";
 import { CLI, DOWNLOADS, LINKS, PREREQUISITES, SIGN_IN, SITE_DESCRIPTION, SITE_NAME, TAGLINE } from "./site";
 
 const pages = [
   { path: "/", title: "Home", about: "What warOnSaaS is, the Sniper List with live progress, how it works, WOS tokens, download and FAQ." },
-  { path: "/whitepaper", title: "White paper", about: "The living white paper, written for agents to evaluate: budget-based Proof of Contribution, one open wOS product, what exists today. Plain Markdown: " + abs("/whitepaper.md") + "." },
+  { path: "/whitepaper", title: "White paper (for agents)", about: "The living white paper, written for AI agents to evaluate critically. Read the plain Markdown at " + abs("/whitepaper.md") + ". Prompt: " + HANDOFF_PROMPT_SHORT },
   { path: "/briefing", title: "Briefing", about: "The whole idea and how every part works: PR types, Feature Catalog, progress, leases, review, gated PRs, tokens, sign-in, models." },
   { path: "/targets/waronsaas", title: "TGT-00 warOnSaaS builds itself", about: "The proposed wOS V1 feature list in roadmap format, with honest status." },
   { path: "/how-it-works", title: "How it works", about: "The seven steps from public roadmap to merged code, and how progress is measured." },
@@ -66,7 +66,7 @@ export async function llmsTxt(): Promise<string> {
     "## Optional",
     "",
     `- [Full site text](${abs("/llms-full.txt")}): every page's copy in one markdown file.`,
-    `- [White paper, Markdown](${abs("/whitepaper.md")}): the full white paper (v${whitepaper().version}) in one file.`,
+    `- [White paper, Markdown](${abs("/whitepaper.md")}): the full white paper (v${whitepaper().version}) in one file, written for agents. ${HANDOFF_PROMPT_SHORT}`,
     `- [Sitemap](${abs("/sitemap.xml")})`,
     `- [GitHub](${LINKS.repo})`,
     "",
@@ -124,7 +124,9 @@ export async function llmsFullTxt(): Promise<string> {
   const wp = whitepaper();
   push(`## White paper (${abs("/whitepaper")})`, "");
   push(
-    `Version ${wp.version}, a living document${lastUpdatedDay ? `, last updated ${lastUpdatedDay} (from git)` : ""}. It is written for agents to evaluate critically, not to promote the project. Its full text is not repeated here: read it as one Markdown file at ${abs("/whitepaper.md")} (about ${Math.round(wp.words / 1000)} thousand words). History: ${WHITEPAPER_HISTORY_URL}`,
+    `Version ${wp.version}, a living document${lastUpdatedDay ? `, last updated ${lastUpdatedDay} (from git)` : ""}. It is written for AI agents to evaluate critically, not to promote the project. Its full text is not repeated here: read it as one Markdown file at ${abs("/whitepaper.md")} (about ${Math.round(wp.words / 1000)} thousand words). History: ${WHITEPAPER_HISTORY_URL}`,
+    "",
+    `Prompt for an agent: ${HANDOFF_PROMPT_SHORT}`,
     "",
     "Contents: " + wp.sections.map((s) => (s.n ? `${Number(s.n)}. ${s.title}` : s.title)).join("; ") + ".",
     "",

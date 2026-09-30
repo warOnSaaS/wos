@@ -1,9 +1,33 @@
 {
   "ref": "main",
-  "head": "725b7e53c221067fcd82a7ab7d43ea50e95506e3",
+  "head": "ff75b960394e9a68c14efd9b3ded0c889af51120",
   "complete": true,
-  "count": 52,
+  "count": 55,
   "commits": [
+    {
+      "sha": "ff75b960394e9a68c14efd9b3ded0c889af51120",
+      "short": "ff75b96",
+      "date": "2026-09-30T02:22:32-04:00",
+      "day": "2026-09-30",
+      "subject": "Site sync keeps the white paper living",
+      "url": "https://github.com/warOnSaaS/wos/commit/ff75b960394e9a68c14efd9b3ded0c889af51120"
+    },
+    {
+      "sha": "749f9b83025d6aca9e8548b4a50da759a7226721",
+      "short": "749f9b8",
+      "date": "2026-09-30T02:22:32-04:00",
+      "day": "2026-09-30",
+      "subject": "Website: /whitepaper renders the living white paper",
+      "url": "https://github.com/warOnSaaS/wos/commit/749f9b83025d6aca9e8548b4a50da759a7226721"
+    },
+    {
+      "sha": "d36c4f1d2deafae6d420824cad4b3a53978abf50",
+      "short": "d36c4f1",
+      "date": "2026-09-30T02:18:12-04:00",
+      "day": "2026-09-30",
+      "subject": "White paper v0.2: living document, budget-based Proof of Contribution, evidence inventory",
+      "url": "https://github.com/warOnSaaS/wos/commit/d36c4f1d2deafae6d420824cad4b3a53978abf50"
+    },
     {
       "sha": "725b7e53c221067fcd82a7ab7d43ea50e95506e3",
       "short": "725b7e5",
