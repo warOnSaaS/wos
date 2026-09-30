@@ -315,7 +315,55 @@ These override `docs/V1-SPEC.md` where they differ. Date: 2026-09-29.
 - **Input facts.** They come from `docs/scans/<target>.md`, section "Getting data out", on main since the `ws/scans` merge.
 - Protocol text: ROADMAP-PROTOCOL.md "Migration: getting customers off the target (D59)".
 
+## D60. Architecture changes: affected work is held and reprioritised, everything else keeps building
+- Founder (2026-09-30): the product must stay flexible. When an architecture change happens, the affected work is held and reprioritised, and everything else keeps building.
+- **Architecture records.** A cross-cutting change (shared core, auth, data layer, API conventions, UI shell) is an architecture record, `architecture/ADR-nnn.yaml` in the product repo (`ArchitectureRecord`, contracts 5.5.0).
+  - It declares the elements it introduces, changes or retires as stable keys (`arch:auth-session`, `arch:data-layer`, ...), and the paths each element governs.
+  - Its migration plan is its own build graph (`architecture/ADR-nnn/BUILD-GRAPH.yaml`, ABUs `adr-nnn#NN`).
+  - It goes through the same Astra/Fable round loop as a contract, with at most 4 rounds, and needs a maintainer's explicit sign-off before merge.
+  - Elements are defined ONLY by architecture records. ADR-000 records the core as it exists when the product repo is seeded; contracts rely on elements and never define them.
+- **Dependencies are declared.**
+  - ABUs declare the elements they rely on as `arch:` resources: `shared` = relies on it, `exclusive` = changes it. Only a record's migration ABUs may claim exclusive.
+  - Feature contracts list the elements they rely on (`FeatureContract.architecture`).
+  - Writing under an element's paths without declaring it, and an unknown element, are validation errors.
+- **Impact is computed, not judged.** When a record opens, and again when it merges, `computeArchitectureImpact` lists what relies on the changed elements: contracts, unstarted ABUs (held), in-progress ABUs and their live attempts (finishing), their queued tasks, merged ABUs (the migration must cover them) and the dependents blocked behind held ABUs. It is published on the PR and as `architecture.impact_computed`.
+- **HELD.**
+  - Holds start when the record merges. The impact published at open is advisory, so an unmerged proposal cannot freeze work.
+  - An unstarted affected ABU is held (`ArchitectureHoldMachine`, an overlay; the ABU, attempt and task machines are unchanged). Self-pick and build next do not offer it.
+  - Dependents of held ABUs are not held themselves: they cannot start until the held ABU merges, and the impact lists them.
+  - In-flight attempts finish. Their review is never paused.
+    - Before the record merges, review is against the architecture the attempt was leased under, with the record in context as information; non-conformance with an unmerged record is not a material finding.
+    - After it merges, remaining rounds review against the new architecture, and the fixes are ordinary revision rounds.
+  - Submitted work keeps its protocol protection.
+  - Budgets of held unstarted tasks are released as cancelled and reissued when the hold ends. The builder carries no penalty or reputation mark, and the reissue keeps the unit's original place in the ranking (protocol delta, below).
+  - Holds end when the migration graph has fully merged, or when the record is abandoned. Each held ABU is then re-validated: released unchanged, or superseded when a newer contract version does not carry it over (FEATURE-CONTRACT section 5).
+- **Priority.** While a record is migrating, its migration ABUs get a published build-next boost (`architecture-policy.v1` `migrationBoost`). Held work returns in its prior order.
+- **Rare by design.** Core and conventions get their own record first. Features are modules that talk only through declared APIs and resources. ARCHITECTURE.md section 15 says what is an architecture change and what is local.
+- **Protocol impact:** small and additive (build-next boost and hold filter, ranking continuity on reissue, a release label). It is written as a note for the protocol architect in `docs/architecture/D60-PROTOCOL-DELTA.md`; `ws/protocol` is not edited.
+
+## D61. Bugs and maintenance (founder decision, 2026-09-30): the planning and build side
+- Founder: bugs and maintenance are first-class work. The protocol architect designs the economy side (task types, budgets, outcomes) on `ws/protocol`; this side is contracts 5.7.0 (`packages/contracts/src/bugs.ts`). The two meet only through the records here; the note for the protocol is `docs/architecture/D61-PROTOCOL-NOTES.md`.
+- **Intake.** `wos bug` (CLI and Desktop) files a `BugReport` (`wos-bug-report.v1`) through the wOS GitHub App as a GitHub Issue in waronsaas/product, labelled `wos:bug` (D9). The issue body carries the report as one fenced `wos-bug-report` block. Reproduction steps are required; a failing test is optional but encouraged. The bug's id is `BUG-<issue number>`.
+- **Triage.** A `bug_triage` task, done by an agent or a maintainer, outputs a `TriageDecision` (`wos-triage-decision.v1`):
+  - whether it reproduced, and where;
+  - the severity (low, medium, high or critical);
+  - duplicates;
+  - the mapping through the scope paths: catalog feature, contract version, requirements, divergent ABUs and files;
+  - the outcome: `fix`, `contract_revision`, `duplicate`, `not_reproducible`, `not_a_bug` or `wont_fix` (maintainer only).
+
+  Its canonical hash is what the protocol binds the reward to.
+- **Fix units.** When the code diverges from a merged contract, a fix ABU (`AbuSpec.fix`: bug and regression test) is created directly at the current merged contract version, with no version bump.
+  - `planning.validateFixUnit` enforces the rules: writes only inside `modules/<feature>/**` and `features/<feature>/acceptance/**`; restores requirements of the merged contract; the regression test is at `<profile acceptance dir>/regressions/BUG-<n>.*`; no architectural element changes.
+  - CI proves red then green: check `wos-regression/<feature>/BUG-<n>`, `redGreenRefusals`. The regression test fails on the parent commit and passes on the head.
+  - Normal review and merge queue.
+  - When the contract itself is wrong, a contract revision opens instead.
+- **Sweeps.** Scheduled or maintainer-opened `bug_sweep` tasks (`BugSweep`) run acceptance journeys across surfaces (the web browser matrix, iOS, Android) and explore. Their output (`SweepOutput`) is bug reports only: no write scope, and every failed journey is reported.
+- **Priority and holds.**
+  - Severity boosts are published policy data (`bugs-policy.v1`): low 0, medium 150, high 1000, critical 200000. A critical fix outranks an architecture migration (100000).
+  - A critical bug whose outcome is fix or contract_revision HOLDS the unstarted new feature ABUs of its feature until the fix merges (`computeBugHolds`, the D60 overlay, now `WorkHoldMachine` with an architecture or bug source). The fix and every other feature keep building. A maintainer confirms critical severity before holds open.
+- **The regression suite grows.** Every fix's regression test stays in that feature's acceptance suite for good. Removing one needs a contract revision.
+
 ## D62. Protocol v1 frozen for devnet/shadow implementation (founder decision, 2026-09-30)
 - Astra review 08 (docs/protocol/reviews/ASTRA-REVIEW-08-protocol-design.md) returned FREEZE AFTER THE LISTED CHANGES; R08-1 (allocation challenges for every live-countable receipt) and R08-2 (submission admission fails closed; expiry instant pinned at issuance) are fixed with the regressions it listed (REVIEW-PACKET §3k). **Proof of Contribution protocol v1 — the V1-ACTIVE modules of PROTOCOL §13 with their contracts, rules, engine and migration 0007 — is FROZEN for devnet and shadow implementation.**
 - Frozen means: implementation builds against it (WORKSTREAMS-PROTOCOL waves); every later change is a VERSIONED ADDITION (a new D-decision, a contracts version, a migration after 0007) with its own narrow Astra review. It does not authorize mainnet, an ICO, value-bearing tokens, activating a dormant module (each needs its G-98 preconditions and a public AdminAction), or applying migration 0007 to production.
-- Contracts: the protocol entry point `@waronsaas/contracts/protocol` leaves "draft" as **frozen protocol v1** and ships in contracts **5.5.0 (MINOR: an additive subpath export; nothing in the existing contracts changes)**. The MAJOR 6.0.0 described in WORKSTREAMS-PROTOCOL §1 (TaskKind/AgentRole additions, api.ts routes, TOKEN_DISCLAIMER replacement) remains the P0 wiring step and is not part of this freeze.
+- Contracts: the protocol entry point `@waronsaas/contracts/protocol` leaves "draft" as **frozen protocol v1** and ships in contracts **5.8.0 (MINOR: an additive subpath export; nothing in the existing contracts changes)**. The MAJOR 6.0.0 described in WORKSTREAMS-PROTOCOL §1 (TaskKind/AgentRole additions, api.ts routes, TOKEN_DISCLAIMER replacement) remains the P0 wiring step and is not part of this freeze.

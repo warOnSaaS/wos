@@ -7,6 +7,7 @@
  */
 import {
   type AbuSpec,
+  type ArchElement,
   type AgentPolicyDocument,
   ARTIFACT_PATHS,
   type BuildGraph,
@@ -45,6 +46,14 @@ export interface BuildGraphContext {
   repositories: ReadonlyMap<string, RepositoryFamily>;
   contractRepo: string;
   surfacesInScope?: ReadonlyMap<string, readonly Surface[]>;
+  /**
+   * D60 (contracts 5.5.0): the live architectural elements (`architectureRegistry` of the merged records). When
+   * given, the ARCH_* rules run; callers that do not pass it (everything before the control plane serves D60) are
+   * unaffected.
+   */
+  architecture?: ReadonlyMap<string, ArchElement>;
+  /** Set when the graph is an architecture record's migration graph (feature `adr-nnn`): the record's changed elements. */
+  architectureChanges?: ReadonlySet<string>;
 }
 export type RepositoryFamily = "platform" | "product";
 
@@ -250,9 +259,57 @@ export function validateBuildGraph(
       !holds(a, "db:migrations", "exclusive")
     )
       add("MIGRATION_WITHOUT_RESOURCE", a.key, `${a.key} can write under ${repo.migrationsDir}; it must claim db:migrations exclusive`);
+    // contracts 5.6.0 (B-0003-suite-shell): per-app migrations need that app's db:migrations:<id>.
+    if (repo.appMigrationsDir) {
+      const [pre, post] = repo.appMigrationsDir.split("/*/") as [string, string];
+      for (const s of a.scope.write) {
+        const b = fold(baseOf(s));
+        const tree = s.endsWith("/**");
+        const m = new RegExp(`^${pre.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/([^/]+)(/.*)?$`).exec(b);
+        if (m) {
+          const rest = (m[2] ?? "").slice(1);
+          const touches = rest === post || rest.startsWith(`${post}/`) || (tree && (rest === "" || post.startsWith(`${rest}/`)));
+          if (touches && !holds(a, `db:migrations:${m[1]}`, "exclusive"))
+            add(
+              "MIGRATION_WITHOUT_RESOURCE",
+              a.key,
+              `${a.key} can write ${m[1]}'s migrations; it must claim db:migrations:${m[1]} exclusive`,
+            );
+        } else if (tree && (b === pre || pre.startsWith(`${b}/`)) && !holds(a, "db:migrations", "exclusive"))
+          add("MIGRATION_WITHOUT_RESOURCE", a.key, `${a.key} can write every app's migrations; it must claim db:migrations exclusive`);
+      }
+    }
     for (const t of a.acceptance.tests)
       if (!a.scope.write.some((s) => inScope(t, s)))
         add("TEST_OUTSIDE_SCOPE", a.key, `${a.key} acceptance test ${t} is outside its write scope`);
+  }
+
+  // --- architectural elements (D60) ---
+  const archRegistry = context?.architecture;
+  if (archRegistry) {
+    const declared = new Set(contract.architecture ?? []);
+    for (const k of declared)
+      if (!archRegistry.has(k))
+        add("ARCH_ELEMENT_UNKNOWN", null, `CONTRACT.yaml relies on ${k}, which no merged architecture record defines`);
+    for (const a of abus) {
+      for (const r of a.resources.filter((x) => x.key.startsWith("arch:"))) {
+        if (!archRegistry.has(r.key) && !context?.architectureChanges?.has(r.key))
+          add("ARCH_ELEMENT_UNKNOWN", a.key, `${a.key} declares ${r.key}, which no merged architecture record defines`);
+        else if (r.mode === "exclusive" && !context?.architectureChanges?.has(r.key))
+          add(
+            "ARCH_CHANGE_OUTSIDE_RECORD",
+            a.key,
+            `${a.key} claims ${r.key} exclusive; only an architecture record's migration ABUs change an element`,
+          );
+        if (!context?.architectureChanges && !declared.has(r.key))
+          add("ARCH_NOT_IN_CONTRACT", a.key, `${a.key} relies on ${r.key}; list it in the contract's architecture`);
+      }
+      for (const el of archRegistry.values()) {
+        if (holds(a, el.key)) continue;
+        const touches = a.scope.write.some((s) => el.paths.some((p) => foldedOverlap(s, p)));
+        if (touches) add("ARCH_PATH_WITHOUT_RESOURCE", a.key, `${a.key} can write paths governed by ${el.key}; it must declare ${el.key}`);
+      }
+    }
   }
 
   // --- context budget ---

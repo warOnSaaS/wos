@@ -31,7 +31,7 @@ echo "re-apply 0000_meta.sql (must be idempotent)"
 
 echo "assertions"
 "${PSQL[@]}" < "$HERE/test/db-assertions.sql"
-echo "D61 bug assertions (0009)"
+echo "0009 assertions (D61, D60 delta, D63)"
 "${PSQL[@]}" < "$HERE/test/bugs-assertions.sql"
 echo "concurrency"
 bash "$HERE/test/concurrency.sh" "$NAME" "$DB"

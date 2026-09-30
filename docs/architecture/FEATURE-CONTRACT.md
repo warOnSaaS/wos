@@ -149,6 +149,28 @@ Changing a shared contract affects every app that references it.
 
 "Carried over unchanged" means same key, same `objective`, `requirements`, `scope`, `resources`, `acceptance`, `sizePoints` and `dependsOn` (deep equality of the `AbuSpec`).
 
+### Architecture elements and holds (D60, contracts 5.5.0)
+
+- A contract lists the architectural elements it relies on (`architecture: [arch:...]`). Its ABUs declare each one they rely on as a `shared` resource `arch:<name>`, and must declare any element whose governed paths their write scope can touch. Only an architecture record's migration ABUs claim an element `exclusive`. Validator codes: `ARCH_ELEMENT_UNKNOWN`, `ARCH_PATH_WITHOUT_RESOURCE`, `ARCH_CHANGE_OUTSIDE_RECORD`, `ARCH_NOT_IN_CONTRACT`.
+- When an architecture record that changes an element merges, the unstarted ABUs relying on it are held until the record's migration graph has merged. The hold then ends through the rules of this section:
+  - no newer contract version: the ABU is released unchanged;
+  - a newer version carries the ABU over unchanged: released;
+  - otherwise: superseded.
+- A contract revision opened to follow a record is an ordinary new version with `impactedTargets`.
+
+### Fix units and regressions (D61, contracts 5.7.0)
+
+- **When code diverges from a merged contract**, triage creates a fix unit: an ABU with `fix: { bug, regressionTest }`, added to the feature at the current merged version with no version bump. `planning.validateFixUnit` rules:
+  - `FIX_SCOPE_OUTSIDE_FEATURE`: writes only inside `modules/<feature>/**` and `features/<feature>/acceptance/**`;
+  - `FIX_REQUIREMENT_UNKNOWN`: it restores requirements of the merged contract;
+  - `FIX_REGRESSION_TEST_OUTSIDE_ACCEPTANCE`: the regression test is at `<profile acceptance dir>/regressions/BUG-<n>.<ext>`;
+  - `FIX_REGRESSION_TEST_NOT_DECLARED`: the test is in its scope and `acceptance.tests`;
+  - `FIX_CHANGES_ARCHITECTURE`: no exclusive `arch:` claim;
+  - `FIX_KEY_NOT_IN_FEATURE`, `FIX_NOT_MARKED`.
+- **Red then green.** The fix PR's check `wos-regression/<feature>/BUG-<n>` runs the regression test on the parent commit (it must fail, for itself) and on the head (it must pass). Evidence: `RedGreenEvidence`, `redGreenRefusals`.
+- **Regressions are permanent.** A regression test lives in the acceptance dir, so it runs with the feature's acceptance on every surface check from then on. Removing or weakening it needs a new contract version.
+- **When the contract itself is wrong**, the triage outcome is `contract_revision`: an ordinary new version (section 5), whose ABUs carry the bug's regression test.
+
 ## 6. Duplicates and the alias procedure
 
 Prevention: the catalog is in every roadmap author's and reviewer's context. "This duplicates catalog feature F" is a material finding at roadmap review and at contract review.

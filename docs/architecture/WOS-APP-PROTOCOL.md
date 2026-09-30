@@ -164,7 +164,7 @@ A self-hosted environment can mirror packages anywhere. The pinned key makes the
   - Verifiers allow 60 s of clock skew and check that `aud` is their environment id.
   - `signEnvironmentToken` and `verifyEnvironmentToken` in `@waronsaas/contracts/canonical` are the only implementation.
   - Hosted Core takes the token as `Authorization: Bearer <token>` on every `CoreRoutes` call. A self-hosted Core takes its own local session token the same way.
-- **Auth: `local`.** The self-hosted Core's own sign-in: an email link through the operator's SMTP. Accounts, organizations and memberships live in that Core.
+- **Auth: `local`.** The self-hosted Core's own sign-in: an email code through the operator's SMTP (`CoreRoutes.localSignInStart` / `localSignInRedeem` / `logout`, contracts 5.6.0); the redeemed token is the Bearer on that Core. Accounts, organizations and memberships live in that Core.
 - **Auth: `oidc`.** The operator's identity provider. Core maps the subject to its own users.
 - **Self-hosted activation.** The operator's configuration decides what is active: `WOS_APPS=crm,chat` or Core's admin screen. `ActiveApps.source` is `self_host_config`. A self-hosted Core never calls wOS Cloud to decide what may run; network access to wOS Cloud is optional and only for registry lookups and package downloads.
 - **Build is not an environment feature.** Build always talks to `https://api.waronsaas.com` with the wOS account, whatever environment the business apps use. A contributor can use a self-hosted CRM and contribute to warOnSaaS at the same time.

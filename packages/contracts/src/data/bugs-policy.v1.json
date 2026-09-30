@@ -1,0 +1,7 @@
+{
+  "schema": "wos-bugs-policy.v1",
+  "severityBoost": { "low": 0, "medium": 150, "high": 1000, "critical": 200000 },
+  "criticalHoldsFeature": true,
+  "triage": { "requiresReproduction": true, "maintainerConfirmsCritical": true },
+  "regressions": { "dir": "regressions", "removableOnlyByContractRevision": true }
+}

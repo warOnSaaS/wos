@@ -345,6 +345,25 @@ end $$;
 select wos_test.expect_error($$update wos.app_releases set state = 'published', yanked_at = null, yank_reason = null where app_id = 'crm'$$,
   'un-yanking a release', 'illegal release transition');
 
+-- 0008 (B-0007-control-plane): Build's release lists desktop with no package; nobody else may; the bundle hash
+-- goes with a package and is immutable.
+insert into wos.app_releases (app_id, version, manifest, manifest_sha256, surfaces, source_repo, source_tag, source_commit)
+values ('build', '0.1.0', '{}', 'sha256:' || repeat('a', 64), array['desktop'], 'waronsaas/wos', 'build@0.1.0', repeat('c', 40));
+select wos_test.expect_error($$insert into wos.app_releases (app_id, version, manifest, manifest_sha256, surfaces, source_repo, source_tag, source_commit)
+  values ('crm', '0.4.0', '{}', 'sha256:' || repeat('a', 64), array['desktop'], 'waronsaas/product', 'crm@0.4.0', repeat('b', 40))$$,
+  'a non-Build desktop release without a package (0008)');
+select wos_test.expect_error($$insert into wos.app_releases (app_id, version, manifest, manifest_sha256, surfaces, source_repo, source_tag, source_commit, desktop_bundle_sha256)
+  values ('crm', '0.4.0', '{}', 'sha256:' || repeat('a', 64), array['web'], 'waronsaas/product', 'crm@0.4.0', repeat('b', 40), 'sha256:' || repeat('d', 64))$$,
+  'a bundle hash without a package (0008)');
+select wos_test.expect_error($$update wos.app_releases set desktop_bundle_sha256 = 'sha256:' || repeat('e', 64) where app_id = 'build'$$,
+  'editing a release''s bundle hash (0008)', 'immutable');
+do $$ begin
+  if (select current_version from wos.app_registry where app_id = 'build') is distinct from '0.1.0' then
+    raise exception 'Build''s release is current';
+  end if;
+  raise notice 'ok: 0008 Build release without a package; bundle hash with a package only, immutable';
+end $$;
+
 -- RLS: organizations and entitlements are visible to members only; the registry is public
 set role wos_app;
 select set_config('wos.actor_kind', 'contributor', false);

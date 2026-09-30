@@ -293,6 +293,25 @@ export interface TaskIssuance {
 export interface TaskAcceptance {
   taskId: string;
   shares: ReadonlyArray<{ accountId: string; beneficiaryId: string; shareBp: number }>;
+  /**
+   * D63 (versioned addition): how the task was claimed, pinned in the lease's RunPolicySnapshot. The reservation is
+   * always the QUEUE price (the budget-model output: base price + the queue bonus). When the bonus applies (a queue
+   * claim) the whole reservation is paid; otherwise (a self-picked claim, or a queue claim right after the
+   * contributor released an assigned task) the BASE price, queueBasePrice(reservation), is paid and the queue-bonus
+   * portion returns to R at acceptance. Absent = the frozen v1 behaviour (the whole reservation).
+   */
+  claim?: { mode: "queue" | "self_pick"; queueBonusBp: number; bonusApplies: boolean };
+}
+
+/**
+ * D63: the BASE price of a task whose queue price (reservation) is `queuePrice`: floor(queuePrice x 10000 / (10000 +
+ * queueBonusBp)). Rounding rule: the base is floored in base units, so the queue bonus returned to R on a self-picked
+ * acceptance is queuePrice - base (never negative, at most one unit above the exact bonus share).
+ */
+export function queueBasePrice(queuePrice: bigint, queueBonusBp: number): bigint {
+  if (!Number.isInteger(queueBonusBp) || queueBonusBp < 0 || queueBonusBp > 10_000)
+    throw new EngineError(`queue bonus ${queueBonusBp} bp is outside 0..10000`);
+  return (queuePrice * BP) / (BP + BigInt(queueBonusBp));
 }
 
 export interface PoolPayout {
@@ -435,6 +454,8 @@ export interface EpochResult {
   unfunded: string[];
   /** Paid on acceptance this epoch (Q -> I), and released or expired (Q -> R). */
   acceptedBase: bigint;
+  /** D63: the queue-bonus portion of self-picked acceptances, returned to R (included in returnedToReserve). */
+  queueBonusReturnedBase: bigint;
   releasedBase: bigint;
   expired: string[];
   outcomesEmitted: bigint;
@@ -882,6 +903,7 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
   // 7. Acceptances (D49): Q -> gross, split by declared shares (largest remainder per task, exact); the task's
   //    ancillary reservation moves into its pools and the security reserve (B5). Only a LIVE reservation is paid (B4).
   let acceptedBase = 0n;
+  let queueBonusReturned = 0n;
   const accruals = new Map<string, bigint>();
   let securityAccrual = 0n;
   for (const a of input.acceptances ?? []) {
@@ -896,7 +918,13 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
     const accounts = a.shares.map((x) => x.accountId);
     if (new Set(accounts).size !== accounts.length) throw new EngineError(`duplicate share line in ${a.taskId} (one line per contributor)`);
     reserved.delete(a.taskId);
-    acceptedBase += res.amount;
+    // D63: without the queue bonus a task is paid its base price; the bonus portion of the reservation returns to R.
+    if (a.claim?.bonusApplies && a.claim.mode !== "queue") throw new EngineError(`${a.taskId}: only a queue claim earns the queue bonus`);
+    const paid = a.claim && !a.claim.bonusApplies ? queueBasePrice(res.amount, a.claim.queueBonusBp) : res.amount;
+    R += res.amount - paid;
+    returned += res.amount - paid;
+    queueBonusReturned += res.amount - paid;
+    acceptedBase += paid;
     for (const x of res.ancillary.pools) {
       pools.set(x.poolKey, (pools.get(x.poolKey) ?? 0n) + x.amount);
       accruals.set(x.poolKey, (accruals.get(x.poolKey) ?? 0n) + x.amount);
@@ -905,7 +933,7 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
     securityAccrual += res.ancillary.security;
     // R06-3: the one shared split (canonical key: the contributor's account id), as the allocation rule.
     const split = splitTaskReservation(
-      res.amount,
+      paid,
       a.shares.map((x) => ({ accountId: x.accountId, shareBp: x.shareBp })),
     );
     a.shares.forEach((x) => {
@@ -1157,6 +1185,7 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
     funded,
     unfunded,
     acceptedBase,
+    queueBonusReturnedBase: queueBonusReturned,
     releasedBase,
     expired,
     outcomesEmitted,

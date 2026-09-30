@@ -10,6 +10,7 @@
  */
 import { z } from "zod";
 import { ProviderId, ReasoningLevel } from "../agent-policy.js";
+import { BugId, BugSeverity, TriageOutcome } from "../bugs.js";
 import { AbuKey, FeatureKey, GitSha, RepoFullName, Sha256, TargetSlug, Timestamp, Uuid } from "../primitives.js";
 
 export const PROTOCOL_DRAFT_VERSION = "poc-draft.1" as const;
@@ -175,6 +176,15 @@ export const RunPolicySnapshot = z.object({
    */
   humanReviewRequired: z.boolean(),
   riskClass: z.string().min(1),
+  /**
+   * D63 (versioned addition): how the task was claimed — from the work-next queue or self-picked — the queue bonus,
+   * and whether it applies (a queue claim, unless the contributor's last assigned task was released by them), all
+   * PINNED at lease. The base price is always paid; the "+20% queue bonus" only when it applies. Absent in v1 = full.
+   */
+  claim: z
+    .object({ mode: z.enum(["queue", "self_pick"]), queueBonusBp: z.number().int().min(0).max(10_000), bonusApplies: z.boolean() })
+    .refine((c) => !c.bonusApplies || c.mode === "queue", "only a queue claim earns the queue bonus")
+    .optional(),
   issuedAt: Timestamp,
 });
 export type RunPolicySnapshot = z.infer<typeof RunPolicySnapshot>;
@@ -1573,31 +1583,44 @@ export type TaskBudget = z.infer<typeof TaskBudget>;
 
 // ------------------------------------------------------------------------------------------------ D61 bugs and maintenance
 
-export const BugSeverity = z.enum(["low", "medium", "high", "critical"]);
-export type BugSeverity = z.infer<typeof BugSeverity>;
-
 /**
- * D61: the triage DECISION of one bug — what "confirmed" binds to. One per bug (0009 `bug_triage_decisions`). It
- * names the first valid report (the only one that can be paid), duplicates point at the original bug, the severity, the
- * feature the bug maps to, and — when blame is established — the accepted receipt that introduced it; whether that
- * receipt was accepted within the revert-offset window (14 days) is DERIVED by the database from the two timestamps.
+ * D61 (economy side; versioned addition after the v1 freeze). The protocol binds to the planning side's records
+ * (contracts 5.7.0 `bugs.ts`: `BugId`, `BugSeverity`, `TriageOutcome`, `TriageDecision`, `RedGreenEvidence`), never to
+ * their prose. `BugTriageRecord` is what the database stores per bug (0009 `bug_triage_decisions`): the decision's
+ * canonical hash (the triage reward binds to it), its outcome and severity, the reporter the intake authenticated, and
+ * — when the mapping blames a merged receipt — the introducing receipt. The introducer and whether its receipt was
+ * accepted inside the pinned revert-offset window are DERIVED by the database, never supplied.
  */
-export const BugTriageDecision = z.object({
+export const BugTriageRecord = z.object({
   bugId: Uuid,
-  /** The commissioned triage task (a human_review budget) whose assigned reviewer decided. */
-  triageTaskId: Uuid,
-  /** The first valid report: its reporter (the only report that can be paid) and its reference (the issue). */
-  firstReporterAccountId: Uuid.nullable(),
-  firstReportRef: z.string().max(512).nullable(),
-  duplicateOfBugId: Uuid.nullable(),
-  outcome: z.enum(["confirmed", "rejected", "duplicate"]),
+  bugKey: BugId,
+  decisionSha256: Sha256,
+  outcome: TriageOutcome,
   severity: BugSeverity.nullable(),
-  featureKey: FeatureKey.nullable(),
+  duplicateOfBugKey: BugId.nullable(),
+  decidedBy: z.enum(["agent", "maintainer"]),
+  /** Agent triage is a commissioned bug_triage task under a lease (TriageDecision.decidedBy.taskId / leaseId). */
+  triageTaskId: Uuid.nullable(),
+  deciderAccountId: Uuid,
+  reporterAccountId: Uuid,
   introducingReceiptId: Uuid.nullable(),
-  /** DERIVED: the introducing receipt's account, and whether it was accepted within the pinned window of the decision. */
   introducerAccountId: Uuid.nullable(),
   introducedWithinOffsetWindow: z.boolean(),
-  decidedByAccountId: Uuid,
   decidedAt: Timestamp,
 });
-export type BugTriageDecision = z.infer<typeof BugTriageDecision>;
+export type BugTriageRecord = z.infer<typeof BugTriageRecord>;
+
+/**
+ * D61: a maintainer's confirmation of a triage decision (0009 `bug_triage_confirmations`, at most one of each kind per
+ * bug): `ratified` (confirms a not_reproducible / not_a_bug decision, or any decision early; the only way a critical
+ * severity becomes effective), `severity_corrected` (penalty-free: the triage is still paid, the corrected severity
+ * prices and ranks the fix), `resolved` (a contract_revision's revision merged).
+ */
+export const BugTriageConfirmation = z.object({
+  bugId: Uuid,
+  kind: z.enum(["ratified", "severity_corrected", "resolved"]),
+  correctedSeverity: BugSeverity.nullable(),
+  maintainerAccountId: Uuid,
+  at: Timestamp,
+});
+export type BugTriageConfirmation = z.infer<typeof BugTriageConfirmation>;

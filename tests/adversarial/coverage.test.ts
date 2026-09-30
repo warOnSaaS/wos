@@ -114,6 +114,10 @@ const COVERAGE: Record<string, { status: Status; where: string }> = {
   "S-40": { status: "none", where: "Wave 3: desktop IPC fuzz with Build off; control-plane claim without the build entitlement -> 403" },
   "S-41": { status: "none", where: "Wave 3: V1 proof step 8, self-hosted Core with no route to wOS Cloud" },
   "S-42": { status: "none", where: "Wave 3: release workflow refuses an unsigned Windows artefact; github/local on windows-latest" },
+  "S-43": {
+    status: "none",
+    where: "Wave 3a: control-plane web_app bodies and link host; suite-shell sealed pollSecret binding, no Domain cookies",
+  },
 };
 
 describe("security-hardening: every SECURITY.md control is mapped", () => {

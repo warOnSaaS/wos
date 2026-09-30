@@ -39,6 +39,7 @@ const ALL = [
   "0005_surfaces",
   "0006_one_product",
   "0007_proof_of_contribution",
+  "0008_build_release",
   "0009_bugs_and_maintenance",
 ];
 

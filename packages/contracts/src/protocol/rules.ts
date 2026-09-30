@@ -13,9 +13,12 @@
  * protocol-rules.test.ts); REVIEW-PACKET §3e maps each repro to its guard.
  */
 
+import { z } from "zod";
+import { type BugSeverity, type RedGreenEvidence, redGreenRefusals, type TriageOutcome, type WorkHoldSource } from "../bugs.js";
 import { canonicalSha256 } from "../canonical.js";
 import { splitTaskReservation } from "./engine.js";
-import { type ReceiptStatus, RunPolicySnapshot, receiptCountsIn } from "./entities.js";
+import { type BugTriageConfirmation, type BugTriageRecord, type ReceiptStatus, RunPolicySnapshot, receiptCountsIn } from "./entities.js";
+import type { AgentCapabilityPolicy, WorkKind } from "./policies.js";
 import { runPolicySnapshotSha256 } from "./receipts.js";
 
 const H = 3_600_000;
@@ -454,13 +457,24 @@ export function receiptRouteRefusals(x: {
     assignmentReviewerAccountId: string | null;
     sealed: boolean;
   } | null;
-  /** D61, BUG_TRIAGE: the triage decision this task produced (its decider and outcome). */
-  triage?: { decidedByAccountId: string; outcome: "confirmed" | "rejected" | "duplicate"; taskId: string | null } | null;
-  /** D61, BUG_FIX: the confirmed triage of the bug and the regression test's evidence (fails on base, passes on head). */
+  /**
+   * D61, BUG_TRIAGE: the stored triage record of the bug (decider, triage task, decision hash), the decision hash the
+   * receipt cites, and triageConfirmationRefusals for the record (a triage is paid only once its decision is confirmed).
+   */
+  triage?: {
+    record: Pick<BugTriageRecord, "deciderAccountId" | "triageTaskId" | "decisionSha256" | "decidedBy"> | null;
+    receiptDecisionSha256: string | null;
+    confirmationRefusals: readonly string[];
+  } | null;
+  /** D61, BUG_FIX: the bug's triage record and effective severity, the red-then-green evidence, and independence. */
   bugFix?: {
-    triageConfirmed: boolean;
-    regressionFailsOnBase: boolean;
-    regressionPassesOnHead: boolean;
+    outcome: TriageOutcome | null;
+    effectiveSeverity: BugSeverity | null;
+    budgetSeverity: BugSeverity | null;
+    redGreen: RedGreenEvidence | null;
+    /** The fixer (or a related account) triaged this bug: nobody both triages and fixes one bug. */
+    fixerTriagedIt: boolean;
+    /** The fixer (or a related account) introduced it within the revert-offset window. */
     fixerIsBarredIntroducer: boolean;
   } | null;
 }): string[] {
@@ -486,17 +500,24 @@ export function receiptRouteRefusals(x: {
       r.push("a HUMAN_REVIEW receipt needs this account's sealed human review under the task's own assignment");
   }
   if (x.contributionType === "BUG_TRIAGE") {
-    const t = x.triage;
-    if (!t || t.decidedByAccountId !== x.receiptAccountId || t.taskId !== x.taskId)
-      r.push("a BUG_TRIAGE receipt needs the triage decision this account recorded under the task");
+    const t = x.triage?.record;
+    if (!t || t.decidedBy !== "agent" || t.deciderAccountId !== x.receiptAccountId || t.triageTaskId !== x.taskId)
+      r.push("a BUG_TRIAGE receipt needs the triage decision this account made under the task's lease");
+    else if (x.triage?.receiptDecisionSha256 !== t.decisionSha256)
+      r.push("a BUG_TRIAGE receipt is bound to the recorded decision's canonical hash");
+    r.push(...(x.triage?.confirmationRefusals ?? []));
   }
   if (x.contributionType === "BUG_FIX") {
     const f = x.bugFix;
-    if (!f?.triageConfirmed) r.push("a BUG_FIX needs the bug's confirmed triage decision");
-    if (!f?.regressionFailsOnBase || !f.regressionPassesOnHead)
-      r.push("a BUG_FIX needs a regression test that fails on the base and passes on the head");
+    if (f?.outcome !== "fix") r.push("a BUG_FIX needs the bug's triage outcome fix");
+    if (!f?.effectiveSeverity) r.push("a BUG_FIX needs the bug's effective severity (a critical one is confirmed by a maintainer first)");
+    else if (f.budgetSeverity !== f.effectiveSeverity)
+      r.push(`the fix budget is priced at ${f.budgetSeverity ?? "no"} severity; the effective severity is ${f.effectiveSeverity}`);
+    if (!f?.redGreen) r.push("a BUG_FIX needs its red-then-green evidence");
+    else r.push(...redGreenRefusals(f.redGreen));
+    if (f?.fixerTriagedIt) r.push("nobody both triages and fixes one bug (the fixer or a related account triaged it)");
     if (f?.fixerIsBarredIntroducer)
-      r.push("the introducer (or a related account) does not fix a bug blamed on its receipt within the window");
+      r.push("the introducer (or a related account) does not fix a bug blamed on its receipt within the revert-offset window");
   }
   return r;
 }
@@ -515,8 +536,8 @@ export interface BudgetBasis {
   importanceBp: number;
   /** Human reviews only. */
   riskClass?: string;
-  /** D61: a bug-fix unit (an abu_build task) carries its CONFIRMED severity; the model is multiplied by it. */
-  severity?: "low" | "medium" | "high" | "critical";
+  /** D61: a fix unit (abu_build / abu_revision with AbuSpec.fix) carries its EFFECTIVE severity; the model is multiplied by it. */
+  severity?: BugSeverity;
 }
 export function budgetModelMicro(
   policy: {
@@ -524,7 +545,7 @@ export function budgetModelMicro(
     model: { difficultyBp: { min: number; max: number }; importanceBp: { min: number; max: number } };
     humanReviewWeights: Readonly<Record<string, string>>;
     /** D61: the bounded severity multipliers of fix units. */
-    bugs?: { severityFixBp: Readonly<Record<"low" | "medium" | "high" | "critical", number>>; maxSeverityFixBp: number };
+    bugs?: { severityFixBp: Readonly<Record<BugSeverity, number>>; maxSeverityFixBp: number };
   },
   basis: BudgetBasis,
 ): { modelMicro: bigint } | { refusal: string } {
@@ -547,7 +568,8 @@ export function budgetModelMicro(
   let modelMicro = (base * BigInt(basis.difficultyBp) * BigInt(basis.importanceBp)) / 100_000_000n;
   if (basis.severity !== undefined) {
     // D61: a fix is an ordinary abu_build budget times its confirmed severity (bounded), pinned with the budget.
-    if (basis.taskKind !== "abu_build") return { refusal: "only a bug-fix unit (abu_build) carries a severity" };
+    if (basis.taskKind !== "abu_build" && basis.taskKind !== "abu_revision")
+      return { refusal: "only a fix unit (abu_build or abu_revision) carries a severity" };
     const f = policy.bugs?.severityFixBp[basis.severity];
     if (f === undefined || f < 10_000 || f > (policy.bugs?.maxSeverityFixBp ?? 10_000))
       return { refusal: `severity ${basis.severity} has no bounded fix multiplier in the pinned policy` };
@@ -1546,14 +1568,6 @@ export interface NextUnitCandidate {
   proposerAccountId: string;
   requiredToolchains: readonly string[];
   budget: { released: boolean; expiresEpoch: number } | null;
-  /** D61: a bug-fix unit's confirmed severity (boost), and the accounts barred from it (the introducer within the window). */
-  severity?: "low" | "medium" | "high" | "critical";
-  barredAccountIds?: readonly string[];
-  /** D60 delta: held by an architecture record (not offered); a unit of a record's migration in progress (boosted). */
-  heldByArchitectureRecord?: string | null;
-  architectureMigration?: boolean;
-  /** D60 delta: the issue epoch of the unit's FIRST generation (follow reissueOf), so a hold never costs ranking. */
-  rootIssuedEpoch?: number;
 }
 
 export interface NextUnitContributor {
@@ -1589,9 +1603,6 @@ export function nextUnitEligibilityRefusals(
   if ((c.activeLeasesByProvider[c.provider] ?? 0) >= (c.leaseLimitByProvider[c.provider] ?? 1)) r.push(`no free ${c.provider} lease slot`);
   if (u.proposerAccountId === c.accountId || c.relatedAccountIds.includes(u.proposerAccountId))
     r.push("the contributor (or a related account) proposed this unit's budget");
-  if (u.heldByArchitectureRecord) r.push(`held by an architecture record (${u.heldByArchitectureRecord})`);
-  if ((u.barredAccountIds ?? []).some((a) => a === c.accountId || c.relatedAccountIds.includes(a)))
-    r.push("the introducer (or a related account) of a bug does not take its fix within the revert-offset window (D61)");
   r.push(...leaseBudgetRefusals({ rewardBearing: true, budget: u.budget, epochNumber }));
   if (c.remaining.budgetAcuMicro !== null && u.budgetAcuMicro > c.remaining.budgetAcuMicro)
     r.push("the unit exceeds the contributor's remaining ACU limit");
@@ -1630,16 +1641,10 @@ export function rankNextUnits(
     weights: { reuse: number; unlock: number; ageingPerEpoch: number };
     ageingCapEpochs: number;
     focus: ReadonlyArray<{ target: string; capabilityClass: string | null; priority: number }>;
-    /** D61 and the D60 delta (build-next-ranking.v2); absent in v1 data = 0. */
-    severityBoost?: Readonly<Record<"low" | "medium" | "high" | "critical", number>>;
-    architectureMigration?: number;
   },
   units: readonly NextUnitCandidate[],
   epochNumber: number,
-): Array<{
-  unitId: string;
-  score: { reuse: number; unlock: number; focus: number; ageing: number; severity: number; migration: number; total: number };
-}> {
+): Array<{ unitId: string; score: { reuse: number; unlock: number; focus: number; ageing: number; total: number } }> {
   return units
     .map((u) => {
       const reuse = policy.weights.reuse * u.targetsServed;
@@ -1647,14 +1652,8 @@ export function rankNextUnits(
       const focus = policy.focus
         .filter((f) => f.target === u.target && (f.capabilityClass === null || f.capabilityClass === u.requiredClass))
         .reduce((t, f) => t + f.priority, 0);
-      const since = u.rootIssuedEpoch ?? u.issuedEpoch;
-      const ageing = policy.weights.ageingPerEpoch * Math.min(Math.max(0, epochNumber - since), policy.ageingCapEpochs);
-      const severity = u.severity ? (policy.severityBoost?.[u.severity] ?? 0) : 0;
-      const migration = u.architectureMigration ? (policy.architectureMigration ?? 0) : 0;
-      return {
-        unitId: u.unitId,
-        score: { reuse, unlock, focus, ageing, severity, migration, total: reuse + unlock + focus + ageing + severity + migration },
-      };
+      const ageing = policy.weights.ageingPerEpoch * Math.min(Math.max(0, epochNumber - u.issuedEpoch), policy.ageingCapEpochs);
+      return { unitId: u.unitId, score: { reuse, unlock, focus, ageing, total: reuse + unlock + focus + ageing } };
     })
     .sort((a, b) => b.score.total - a.score.total || (a.unitId < b.unitId ? -1 : a.unitId > b.unitId ? 1 : 0));
 }
@@ -1864,40 +1863,320 @@ export function challengedAllocationPaymentRefusals(x: {
   return x.entitledSoFar + x.amount > x.decision.resultingAmount ? ["entitlements exceed the decided amount"] : [];
 }
 
-// ------------------------------------------------------------------------------------------------ D61 bug reports
+// ------------------------------------------------------------------------------------------------ D61 bugs (economy side)
+
+const ACTS: readonly TriageOutcome[] = ["fix", "contract_revision"];
+const bugNumber = (key: string): number => Number(key.slice(4));
 
 /**
- * D61: the outcome of a BUG_REPORT (the existing bugAcuEq outcome weight). Paid only when the bug's triage decision is
- * CONFIRMED (not rejected, not a duplicate), this report is the decision's first valid report (0009 makes one report
- * receipt per bug by its dedup key), the fix merged, and the reporter is under the per-epoch cap. Within the
- * revert-offset window a bug blamed on an accepted receipt is a partial revert: the introducer (or a related account)
- * is never paid for reporting it, and when an UNRELATED reporter is paid, the introducer carries an offset equal to that
- * pay — so a planter and a friendly reporter gain nothing together, and the planter cannot take the fix. Outside the
- * window nobody is penalized. A reporter who is not the introducer may also fix (both are paid).
+ * D61: the severity that prices and ranks a fix. A maintainer's correction wins (penalty-free for the triager); a
+ * critical severity is effective only once a maintainer confirmed it (bugs-policy.v1 `maintainerConfirmsCritical`), so
+ * inflating to critical buys nothing unconfirmed. Null when the outcome does not act on the bug.
+ */
+export function effectiveBugSeverity(
+  record: Pick<BugTriageRecord, "outcome" | "severity">,
+  confirmations: ReadonlyArray<Pick<BugTriageConfirmation, "kind" | "correctedSeverity">>,
+): BugSeverity | null {
+  if (!ACTS.includes(record.outcome)) return null;
+  const corrected = confirmations.find((c) => c.kind === "severity_corrected")?.correctedSeverity ?? null;
+  if (corrected) return corrected;
+  if (record.severity === "critical") return confirmations.some((c) => c.kind === "ratified") ? "critical" : null;
+  return record.severity;
+}
+
+/**
+ * D61 (planning-side note, D61-PROTOCOL-NOTES §1): a triage is paid only once its decision is CONFIRMED, never on the
+ * agent's word alone. fix: the fix's red-then-green acceptance (a BUG_FIX receipt) or a maintainer's ratification;
+ * contract_revision: the revision merged (`resolved`) or ratification; duplicate: the named bug is an EARLIER report
+ * (lower BUG number) whose own outcome acts on it; not_reproducible / not_a_bug: a maintainer's ratification (V1: the
+ * D54 challenge-window path is not used for triage); wont_fix is a maintainer's own decision, never a paid triage.
+ * An unconfirmed critical severity blocks payment until a maintainer ratifies or corrects it (a correction is
+ * penalty-free).
+ */
+export function triageConfirmationRefusals(x: {
+  record: Pick<BugTriageRecord, "outcome" | "severity" | "bugKey" | "duplicateOfBugKey">;
+  confirmations: ReadonlyArray<Pick<BugTriageConfirmation, "kind" | "correctedSeverity">>;
+  fixAccepted: boolean;
+  duplicateRoot: Pick<BugTriageRecord, "outcome"> | null;
+}): string[] {
+  const has = (k: BugTriageConfirmation["kind"]) => x.confirmations.some((c) => c.kind === k);
+  const r: string[] = [];
+  switch (x.record.outcome) {
+    case "fix":
+      if (!x.fixAccepted && !has("ratified")) r.push("a fix triage is confirmed by the fix's red-then-green acceptance or a maintainer");
+      break;
+    case "contract_revision":
+      if (!has("resolved") && !has("ratified"))
+        r.push("a contract_revision triage is confirmed when the revision merges or a maintainer ratifies it");
+      break;
+    case "duplicate": {
+      const dup = x.record.duplicateOfBugKey;
+      if (!dup || !x.duplicateRoot || !ACTS.includes(x.duplicateRoot.outcome))
+        r.push("a duplicate is confirmed when the named bug exists and its own outcome acts on it");
+      else if (bugNumber(dup) >= bugNumber(x.record.bugKey))
+        r.push("a duplicate points at an EARLIER report (the chain decides who was first)");
+      break;
+    }
+    case "not_reproducible":
+    case "not_a_bug":
+      if (!has("ratified")) r.push(`a ${x.record.outcome} triage is confirmed by a maintainer's ratification`);
+      break;
+    case "wont_fix":
+      r.push("wont_fix is a maintainer's decision, not a paid triage");
+      break;
+  }
+  if (x.record.severity === "critical" && ACTS.includes(x.record.outcome) && effectiveBugSeverity(x.record, x.confirmations) === null)
+    r.push("a critical severity is confirmed (or corrected) by a maintainer before the triage is paid");
+  return r;
+}
+
+/**
+ * D61: the BUG_REPORT outcome (bugAcuEq by the EFFECTIVE severity, the founder's 2/6/20/50 relative weights). Paid only
+ * for the first reporter of a bug whose outcome acts on it (a duplicate's reporter is not first: the chain decides),
+ * once it is resolved (the fix accepted, or the contract revision merged), under the reporter's per-epoch cap. Sweeps
+ * are paid only this way (a sweep's reports, reporter = the sweep's lease holder; no base). Within the pinned
+ * revert-offset window a bug blamed on an accepted receipt is a partial revert: its introducer (or a related account)
+ * is never paid for reporting it, and — when the policy's `introducerOffsetEqualsReportPay` is on — carries an offset
+ * equal to what the unrelated first reporter was paid (compensatory, recovered through the existing offsets path).
  */
 export function bugReportOutcome(x: {
-  triage: {
-    outcome: "confirmed" | "rejected" | "duplicate";
-    firstReporterAccountId: string | null;
-    introducerAccountIds: readonly string[];
-    introducedWithinOffsetWindow: boolean;
-  } | null;
+  record: Pick<
+    BugTriageRecord,
+    "outcome" | "severity" | "reporterAccountId" | "introducerAccountId" | "introducedWithinOffsetWindow"
+  > | null;
+  confirmations: ReadonlyArray<Pick<BugTriageConfirmation, "kind" | "correctedSeverity">>;
   reporterAccountId: string;
   reporterRelatedAccountIds: readonly string[];
-  fixMerged: boolean;
+  fixAccepted: boolean;
   reportsPaidThisEpoch: number;
-  maxReportsPaidPerEpoch: number;
-}): { paid: boolean; refusals: string[]; introducerOffset: boolean } {
+  policy: { maxBugReportsPaidPerAccountPerEpoch: number; introducerOffsetEqualsReportPay: boolean };
+}): { paid: boolean; severity: BugSeverity | null; refusals: string[]; introducerOffset: boolean } {
   const r: string[] = [];
-  const t = x.triage;
-  if (!t || t.outcome !== "confirmed") r.push("the bug has no confirmed triage decision (rejected and duplicate reports are not paid)");
-  else if (t.firstReporterAccountId !== x.reporterAccountId) r.push("only the first valid report of a bug is paid");
-  if (!x.fixMerged) r.push("a bug report is paid when its fix merges");
-  if (x.reportsPaidThisEpoch >= x.maxReportsPaidPerEpoch) r.push("the reporter's paid-report cap for the epoch is reached");
-  const reporterIsIntroducer =
-    !!t && t.introducerAccountIds.some((a) => a === x.reporterAccountId || x.reporterRelatedAccountIds.includes(a));
-  if (t?.introducedWithinOffsetWindow && reporterIsIntroducer)
+  const t = x.record;
+  const severity = t ? effectiveBugSeverity(t, x.confirmations) : null;
+  if (!t || !ACTS.includes(t.outcome)) r.push("a report is paid only when its bug's triage outcome is fix or contract_revision");
+  else {
+    if (t.reporterAccountId !== x.reporterAccountId) r.push("only the first reporter of a bug is paid");
+    const resolved = t.outcome === "fix" ? x.fixAccepted : x.confirmations.some((c) => c.kind === "resolved");
+    if (!resolved) r.push("a report is paid once the bug is resolved (the fix accepted, or the contract revision merged)");
+    if (!severity) r.push("the bug has no effective severity yet (a critical one is confirmed by a maintainer first)");
+  }
+  if (x.reportsPaidThisEpoch >= x.policy.maxBugReportsPaidPerAccountPerEpoch)
+    r.push("the reporter's paid-report cap for the epoch is reached");
+  const i = t?.introducerAccountId ?? null;
+  if (t?.introducedWithinOffsetWindow && i && (i === x.reporterAccountId || x.reporterRelatedAccountIds.includes(i)))
     r.push("the introducer (or a related account) is not paid for reporting its own regression");
   const paid = r.length === 0;
-  return { paid, refusals: r, introducerOffset: paid && !!t?.introducedWithinOffsetWindow && t.introducerAccountIds.length > 0 };
+  return {
+    paid,
+    severity,
+    refusals: r,
+    introducerOffset: paid && !!t?.introducedWithinOffsetWindow && !!i && x.policy.introducerOffsetEqualsReportPay,
+  };
+}
+
+// ------------------------------------------------------------------------------------------------ D60 protocol delta
+
+const HOLD_LABEL = /^(architecture_hold:ADR-\d{3,}|bug_hold:BUG-\d{1,9})$/;
+
+/** D60 delta item 4: the public label of a release caused by a work hold (derivable from the hold row). */
+export function holdLabel(source: WorkHoldSource): string {
+  return source.kind === "architecture" ? `architecture_hold:${source.record}` : `bug_hold:${source.bug}`;
+}
+
+/** D60 delta item 4: a hold label goes only on a `cancelled` release of a unit that the named hold holds. */
+export function holdReleaseLabelRefusals(x: { reason: string; label: string | null; activeHolds: readonly WorkHoldSource[] }): string[] {
+  if (x.label === null) return [];
+  const r: string[] = [];
+  if (!HOLD_LABEL.test(x.label)) r.push("a hold label is architecture_hold:ADR-nnn or bug_hold:BUG-n");
+  if (x.reason !== "cancelled") r.push("a hold label goes only on a cancelled release");
+  if (!x.activeHolds.some((h) => holdLabel(h) === x.label)) r.push("the label names no active hold of this unit");
+  return r;
+}
+
+/**
+ * D60 delta item 3: ranking continuity. `generations` is the unit's chain, newest first (follow reissueOf), each with
+ * its issue epoch and the label of the release that ended it (null for the live one). Ageing counts from the issue
+ * epoch of the oldest generation reachable through releases CAUSED BY A HOLD; any other release restarts it.
+ */
+export function ageingIssueEpoch(generations: ReadonlyArray<{ issuedEpoch: number; releaseLabel: string | null }>): number {
+  if (generations.length === 0) throw new Error("a unit has at least one generation");
+  let i = 0;
+  while (i + 1 < generations.length && HOLD_LABEL.test(generations[i + 1]!.releaseLabel ?? "")) i++;
+  return generations[i]!.issuedEpoch;
+}
+
+// ------------------------------------------------------------------------------------------------ D63 work next
+
+type WorkNextPolicy = NonNullable<AgentCapabilityPolicy["workNext"]>;
+
+/** D63: a claimable task of any kind, as the queue sees it (the D56 unit fields plus kind, holds, D60/D61 terms). */
+export interface WorkCandidate extends NextUnitCandidate {
+  kind: WorkKind;
+  /** The role the model must be qualified for (builder, author, reviewer, resolver). */
+  role: string;
+  sizePoints: number;
+  surface: string | null;
+  /** False only for bug_sweep (no budget: sweeps are paid through confirmed reports). */
+  rewardBearing: boolean;
+  /** Active work holds on the unit (D60 architecture / D61 bug). A held unit is never offered. */
+  activeHolds: readonly WorkHoldSource[];
+  /** D61: the effective severity of a fix unit. */
+  severity: BugSeverity | null;
+  /** D60: the architecture record whose migration this unit belongs to, while it migrates. */
+  migrationOf: string | null;
+  /** D60 delta item 3: ageingIssueEpoch of the unit's chain. */
+  ageingIssuedEpoch: number;
+  /**
+   * Accounts the contributor must not be (or be related to): the subject's author for a review, the reporter and the
+   * introducer for a triage, the triager and the in-window introducer for a fix.
+   */
+  barredAccountIds: readonly string[];
+  /** Review tasks: the seat rules (D53 fallback, no same-model self-review). */
+  review: { activeFallback: "none" | "fable_unavailable"; slot: "astra" | "fable" | "human"; builderModelId: string | null } | null;
+  /** DORMANT priority_vote: the seasoned vote weight on the unit's target, feature or bug (ignored while dormant). */
+  priorityVoteWeight?: number;
+}
+
+/**
+ * D63: contributor limits are COARSE: provider, size, the surfaces and toolchains the machine can build, time and
+ * volume. A limit naming a feature, target or task is refused (no cherry-picking through limits); toolchain and
+ * specialist eligibility is a filter, so specialists are not penalised.
+ */
+export const ContributorLimits = z
+  .object({
+    providers: z.array(z.string().min(1)).optional(),
+    maxSizePoints: z.number().int().positive().optional(),
+    surfaces: z.array(z.string().min(1)).optional(),
+    toolchains: z.array(z.string().min(1)).optional(),
+    wallTimeMinutes: z.number().int().positive().optional(),
+    budgetAcuMicro: z.bigint().positive().optional(),
+    units: z.number().int().positive().optional(),
+    perProviderUnits: z.record(z.string(), z.number().int().positive()).optional(),
+  })
+  .strict();
+export type ContributorLimits = z.infer<typeof ContributorLimits>;
+
+export function contributorLimitsRefusals(raw: unknown): string[] {
+  const p = ContributorLimits.safeParse(raw);
+  if (p.success) return [];
+  const keys = p.error.issues.flatMap((i) => (i.code === "unrecognized_keys" ? i.keys : []));
+  const named = keys.filter((k) => /feature|target|task|unit|abu|bug|kind/i.test(k));
+  return named.length > 0
+    ? [`limits are coarse: a limit may not name a feature, target or task (${named.join(", ")})`]
+    : [`limits are provider, size, surfaces, toolchains, time and volume only (${p.error.issues.map((i) => i.message).join("; ")})`];
+}
+
+/** D63: may this contributor take this task? ONE rule for the queue, self-pick and continuous mode. */
+export function workEligibilityRefusals(
+  capability: Parameters<typeof modelClaimRefusals>[0],
+  c: NextUnitContributor & { limits: ContributorLimits },
+  u: WorkCandidate,
+  epochNumber: number,
+  acceptance: AcceptanceRequirement | null,
+): string[] {
+  const r = modelClaimRefusals(capability, { provider: c.provider, modelId: c.modelId, requiredClass: u.requiredClass, role: u.role });
+  if (acceptance) r.push(...builderAcceptanceRefusals(acceptance, c.modelId));
+  if (u.requiredToolchains.some((t) => !c.attestedToolchains.includes(t))) r.push("the device does not attest the unit's toolchains");
+  if ((c.activeLeasesByProvider[c.provider] ?? 0) >= (c.leaseLimitByProvider[c.provider] ?? 1)) r.push(`no free ${c.provider} lease slot`);
+  const related = (a: string) => a === c.accountId || c.relatedAccountIds.includes(a);
+  if (u.rewardBearing && related(u.proposerAccountId)) r.push("the contributor (or a related account) proposed this unit's budget");
+  if (u.barredAccountIds.some(related)) r.push("independence: the contributor (or a related account) is barred from this task");
+  for (const h of u.activeHolds) r.push(h.kind === "architecture" ? `held by architecture record ${h.record}` : `held by bug ${h.bug}`);
+  if (u.review) r.push(...reviewSeatRefusals({ ...u.review, reviewerModelId: c.modelId }));
+  if (u.rewardBearing) r.push(...leaseBudgetRefusals({ rewardBearing: true, budget: u.budget, epochNumber }));
+  const l = c.limits;
+  if (l.providers && !l.providers.includes(c.provider)) r.push(`the contributor's limits exclude ${c.provider}`);
+  if (l.maxSizePoints !== undefined && u.sizePoints > l.maxSizePoints) r.push("the task exceeds the contributor's size limit");
+  if (l.surfaces && u.surface !== null && !l.surfaces.includes(u.surface)) r.push(`the contributor's machine does not build ${u.surface}`);
+  if (c.remaining.budgetAcuMicro !== null && u.budgetAcuMicro > c.remaining.budgetAcuMicro)
+    r.push("the task exceeds the contributor's remaining ACU limit");
+  if (c.remaining.wallTimeMinutes !== null && u.estimatedMinutes > c.remaining.wallTimeMinutes)
+    r.push("the task exceeds the contributor's remaining wall time");
+  return r;
+}
+
+/** D63: the published policy's derivations and bounds hold (kindBase derived; votes cannot outrank migrations or critical bugs). */
+export function workNextPolicyRefusals(p: WorkNextPolicy): string[] {
+  const r: string[] = [];
+  const kinds = new Set([...Object.keys(p.kindBase), ...Object.keys(p.structuralUnlock)]) as Set<WorkKind>;
+  for (const k of kinds)
+    if ((p.kindBase[k] ?? 0) !== p.weights.unlock * (p.structuralUnlock[k] ?? 0))
+      r.push(`kindBase.${k} must equal weights.unlock x structuralUnlock.${k}`);
+  if (p.priorityVote.maxBoost >= Math.min(p.architectureMigration, p.severityBoost.critical))
+    r.push("the priority-vote term must stay below the architecture-migration and critical-bug boosts");
+  return r;
+}
+
+/** D63: the DORMANT priority-vote term: linear in seasoned vote weight, capped at maxBoost; 0 unless activated. */
+export function priorityVoteTerm(p: WorkNextPolicy["priorityVote"], weight: number): number {
+  if (p.status !== "active" || weight <= 0) return 0;
+  return Math.min(p.maxBoost, Math.floor((p.maxBoost * weight) / p.saturationWeight));
+}
+
+/** D63: ONE deterministic queue over every claimable task; held units filtered; ties by unit id ascending. */
+export function rankWorkNext(
+  p: WorkNextPolicy,
+  units: readonly WorkCandidate[],
+  epochNumber: number,
+): Array<{
+  unitId: string;
+  kind: WorkKind;
+  score: {
+    reuse: number;
+    unlock: number;
+    kind: number;
+    focus: number;
+    ageing: number;
+    severity: number;
+    migration: number;
+    vote: number;
+    total: number;
+  };
+}> {
+  return units
+    .filter((u) => u.activeHolds.length === 0)
+    .map((u) => {
+      const reuse = p.weights.reuse * u.targetsServed;
+      const unlock = p.weights.unlock * u.dependentsWaiting;
+      const kind = p.kindBase[u.kind] ?? 0;
+      const focus = p.focus
+        .filter((f) => f.target === u.target && (f.capabilityClass === null || f.capabilityClass === u.requiredClass))
+        .reduce((t, f) => t + f.priority, 0);
+      const ageing = p.weights.ageingPerEpoch * Math.min(Math.max(0, epochNumber - u.ageingIssuedEpoch), p.ageingCapEpochs);
+      const severity = u.severity ? p.severityBoost[u.severity] : 0;
+      const migration = u.migrationOf ? p.architectureMigration : 0;
+      const vote = priorityVoteTerm(p.priorityVote, u.priorityVoteWeight ?? 0);
+      const total = reuse + unlock + kind + focus + ageing + severity + migration + vote;
+      return { unitId: u.unitId, kind: u.kind, score: { reuse, unlock, kind, focus, ageing, severity, migration, vote, total } };
+    })
+    .sort((a, b) => b.score.total - a.score.total || (a.unitId < b.unitId ? -1 : a.unitId > b.unitId ? 1 : 0));
+}
+
+/** D63: the published BASE price of a task (its self-pick price) in micro-ACU: floor(budget x 10000 / (10000 + bonus)). */
+export function basePriceAcuMicro(budgetAcuMicro: bigint, queueBonusBp: number): bigint {
+  return (budgetAcuMicro * 10_000n) / BigInt(10_000 + queueBonusBp);
+}
+
+/**
+ * D63 anti-gaming: the claim a contributor is about to make. Releasing an ASSIGNED task before submission (anything
+ * but an authorized cancel, a work hold, or an expiry the contributor did not cause) means "your next claim doesn't
+ * get the queue bonus"; `cooldownAfter` such releases within `windowHours` start a cooldown of `cooldownHours`.
+ */
+export function nextClaimTerms(x: {
+  mode: "queue" | "self_pick";
+  queueBonusBp: number;
+  /** The contributor's releases of assigned tasks before submission, newest first, since their last queue claim or not. */
+  assignedReleases: ReadonlyArray<{ atMs: number; cause: "contributor" | "authorized_cancel" | "work_hold" | "expiry_not_contributor" }>;
+  /** Whether a queue claim was made after the newest contributor release (the bonus is withheld once). */
+  claimedSinceLastRelease: boolean;
+  nowMs: number;
+  declines: WorkNextPolicy["declines"];
+}): { claim: { mode: "queue" | "self_pick"; queueBonusBp: number; bonusApplies: boolean } | null; refusals: string[] } {
+  const own = x.assignedReleases.filter((d) => d.cause === "contributor");
+  const recent = own.filter((d) => d.atMs > x.nowMs - x.declines.windowHours * 3_600_000);
+  if (recent.length >= x.declines.cooldownAfter && x.nowMs < recent[0]!.atMs + x.declines.cooldownHours * 3_600_000)
+    return { claim: null, refusals: [`cooldown: ${recent.length} assigned tasks released within ${x.declines.windowHours} h`] };
+  const withheld = own.length > 0 && !x.claimedSinceLastRelease;
+  return { claim: { mode: x.mode, queueBonusBp: x.queueBonusBp, bonusApplies: x.mode === "queue" && !withheld }, refusals: [] };
 }

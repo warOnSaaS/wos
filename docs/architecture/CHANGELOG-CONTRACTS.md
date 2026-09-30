@@ -181,39 +181,116 @@ MINOR, additive. No route, no migration.
 
 Affected workstreams: planning (owns the new rule), context-policy (prompts carry the new policy text), control-plane (surfaces the new codes through document validation unchanged).
 
-## 5.5.0 — 2026-09-30 (Proof of Contribution protocol v1 FROZEN for devnet/shadow, D62; integrated from `ws/protocol`)
+## 5.5.0 — 2026-09-30 (D60: architecture changes)
+
+MINOR, additive. No migration yet: migration 0007 comes when the control plane serves it (WORKSTREAMS 13). No Wave 3a interface changed.
+- New module `architecture.ts`:
+  - `ArchitectureRecord` (`wos-architecture-record.v1`), `ArchElementKey`, `ArchitectureRecordId`;
+  - `ARCHITECTURE_PATHS`, `architectureDocumentAllowedPaths`, `architecturePrTitle`, `architectureGraphKey`;
+  - `architectureRegistry`, `architectureRecordIssues` (`ArchitectureRecordErrorCode`, 8 codes);
+  - `computeArchitectureImpact`, `abuOffered`, `holdOutcome`, `rankWithArchitecture`, `ArchitecturePolicy`.
+- Policy data `architecture-policy.v1.json` (`ARCHITECTURE_POLICY_V1`):
+  - `maxRounds` 4 and a required maintainer sign-off;
+  - `migrationBoost` 100000;
+  - holds start at the record's merge and end when its migration merges or it is abandoned;
+  - transitive dependents are not held;
+  - in-flight review is not paused and runs with the record in context.
+- `DocumentKind` gains `architecture`. `ResourceKey` accepts `arch:`. `FeatureContract.architecture` is optional.
+- `BuildGraphErrorCode` gains `ARCH_ELEMENT_UNKNOWN`, `ARCH_PATH_WITHOUT_RESOURCE`, `ARCH_CHANGE_OUTSIDE_RECORD` and `ARCH_NOT_IN_CONTRACT`. Planning's `validateBuildGraph` runs them only when `BuildGraphContext.architecture` is passed, so existing callers are unaffected.
+- `ArchitectureHoldMachine` (held -> released | superseded) is an overlay, and the ABU, attempt and task machines keep their states. The `TaskMachine` claim guard now also requires no active hold for `abu_build`; that is guard text only.
+- Events `architecture.impact_computed` and `architecture.hold_changed`, both public.
+- Docs:
+  - DECISIONS D60;
+  - ARCHITECTURE section 15 (design principle: what is architecture, what is local);
+  - FEATURE-CONTRACT "Architecture elements and holds";
+  - WORKSTREAMS 13;
+  - `D60-PROTOCOL-DELTA.md`, the note for the protocol architect. It covers the build-next hold filter and boost term, ranking continuity on reissue and a release label; no accounting change.
+- Regenerated, no other change: golden hashes and output, the vendored validator bundle.
+
+Affected workstreams: control-plane, planning, context-policy (later, section 13); protocol (the delta note).
+
+## 5.6.0 — 2026-09-30 (Wave 3a blocker rulings: B-0001/B-0002/B-0003-suite-shell, B-0007/B-0008-control-plane)
+
+MINOR, additive, plus migration 0008. Rulings and who implements them: WORKSTREAMS 14.
+- `wos-app.ts` (B-0001): `CoreRoutes.localSignInStart`, `localSignInRedeem`, `logout`; `LocalSignInStartBody`, `LocalSignInStartResponse`, `LocalSignInRedeemBody`, `LocalSignInRedeemResponse`.
+- `blocker.ts` (B-0001): `Workstream` gains `suite-shell` and `mobile-runtime`.
+- `api.ts` (B-0002, B-0008):
+  - `startEmailSignIn.clientKind` gains `web_app` (wOS Web's server; body tokens; the link goes to `HOSTS.app + WEB_APP_SIGNIN_CODE_PATH`);
+  - optional `csrfToken` in the `redeemEmailSignIn` and `refreshSession` responses;
+  - `WEB_APP_SIGNIN_CODE_PATH`.
+- `artifacts.ts` (B-0003): optional `RepoManifest.appMigrationsDir`. Planning's `validateBuildGraph` requires `db:migrations:<id>` exclusive for writes under an app's migrations (MIGRATION_WITHOUT_RESOURCE). The product template's `wos.json` now has `migrationsDir: null` and `appMigrationsDir: "applications/*/migrations"`.
+- Migration `0008_build_release.sql` (B-0007):
+  - Build's release may list desktop with no package;
+  - new column `desktop_bundle_sha256`, allowed only with a package and immutable (not required, so the current control plane keeps working; it writes the hash at publish);
+  - db assertions added;
+  - numbered after ws/protocol's 0007 and commutes with it. It relaxes a check and adds a nullable column, recorded as MINOR by architect decision since it breaks no reader or writer.
+  - Production: yes, by the coordinator through the runner (`--check` first).
+- SECURITY:
+  - S-5 amended: host-only cookies, HttpOnly `wos_csrf`, the CSRF value returned in web bodies;
+  - new S-43: wOS Web is a server-side client.
+- WORKSTREAMS: section 5 (contracts bump procedure: regenerate the validator bundle, the site's progress copy, the template's vendored contracts, the goldens), 12.4 (suite-shell exports), 14 (rulings, migration order 0007 protocol then 0008, next free 0009). WOS-APP-PROTOCOL section 8.
+- Dependencies: `nodemailer` (and `@types/nodemailer`) as root devDependencies for the product template's SMTP transport (B-0003 item 4).
+- Regenerated: goldens, the vendored validator bundle.
+
+Affected workstreams: suite-shell, control-plane, desktop, mobile-runtime, verification, web.
+
+## 5.7.0 — 2026-09-30 (D61: bugs and maintenance, the planning and build side)
+
+MINOR, additive. No migration yet: 0009 comes with serving (WORKSTREAMS 15).
+- New module `bugs.ts`:
+  - `BugId`, `BugSeverity`, `BugTaskKind`, `BUG_ISSUE_LABEL`;
+  - `BugReport` (`wos-bug-report.v1`) with `renderBugIssueBody` / `parseBugIssueBody` / `bugIssueTitle` / `bugReportRefusals`;
+  - `TriageOutcome`, `TriageDecision` (`wos-triage-decision.v1`);
+  - `regressionTestPattern`, `regressionCheckName`, `RedGreenEvidence`, `redGreenRefusals`;
+  - `BugSweep`, `SweepOutput`, `sweepOutputRefusals`;
+  - `BugsPolicy`, `computeBugHolds`, `WorkHoldSource`, `rankBuildNext`.
+- Policy data `bugs-policy.v1.json` (`BUGS_POLICY_V1`):
+  - severity boosts 0 / 150 / 1000 / 200000;
+  - critical bugs hold their feature's new ABUs, after a maintainer confirms critical;
+  - regressions are removable only by a contract revision.
+- `AbuSpec.fix` (optional: bug and regression test). `FixUnitErrorCode` and planning `validateFixUnit`.
+- State machines:
+  - the D60 hold is generalized as `WorkHoldMachine` (`work_hold`, architecture or bug source); `ArchitectureHoldMachine` is an alias for it. The rename is recorded as MINOR because no table or client persisted `architecture_hold`.
+  - New `BugMachine`. Claim guard text: no active work hold.
+- Events `bug.reported`, `bug.triaged` (with the decision's canonical hash), `bug.fixed`, `bug.hold_changed`, `sweep.completed`.
+- Docs: DECISIONS D61; FEATURE-CONTRACT "Fix units and regressions"; WORKSTREAMS 15; `D61-PROTOCOL-NOTES.md` for the protocol architect.
+- Regenerated: goldens, the vendored validator bundle, the product template's vendored contracts.
+
+Affected workstreams: control-plane, cli, desktop, planning, verification, context-policy, web (later, section 15); protocol (the note).
+
+## 5.8.0 — 2026-09-30 (Proof of Contribution protocol v1 FROZEN for devnet/shadow, D62; integrated from `ws/protocol`)
 
 MINOR: the `@waronsaas/contracts/protocol` subpath export leaves draft as frozen protocol v1 (additive; no existing contract changes). Review-08 fixes: `allocationChallengeRefusals` admits every live-countable receipt (R08-1); migration 0007 pins `task_budgets.expires_at` and fails closed on submission lateness (R08-2). Migration 0007 is not applied to production. The 6.0.0 MAJOR (TaskKind/AgentRole additions, api.ts routes, TOKEN_DISCLAIMER) remains the P0 wiring step.
 
-### Protocol history (included in 5.5.0) — DRAFT v8 (Astra review 07 fix pass, `ws/protocol`)
+### Protocol history (included in 5.8.0) — DRAFT v8 (Astra review 07 fix pass, `ws/protocol`)
 
 Still unreleased and unwired. **Rules:** `acceptanceRequirement` fails closed (`refusals`, `humanCount`, `seatQualified` tuples, `capabilityPolicyVersion`); `CapabilityInput.policyVersion`; verdicts carry `provider`; `allocationChallengeRefusals`, `allocationChallengeDecisionRefusals`, `challengedAllocationPaymentRefusals`; `rulingLabRecordsFromConfirmedRuling`; `routeDisputedFindings` throws on an unknown raising lab. **Engine:** in-epoch hold fold order; one re-issue successor (`reissue:<prev>` consumed). **Machines:** `FINAL_BY_SILENCE` declared; history-proven restore. **Migration 0007 v8:** `allocation_challenges`, `allocation_challenge_replies`, `allocation_challenge_decisions`, `entitlements_challenged`; `task_submissions.changeset_id` with derived `submitted_at`/`submitted_epoch`/`submission_sha256`; `lock_task`; `task_budget_releases.final_rejection_ref`/`admin_action_id`; every receipt status event under the subject lock; `ruling_lab_records` derived from confirmed rulings. **Tests:** `packages/db/test/accounting-trace.mjs` (renamed from lifecycle-trace; source-derived, settlement-aware), `race_exact` races in both orderings.
 
-### Protocol history (included in 5.5.0) — DRAFT v7 (Astra review 06 fix pass; D57, D58, `ws/protocol`)
+### Protocol history (included in 5.8.0) — DRAFT v7 (Astra review 06 fix pass; D57, D58, `ws/protocol`)
 
 Still unreleased and unwired. **Engine:** `splitTaskReservation` (the one task split, key = account id); `HoldbackTranche.trancheId`; `EngineState.holds` with `holds`/`holdReleases` inputs (simple holds on a tranche or a claimable balance; maturity and claims take unheld units only); `Reservation.reviewGraceEpochs`, `.policyVersion`, `.reissueOf` pinned at issuance, `reservationExpiry(r)` (no params); `TaskIssuance.reissueOf`. **Rules:** `acceptanceRequirement`, `builderAcceptanceRefusals`, `boundRunPolicySnapshot`; `QualificationEvidence` gains `snapshotRow`, `qualificationSnapshotSha256`, `pinnedReviewPolicy`, `pinnedCapabilityPolicy`, `receiptLabels` and verdict `modelId`/`reasoning`; `nextUnitEligibilityRefusals` takes the acceptance requirement (`claimEligibilityRefusals` alias); `taskAllocationRefusals` receipts carry `accountId`; `budgetReleaseRefusals` gains `taskTerminal`, `finalRejectionOfSubmission`; D54 `provisionalReceiptOutcome` reads a persisted publication, plus `challengePublicationRefusals`, `challengeAdmissionRefusals`, `silenceFinalizationRefusals`; `reissueRefusals`. D58 `labOfProvider`, `routeDisputedFindings`, `resolverEligibilityRefusals`, `crossLabUpholdRates`. **Entities:** `ReceiptStatus.FINAL_BY_SILENCE`, event `final_by_silence`, `ProvisionalChallengePublication`. **Migration 0007 v7:** `task_submissions`, `provisional_publications`, `provisional_challenges`, receipt subject lock (challenge, silence finalization, live admission), qualification snapshot FK + lease/generation check, `epochs.review_grace_epochs` and `provisional_challenge_hours`, `task_budgets.review_grace_epochs`/`policy_version`/`reissue_of`, bootstrap-end stamp, `ruling_lab_records` (D58). Tests: `packages/db/test/lifecycle-trace.mjs` (engine vs database), race R06-2. Root config: `biome.json` excludes `docs/protocol/reviews` (reviewers' files are committed verbatim).
 
-### Protocol history (included in 5.5.0) — DRAFT v6 (Astra reviews 04/05 fix pass; D52–D56, `ws/protocol`)
+### Protocol history (included in 5.8.0) — DRAFT v6 (Astra reviews 04/05 fix pass; D52–D56, `ws/protocol`)
 
 Still unreleased and unwired. **Engine** (breaking inside the draft): `EngineState` gains `delivered` (I = delivered + claimable + holdback, asserted) and `lastEpoch` (one call per epoch); `Reservation` gains `ancillary` (pool and security accrual reserved with the task, paid on acceptance, returned on release/expiry) and `submittedEpoch`; `EpochInput.disputeSettlements[]` take `recoveries` (owner + source `claimable`/`holdback`/`delivered`) instead of `excessBase`; new `submissions`; issuances apply before acceptances; an unfunded issuance is not consumed; `consumedIds` checked at runtime; `EngineParams.reviewGraceEpochs`; new `openEpoch`/`EpochEnvelope`, `reservationTotal`, `reservationExpiry`; `EpochResult.envelope`. **Rules:** `budgetModelMicro`, `taskAllocationRefusals`, `budgetReleaseRefusals`, `leaseBudgetRefusals`, `receiptRouteRefusals`, `telemetryLinkStatus`, `snapshotHumanRequirement`, `epochEnvelopeRefusals`, `settlementObservationRefusals`, `CANONICAL_OPERATION_FIELDS` (consumer-bound admin operations), `genesisReferenceManifestSha256`; `receiptRefusals` drops telemetry and uses the one expiry rule; `budgetRefusals` takes the computed model and the objective's consensus; `qualificationRefusals` takes the stored snapshot body and the lease expiry; `confiscationNoticeRefusals` takes the hold expiry and maxima. D53 `reviewSeatRefusals`, `requiredReviewSeats`, `reviewPolicySwitchRefusals`; D54 `provisionalReceiptOutcome`; D55 `DORMANT_MODULES`, `moduleRefusals`; D56 `protocol/assignment.ts` (`POST /v1/builds/next`), `nextUnitEligibilityRefusals`, `rankNextUnits`, `selfPickRefusals`, `continuousNextStop`. **Entities/policies:** `RunPolicySnapshot.humanReviewRequired` and `.riskClass` (required); `ContributionReceipt.reviews.labels`; RewardPolicy `budgets.reviewGraceEpochs`, `confiscation.max*`, `modules`, finding bonuses 0; ReviewPolicy `ratification` (optimistic), `fallbacks` (`fable_unavailable`), `bootstrap.ratificationQueueFirst` removed; AgentCapabilityPolicy `candidates`, `qualificationSuites` (D52), `assignment` (D56). **Migration 0007 v6:** floor reservations and zero refused, `acceptance_objectives unique (kind, ref)`, per-receipt share bound, `entitlements.release_seq`, finite `hold_expires_at` and one confiscation end (serialized), typed settlement observations, epoch envelope columns, `human_review_assignments`, `admin_actions.bootstrap_single_signer`, action `switch_review_policy`. See REVIEW-PACKET §3f–§3g, ADR-001 §11.
 
-### Protocol history (included in 5.5.0) — DRAFT v5 (D51 engine-first enforcement, `ws/protocol`)
+### Protocol history (included in 5.8.0) — DRAFT v5 (D51 engine-first enforcement, `ws/protocol`)
 
 New `protocol/rules.ts`: pure write-time rules (admin authorization, qualification, receipts, budgets, disputes and adjudication, entitlements and claims, confiscation procedure, audits, human review scope, wallets, votes, pools, Genesis, sponsorships, usage telemetry, clips, exclusions, adapter events, duty, manifest admission, allocation attribution) with `test/protocol-rules.test.ts`. Migration 0007 v5: 2,900 → about 1,720 lines; only the hard invariants I1–I9 remain (one deferred conservation check, new tables `confiscation_releases` and `epoch_balances`, `allocation_disputes.opened_txid`, devnet-only leaves). See PROTOCOL §12, docs/protocol/GUARANTEES.md, SECURITY §6.
 
-### Protocol history (included in 5.5.0) — DRAFT v4 (D49 budget-based rewards, `ws/protocol`)
+### Protocol history (included in 5.8.0) — DRAFT v4 (D49 budget-based rewards, `ws/protocol`)
 
 Still unreleased and unwired. Engine: `issuances` (reserve budget × issuance rate from the pooled task capacity; `unfunded` returned), `acceptances` (pay the reservation by declared shares), `releases` and expiry, `demandForecastAcuMicro` (ex-ante rate), `EngineState.reserved`, funding equation with Q; `EngineReceipt` is outcomes-only; `maxRateVsTrailingBp`/`trailingRateBasePerAcu` removed; `budgetToBase`, `TASK_SLICES`. Policies: RewardPolicy `budgets`, `eligibility.acceptedVerificationLevels` removed, `weightBasis: task_budget`, holdback 20%/6; UsageProofPolicy `logs.required: false`, `bareAttestedWeightBp` removed; CompletionRewardPolicy/CompletionDefinition `requireExitRightsCheck` (was `requireSelfHostCheck`, D50). Entities: `EvidenceClass` = accepted_budget | outcome | historical; `ContributionReceipt.taskBudget`, `.telemetry` (attested/cap fields removed); `DisputeReason` and `PerturbationClass` on budgets, acceptance, splits and attribution; `PayoutAuditPacket` lines carry the frozen budget; new `TaskBudget`, `AcceptanceObjective`. Migration 0007 v4 §5b (objectives, budgets, releases, proposer rule), budget-paid receipts with declared shares, allocations capped by the reservation. See ADR-001 §9, REVIEW-PACKET §3d.
 
-### Protocol history (included in 5.5.0) — DRAFT v3 (Astra review 03 fix pass, `ws/protocol`)
+### Protocol history (included in 5.8.0) — DRAFT v3 (Astra review 03 fix pass, `ws/protocol`)
 
 Still unreleased and unwired into authoritative reward accounting. Breaking changes inside the draft `@waronsaas/contracts/protocol` entry: `EpochInput.consumedIds` is required; `EngineState` gains `claimable`; `HoldbackTranche` gains `maturesAtEpoch` and `policyVersion`; `EngineParams` gains `holdbackPolicyVersion`; `accrualCorrections[]` gain `recoverFromPaid`; new `claims` input; confiscation recovery is capped at the proven excess; sponsored splits use exact share numerators. Governance: `applyWeightCaps` replaced by `governanceWeights` (eligibility before caps) returning `GovernanceWeights`; `tallyDualMajority` accepts only that object; `capGroupShares` returns `{ shares, feasible }`. Usage adapters: checked aggregates, missing `response_id` and empty logs are errors. Entities: `EntitlementRecord` (source, cluster, mode, maturesEpoch, policyVersion, `withheld_release`), `SettlementOutcome`, `Confiscation` (holds, appeal, decision, execution), `AdminAction` (payload, operationSha256), new `AdminActionApproval`, `PayoutAuditAssignment`, `QualificationResult`, `GenesisReferenceManifest`. Migration 0007 v3: source-balance ledger, appeal-aware adjudication, holds at notice, qualification relationships, audit assignments, operation-bound single-use admin actions, settlement fence (ADR-001 §8, REVIEW-PACKET §3c). New DB race tests: `packages/db/test/concurrency.sh`.
 
-### Protocol history (included in 5.5.0) — DRAFT v2 (Astra review 02 fix pass, `ws/protocol`)
+### Protocol history (included in 5.8.0) — DRAFT v2 (Astra review 02 fix pass, `ws/protocol`)
 
 Still unreleased and unwired. Engine v2 (identified sources, conservation with non-negative balances asserted on input and output, per-beneficiary rounding, holdback, confiscation, recovered-only bounties, bounded loss absorption, application pools, rate damping); governance water-filling caps with feasibility, lock seasoning; adapters report errors; new entities (Confiscation, Exclusion, DutyEvent, EntitlementRecord, SettlementAttempt, PublicationConsent, RunLogCommitment, BeneficiaryRef, per-item dispute stakes); receipt statuses ACTIVE/PROVISIONAL/RATIFIED/REVOKED; migration 0007 rewritten (see ADR-001 §7 and REVIEW-PACKET §3b). Policy data: holdback, losses, confiscation, audit capacity, damping, Genesis reference population and fallback, governance seasoning and beneficial owner, Genesis cap 0.5%.
 
-### Protocol history (included in 5.5.0) — DRAFT (Proof of Contribution, `ws/protocol`, pending the Astra review)
+### Protocol history (included in 5.8.0) — DRAFT (Proof of Contribution, `ws/protocol`, pending the Astra review)
 
 Not released and not wired into any service. Will ship as **6.0.0** (MAJOR) when the review is resolved: `TaskKind`/`AgentRole` gain `payout_audit`/`payout_auditor`, `TOKEN_DISCLAIMER` is replaced (D18), new routes and events.
 

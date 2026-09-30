@@ -1,0 +1,12 @@
+{
+  "schema": "wos-architecture-policy.v1",
+  "maxRounds": 4,
+  "maintainerSignOff": true,
+  "migrationBoost": 100000,
+  "holds": {
+    "startAt": "record_merged",
+    "endAt": "migration_merged_or_record_abandoned",
+    "holdTransitiveDependents": false
+  },
+  "review": { "pauseInFlight": false, "recordInContext": true }
+}

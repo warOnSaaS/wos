@@ -63,10 +63,14 @@ Suspension revokes all families and active leases. Workstream: control-plane, de
 refresh reuse revokes family; no token material written outside the keychain (CLI test inspects the
 config directory).
 
-**S-5 Web cookies and CSRF.** Web session cookie `wos_session`: HttpOnly, Secure, SameSite=Lax,
-`Domain=waronsaas.com`. State-changing web requests must send header `X-wOS-Csrf` equal to the
-non-HttpOnly cookie `wos_csrf` (double submit). CORS on the API allows only `https://waronsaas.com`
-with credentials. Workstream: control-plane, web. Test: POST without the header is 403.
+**S-5 Web cookies and CSRF** (amended at contracts 5.6.0, B-0008-control-plane).
+- **Cookies.** Every control-plane cookie (`wos_session`, `wos_refresh`, `wos_csrf`, `wos_signin`) is **host-only** on api.waronsaas.com: no `Domain` attribute, so no other host (app., core., waronsaas.com itself) ever receives it (A10). Each is HttpOnly, Secure and SameSite=Lax.
+- **CSRF (double submit).** State-changing cookie-authenticated requests must send header `X-wOS-Csrf` equal to the `wos_csrf` cookie. The site cannot read that cookie, so it receives the value in the `csrfToken` field of the redeem and refresh bodies (clientKind `web` only) and keeps it in memory.
+- **CORS.** The API allows only `https://waronsaas.com` with credentials.
+- Workstreams: control-plane, web.
+- Tests:
+  - a POST without the header is 403;
+  - no Set-Cookie carries `Domain`.
 
 **S-6 GitHub linking.** Uses the wOS GitHub App's user authorisation (device flow for Desktop/CLI,
 web flow with a hashed `state` for the site), brokered by the server. The server reads `GET /user`
@@ -422,3 +426,11 @@ The protocol database (migration 0007 v6, not applied to production; v6 adds the
 
 **Moved from the database to the engine (explicitly):** authorization binding of admin actions (kind, target, exact payload, the co-signer's approval of the operation hash — the use-once key and approver RLS stay in SQL), qualification evidence, receipt admission rules, budget-model bounds, dispute procedure and adjudication, confiscation due process (the proven-excess cap and source balances stay in SQL), audit assignment binding, human-review scope, policy activation windows, vote windows, wallet-binding consent and organization admin checks, sponsorship approval, Genesis manifest and relatedness rules, pool payable-before-paid, clips, exclusions, adapter switch governance, duty ownership. **Residual risk:** a service that skips a rule can write a procedurally wrong row that no money invariant catches (for example a qualification without its round, or a decision before the reply window). Mitigations: a single protocol write module that is the only holder of the insert grants, contract tests that every write path calls its rule (GAPS G-97), and the append-only, public records that make any such row visible and reversible by a later record.
 
+
+**S-43 wOS Web signs in as a server-side client** (contracts 5.6.0, B-0002-suite-shell).
+- **Server-side only.** Authenticated wOS Web (app.waronsaas.com) signs a wOS account in from its SERVER with `clientKind: "web_app"`: `pollSecret` and tokens come in response bodies, server-to-server. Browser script never sees them; the control plane's CORS is unchanged.
+- **Token storage.** wOS Web keeps the tokens server-side, or in a sealed (authenticated-encrypted), HttpOnly, Secure, SameSite=Lax, **host-only** cookie on app.waronsaas.com.
+- **Browser binding.** The pollSecret is kept the same way, bound to the browser that started sign-in. The email link opens `https://app.waronsaas.com/sign-in/code?r=&t=`, and wOS Web redeems it only with that browser's pollSecret. Opened elsewhere, the page says to use the starting browser and never displays or accepts the link token as a code.
+- **Environment tokens** for hosted Core are obtained server-side the same way.
+- Workstreams: control-plane, suite-shell.
+- Tests: `web_app` bodies carry tokens and the link host is app.waronsaas.com; a link redeemed from another browser (no sealed pollSecret) fails; wOS Web sets no cookie with `Domain`.

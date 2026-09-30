@@ -524,6 +524,23 @@ export const ActiveApps = z.object({
 });
 export type ActiveApps = z.infer<typeof ActiveApps>;
 
+/**
+ * contracts 5.6.0 (B-0001-suite-shell): `local` sign-in on a self-hosted Core (EnvironmentAuth kind `local`).
+ * start: always 202 with the same shape for any address (no enumeration); only addresses the operator allows receive
+ * a code, through the operator's SMTP. redeem: single use, 15 minutes, 5 tries, 401 UNAUTHENTICATED otherwise. The
+ * returned token is the Bearer for every CoreRoutes call on that Core, until `expiresAt` or logout.
+ */
+export const LocalSignInStartBody = z.object({ email: z.email().max(254) });
+export const LocalSignInStartResponse = z.object({ requestId: Uuid, expiresAt: Timestamp });
+export const LocalSignInRedeemBody = z.object({ requestId: Uuid, code: z.string().regex(/^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/) });
+export const LocalSignInRedeemResponse = z.object({
+  token: z.string().min(20),
+  expiresAt: Timestamp,
+  userId: Uuid,
+  organizationId: Uuid,
+  role: OrgRole,
+});
+
 /** Routes every environment (wOS Core, hosted or self-hosted) serves to wOS clients. */
 export const CoreRoutes = {
   environment: { method: "GET", path: "/.well-known/wos-environment", auth: "public", response: EnvironmentDescriptor },
@@ -534,6 +551,24 @@ export const CoreRoutes = {
     auth: "environment_session",
     response: z.object({ app: AppId, version: SemVer, screens: z.lazy(() => z.array(MobileScreen)) }),
   },
+  /** contracts 5.6.0: self-hosted `local` sign-in (a wOS Cloud Core answers 404: its clients use environment tokens). */
+  localSignInStart: {
+    method: "POST",
+    path: "/v1/core/auth/local/start",
+    auth: "public",
+    body: LocalSignInStartBody,
+    status: 202,
+    response: LocalSignInStartResponse,
+  },
+  localSignInRedeem: {
+    method: "POST",
+    path: "/v1/core/auth/local/redeem",
+    auth: "public",
+    body: LocalSignInRedeemBody,
+    response: LocalSignInRedeemResponse,
+  },
+  /** Ends the Bearer's local session; with an environment token it is a no-op answering { ok: true }. */
+  logout: { method: "POST", path: "/v1/core/auth/logout", auth: "environment_session", response: z.object({ ok: z.literal(true) }) },
 } as const;
 
 // ---------------------------------------------------------------------------------------------

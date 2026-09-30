@@ -137,6 +137,15 @@ export const RepoManifest = z.object({
   generatedPaths: z.array(WriteScope).default([]),
   /** Directory whose files require the `db:migrations` resource. Null if the stack has none. */
   migrationsDir: RepoPath.nullable(),
+  /**
+   * contracts 5.6.0 (B-0003-suite-shell): per-app migrations (WOS-APP-PROTOCOL section 3), a path with exactly one `*`
+   * standing for the app id, e.g. "applications/*\/migrations". Writing under `applications/<id>/migrations` needs
+   * `db:migrations:<id>` exclusive (apps migrate their own schema through their own ledger, so apps never contend).
+   */
+  appMigrationsDir: z
+    .string()
+    .regex(/^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*\/\*(?:\/[A-Za-z0-9._-]+)+$/)
+    .optional(),
   /** Max bytes of one changeset (hard cap 4_000_000 because of the API body limit). */
   maxChangesetBytes: z.number().int().positive().max(4_000_000),
   /**
@@ -551,6 +560,11 @@ export const FeatureContract = z
      * surface: web and mobile use the same typed client from modules/<feature>. Null for single-surface features.
      */
     sharedApi: z.string().min(20).nullable(),
+    /**
+     * D60 (contracts 5.5.0): the architectural elements (`arch:<name>`, defined by merged architecture records) this
+     * feature relies on. Every `arch:` resource of its ABUs must be listed here (ARCH_NOT_IN_CONTRACT).
+     */
+    architecture: z.array(z.string().regex(/^arch:[a-z][a-z0-9-]{1,48}[a-z0-9]$/)).optional(),
     /** One profile per app that references this feature and has been specified. */
     profiles: z.array(RequirementProfile).min(1),
     /**
@@ -608,8 +622,10 @@ export type FeatureContract = z.infer<typeof FeatureContract>;
  * Logical resource key. Path resources are derived from write scopes automatically; declare the
  * others explicitly. Examples: "db:migrations", "db:table:contacts", "api:route:GET /v1/contacts",
  * "lockfile:package-lock.json", "config:env", "event:contact.created".
+ * D60 (contracts 5.5.0): "arch:<element>" declares an architectural element (architecture.ts): `shared` = the ABU
+ * relies on it, `exclusive` = the ABU changes it (only an architecture record's migration ABUs may).
  */
-export const ResourceKey = z.string().regex(/^(db|api|schema|lockfile|toolchain|config|event|ui|dep):[A-Za-z0-9 ._/:{}*-]+$/);
+export const ResourceKey = z.string().regex(/^(db|api|schema|lockfile|toolchain|config|event|ui|dep|arch):[A-Za-z0-9 ._/:{}*-]+$/);
 export type ResourceKey = z.infer<typeof ResourceKey>;
 
 export const ResourceClaim = z.object({ key: ResourceKey, mode: z.enum(["exclusive", "shared"]) });
@@ -637,6 +653,17 @@ export const AbuSpec = z.object({
     read: z.array(ReadGlob).default([]),
   }),
   resources: z.array(ResourceClaim).default([]),
+  /**
+   * D61 (contracts 5.7.0): set on a FIX unit, created from a TriageDecision at the feature's current merged contract
+   * version (no version bump). `regressionTest` is under a profile acceptance dir at `regressions/BUG-<n>.*`, fails on
+   * the parent commit and passes on the head (red then green), and stays in the feature's acceptance for good.
+   */
+  fix: z
+    .object({
+      bug: z.string().regex(/^BUG-\d{1,9}$/),
+      regressionTest: RepoPath,
+    })
+    .optional(),
   acceptance: z.object({
     /** Commands that must exit 0; run locally by the builder and in CI. */
     checks: z.array(z.object({ id: z.string(), run: CommandArgv })).min(1),
@@ -677,6 +704,11 @@ export const BuildGraphErrorCode = z.enum([
   "REQUIREMENT_SURFACE_NOT_IN_SCOPE",
   "NATIVE_CAPABILITY_UNPLANNED",
   "CONTRACT_VERSION_MISMATCH",
+  // D60 (contracts 5.5.0): architectural elements; checked when the caller passes the live registry.
+  "ARCH_ELEMENT_UNKNOWN",
+  "ARCH_PATH_WITHOUT_RESOURCE",
+  "ARCH_CHANGE_OUTSIDE_RECORD",
+  "ARCH_NOT_IN_CONTRACT",
 ]);
 export type BuildGraphErrorCode = z.infer<typeof BuildGraphErrorCode>;
 
@@ -710,3 +742,15 @@ export const FeatureContractErrorCode = z.enum([
   "PROFILE_CHANGED_UNLISTED",
 ]);
 export type FeatureContractErrorCode = z.infer<typeof FeatureContractErrorCode>;
+
+/** D61 (contracts 5.7.0): codes of planning.validateFixUnit (fix ABUs created from a triage decision). */
+export const FixUnitErrorCode = z.enum([
+  "FIX_NOT_MARKED",
+  "FIX_KEY_NOT_IN_FEATURE",
+  "FIX_SCOPE_OUTSIDE_FEATURE",
+  "FIX_REQUIREMENT_UNKNOWN",
+  "FIX_REGRESSION_TEST_OUTSIDE_ACCEPTANCE",
+  "FIX_REGRESSION_TEST_NOT_DECLARED",
+  "FIX_CHANGES_ARCHITECTURE",
+]);
+export type FixUnitErrorCode = z.infer<typeof FixUnitErrorCode>;

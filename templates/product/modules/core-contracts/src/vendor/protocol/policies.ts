@@ -6,6 +6,11 @@
 import { z } from "zod";
 import { ProviderId, ReasoningLevel } from "../agent-policy.js";
 import { TaskKind } from "../agent-io.js";
+import { BugTaskKind } from "../bugs.js";
+
+/** D63: every kind of claimable work (TaskKind, plus the D60/D61 kinds that join TaskKind when served). */
+export const WorkKind = z.union([TaskKind, BugTaskKind, z.literal("architecture_author")]);
+export type WorkKind = z.infer<typeof WorkKind>;
 import {
   AcceptanceEvent,
   CapabilityClass,
@@ -50,6 +55,9 @@ export const ModelRateOracle = z.object({
 export type ModelRateOracle = z.infer<typeof ModelRateOracle>;
 
 // ------------------------------------------------------------------------------------------------ RewardPolicy
+
+/** D61: a severity multiplier of a fix budget, in bp: 1x..2x. */
+const FixBp = z.number().int().min(10_000).max(20_000);
 
 export const RewardPolicy = z.object({
   policyVersion: z.string().regex(/^reward-policy\.v\d+$/),
@@ -276,6 +284,35 @@ export const RewardPolicy = z.object({
     bugAcuEq: z.object({ low: z.number().int(), medium: z.number().int(), high: z.number().int(), critical: z.number().int() }),
     maxProposalsPaidPerAccountPerEpoch: z.number().int().positive(),
   }),
+  /**
+   * D61 bugs and maintenance (versioned addition to frozen protocol v1: present from reward-policy.v2; absent in v1, so v1 fails closed). A fix is an ordinary budgeted abu_build task
+   * whose model is multiplied by the confirmed severity (bounded; pinned at issuance with the budget); triage is a
+   * commissioned low-risk human-review task; a bug REPORT is the existing outcome weight (bugAcuEq), paid only for the
+   * first valid report of a confirmed bug whose fix merged, never to (a relative of) the introducer within the
+   * revert-offset window; sweeps are never paid by themselves.
+   */
+  bugs: z
+    .object({
+      /** Multipliers in bp (10000 = 1x), never below 1x, never above 2x (the budget's own hard maximum). */
+      severityFixBp: z.object({ low: FixBp, medium: FixBp, high: FixBp, critical: FixBp }),
+      /** Hard ceiling of the severity multiplier (the budget's 2x hard maximum still applies on top). */
+      maxSeverityFixBp: FixBp,
+      maxBugReportsPaidPerAccountPerEpoch: z.number().int().positive(),
+      /** Rejected or duplicate reports by one account in 30 days before a signal. */
+      rejectedReportsSignalAfter: z.number().int().positive(),
+      /** A bug blamed on a receipt accepted within this many days is a partial revert (the epoch's revertOffsetDays). */
+      introducerWindowDays: z.number().int().positive(),
+      /** Within the window the introducer carries an offset equal to what an unrelated reporter's report was paid. */
+      introducerOffsetEqualsReportPay: z.boolean(),
+      /** The introducer (or a related account) is never paid for reporting, and never takes the fix lease, within the window. */
+      introducerReportPaid: z.literal(false),
+      introducerMayFixWithinWindow: z.literal(false),
+      /** A reporter who is not the introducer may also fix; the report and the fix budget are both paid. */
+      reporterMayFix: z.literal(true),
+      /** Bug-bash sweeps earn nothing by themselves; only confirmed, fixed bugs are paid (as reports and fixes). */
+      sweepsPaid: z.literal(false),
+    })
+    .optional(),
   security: z.object({
     /** Security payouts debit the security reserve balance: weight x the epoch's issuance rate, at most maxShareBp of the balance. */
     severityAcuEq: z.object({ low: z.number().int(), medium: z.number().int(), high: z.number().int(), critical: z.number().int() }),
@@ -522,6 +559,61 @@ export const AgentCapabilityPolicy = z.object({
     /** Optional lever (default 0 = off): freshly issued units are offered only to assigned mode for this long. */
     assignedOnlyWindowMinutes: z.number().int().nonnegative(),
   }),
+  /**
+   * D63 (versioned addition, capability-policy.v2): ONE priority queue for all work ("work next"; supersedes D56's
+   * build-only ranking and "budgets identical in both modes"). Deterministic integer score, ties by unit id:
+   *   reuse x targets served + unlock x dependents waiting + kindBase[kind] + focus + ageing (from the first
+   *   generation's issue epoch when a work hold caused the re-issue, D60 delta) + severityBoost[effective severity]
+   *   (D61, the values of bugs-policy.v1) + architectureMigration (D60, architecture-policy.v1 migrationBoost)
+   *   + priorityVote (DORMANT; capped at maxBoost, below the migration and critical boosts).
+   * kindBase is DERIVED, never set by hand: kindBase[k] = weights.unlock x structuralUnlock[k], where structuralUnlock
+   * is the number of merges a task of that kind unblocks by construction (a review unblocks its subject's merge, a
+   * triage unblocks its fix); documents rank high through their measured unlock value (dependents waiting).
+   * Held units are never offered. Pay: every task has a published BASE price; the queue pays base + queueBonusBp
+   * (the "+20% queue bonus"); the reservation at issuance is the queue price, and a claim without the bonus returns
+   * the bonus portion to R at acceptance. The v1 assignedOnlyWindow is not carried over (the bonus replaces it).
+   */
+  workNext: z
+    .object({
+      rankingPolicyVersion: z.string().regex(/^work-next-ranking\.v\d+$/),
+      weights: z.object({
+        reuse: z.number().int().nonnegative(),
+        unlock: z.number().int().nonnegative(),
+        ageingPerEpoch: z.number().int().nonnegative(),
+      }),
+      ageingCapEpochs: z.number().int().positive(),
+      focus: z.array(
+        z.object({ target: z.string().min(1), capabilityClass: CapabilityClass.nullable(), priority: z.number().int().nonnegative() }),
+      ),
+      tieBreak: z.literal("unit_id_ascending"),
+      structuralUnlock: z.record(WorkKind, z.number().int().nonnegative()),
+      kindBase: z.record(WorkKind, z.number().int().nonnegative()),
+      severityBoost: z.object({
+        low: z.number().int().nonnegative(),
+        medium: z.number().int().nonnegative(),
+        high: z.number().int().nonnegative(),
+        critical: z.number().int().nonnegative(),
+      }),
+      architectureMigration: z.number().int().nonnegative(),
+      /** Provisional 2000 bp (+20%); tunable by public AdminAction, pinned per lease. */
+      queueBonusBp: z.number().int().min(0).max(10_000),
+      /** Releasing an assigned task before submission: the next claim gets no queue bonus; repeated, a cooldown. */
+      declines: z.object({
+        windowHours: z.number().int().positive(),
+        cooldownAfter: z.number().int().positive(),
+        cooldownHours: z.number().int().positive(),
+      }),
+      /** DORMANT module priority_vote (POLICIES §0 trigger, G-98 preconditions). */
+      priorityVote: z.object({
+        status: z.enum(["dormant", "active"]),
+        subjects: z.array(z.enum(["target", "feature", "bug"])).min(1),
+        eligibility: z.literal("governance_seasoning"),
+        maxBoost: z.number().int().nonnegative(),
+        /** Seasoned vote weight at which the term reaches maxBoost (linear below, capped). */
+        saturationWeight: z.number().int().positive(),
+      }),
+    })
+    .optional(),
   /** D52: ModelQualificationSuite — fixed units with known acceptance outcomes, run in devnet shadow mode. */
   qualificationSuites: z.array(
     z.object({
@@ -542,7 +634,8 @@ export const AgentCapabilityPolicy = z.object({
   ),
   budgets: z.array(
     z.object({
-      taskKind: TaskKind,
+      /** D61: bug_triage joins from capability-policy.v2 (bug_sweep has no budget: sweeps are paid only through confirmed bugs). */
+      taskKind: z.union([TaskKind, BugTaskKind.extract(["bug_triage"])]),
       baseMicro: U64String,
       perSizePointMicro: U64String,
       /** Once >= minSamples merged peers exist, cap = P75(peer eligible ACU per size point) x size x headroomBp/1e4. */

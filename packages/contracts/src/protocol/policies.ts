@@ -6,6 +6,11 @@
 import { z } from "zod";
 import { ProviderId, ReasoningLevel } from "../agent-policy.js";
 import { TaskKind } from "../agent-io.js";
+import { BugTaskKind } from "../bugs.js";
+
+/** D63: every kind of claimable work (TaskKind, plus the D60/D61 kinds that join TaskKind when served). */
+export const WorkKind = z.union([TaskKind, BugTaskKind, z.literal("architecture_author")]);
+export type WorkKind = z.infer<typeof WorkKind>;
 import {
   AcceptanceEvent,
   CapabilityClass,
@@ -298,7 +303,7 @@ export const RewardPolicy = z.object({
       /** A bug blamed on a receipt accepted within this many days is a partial revert (the epoch's revertOffsetDays). */
       introducerWindowDays: z.number().int().positive(),
       /** Within the window the introducer carries an offset equal to what an unrelated reporter's report was paid. */
-      introducerOffsetEqualsReportPay: z.literal(true),
+      introducerOffsetEqualsReportPay: z.boolean(),
       /** The introducer (or a related account) is never paid for reporting, and never takes the fix lease, within the window. */
       introducerReportPaid: z.literal(false),
       introducerMayFixWithinWindow: z.literal(false),
@@ -553,18 +558,62 @@ export const AgentCapabilityPolicy = z.object({
     tieBreak: z.literal("unit_id_ascending"),
     /** Optional lever (default 0 = off): freshly issued units are offered only to assigned mode for this long. */
     assignedOnlyWindowMinutes: z.number().int().nonnegative(),
-    /** D61: a published boost of fix units by confirmed severity. */
-    severityBoost: z
-      .object({
+  }),
+  /**
+   * D63 (versioned addition, capability-policy.v2): ONE priority queue for all work ("work next"; supersedes D56's
+   * build-only ranking and "budgets identical in both modes"). Deterministic integer score, ties by unit id:
+   *   reuse x targets served + unlock x dependents waiting + kindBase[kind] + focus + ageing (from the first
+   *   generation's issue epoch when a work hold caused the re-issue, D60 delta) + severityBoost[effective severity]
+   *   (D61, the values of bugs-policy.v1) + architectureMigration (D60, architecture-policy.v1 migrationBoost)
+   *   + priorityVote (DORMANT; capped at maxBoost, below the migration and critical boosts).
+   * kindBase is DERIVED, never set by hand: kindBase[k] = weights.unlock x structuralUnlock[k], where structuralUnlock
+   * is the number of merges a task of that kind unblocks by construction (a review unblocks its subject's merge, a
+   * triage unblocks its fix); documents rank high through their measured unlock value (dependents waiting).
+   * Held units are never offered. Pay: every task has a published BASE price; the queue pays base + queueBonusBp
+   * (the "+20% queue bonus"); the reservation at issuance is the queue price, and a claim without the bonus returns
+   * the bonus portion to R at acceptance. The v1 assignedOnlyWindow is not carried over (the bonus replaces it).
+   */
+  workNext: z
+    .object({
+      rankingPolicyVersion: z.string().regex(/^work-next-ranking\.v\d+$/),
+      weights: z.object({
+        reuse: z.number().int().nonnegative(),
+        unlock: z.number().int().nonnegative(),
+        ageingPerEpoch: z.number().int().nonnegative(),
+      }),
+      ageingCapEpochs: z.number().int().positive(),
+      focus: z.array(
+        z.object({ target: z.string().min(1), capabilityClass: CapabilityClass.nullable(), priority: z.number().int().nonnegative() }),
+      ),
+      tieBreak: z.literal("unit_id_ascending"),
+      structuralUnlock: z.record(WorkKind, z.number().int().nonnegative()),
+      kindBase: z.record(WorkKind, z.number().int().nonnegative()),
+      severityBoost: z.object({
         low: z.number().int().nonnegative(),
         medium: z.number().int().nonnegative(),
         high: z.number().int().nonnegative(),
         critical: z.number().int().nonnegative(),
-      })
-      .optional(),
-    /** D60 protocol delta: the boost of an architecture record's migration units while it migrates (architecture-policy migrationBoost). */
-    architectureMigration: z.number().int().nonnegative().optional(),
-  }),
+      }),
+      architectureMigration: z.number().int().nonnegative(),
+      /** Provisional 2000 bp (+20%); tunable by public AdminAction, pinned per lease. */
+      queueBonusBp: z.number().int().min(0).max(10_000),
+      /** Releasing an assigned task before submission: the next claim gets no queue bonus; repeated, a cooldown. */
+      declines: z.object({
+        windowHours: z.number().int().positive(),
+        cooldownAfter: z.number().int().positive(),
+        cooldownHours: z.number().int().positive(),
+      }),
+      /** DORMANT module priority_vote (POLICIES §0 trigger, G-98 preconditions). */
+      priorityVote: z.object({
+        status: z.enum(["dormant", "active"]),
+        subjects: z.array(z.enum(["target", "feature", "bug"])).min(1),
+        eligibility: z.literal("governance_seasoning"),
+        maxBoost: z.number().int().nonnegative(),
+        /** Seasoned vote weight at which the term reaches maxBoost (linear below, capped). */
+        saturationWeight: z.number().int().positive(),
+      }),
+    })
+    .optional(),
   /** D52: ModelQualificationSuite — fixed units with known acceptance outcomes, run in devnet shadow mode. */
   qualificationSuites: z.array(
     z.object({
@@ -585,7 +634,8 @@ export const AgentCapabilityPolicy = z.object({
   ),
   budgets: z.array(
     z.object({
-      taskKind: TaskKind,
+      /** D61: bug_triage joins from capability-policy.v2 (bug_sweep has no budget: sweeps are paid only through confirmed bugs). */
+      taskKind: z.union([TaskKind, BugTaskKind.extract(["bug_triage"])]),
       baseMicro: U64String,
       perSizePointMicro: U64String,
       /** Once >= minSamples merged peers exist, cap = P75(peer eligible ACU per size point) x size x headroomBp/1e4. */
