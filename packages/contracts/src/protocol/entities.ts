@@ -339,14 +339,17 @@ export type ContributionReceipt = z.infer<typeof ContributionReceipt>;
 /**
  * Receipt qualification status (D23, D28). Receipts are immutable; status is the latest ReceiptStatusEvent.
  *   ACTIVE       independent merged work: counts in live epochs (payouts are verified optimistically, D28)
- *   PROVISIONAL  the founder's own work merged under bootstrap authority (D23): public, test epochs only, and it needs
- *                independent ratification whatever happens in any challenge window
- *   RATIFIED     a PROVISIONAL receipt ratified by an independent audit quorum or a non-founder human; counts live,
- *                original qualifiedAt kept
+ *   PROVISIONAL  the founder's own work merged under bootstrap authority (D23): public, test epochs only, until it
+ *                finalizes (D54: silence after its post-bootstrap challenge publication) or a challenge is decided
+ *   RATIFIED     a PROVISIONAL receipt accepted by an independent human (or, when active, an audit quorum) — e.g. after a
+ *                challenge sent it to the review gate; counts live, original qualifiedAt kept
+ *   FINAL_BY_SILENCE  D54 (review 06 R06-2): a PROVISIONAL receipt whose persisted, post-bootstrap challenge publication
+ *                closed with no challenge. Its own evidence class — never an independent ratification; counts live,
+ *                original qualifiedAt kept; devnet/shadow labels and Genesis/mainnet gates still apply
  *   REVOKED      invalidated by an AdminAction or a dispute gate outcome; never deleted
  * A rejected ratification keeps PROVISIONAL (rejection recorded). Clips are separate records (ReceiptClip).
  */
-export const ReceiptStatus = z.enum(["ACTIVE", "PROVISIONAL", "RATIFIED", "REVOKED"]);
+export const ReceiptStatus = z.enum(["ACTIVE", "PROVISIONAL", "RATIFIED", "FINAL_BY_SILENCE", "REVOKED"]);
 export type ReceiptStatus = z.infer<typeof ReceiptStatus>;
 
 export const ReceiptStatusEventKind = z.enum([
@@ -354,9 +357,27 @@ export const ReceiptStatusEventKind = z.enum([
   "quorum_ratified",
   "human_signoff",
   "ratification_rejected",
+  /** D54: the challenge publication closed with no challenge (server time, under the subject lock). */
+  "final_by_silence",
   "revoked",
   "restored",
 ]);
+
+/**
+ * D54 (review 06 R06-2): the persisted, server-stamped challenge publication of a PROVISIONAL receipt after bootstrap
+ * ended. `closesAt` is fixed at publication; the receipt's own `qualifiedAt` is a separate, older clock.
+ */
+export const ProvisionalChallengePublication = z.object({
+  receiptId: Uuid,
+  receiptSha256: Sha256,
+  reviewPolicyVersion: z.string(),
+  bootstrapEndedAt: Timestamp,
+  publishedAt: Timestamp,
+  closesAt: Timestamp,
+  /** Where it was published and who was notified (public evidence). */
+  notification: z.object({ publicUrl: z.string().min(1), notifiedParticipants: z.number().int().nonnegative() }),
+});
+export type ProvisionalChallengePublication = z.infer<typeof ProvisionalChallengePublication>;
 export type ReceiptStatusEventKind = z.infer<typeof ReceiptStatusEventKind>;
 
 export const ReceiptStatusEvent = z.object({
@@ -897,7 +918,7 @@ export function dutyOutstanding(events: readonly DutyEvent[], nowMs: number): nu
 export function receiptCountsIn(mode: "live" | "test", status: ReceiptStatus): boolean {
   if (status === "REVOKED") return false;
   if (mode === "test") return true;
-  return status === "ACTIVE" || status === "RATIFIED";
+  return status === "ACTIVE" || status === "RATIFIED" || status === "FINAL_BY_SILENCE";
 }
 
 // ------------------------------------------------------------------------------------------------ Epochs
@@ -915,7 +936,7 @@ export const Epoch = z.object({
   /**
    * test: a devnet rehearsal while the founder is the only participant (D23). Allocates devnet WOS explicitly marked
    * non-Genesis, counts PROVISIONAL receipts, and its allocations never enter any mainnet computation.
-   * live: only RATIFIED receipts.
+   * live: ACTIVE receipts, and PROVISIONAL ones only once RATIFIED or FINAL_BY_SILENCE (D54).
    */
   mode: z.enum(["test", "live"]),
   state: EpochState,

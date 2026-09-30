@@ -162,6 +162,19 @@ Totals: 118 v4 assertions; 45 still refused in SQL (some also by a rule); 73 mov
 | B1/I5 budget vs proposer's lease (race) | SQL I5 (shared `lease_gen` lock) — held before the fix too | race: 'B1/I5 (review 05)…' |
 | D54 bootstrap two-person actions | SQL I3 (`bootstrap_single_signer`, derived) | db: 'D54 a two-person action in bootstrap is single-signed…' |
 
+## Review 06 (0007 v7)
+
+| Finding | Guard now | Test |
+|---|---|---|
+| R06-1 acceptance under the fallback; unreviewable assignments | rules `acceptanceRequirement`, `qualificationRefusals`, `builderAcceptanceRefusals`, `nextUnitEligibilityRefusals` | unit (rules): 'R06-1 …' ×4 |
+| R06-2 silence finalization and the challenge boundary | SQL: publication after bootstrap (server time, hash-bound, window pinned), `final_by_silence` only after the close without a challenge, challenges only inside the window, live admission after final status — all under the receipt subject lock; rules for the procedure | db: 'R06-2 …' ×8; race: 'R06-2: a free challenge racing silence finalization …'; unit (rules): 'D54 … R06-2 …' ×3 |
+| R06-3 split disagreement | engine + rule share `splitTaskReservation` | unit (rules): 'R06-3 repro …' |
+| R06-4 submitted work released | rule `budgetReleaseRefusals`; SQL `task_submissions` | unit (rules): 'R06-4 repro …' |
+| R06-5 mutable grace | engine (pinned on the reservation); SQL (pinned on the budget, server-set) | unit: 'R06-5 repro …'; db: 'R06-5 …' ×2 |
+| R06-6 snapshot of another lease | rule `boundRunPolicySnapshot`; SQL FK + lease/generation trigger | unit (rules): 'R06-6 repro …'; db: 'R06-6 repro …' |
+| R06-7 holds vs maturity | engine holds (unheld units only); SQL I8 + numbered releases | unit: 'R06-7 …' ×2; lifecycle trace (25 checkpoints) |
+| Re-issue identity | engine `reissueOf`; SQL `reissue_of` (unique, same objective, after release, never after acceptance); rule `reissueRefusals` | unit, unit (rules), db: 'Re-issue …' |
+
 ## Rules without a v4 assertion that also moved (no silent loss)
 
 Clip never raises a weight, audit outcomes only for revealed real quorums, duty events for the offered account, permanent exclusion needs governance, adapter switches need governance, Genesis dedup keys are Genesis keys, manifest admission, sponsorship approval, usage-receipt lease/run/snapshot binding: each is a function in `rules.ts` with a test in 'further write rules moved from 0007 v4 (no guarantee silently dropped)'.

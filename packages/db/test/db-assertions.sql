@@ -1037,6 +1037,104 @@ do $$ begin
   raise notice 'ok: D58 raising lab derived from the review; an other-lab ruling is recorded (raised, resolved, outcome)';
 end $$;
 
+-- ---------------------------------------------------------------------------------- Astra review 06 (fix pass)
+-- R06-2 / D54: persisted, server-stamped challenge publication after bootstrap; challenge and silence exclude each other.
+insert into wos.work_dedup_keys (dedup_key, source) values ('work:d54:p1', 'receipt'), ('work:d54:p2', 'receipt'), ('work:d54:p3', 'receipt');
+insert into wos.contribution_receipts (id, account_id, contribution_type, slice, evidence_class, acceptance_event, independence, initial_status,
+  weight_micro, subject_kind, subject_id, dedup_key, admitted_epoch, body, receipt_sha256, qualified_at)
+select ('00000000-0000-0000-0006-00000000d50' || n)::uuid, '00000000-0000-0000-0000-00000000000c', 'PROPOSAL', 'outcomes', 'outcome', 'proposal_incorporated',
+       'founder_bootstrap', 'PROVISIONAL', 1000000, 'proposal', gen_random_uuid(), 'work:d54:p' || n, 2, '{}', 'sha256:' || repeat(n, 64), now() - interval '30 days'
+  from unnest(array['1', '2', '3']) n;
+insert into wos.receipt_status_events (receipt_id, seq, from_status, to_status, kind)
+select ('00000000-0000-0000-0006-00000000d50' || n)::uuid, 1, null, 'PROVISIONAL', 'issued' from unnest(array['1', '2', '3']) n;
+do $$ begin
+  begin
+    alter table wos.platform_settings disable trigger platform_settings_bootstrap_one_way;
+    update wos.platform_settings set value = '{"enabled": true, "since": null}' where key = 'bootstrap_mode';
+    insert into wos.provisional_publications (receipt_id, receipt_sha256, review_policy_version, notification)
+    values ('00000000-0000-0000-0006-00000000d501', 'sha256:' || repeat('1', 64), 'review-policy.v1', '{"publicUrl": "https://waronsaas.com/r/1", "notifiedParticipants": 3}');
+    raise exception 'EXPECTED FAILURE did not happen: R06-2: a challenge publication written during bootstrap';
+  exception when check_violation then
+    if sqlerrm !~ 'after bootstrap ended' then raise; end if;
+    raise notice 'ok (rejected): R06-2 repro: a challenge publication written during bootstrap (an earlier appearance never starts the window)';
+  end;
+end $$;
+select wos_test.expect_error($$insert into wos.provisional_publications (receipt_id, receipt_sha256, review_policy_version, notification)
+  values ('00000000-0000-0000-0006-00000000d501', 'sha256:' || repeat('9', 64), 'review-policy.v1', '{"publicUrl": "u", "notifiedParticipants": 3}')$$,
+  'R06-2: a publication bound to another receipt hash', 'bound to its hash');
+insert into wos.provisional_publications (receipt_id, receipt_sha256, review_policy_version, published_at, closes_at, notification)
+values ('00000000-0000-0000-0006-00000000d501', 'sha256:' || repeat('1', 64), 'review-policy.v1', now() - interval '1 year', now() - interval '1 year',
+        '{"publicUrl": "https://waronsaas.com/r/1", "notifiedParticipants": 3}');
+do $$ begin
+  if (select closes_at - published_at from wos.provisional_publications where receipt_id = '00000000-0000-0000-0006-00000000d501') <> interval '48 hours'
+     or (select published_at < now() - interval '1 minute' or published_at < bootstrap_ended_at from wos.provisional_publications
+          where receipt_id = '00000000-0000-0000-0006-00000000d501') then
+    raise exception 'R06-2: publication time and window are server-set (now, pinned 48 h, after bootstrap ended)';
+  end if;
+  raise notice 'ok: R06-2 publication is server-stamped after bootstrap with its pinned window (a backdated publication is re-stamped)';
+end $$;
+select wos_test.expect_error($$insert into wos.receipt_status_events (receipt_id, seq, from_status, to_status, kind)
+  values ('00000000-0000-0000-0006-00000000d501', 2, 'PROVISIONAL', 'FINAL_BY_SILENCE', 'final_by_silence')$$,
+  'R06-2: silence finalization while the window is open', 'window closed with no challenge');
+insert into wos.provisional_challenges (receipt_id, challenger_account_id, reason_untrusted)
+values ('00000000-0000-0000-0006-00000000d501', '00000000-0000-0000-0000-00000000000d', 'this proposal duplicates an earlier accepted one');
+-- p2 and p3: windows already closed (fixture rows written with triggers off); p3 was challenged in time.
+set session_replication_role = replica;
+insert into wos.provisional_publications (receipt_id, receipt_sha256, review_policy_version, bootstrap_ended_at, window_hours, published_at, closes_at, notification)
+select ('00000000-0000-0000-0006-00000000d50' || n)::uuid, 'sha256:' || repeat(n, 64), 'review-policy.v1', now() - interval '5 days', 48,
+       now() - interval '3 days', now() - interval '1 day', '{"publicUrl": "u", "notifiedParticipants": 3}' from unnest(array['2', '3']) n;
+insert into wos.provisional_challenges (receipt_id, challenger_account_id, reason_untrusted, created_at)
+values ('00000000-0000-0000-0006-00000000d503', '00000000-0000-0000-0000-00000000000d', 'this proposal was never incorporated in any merge', now() - interval '2 days');
+set session_replication_role = origin;
+select wos_test.expect_error($$insert into wos.provisional_challenges (receipt_id, challenger_account_id, reason_untrusted)
+  values ('00000000-0000-0000-0006-00000000d502', '00000000-0000-0000-0000-00000000000d', 'a challenge filed after the window closed')$$,
+  'R06-2: a challenge after the window closed', 'has closed');
+select wos_test.expect_error($$insert into wos.receipt_status_events (receipt_id, seq, from_status, to_status, kind)
+  values ('00000000-0000-0000-0006-00000000d503', 2, 'PROVISIONAL', 'FINAL_BY_SILENCE', 'final_by_silence')$$,
+  'R06-2: a challenged receipt finalized by silence', 'no challenge');
+select wos_test.expect_error($$insert into wos.receipt_status_events (receipt_id, seq, from_status, to_status, kind)
+  values ('00000000-0000-0000-0006-00000000d503', 2, 'PROVISIONAL', 'FINAL_BY_SILENCE', 'human_signoff')$$,
+  'R06-2: FINAL_BY_SILENCE reached through another event (a ratification relabelled)', 'only by the final_by_silence event');
+select wos_test.expect_error($$insert into wos.epoch_manifest_entries (epoch_number, mode, receipt_id, receipt_sha256, disposition, deferral_count)
+  values (1, 'live', '00000000-0000-0000-0006-00000000d503', 'sha256:' || repeat('3', 64), 'included', 0)$$,
+  'R06-2: a challenged provisional receipt admitted live before its decision (no entitlement can follow)', 'not admitted live');
+insert into wos.receipt_status_events (receipt_id, seq, from_status, to_status, kind)
+values ('00000000-0000-0000-0006-00000000d502', 2, 'PROVISIONAL', 'FINAL_BY_SILENCE', 'final_by_silence');
+insert into wos.epoch_manifest_entries (epoch_number, mode, receipt_id, receipt_sha256, disposition, deferral_count)
+values (1, 'live', '00000000-0000-0000-0006-00000000d502', 'sha256:' || repeat('2', 64), 'included', 0);
+do $$ begin raise notice 'ok: R06-2 a real final_by_silence transition persists and the receipt is admitted live'; end $$;
+-- R06-6: a qualification binds the snapshot of its own lease and generation.
+insert into wos.run_policy_snapshots (lease_id, generation, body, snapshot_sha256)
+values ('00000000-0000-0000-0000-0000000000c1', 1, '{}', 'sha256:' || repeat('6', 64));
+select wos_test.expect_error($$insert into wos.qualification_results (subject_kind, subject_id, subject_revision, lease_id, lease_generation, changeset_id, round_id,
+  policy_snapshot_sha256, evidence, evidence_sha256)
+  values ('document', gen_random_uuid(), repeat('a', 40), '00000000-0000-0000-0007-0000000000c3', 1, gen_random_uuid(), gen_random_uuid(),
+          'sha256:' || repeat('6', 64), '{}', 'sha256:' || repeat('7', 64))$$,
+  'R06-6 repro: a qualification citing the snapshot of another lease', 'another lease or generation');
+-- R06-5: grace and policy version pinned on every budget; submissions only while live; re-issue as a new generation.
+do $$ begin
+  if (select review_grace_epochs from wos.task_budgets where task_id = '00000000-0000-0000-0007-000000000fb1') <> 2 then
+    raise exception 'R06-5: the review grace is pinned on the budget at issuance';
+  end if;
+  raise notice 'ok: R06-5 the review grace is pinned on each budget (server-set from its epoch)';
+end $$;
+select wos_test.expect_error($$insert into wos.task_submissions (task_id, submitted_epoch, submission_sha256)
+  values ('00000000-0000-0000-0007-000000000fb2', 6, 'sha256:' || repeat('5', 64))$$, 'R06-5: a submission at or after the budget''s expiry', 'while its budget is live');
+insert into wos.task_submissions (task_id, submitted_epoch, submission_sha256) values ('00000000-0000-0000-0007-000000000fb2', 2, 'sha256:' || repeat('5', 64));
+select wos_test.expect_error($$insert into wos.task_budgets (task_id, objective_id, kind, budget_acu_micro, model_acu_micro, basis, budget_model_version, proposer_account_id, issued_epoch, reissue_of)
+  values (gen_random_uuid(), '00000000-0000-0000-0007-0000000000b1', 'execution', 1000000, 1000000, '{}', 'budget-model.v1', '00000000-0000-0000-0000-00000000000c', 2,
+          '00000000-0000-0000-0007-000000000fb1')$$, 'Re-issue of a task that was accepted (or not released)', 're-issue replaces');
+insert into wos.task_budgets (task_id, objective_id, kind, budget_acu_micro, model_acu_micro, basis, budget_model_version, proposer_account_id, issued_epoch)
+values ('00000000-0000-0000-0006-0000000000e1', '00000000-0000-0000-0007-0000000000b1', 'execution', 1000000, 1000000, '{}', 'budget-model.v1', '00000000-0000-0000-0000-00000000000c', 2);
+insert into wos.task_budget_releases (task_id, reason) values ('00000000-0000-0000-0006-0000000000e1', 'expired');
+insert into wos.task_budgets (task_id, objective_id, kind, budget_acu_micro, model_acu_micro, basis, budget_model_version, proposer_account_id, issued_epoch, reissue_of)
+values ('00000000-0000-0000-0006-0000000000e2', '00000000-0000-0000-0007-0000000000b1', 'execution', 1000000, 1000000, '{}', 'budget-model.v1', '00000000-0000-0000-0000-00000000000c', 2,
+        '00000000-0000-0000-0006-0000000000e1');
+select wos_test.expect_error($$insert into wos.task_budgets (task_id, objective_id, kind, budget_acu_micro, model_acu_micro, basis, budget_model_version, proposer_account_id, issued_epoch, reissue_of)
+  values (gen_random_uuid(), '00000000-0000-0000-0007-0000000000b1', 'execution', 1000000, 1000000, '{}', 'budget-model.v1', '00000000-0000-0000-0000-00000000000c', 2,
+          '00000000-0000-0000-0006-0000000000e1')$$, 'Re-issue: one task re-issued twice', 'duplicate key');
+do $$ begin raise notice 'ok: a re-issue is a new task generation linked to the released one'; end $$;
+
 -- RLS: canary classification, abuse signals, assignments and the wallet registry are private; approvals are own-session.
 insert into wos.abuse_signals (kind, severity, subject_kind, subject_id, detector, detector_version, evidence)
 values ('payout_canary_passed', 'high', 'account', 'x', 'canary', 'v1', '{}');

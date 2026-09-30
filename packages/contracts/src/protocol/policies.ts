@@ -158,7 +158,7 @@ export const RewardPolicy = z.object({
     expiryEpochs: z.number().int().positive(),
     /**
      * Review 05 B4: work submitted while its reservation is live keeps it this many further epochs while the protocol's
-     * reviews finish. PROVISIONAL (founder F28).
+     * reviews finish. Accepted by D57 (F28); PINNED on each reservation at issuance (review 06 R06-5).
      */
     reviewGraceEpochs: z.number().int().nonnegative(),
     /** The budget model is recalibrated from telemetry of ACCEPTED units at most this often, moving at most maxChangeBp. */
@@ -179,7 +179,7 @@ export const RewardPolicy = z.object({
     /**
      * Review 04 finding 4: FINITE maxima, measured from notice, so a hold is bounded whatever the writer sets: reply
      * closes within maxReplyHours of notice, the appeal within maxAppealHours after the reply, and the hold lapses within
-     * maxHoldAfterAppealHours after the appeal closes. PROVISIONAL (founder F17).
+     * maxHoldAfterAppealHours after the appeal closes. Accepted by D57 (F17).
      */
     maxReplyHours: z.number().int().positive(),
     maxAppealHours: z.number().int().positive(),
@@ -340,9 +340,10 @@ export const ReviewPolicy = z.object({
     disagreementRevokesOriginal: z.literal(true),
   }),
   /**
-   * D25 + D27 + D28 payout audits. NOT a code review (the code passed Astra + Fable + human + CI before merge). Audit
-   * quorums run in three places only: dispute gates, the mandatory sampled audits, and the ratification of PROVISIONAL
-   * founder receipts. Since D49 auditors' agents judge attribution, declared splits, the frozen budget record against
+   * D25 + D27 + D28 payout audits (DORMANT in V1, D55). NOT a code review (the code passed the acceptance review + CI
+   * before merge). When active, audit quorums run in two places: dispute gates and the mandatory sampled audits. They do
+   * NOT ratify PROVISIONAL founder receipts any more: D54 finalizes those by silence after a post-bootstrap challenge
+   * publication, or through the review gate's one decision when challenged. Since D49 auditors' agents judge attribution, declared splits, the frozen budget record against
    * its acceptance, duplicate or stacked units under one objective, and budget outliers vs peers — not token usage; the
    * arithmetic is the engine's and anyone can recompute it.
    * Audit tasks are offered to claimants' clients at claim time and run on the claimant's own subscription (duty).
@@ -405,7 +406,7 @@ export const ReviewPolicy = z.object({
   ratification: z.object({
     mode: z.literal("optimistic_challenge"),
     recruitedReviewerPool: z.literal(false),
-    /** Bootstrap ends when this many outside contributors (unrelated to the founder) have an accepted receipt. PROVISIONAL (F31). */
+    /** Bootstrap ends when this many outside contributors (unrelated to the founder) have an accepted receipt. Accepted by D57 (F31). */
     bootstrapEndsAtOutsideContributors: z.number().int().positive(),
     challengeWindowHours: z.number().int().positive(),
     notifyAllParticipants: z.literal(true),

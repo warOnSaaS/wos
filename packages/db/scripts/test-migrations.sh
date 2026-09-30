@@ -33,4 +33,8 @@ echo "assertions"
 "${PSQL[@]}" < "$HERE/test/db-assertions.sql"
 echo "concurrency"
 bash "$HERE/test/concurrency.sh" "$NAME" "$DB"
+echo "lifecycle trace (engine vs database, review 06)"
+node -e 'const [a,b]=process.versions.node.split(".").map(Number); process.exit(a>22||(a===22&&b>=18)?0:1)' \
+  || { echo "the lifecycle trace needs Node >= 22.18 (nvm use 22)" >&2; exit 1; }
+node --experimental-strip-types --no-warnings "$HERE/test/lifecycle-trace.mjs" | docker exec -i "$NAME" psql -v ON_ERROR_STOP=1 -q -U postgres -d "$DB"
 echo "db tests passed on $IMAGE"

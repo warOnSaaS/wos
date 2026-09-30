@@ -61,8 +61,10 @@ export const EpochMachine: Machine<EpochState, EpochEvent> = {
 };
 
 /**
- * Receipt qualification (D23, D28). Only ACTIVE and RATIFIED count live. A PROVISIONAL receipt needs independent
- * ratification whatever happens in a challenge window; a rejection keeps it PROVISIONAL, on record.
+ * Receipt qualification (D23, D28, D54). ACTIVE, RATIFIED and FINAL_BY_SILENCE count live. A PROVISIONAL receipt
+ * finalizes (D54) when its persisted post-bootstrap challenge publication closes with no challenge (FINAL_BY_SILENCE — its
+ * own evidence class, not a ratification); a challenge sends it to the review gate, whose one decision either accepts it
+ * (RATIFIED, an independent human) or rejects it (it stays PROVISIONAL, on record). Audit-quorum ratification is dormant.
  */
 export const ReceiptStatusMachine: Machine<ReceiptStatus, ReceiptStatusEventKind> = {
   name: "ReceiptStatus",
@@ -86,6 +88,14 @@ export const ReceiptStatusMachine: Machine<ReceiptStatus, ReceiptStatusEventKind
     },
     {
       from: "PROVISIONAL",
+      to: "FINAL_BY_SILENCE",
+      event: "final_by_silence",
+      actor: ["system"],
+      guard:
+        "D54: its challenge publication (persisted, server-stamped after bootstrap ended, bound to the receipt hash) has closed and no challenge was admitted; decided under the receipt's subject lock",
+    },
+    {
+      from: "PROVISIONAL",
       to: "PROVISIONAL",
       event: "ratification_rejected",
       actor: ["system"],
@@ -100,6 +110,7 @@ export const ReceiptStatusMachine: Machine<ReceiptStatus, ReceiptStatusEventKind
     },
     { from: "PROVISIONAL", to: "REVOKED", event: "revoked", actor: ["maintainer", "system"], guard: "as above" },
     { from: "RATIFIED", to: "REVOKED", event: "revoked", actor: ["maintainer", "system"], guard: "as above" },
+    { from: "FINAL_BY_SILENCE", to: "REVOKED", event: "revoked", actor: ["maintainer", "system"], guard: "as above" },
     {
       from: "REVOKED",
       to: "ACTIVE",
@@ -109,6 +120,7 @@ export const ReceiptStatusMachine: Machine<ReceiptStatus, ReceiptStatusEventKind
     },
     { from: "REVOKED", to: "PROVISIONAL", event: "restored", actor: ["maintainer"], guard: "as above for PROVISIONAL" },
     { from: "REVOKED", to: "RATIFIED", event: "restored", actor: ["maintainer"], guard: "as above for RATIFIED" },
+    { from: "REVOKED", to: "FINAL_BY_SILENCE", event: "restored", actor: ["maintainer"], guard: "as above for FINAL_BY_SILENCE" },
   ],
 };
 

@@ -260,6 +260,8 @@ create table wos.epochs (
   budget_expiry_epochs integer not null default 4 check (budget_expiry_epochs > 0),
   budget_human_above_bp integer not null default 12500 check (budget_human_above_bp >= 10000),
   budget_hard_max_bp  integer not null default 20000 check (budget_hard_max_bp >= 10000),
+  review_grace_epochs integer not null default 2 check (review_grace_epochs >= 0),   -- review 06 R06-5: pinned on each budget
+  provisional_challenge_hours integer not null default 48 check (provisional_challenge_hours > 0),  -- D54 window, pinned on publication
   policy_versions     jsonb not null,
   created_at          timestamptz not null default now(),
   check (ends_at > starts_at),
@@ -313,8 +315,23 @@ create table wos.task_budgets (
   issuance_rate_base_per_acu  bigint not null default 0,    -- server-set from the epoch
   reserved_base               bigint not null default 0,    -- server-set: budget x rate / 1e6
   expires_epoch               integer not null default 0,   -- server-set: issued epoch + the epoch's budget expiry
+  -- Review 06 R06-5: the review grace and reward-policy version PINNED at issuance (never re-read from a later policy).
+  review_grace_epochs         integer not null default 0,   -- server-set from the epoch
+  policy_version              text not null default '',     -- server-set from the epoch's pinned reward policy
+  -- Review 06: a re-issue is a NEW task/reservation generation linked to the one it replaces (released or expired).
+  reissue_of                  uuid unique references wos.task_budgets (task_id),
   created_at                  timestamptz not null default now()
 );
+
+-- Review 06 R06-5: the authoritative submission event of commissioned work (on time = before the budget's expiry).
+create table wos.task_submissions (
+  task_id            uuid primary key references wos.task_budgets (task_id),
+  submitted_epoch    integer not null references wos.epochs (epoch_number),
+  submission_sha256  text not null check (submission_sha256 ~ '^sha256:[0-9a-f]{64}$'),
+  created_at         timestamptz not null default now()
+);
+
+
 
 create table wos.task_budget_releases (
   task_id     uuid primary key references wos.task_budgets (task_id),
@@ -372,15 +389,37 @@ create index contribution_receipts_account on wos.contribution_receipts (account
 create table wos.receipt_status_events (
   receipt_id       uuid not null references wos.contribution_receipts (id),
   seq              integer not null,
-  from_status      text check (from_status in ('ACTIVE', 'PROVISIONAL', 'RATIFIED', 'REVOKED')),
-  to_status        text not null check (to_status in ('ACTIVE', 'PROVISIONAL', 'RATIFIED', 'REVOKED')),
-  kind             text not null check (kind in ('issued', 'quorum_ratified', 'human_signoff', 'ratification_rejected', 'revoked', 'restored')),
+  from_status      text check (from_status in ('ACTIVE', 'PROVISIONAL', 'RATIFIED', 'FINAL_BY_SILENCE', 'REVOKED')),
+  to_status        text not null check (to_status in ('ACTIVE', 'PROVISIONAL', 'RATIFIED', 'FINAL_BY_SILENCE', 'REVOKED')),
+  kind             text not null check (kind in ('issued', 'quorum_ratified', 'human_signoff', 'ratification_rejected', 'final_by_silence',
+                                                  'revoked', 'restored')),
   quorum_id        uuid,
   human_review_id  uuid,
   admin_action_id  uuid references wos.admin_actions (id),
   resolution_allocation_id uuid,                     -- A3-7: a dispute-driven revocation names the final REVOKED resolution
   at               timestamptz not null default now(),
   primary key (receipt_id, seq)
+);
+
+-- D54 / review 06 R06-2: a PROVISIONAL receipt's challenge publication (after bootstrap ended; server-stamped; window
+-- pinned), its free challenges (V1: a flag that sends the receipt to the review gate; no stake), under one subject lock.
+create table wos.provisional_publications (
+  receipt_id           uuid primary key references wos.contribution_receipts (id),
+  receipt_sha256       text not null check (receipt_sha256 ~ '^sha256:[0-9a-f]{64}$'),
+  review_policy_version text not null,
+  bootstrap_ended_at   timestamptz not null default now(),   -- server-set
+  window_hours         integer not null default 0,           -- server-set from the receipt's epoch
+  published_at         timestamptz not null default now(),   -- server-set
+  closes_at            timestamptz not null default now(),   -- server-set: published_at + window
+  notification         jsonb not null,                       -- public place and notified participants (evidence)
+  check (notification ? 'publicUrl' and notification ? 'notifiedParticipants')
+);
+create table wos.provisional_challenges (
+  id                   uuid primary key default gen_random_uuid(),
+  receipt_id           uuid not null references wos.provisional_publications (receipt_id),
+  challenger_account_id uuid not null references wos.accounts (id),
+  reason_untrusted     text not null check (length(reason_untrusted) between 20 and 4000),
+  created_at           timestamptz not null default now()
 );
 
 create table wos.contribution_usage (
@@ -1353,6 +1392,14 @@ begin
     raise exception 'wos: the budget reserves nothing at the epoch''s rate: the task is not issued (as the engine)' using errcode = 'check_violation';
   end if;
   new.expires_epoch := new.issued_epoch + ep.budget_expiry_epochs;
+  new.review_grace_epochs := ep.review_grace_epochs;
+  new.policy_version := coalesce(ep.policy_versions ->> 'reward', '');
+  if new.reissue_of is not null and not exists (
+       select 1 from wos.task_budgets b join wos.task_budget_releases r on r.task_id = b.task_id
+        where b.task_id = new.reissue_of and b.objective_id = new.objective_id
+          and not exists (select 1 from wos.contribution_receipts c where c.task_id = b.task_id)) then
+    raise exception 'wos: a re-issue replaces a released or expired, unaccepted task of the same objective' using errcode = 'check_violation';
+  end if;
   return new;
 end $$;
 create trigger task_budgets_check before insert on wos.task_budgets for each row execute function wos.check_task_budget();
@@ -1598,6 +1645,119 @@ begin
 end $$;
 create trigger settlement_outcomes_check before insert on wos.settlement_outcomes for each row execute function wos.check_settlement_outcome();
 
+-- I5 (review 06 R06-6): a qualification binds the run-policy snapshot OF ITS LEASE AND GENERATION, by hash.
+alter table wos.qualification_results add constraint qualification_results_snapshot_fk
+  foreign key (policy_snapshot_sha256) references wos.run_policy_snapshots (snapshot_sha256);
+create or replace function wos.check_qualification_snapshot() returns trigger
+language plpgsql security definer set search_path = wos, pg_temp as $$
+begin
+  if not exists (select 1 from wos.run_policy_snapshots s where s.snapshot_sha256 = new.policy_snapshot_sha256
+                  and s.lease_id = new.lease_id and s.generation = new.lease_generation) then
+    raise exception 'wos: the qualification''s run-policy snapshot belongs to another lease or generation' using errcode = 'check_violation';
+  end if;
+  return new;
+end $$;
+create trigger qualification_results_snapshot before insert on wos.qualification_results for each row execute function wos.check_qualification_snapshot();
+
+-- Review 06 R06-5: a submission is recorded while the budget is live and unreleased (server time).
+create or replace function wos.check_task_submission() returns trigger
+language plpgsql security definer set search_path = wos, pg_temp as $$
+begin
+  new.created_at := clock_timestamp();
+  if not exists (select 1 from wos.task_budgets b where b.task_id = new.task_id and new.submitted_epoch < b.expires_epoch
+                   and new.submitted_epoch >= b.issued_epoch)
+     or exists (select 1 from wos.task_budget_releases r where r.task_id = new.task_id) then
+    raise exception 'wos: work is submitted only while its budget is live (before its expiry, unreleased)' using errcode = 'check_violation';
+  end if;
+  return new;
+end $$;
+create trigger task_submissions_check before insert on wos.task_submissions for each row execute function wos.check_task_submission();
+
+-- D54 / review 06 R06-2: one SUBJECT LOCK per receipt serializes challenge publication, challenge admission, silence
+-- finalization and live admission (manifest); each reads authoritative state after taking it, with server time.
+create or replace function wos.lock_receipt_subject(r uuid) returns void
+language sql as $$ select pg_advisory_xact_lock(hashtext('wos.receipt_subject:' || r::text)) $$;
+create or replace function wos.receipt_status(r uuid) returns text
+language sql stable security definer set search_path = wos, pg_temp as $$
+  select to_status from wos.receipt_status_events where receipt_id = r order by seq desc limit 1
+$$;
+create or replace function wos.check_provisional_publication() returns trigger
+language plpgsql security definer set search_path = wos, pg_temp as $$
+declare
+  ended timestamptz;
+begin
+  perform wos.lock_receipt_subject(new.receipt_id);
+  if wos.bootstrap_on() then
+    raise exception 'wos: provisional receipts are published for challenge only after bootstrap ended (D54)' using errcode = 'check_violation';
+  end if;
+  if (wos.receipt_status(new.receipt_id) = 'PROVISIONAL') is not true
+     or new.receipt_sha256 <> (select receipt_sha256 from wos.contribution_receipts where id = new.receipt_id) then
+    raise exception 'wos: only a PROVISIONAL receipt is published, bound to its hash' using errcode = 'check_violation';
+  end if;
+  select updated_at into ended from wos.platform_settings where key = 'bootstrap_mode';
+  new.bootstrap_ended_at := ended;
+  new.published_at := clock_timestamp();
+  select e.provisional_challenge_hours into new.window_hours
+    from wos.contribution_receipts c join wos.epochs e on e.epoch_number = c.admitted_epoch where c.id = new.receipt_id;
+  new.closes_at := new.published_at + make_interval(hours => new.window_hours);
+  return new;
+end $$;
+create trigger provisional_publications_check before insert on wos.provisional_publications for each row execute function wos.check_provisional_publication();
+create or replace function wos.check_provisional_challenge() returns trigger
+language plpgsql security definer set search_path = wos, pg_temp as $$
+begin
+  perform wos.lock_receipt_subject(new.receipt_id);
+  new.created_at := clock_timestamp();
+  if (wos.receipt_status(new.receipt_id) = 'PROVISIONAL') is not true
+     or new.created_at >= (select closes_at from wos.provisional_publications where receipt_id = new.receipt_id) then
+    raise exception 'wos: the challenge window of receipt % has closed or it is already final', new.receipt_id using errcode = 'check_violation';
+  end if;
+  return new;
+end $$;
+create trigger provisional_challenges_check before insert on wos.provisional_challenges for each row execute function wos.check_provisional_challenge();
+create or replace function wos.check_receipt_status_event() returns trigger
+language plpgsql security definer set search_path = wos, pg_temp as $$
+begin
+  if new.kind = 'final_by_silence' then
+    perform wos.lock_receipt_subject(new.receipt_id);
+    if new.from_status <> 'PROVISIONAL' or new.to_status <> 'FINAL_BY_SILENCE'
+       or (wos.receipt_status(new.receipt_id) = 'PROVISIONAL') is not true
+       or (clock_timestamp() >= (select closes_at from wos.provisional_publications where receipt_id = new.receipt_id)) is not true
+       or exists (select 1 from wos.provisional_challenges c where c.receipt_id = new.receipt_id) then
+      raise exception 'wos: receipt % finalizes by silence only after its published window closed with no challenge', new.receipt_id
+        using errcode = 'check_violation';
+    end if;
+  elsif new.to_status = 'FINAL_BY_SILENCE' then
+    raise exception 'wos: FINAL_BY_SILENCE is reached only by the final_by_silence event' using errcode = 'check_violation';
+  end if;
+  return new;
+end $$;
+create trigger receipt_status_events_d54 before insert on wos.receipt_status_events for each row execute function wos.check_receipt_status_event();
+-- Live admission (and so allocations and entitlements) of a published provisional receipt waits for its final status,
+-- under the same subject lock.
+create or replace function wos.check_manifest_provisional() returns trigger
+language plpgsql security definer set search_path = wos, pg_temp as $$
+begin
+  if new.mode = 'live' and new.disposition = 'included' and exists (select 1 from wos.provisional_publications p where p.receipt_id = new.receipt_id) then
+    perform wos.lock_receipt_subject(new.receipt_id);
+    if (wos.receipt_status(new.receipt_id) in ('FINAL_BY_SILENCE', 'RATIFIED')) is not true then
+      raise exception 'wos: a challenged or unfinalized provisional receipt is not admitted live' using errcode = 'check_violation';
+    end if;
+  end if;
+  return new;
+end $$;
+create trigger epoch_manifest_provisional before insert on wos.epoch_manifest_entries for each row execute function wos.check_manifest_provisional();
+-- The end of bootstrap is time-stamped (the publication window's reference point).
+create or replace function wos.stamp_bootstrap_end() returns trigger
+language plpgsql as $$
+begin
+  if new.key = 'bootstrap_mode' and coalesce((old.value ->> 'enabled')::boolean, false) and not coalesce((new.value ->> 'enabled')::boolean, false) then
+    new.updated_at := clock_timestamp();
+  end if;
+  return new;
+end $$;
+create trigger platform_settings_bootstrap_end_stamp before update on wos.platform_settings for each row execute function wos.stamp_bootstrap_end();
+
 -- I6 (D58): a disputed finding is never resolved by the lab that raised it. The raising lab is derived from the
 -- finding's review provider (never trusted from the caller).
 create or replace function wos.lab_of_provider(p text) returns text
@@ -1735,7 +1895,7 @@ begin
     'genesis_reference_manifests', 'governance_proposals', 'governance_weight_snapshots', 'governance_votes',
     'settlement_adapter_events', 'migration_snapshots', 'abuse_signals', 'risk_flags', 'admin_action_approvals',
     'admin_action_uses', 'contribution_usage', 'payout_audit_assignments', 'acceptance_objectives', 'task_budgets', 'task_budget_releases', 'confiscation_releases', 'epoch_balances',
-    'human_review_assignments', 'ruling_lab_records'
+    'human_review_assignments', 'ruling_lab_records', 'task_submissions', 'provisional_publications', 'provisional_challenges'
   ] loop
     perform wos.protocol_append_only(t);
   end loop;
@@ -1755,7 +1915,8 @@ begin
     'genesis_contributions', 'genesis_commit_claims', 'genesis_reference_manifests', 'governance_proposals',
     'governance_weight_snapshots', 'governance_votes', 'settlement_adapter_events', 'migration_snapshots',
     'abuse_signals', 'risk_flags', 'admin_action_approvals', 'admin_action_uses', 'contribution_usage', 'payout_audit_assignments',
-    'acceptance_objectives', 'task_budgets', 'task_budget_releases', 'confiscation_releases', 'epoch_balances', 'human_review_assignments', 'ruling_lab_records'
+    'acceptance_objectives', 'task_budgets', 'task_budget_releases', 'confiscation_releases', 'epoch_balances', 'human_review_assignments', 'ruling_lab_records',
+    'task_submissions', 'provisional_publications', 'provisional_challenges'
   ] loop
     execute format('alter table wos.%I enable row level security', t);
     execute format('grant select, insert on wos.%I to wos_app', t);
@@ -1781,7 +1942,7 @@ begin
     'pool_accruals', 'pool_accrual_corrections', 'pool_events', 'genesis_contributions', 'genesis_commit_claims',
     'genesis_reference_manifests', 'governance_proposals', 'governance_weight_snapshots', 'settlement_adapter_events',
     'migration_snapshots', 'admin_action_uses', 'contribution_usage', 'acceptance_objectives', 'task_budgets', 'task_budget_releases',
-    'confiscation_releases', 'epoch_balances', 'ruling_lab_records'
+    'confiscation_releases', 'epoch_balances', 'ruling_lab_records', 'task_submissions', 'provisional_publications'
   ] loop
     execute format('create policy public_read on wos.%I for select to wos_app using (true)', t);
     execute format('create policy privileged_write on wos.%I for insert to wos_app with check (wos.is_privileged())', t);
@@ -1796,7 +1957,7 @@ declare
   t text;
 begin
   foreach t in array array['allocation_disputes', 'dispute_items', 'dispute_replies', 'dispute_appeals', 'governance_votes', 'allocation_acceptances',
-                         'confiscation_appeals', 'admin_action_approvals'] loop
+                         'confiscation_appeals', 'admin_action_approvals', 'provisional_challenges'] loop
     execute format('create policy public_read on wos.%I for select to wos_app using (true)', t);
   end loop;
 end $$;
@@ -1806,6 +1967,7 @@ create policy own_insert on wos.dispute_replies for insert to wos_app with check
 create policy own_insert on wos.dispute_appeals for insert to wos_app with check (wos.is_privileged() or appellant_account_id = wos.actor_id());
 create policy own_insert on wos.governance_votes for insert to wos_app with check (wos.is_privileged() or account_id = wos.actor_id());
 create policy own_insert on wos.allocation_acceptances for insert to wos_app with check (wos.is_privileged() or account_id = wos.actor_id());
+create policy own_insert on wos.provisional_challenges for insert to wos_app with check (wos.is_privileged() or challenger_account_id = wos.actor_id());
 create policy own_insert on wos.confiscation_appeals for insert to wos_app with check (wos.is_privileged() or appellant_account_id = wos.actor_id());
 -- A3-7: the co-signer approves from THEIR OWN session; no other actor (privileged or not) can write their approval.
 create policy own_insert on wos.admin_action_approvals for insert to wos_app with check (approver_account_id = wos.actor_id());

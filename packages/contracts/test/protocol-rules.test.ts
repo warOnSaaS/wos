@@ -5,6 +5,17 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  claimEligibilityRefusals,
+  computeEpoch,
+  acceptanceRequirement,
+  builderAcceptanceRefusals,
+  boundRunPolicySnapshot,
+  challengeAdmissionRefusals,
+  challengePublicationRefusals,
+  receiptCountsIn,
+  reissueRefusals,
+  silenceFinalizationRefusals,
+  splitTaskReservation,
   crossLabUpholdRates,
   labOfProvider,
   resolverEligibilityRefusals,
@@ -75,6 +86,8 @@ import {
   humanReviewRefusals,
   poolEventRefusals,
   type QualificationEvidence,
+  type RunPolicySnapshot,
+  runPolicySnapshotSha256,
   qualificationRefusals,
   quorumRatifyRefusals,
   ReceiptStatusMachine,
@@ -179,13 +192,24 @@ function snapshot(humanReviewRequired: boolean, over: Record<string, unknown> = 
     ...over,
   };
 }
+const LEASE_C3 = "00000000-0000-4000-8000-000000000c03";
+const LEASE_C5 = "00000000-0000-4000-8000-000000000c05";
+/** The stored snapshot of a lease, its row and the hash the qualification binds (review 06 R06-6). */
+function bound(leaseId: string, humanReviewRequired = false, over: Record<string, unknown> = {}) {
+  const body = snapshot(humanReviewRequired, { leaseId, ...over });
+  const sha = runPolicySnapshotSha256(body as RunPolicySnapshot);
+  return { snapshotBody: body, snapshotRow: { leaseId, generation: 1, snapshotSha256: sha }, qualificationSnapshotSha256: sha };
+}
+const SINGLE_LAB = [{ label: "single_lab_review", reason: "fable_unavailable: Fable seat replaced by the required human review (D53)" }];
+const ASTRA_PASS = { slot: "astra", verdict: "NO_MATERIAL_GAPS", modelId: "gpt-6-astra", reasoning: "max" };
+const FABLE_PASS = { slot: "fable", verdict: "NO_MATERIAL_GAPS", modelId: "claude-fable-5-1", reasoning: "max" };
 describe("qualification chain (H7, A3-5) — moved from 0007 check_qualification_result", () => {
   const base: QualificationEvidence = {
     subjectKind: "document",
     subjectId: "d1",
     revision: "b".repeat(40),
     lease: {
-      id: "c3",
+      id: LEASE_C3,
       generation: 1,
       accountId: "bob",
       taskKind: "roadmap_author",
@@ -198,7 +222,7 @@ describe("qualification chain (H7, A3-5) — moved from 0007 check_qualification
       endedAtMs: NOW - 0.1 * H,
     },
     citedGeneration: 1,
-    changeset: { leaseId: "c3", ok: true, signatureValid: true, createdAtMs: NOW - 0.5 * H, submissionSha256: "s9" },
+    changeset: { leaseId: LEASE_C3, ok: true, signatureValid: true, createdAtMs: NOW - 0.5 * H, submissionSha256: "s9" },
     round: {
       state: "revealed",
       outcome: "consensus",
@@ -206,22 +230,24 @@ describe("qualification chain (H7, A3-5) — moved from 0007 check_qualification
       submissionSha256: "s9",
       attemptId: null,
       documentId: "d1",
-      reviewVerdicts: [
-        { slot: "astra", verdict: "NO_MATERIAL_GAPS" },
-        { slot: "fable", verdict: "NO_MATERIAL_GAPS" },
-      ],
+      // D53 is active in review-policy.v1: Astra plus the required human, no Fable seat (review 06 R06-1).
+      reviewVerdicts: [ASTRA_PASS],
     },
     greenCiAtHead: false,
-    snapshotBody: snapshot(false),
-    humanPreMergePassOnRound: false,
+    ...bound(LEASE_C3),
+    pinnedReviewPolicy: REVIEW_POLICY_V1,
+    pinnedCapabilityPolicy: CAPABILITY_POLICY_V1,
+    humanPreMergePassOnRound: true,
+    receiptLabels: SINGLE_LAB,
   };
   const attempt: QualificationEvidence = {
     ...base,
     subjectKind: "attempt",
     subjectId: "at1",
     revision: "c".repeat(40),
-    lease: { ...base.lease, id: "c5", taskKind: "abu_build", taskAbuId: "ab1", taskDocumentId: null },
-    changeset: { ...base.changeset!, leaseId: "c5", submissionSha256: "s8" },
+    lease: { ...base.lease, id: LEASE_C5, taskKind: "abu_build", taskAbuId: "ab1", taskDocumentId: null },
+    changeset: { ...base.changeset!, leaseId: LEASE_C5, submissionSha256: "s8" },
+    ...bound(LEASE_C5, false, { capabilityClass: "BUILD_L4" }),
     attempt: { id: "at1", accountId: "bob", abuId: "ab1", maxLifetimeAtMs: NOW + 24 * H },
     round: { ...base.round!, headSha: "c".repeat(40), submissionSha256: "s8", attemptId: "at1", documentId: null },
     greenCiAtHead: true,
@@ -236,16 +262,16 @@ describe("qualification chain (H7, A3-5) — moved from 0007 check_qualification
     refused(
       qualificationRefusals({
         ...base,
-        round: { ...base.round!, outcome: "gaps", reviewVerdicts: [{ slot: "fable", verdict: "MATERIAL_GAPS" }] },
+        round: { ...base.round!, outcome: "gaps", reviewVerdicts: [{ ...ASTRA_PASS, verdict: "MATERIAL_GAPS" }] },
       }),
       /consensus round/,
     ));
   it("A3-5: a qualification citing a changeset of another lease", () =>
-    refused(qualificationRefusals({ ...base, changeset: { ...base.changeset!, leaseId: "c1" } }), /not accepted on this lease/));
+    refused(qualificationRefusals({ ...base, changeset: { ...base.changeset!, leaseId: LEASE_C5 } }), /not accepted on this lease/));
   it("A3-5 / H7: a qualification on a stale lease generation", () =>
     refused(qualificationRefusals({ ...base, citedGeneration: 2 }), /stale lease generation/));
   it("A3-5: the pinned snapshot requires a human approval that is missing", () =>
-    refused(qualificationRefusals({ ...base, snapshotBody: snapshot(true) }), /human pre-merge/));
+    refused(qualificationRefusals({ ...base, ...bound(LEASE_C3, true), humanPreMergePassOnRound: false }), /human pre-merge/));
   it("A3-5: an implementation qualified without green CI at its head", () =>
     refused(qualificationRefusals({ ...attempt, greenCiAtHead: false }), /green CI/));
   it("A3-5 repro: another attempt's changeset cited for this attempt", () =>
@@ -917,8 +943,8 @@ describe("Astra reviews 04 and 05: rule regressions (docs/protocol/reviews/ASTRA
     refused(budgetRefusals({ ...b, budgetMicro: 8_000_000n, modelMicro: 8_000_000n, objectiveConsensus: null }), /consensus round/));
   it("B2 repro: a 50/50 task allocated 100/0 is refused; the derived split passes, sponsorship split included", () => {
     const receipts = [
-      { receiptId: "a", shareBp: 5000, orgShareBp: 0 },
-      { receiptId: "b", shareBp: 5000, orgShareBp: 8000 },
+      { receiptId: "a", accountId: "alice", shareBp: 5000, orgShareBp: 0 },
+      { receiptId: "b", accountId: "bob", shareBp: 5000, orgShareBp: 8000 },
     ];
     refused(
       taskAllocationRefusals({
@@ -994,6 +1020,8 @@ describe("Astra reviews 04 and 05: rule regressions (docs/protocol/reviews/ASTRA
       accepted: false,
       activeLease: false,
       authorizationRefusals: null,
+      taskTerminal: true,
+      finalRejectionOfSubmission: false,
     };
     refused(budgetReleaseRefusals(r), /live until epoch 6/);
     expect(budgetReleaseRefusals({ ...r, epochNumber: 6 })).toEqual([]);
@@ -1230,21 +1258,59 @@ describe("D53: Fable unavailable — ReviewPolicy fallback fable_unavailable", (
   });
 });
 
-describe("D54: provisional receipts finalize optimistically", () => {
-  const x = { bootstrapEnded: true, publishedAtMs: NOW, challengeWindowHours: 48, challenged: false, nowMs: NOW + 49 * H };
-  it("silence after the challenge window finalizes a provisional receipt; a challenge sends it to the review gate", () => {
+describe("D54: provisional receipts finalize optimistically (review 06 R06-2: from a persisted publication)", () => {
+  const pub = { receiptSha256: "sha256:r", bootstrapEndedAtMs: NOW - H, publishedAtMs: NOW, closesAtMs: NOW + 48 * H, notified: true };
+  const x = { receiptSha256: "sha256:r", publication: pub, challenged: false, decision: null, nowMs: NOW + 49 * H };
+  it("silence after the persisted window finalizes; a challenge goes to the review gate and waits for its one decision", () => {
     expect(provisionalReceiptOutcome(x)).toBe("final_by_silence");
     expect(provisionalReceiptOutcome({ ...x, nowMs: NOW + 47 * H })).toBe("in_challenge_window");
     expect(provisionalReceiptOutcome({ ...x, challenged: true })).toBe("to_review_gate");
+    expect(provisionalReceiptOutcome({ ...x, challenged: true, decision: "accepted" })).toBe("ratified");
+    expect(provisionalReceiptOutcome({ ...x, challenged: true, decision: "rejected" })).toBe("rejected");
   });
-  it("before bootstrap ends nothing waits on an independent human: the receipt stays provisional (founder work proceeds)", () => {
-    expect(provisionalReceiptOutcome({ ...x, bootstrapEnded: false, publishedAtMs: null })).toBe("provisional");
+  it("R06-2 repro: a pre-bootstrap or foreign publication cannot start the window; nothing waits before bootstrap ends", () => {
+    expect(provisionalReceiptOutcome({ ...x, publication: null })).toBe("provisional");
+    expect(provisionalReceiptOutcome({ ...x, publication: { ...pub, publishedAtMs: NOW - 100 * H, closesAtMs: NOW - 52 * H } })).toBe(
+      "provisional",
+    );
+    expect(provisionalReceiptOutcome({ ...x, publication: { ...pub, receiptSha256: "sha256:other" } })).toBe("provisional");
+    expect(provisionalReceiptOutcome({ ...x, publication: { ...pub, notified: false } })).toBe("provisional");
     expect(REVIEW_POLICY_V1.ratification).toMatchObject({
       mode: "optimistic_challenge",
       recruitedReviewerPool: false,
       challengeWindowHours: REWARD_POLICY_V1.challenge.windowHours,
       challengeGoesTo: "review_gate",
     });
+  });
+  it("R06-2: publication after bootstrap with a pinned window; admission and finalization exclude each other", () => {
+    const pubOk = {
+      status: "PROVISIONAL",
+      bootstrapOn: false,
+      nowMs: NOW,
+      bootstrapEndedAtMs: NOW - H,
+      closesAtMs: NOW + 48 * H,
+      windowHours: 48,
+      notified: true,
+      alreadyPublished: false,
+    };
+    expect(challengePublicationRefusals(pubOk)).toEqual([]);
+    refused(challengePublicationRefusals({ ...pubOk, bootstrapOn: true }), /after bootstrap ended/);
+    refused(challengePublicationRefusals({ ...pubOk, closesAtMs: NOW + H }), /pinned hours/);
+    expect(challengeAdmissionRefusals({ publication: pub, nowMs: NOW + H, finalized: false })).toEqual([]);
+    refused(challengeAdmissionRefusals({ publication: pub, nowMs: NOW + 48 * H, finalized: false }), /closed/);
+    refused(challengeAdmissionRefusals({ publication: pub, nowMs: NOW + H, finalized: true }), /already final/);
+    expect(silenceFinalizationRefusals({ publication: pub, nowMs: NOW + 48 * H, challenged: false, status: "PROVISIONAL" })).toEqual([]);
+    refused(
+      silenceFinalizationRefusals({ publication: pub, nowMs: NOW + 48 * H, challenged: true, status: "PROVISIONAL" }),
+      /review-gate decision/,
+    );
+    refused(silenceFinalizationRefusals({ publication: pub, nowMs: NOW + H, challenged: false, status: "PROVISIONAL" }), /still open/);
+  });
+  it("R06-2: the status machine has a real final_by_silence transition, its own evidence class (not a ratification)", () => {
+    const t = ReceiptStatusMachine.transitions.find((x) => x.event === "final_by_silence")!;
+    expect(t).toMatchObject({ from: "PROVISIONAL", to: "FINAL_BY_SILENCE" });
+    expect(receiptCountsIn("live", "FINAL_BY_SILENCE")).toBe(true);
+    expect(ReceiptStatusMachine.transitions.some((x) => x.to === "RATIFIED" && x.event === "final_by_silence")).toBe(false);
   });
 });
 
@@ -1285,16 +1351,17 @@ describe("D56: build next — assigned mode", () => {
     relatedAccountIds: ["orgmate"],
     remaining: { budgetAcuMicro: null, wallTimeMinutes: null },
   };
+  const ACC = acceptanceRequirement(REVIEW_POLICY_V1, CAPABILITY_POLICY_V1, "standard");
   it("eligibility is the claim's: qualified model, toolchain, lease slot, not own/related proposal, live budget, limits", () => {
-    expect(nextUnitEligibilityRefusals(cap, me, unit("u1"), 6)).toEqual([]);
-    refused(nextUnitEligibilityRefusals(cap, { ...me, modelId: "glm-5.1" }, unit("u1"), 6), /candidate model/);
-    refused(nextUnitEligibilityRefusals(cap, me, unit("u1", { requiredToolchains: ["rust"] }), 6), /toolchains/);
-    refused(nextUnitEligibilityRefusals(cap, { ...me, activeLeasesByProvider: { claude_cli: 1 } }, unit("u1"), 6), /lease slot/);
-    refused(nextUnitEligibilityRefusals(cap, me, unit("u1", { proposerAccountId: "me" }), 6), /proposed this unit's budget/);
-    refused(nextUnitEligibilityRefusals(cap, me, unit("u1", { proposerAccountId: "orgmate" }), 6), /proposed this unit's budget/);
-    refused(nextUnitEligibilityRefusals(cap, me, unit("u1"), 9), /expired/);
+    expect(nextUnitEligibilityRefusals(cap, me, unit("u1"), 6, ACC)).toEqual([]);
+    refused(nextUnitEligibilityRefusals(cap, { ...me, modelId: "glm-5.1" }, unit("u1"), 6, ACC), /candidate model/);
+    refused(nextUnitEligibilityRefusals(cap, me, unit("u1", { requiredToolchains: ["rust"] }), 6, ACC), /toolchains/);
+    refused(nextUnitEligibilityRefusals(cap, { ...me, activeLeasesByProvider: { claude_cli: 1 } }, unit("u1"), 6, ACC), /lease slot/);
+    refused(nextUnitEligibilityRefusals(cap, me, unit("u1", { proposerAccountId: "me" }), 6, ACC), /proposed this unit's budget/);
+    refused(nextUnitEligibilityRefusals(cap, me, unit("u1", { proposerAccountId: "orgmate" }), 6, ACC), /proposed this unit's budget/);
+    refused(nextUnitEligibilityRefusals(cap, me, unit("u1"), 9, ACC), /expired/);
     refused(
-      nextUnitEligibilityRefusals(cap, { ...me, remaining: { budgetAcuMicro: 1n, wallTimeMinutes: null } }, unit("u1"), 6),
+      nextUnitEligibilityRefusals(cap, { ...me, remaining: { budgetAcuMicro: 1n, wallTimeMinutes: null } }, unit("u1"), 6, ACC),
       /ACU limit/,
     );
   });
@@ -1411,3 +1478,227 @@ describe("D58: a disputed finding is resolved by another lab than the one that r
     ]);
   });
 });
+
+// ------------------------------------------------------------------------------------------------ Astra review 06
+describe("Astra review 06: rule regressions (docs/protocol/reviews/ASTRA-REVIEW-06-repros-prefix.txt)", () => {
+  const NO_FALLBACK = {
+    ...REVIEW_POLICY_V1,
+    fallbacks: REVIEW_POLICY_V1.fallbacks.map((f) => ({ ...f, active: false })),
+  };
+  const q: QualificationEvidence = {
+    subjectKind: "attempt",
+    subjectId: "at1",
+    revision: "c".repeat(40),
+    lease: {
+      id: LEASE_C5,
+      generation: 1,
+      accountId: "bob",
+      taskKind: "abu_build",
+      taskAttemptId: null,
+      taskAbuId: "ab1",
+      taskDocumentId: null,
+      issuedAtMs: NOW - 3 * H,
+      expiresAtMs: NOW + 0.5 * H,
+      hardDeadlineAtMs: NOW + H,
+      endedAtMs: NOW - 0.1 * H,
+    },
+    citedGeneration: 1,
+    changeset: { leaseId: LEASE_C5, ok: true, signatureValid: true, createdAtMs: NOW - 0.5 * H, submissionSha256: "s8" },
+    attempt: { id: "at1", accountId: "bob", abuId: "ab1", maxLifetimeAtMs: NOW + 24 * H },
+    round: {
+      state: "revealed",
+      outcome: "consensus",
+      headSha: "c".repeat(40),
+      submissionSha256: "s8",
+      attemptId: "at1",
+      documentId: null,
+      reviewVerdicts: [ASTRA_PASS],
+    },
+    greenCiAtHead: true,
+    ...bound(LEASE_C5, false, { capabilityClass: "BUILD_L4" }),
+    pinnedReviewPolicy: REVIEW_POLICY_V1,
+    pinnedCapabilityPolicy: CAPABILITY_POLICY_V1,
+    humanPreMergePassOnRound: true,
+    receiptLabels: SINGLE_LAB,
+  };
+  it("R06-1 repro: under the D53 fallback an Opus build + Astra PASS + independent human PASS qualifies, without Fable", () =>
+    expect(qualificationRefusals(q)).toEqual([]));
+  it("R06-1: the missing human, a missing label, a Fable seat while the fallback is active, a verdict below max are refused", () => {
+    refused(qualificationRefusals({ ...q, humanPreMergePassOnRound: false }), /human pre-merge/);
+    refused(qualificationRefusals({ ...q, receiptLabels: [] }), /single_lab_review label/);
+    refused(qualificationRefusals({ ...q, round: { ...q.round!, reviewVerdicts: [ASTRA_PASS, FABLE_PASS] } }), /fable is not a seat/);
+    refused(qualificationRefusals({ ...q, round: { ...q.round!, reviewVerdicts: [{ ...ASTRA_PASS, reasoning: "high" }] } }), /not max/);
+    refused(qualificationRefusals({ ...q, round: { ...q.round!, reviewVerdicts: [] } }), /astra seat needs exactly one/);
+  });
+  it("R06-1: without the fallback both agent seats (and the risk class's human) are required, from the pinned policy", () => {
+    const nf = { ...q, pinnedReviewPolicy: NO_FALLBACK, receiptLabels: [] };
+    expect(qualificationRefusals({ ...nf, round: { ...q.round!, reviewVerdicts: [ASTRA_PASS, FABLE_PASS] } })).toEqual([]);
+    refused(qualificationRefusals(nf), /fable seat needs exactly one/);
+  });
+  it("R06-1 repro: work that cannot follow the acceptance path is refused before reservation (self-pick and build-next)", () => {
+    const fb = acceptanceRequirement(REVIEW_POLICY_V1, CAPABILITY_POLICY_V1, "standard");
+    const nf = acceptanceRequirement(NO_FALLBACK, CAPABILITY_POLICY_V1, "standard");
+    expect(fb).toMatchObject({
+      fallback: "fable_unavailable",
+      agentSeats: ["astra"],
+      humanRequired: true,
+      authoringModel: "claude-opus-5-5",
+    });
+    refused(builderAcceptanceRefusals(fb, "gpt-6-astra"), /only claude-opus-5-5 builds/);
+    refused(builderAcceptanceRefusals(nf, "gpt-6-astra"), /no legal astra reviewer/);
+    expect(builderAcceptanceRefusals(fb, "claude-opus-5-5")).toEqual([]);
+    const me = {
+      accountId: "me",
+      provider: "codex_cli",
+      modelId: "gpt-6-astra",
+      attestedToolchains: [],
+      activeLeasesByProvider: {},
+      leaseLimitByProvider: { codex_cli: 1 },
+      relatedAccountIds: [],
+      remaining: { budgetAcuMicro: null, wallTimeMinutes: null },
+    };
+    const unit = {
+      unitId: "u1",
+      target: "salesforce",
+      requiredClass: "BUILD_L4",
+      targetsServed: 1,
+      dependentsWaiting: 0,
+      issuedEpoch: 1,
+      issuedAtMs: 0,
+      budgetAcuMicro: 8_000_000n,
+      estimatedMinutes: 60,
+      proposerAccountId: "someone_else",
+      requiredToolchains: [],
+      budget: { released: false, expiresEpoch: 5 },
+    };
+    refused(nextUnitEligibilityRefusals(CAPABILITY_POLICY_V1, me, unit, 2, fb), /only claude-opus-5-5 builds/);
+    refused(claimEligibilityRefusals(CAPABILITY_POLICY_V1, me, unit, 2, nf), /no legal astra reviewer/);
+  });
+  it("R06-6 repro: a schema-valid snapshot of another lease or generation fails even when it would relax the human rule", () => {
+    const foreign = bound("00000000-0000-4000-8000-000000000099", false, { leaseGeneration: 99, capabilityClass: "BUILD_L4" });
+    const correct = bound(LEASE_C5, true, { capabilityClass: "BUILD_L4" });
+    refused(qualificationRefusals({ ...q, ...correct, humanPreMergePassOnRound: false }), /human pre-merge/);
+    refused(qualificationRefusals({ ...q, ...foreign, humanPreMergePassOnRound: false }), /another lease or generation/);
+    refused(qualificationRefusals({ ...q, ...correct, qualificationSnapshotSha256: `sha256:${"0".repeat(64)}` }), /hash differs/);
+    refused(
+      qualificationRefusals({ ...q, pinnedReviewPolicy: { ...REVIEW_POLICY_V1, policyVersion: "review-policy.v2" } }),
+      /not the one the snapshot pinned/,
+    );
+    expect(
+      boundRunPolicySnapshot(
+        { id: LEASE_C5, generation: 1 },
+        correct.snapshotRow,
+        correct.snapshotBody,
+        correct.qualificationSnapshotSha256,
+      ).refusals,
+    ).toEqual([]);
+  });
+  const rel = {
+    reason: "abandoned" as const,
+    epochNumber: 3,
+    expiresEpoch: 5,
+    submittedEpoch: 2 as number | null,
+    reviewGraceEpochs: 2,
+    accepted: false,
+    activeLease: false,
+    authorizationRefusals: null as string[] | null,
+    taskTerminal: true,
+    finalRejectionOfSubmission: false,
+  };
+  it("R06-4 repro: submitted work whose lease ended while review is pending cannot be released as abandoned or failed", () => {
+    refused(budgetReleaseRefusals(rel), /final rejection or an authorized cancellation/);
+    refused(budgetReleaseRefusals({ ...rel, reason: "failed" }), /final rejection or an authorized cancellation/);
+    expect(budgetReleaseRefusals({ ...rel, finalRejectionOfSubmission: true })).toEqual([]);
+    expect(budgetReleaseRefusals({ ...rel, authorizationRefusals: [] })).toEqual([]);
+    expect(budgetReleaseRefusals({ ...rel, submittedEpoch: null })).toEqual([]);
+    refused(budgetReleaseRefusals({ ...rel, submittedEpoch: null, taskTerminal: false }), /terminal state/);
+  });
+  it("R06-3 repro: one split for engine and rule — odd reserves, swapped receipt ids, several contributors, zero lines", () => {
+    const params = {
+      ...engineParamsFrom(REWARD_POLICY_V1, COMPLETION_POLICY_V1),
+      emissionReserve: 1000n,
+      budgetPpm: 1_000_000n,
+      rateCeilingInitialBasePerAcu: 100n,
+      rateCeilingDecayPpm: 0n,
+      holdbackBp: 0n,
+    };
+    const cases: Array<{ micro: bigint; people: Array<[string, string, number]> }> = [
+      {
+        micro: 10_000n,
+        people: [
+          ["alice", "z", 5000],
+          ["bob", "a", 5000],
+        ],
+      },
+      {
+        micro: 30_000n,
+        people: [
+          ["alice", "a", 5000],
+          ["bob", "z", 5000],
+        ],
+      },
+      {
+        micro: 70_000n,
+        people: [
+          ["carol", "m", 3333],
+          ["alice", "z", 3333],
+          ["bob", "a", 3334],
+        ],
+      },
+      {
+        micro: 10_000n,
+        people: [
+          ["bob", "b", 9000],
+          ["alice", "a", 1000],
+        ],
+      },
+    ];
+    for (const c of cases) {
+      const r = computeEpochFor(params, c.micro, c.people);
+      const lines = r.allocations.map((l) => ({
+        receiptId: c.people.find((p) => p[0] === l.accountId)![1],
+        beneficiary: "person" as const,
+        amount: l.amountBase,
+      }));
+      const receipts = c.people.map(([accountId, receiptId, shareBp]) => ({ receiptId, accountId, shareBp, orgShareBp: 0 }));
+      expect(taskAllocationRefusals({ reservedBase: r.acceptedBase, receipts, lines })).toEqual([]);
+    }
+    // Dormant sponsorship split vectors (checked now, used when organization splits activate).
+    expect(
+      splitTaskReservation(7n, [
+        { accountId: "a", shareBp: 5000, orgShareBp: 8000 },
+        { accountId: "b", shareBp: 5000 },
+      ]).get("a"),
+    ).toEqual({
+      total: 4n,
+      person: 1n,
+      organization: 3n,
+    });
+  });
+  it("re-issue is a new task generation linked to the replaced one (same objective, ended, unaccepted, once)", () => {
+    const ok = {
+      newTaskId: "t2",
+      replaced: { taskId: "t1", objectiveId: "o", released: true, accepted: false },
+      objectiveId: "o",
+      alreadyReissued: false,
+    };
+    expect(reissueRefusals(ok)).toEqual([]);
+    refused(reissueRefusals({ ...ok, newTaskId: "t1" }), /new task id/);
+    refused(reissueRefusals({ ...ok, replaced: { ...ok.replaced, released: false } }), /released or expired/);
+    refused(reissueRefusals({ ...ok, objectiveId: "other" }), /objective/);
+    refused(reissueRefusals({ ...ok, alreadyReissued: true }), /once/);
+  });
+});
+
+function computeEpochFor(params: ReturnType<typeof engineParamsFrom>, budgetMicro: bigint, people: Array<[string, string, number]>) {
+  return computeEpoch(
+    {
+      epochNumber: 1,
+      state: initialState(params.emissionReserve),
+      consumedIds: new Set(),
+      issuances: [{ taskId: "t", kind: "execution", budgetAcuMicro: budgetMicro, featurePoolKeys: [], applicationPoolKeys: [] }],
+      acceptances: [{ taskId: "t", shares: people.map(([a, , bp]) => ({ accountId: a, beneficiaryId: a, shareBp: bp })) }],
+    },
+    params,
+  );
+}

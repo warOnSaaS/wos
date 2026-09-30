@@ -17,6 +17,7 @@ import {
   assertConserved,
   budgetToBase,
   openEpoch,
+  reservationExpiry,
   governanceWeights,
   capGroupShares,
   CAPABILITY_POLICY_V1,
@@ -93,6 +94,7 @@ const fresh = (state: EngineState = initialState(RESERVE), epochNumber = 1) => (
   consumedIds: new Set<string>() as ReadonlySet<string>,
 });
 const tranche = (beneficiaryId: string, epochNumber: number, amount: bigint, maturesAtEpoch = epochNumber + 6) => ({
+  trancheId: `${epochNumber}:${beneficiaryId}`,
   beneficiaryId,
   epochNumber,
   amount,
@@ -122,6 +124,7 @@ const smallState = (over: Partial<EngineState> = {}): EngineState => {
     claimable: new Map(),
     offsets: new Map(),
     lossCarry: 0n,
+    holds: new Map(),
     lastEpoch: 0,
     ...over,
   } as Omit<EngineState, "delivered"> & { delivered?: bigint };
@@ -1203,7 +1206,9 @@ describe("Astra reviews 04 and 05: engine regressions (docs/protocol/reviews/AST
     expect(r.claimable.get("alice")).toBe(80n);
     expect(r.cumulativeIssued).toBe(80n);
     expect(r.remainingReserve).toBe(920n);
-    expect(() => computeEpoch({ ...fresh(alice100()), disputeSettlements: [rec("claimable", 101n)] }, tiny)).toThrow(/only 100 claimable/);
+    expect(() => computeEpoch({ ...fresh(alice100()), disputeSettlements: [rec("claimable", 101n)] }, tiny)).toThrow(
+      /only 100 unheld claimable/,
+    );
   });
   it("R04-1: issuance is always owned — I = delivered + claimable + holdback", () => {
     expect(() => assertConserved(1000n, { ...alice100(), delivered: 1n })).toThrow(/not owned/);
@@ -1296,5 +1301,126 @@ describe("Astra reviews 04 and 05: engine regressions (docs/protocol/reviews/AST
     expect(budgetToBase(3n, 500_000n)).toBe(1n);
     expect(budgetToBase(999_999n, 1n)).toBe(0n);
     expect(budgetToBase(1_000_000n, 1n)).toBe(1n);
+  });
+});
+
+// ------------------------------------------------------------------------------------------------ Astra review 06
+describe("Astra review 06: engine regressions (docs/protocol/reviews/ASTRA-REVIEW-06-repros-prefix.txt)", () => {
+  const pt = {
+    ...params,
+    emissionReserve: 1000n,
+    budgetPpm: 1_000_000n,
+    rateCeilingInitialBasePerAcu: 100n,
+    rateCeilingDecayPpm: 0n,
+    holdbackBp: 0n,
+  };
+  const iss = (taskId: string, extra: Partial<TaskIssuance> = {}): TaskIssuance => ({
+    taskId,
+    kind: "execution",
+    budgetAcuMicro: 1_000_000n,
+    featurePoolKeys: [],
+    applicationPoolKeys: [],
+    ...extra,
+  });
+  it("R06-5 repro: review grace is pinned per reservation — a later policy neither shortens nor lengthens it", () => {
+    const e1 = computeEpoch({ ...fresh(initialState(1000n)), issuances: [iss("t")], submissions: [{ taskId: "t" }] }, pt);
+    const res = e1.state.reserved.get("t")!;
+    expect(res).toMatchObject({ reviewGraceEpochs: 2, policyVersion: pt.holdbackPolicyVersion });
+    expect(reservationExpiry(res)).toBe(7);
+    const shorter = computeEpoch({ ...fresh(e1.state, 6), consumedIds: new Set(e1.consumedIds) }, { ...pt, reviewGraceEpochs: 0 });
+    expect(shorter.expired).toEqual([]);
+    const longer = computeEpoch({ ...fresh(e1.state, 7), consumedIds: new Set(e1.consumedIds) }, { ...pt, reviewGraceEpochs: 9 });
+    expect(longer.expired).toEqual(["t"]);
+    const fresh2 = computeEpoch(
+      { ...fresh(e1.state, 2), consumedIds: new Set(e1.consumedIds), issuances: [iss("u")] },
+      { ...pt, reviewGraceEpochs: 5 },
+    );
+    expect(fresh2.state.reserved.get("u")!.reviewGraceEpochs).toBe(5); // newly issued work uses the new version
+  });
+  it("R06-7 repro: a hold keeps its units in the tranche — 90 mature and are claimed, the held 10 wait, then mature once", () => {
+    const p7 = { ...pt, holdbackBp: 0n };
+    const s0: EngineState = {
+      ...initialState(1000n),
+      remainingReserve: 900n,
+      cumulativeIssued: 100n,
+      holdback: [tranche("alice", 1, 100n, 6)],
+      lastEpoch: 5,
+    };
+    const e6 = computeEpoch(
+      { ...fresh(s0, 6), holds: [{ id: "h1", beneficiaryId: "alice", source: "tranche", trancheId: "1:alice", amount: 10n }] },
+      { ...p7, budgetPpm: 0n },
+    );
+    expect(e6.entitlements.get("alice")!.maturedHoldback).toBe(90n);
+    expect(e6.state.claimable.get("alice")).toBe(90n);
+    expect(e6.state.holdback).toEqual([{ ...tranche("alice", 1, 10n, 6) }]);
+    const ids = new Set(e6.consumedIds);
+    const e7 = computeEpoch(
+      { ...fresh(e6.state, 7), consumedIds: ids, claims: [{ id: "c1", beneficiaryId: "alice", amount: 90n }] },
+      { ...p7, budgetPpm: 0n },
+    );
+    expect(e7.state.holdback[0]!.amount).toBe(10n); // still held: does not mature
+    for (const x of e7.consumedIds) ids.add(x);
+    const e8 = computeEpoch({ ...fresh(e7.state, 8), consumedIds: ids, holdReleases: [{ holdId: "h1" }] }, { ...p7, budgetPpm: 0n });
+    expect(e8.entitlements.get("alice")!.maturedHoldback).toBe(10n);
+    expect(e8.state.holdback).toEqual([]);
+    for (const x of e8.consumedIds) ids.add(x);
+    const e9 = computeEpoch(
+      { ...fresh(e8.state, 9), consumedIds: ids, claims: [{ id: "c2", beneficiaryId: "alice", amount: 10n }] },
+      { ...p7, budgetPpm: 0n },
+    );
+    expect(e9.state.delivered).toBe(100n);
+    expect(() =>
+      computeEpoch(
+        {
+          ...fresh(e9.state, 10),
+          consumedIds: new Set([...ids, ...e9.consumedIds]),
+          claims: [{ id: "c3", beneficiaryId: "alice", amount: 1n }],
+        },
+        { ...p7, budgetPpm: 0n },
+      ),
+    ).toThrow(/unheld claimable/);
+  });
+  it("R06-7: a hold on a claimable balance blocks only the held part of a claim", () => {
+    const s: EngineState = {
+      ...initialState(1000n),
+      remainingReserve: 900n,
+      cumulativeIssued: 100n,
+      claimable: new Map([["alice", 100n]]),
+      lastEpoch: 1,
+    };
+    const pz = { ...pt, budgetPpm: 0n };
+    expect(() =>
+      computeEpoch(
+        {
+          ...fresh(s, 2),
+          holds: [{ id: "h", beneficiaryId: "alice", source: "claimable", amount: 30n }],
+          claims: [{ id: "c", beneficiaryId: "alice", amount: 71n }],
+        },
+        pz,
+      ),
+    ).toThrow(/only 70 unheld/);
+    const ok = computeEpoch(
+      {
+        ...fresh(s, 2),
+        holds: [{ id: "h", beneficiaryId: "alice", source: "claimable", amount: 30n }],
+        claims: [{ id: "c", beneficiaryId: "alice", amount: 70n }],
+      },
+      pz,
+    );
+    expect(ok.state.claimable.get("alice")).toBe(30n);
+    expect(() => assertConserved(1000n, { ...ok.state, claimable: new Map([["alice", 29n]]), delivered: 71n })).toThrow(/held beyond/);
+  });
+  it("re-issue: the expired task id stays consumed; the re-issue is a new id naming the replaced one", () => {
+    const e1 = computeEpoch({ ...fresh(initialState(1000n)), issuances: [iss("t")] }, pt);
+    const e5 = computeEpoch({ ...fresh(e1.state, 5), consumedIds: new Set(e1.consumedIds) }, pt);
+    const ids = new Set([...e1.consumedIds, ...e5.consumedIds]);
+    expect(() => computeEpoch({ ...fresh(e5.state, 6), consumedIds: ids, issuances: [iss("t")] }, pt)).toThrow(
+      /new task id with reissueOf/,
+    );
+    const e6 = computeEpoch({ ...fresh(e5.state, 6), consumedIds: ids, issuances: [iss("t#2", { reissueOf: "t" })] }, pt);
+    expect(e6.state.reserved.get("t#2")!.reissueOf).toBe("t");
+    expect(() =>
+      computeEpoch({ ...fresh(e1.state, 2), consumedIds: new Set(e1.consumedIds), issuances: [iss("t#2", { reissueOf: "t" })] }, pt),
+    ).toThrow(/reservation has ended/);
   });
 });

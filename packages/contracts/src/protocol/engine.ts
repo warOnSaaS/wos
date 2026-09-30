@@ -72,6 +72,33 @@ export function largestRemainder(total: bigint, weights: ReadonlyArray<{ key: st
   return out;
 }
 
+/**
+ * Review 06 R06-3: THE split of a task's reservation over its contributors, used by the engine (acceptance) and by the
+ * allocation rule (`taskAllocationRefusals`) alike. Canonical key: the contributor's account id (one receipt per
+ * account and task in the database); largest remainder, ties by account id ascending — receipt ids never influence an
+ * amount. Each contributor's amount is then split person/organization by the sponsorship share (organization =
+ * floor(amount x orgShareBp / 10000), the person keeps the rest; organization splits are dormant, D55).
+ */
+export function splitTaskReservation(
+  reservedBase: bigint,
+  contributors: ReadonlyArray<{ accountId: string; shareBp: number; orgShareBp?: number }>,
+): Map<string, { total: bigint; person: bigint; organization: bigint }> {
+  const sum = contributors.reduce((t, c) => t + c.shareBp, 0);
+  if (sum !== 10_000 || contributors.some((c) => !Number.isInteger(c.shareBp) || c.shareBp <= 0))
+    throw new EngineError("declared shares must be positive and sum to 10000");
+  const byAccount = largestRemainder(
+    reservedBase,
+    contributors.map((c) => ({ key: c.accountId, weight: BigInt(c.shareBp) })),
+  );
+  const out = new Map<string, { total: bigint; person: bigint; organization: bigint }>();
+  for (const c of contributors) {
+    const total = byAccount.get(c.accountId) ?? 0n;
+    const organization = (total * BigInt(c.orgShareBp ?? 0)) / BP;
+    out.set(c.accountId, { total, person: total - organization, organization });
+  }
+  return out;
+}
+
 /** micro-ACU of a run: floor(sum(tokens x micro-ACU-per-million) / 1e6). TELEMETRY since D49 (cap enforcement, budget calibration). */
 export function acuMicroFromUsage(
   usage: { inputTokens: number; cachedInputTokens: number; cacheWriteInputTokens: number; outputTokens: number },
@@ -138,7 +165,7 @@ export interface EngineParams {
   budgetExpiryEpochs: number;
   /**
    * Review 05 B4: work SUBMITTED while its reservation was live keeps it for this many further epochs while the
-   * protocol's own reviews finish (the contributor is not penalised for review delay). Provisional (founder F28).
+   * protocol's own reviews finish (the contributor is not penalised for review delay). Accepted by D57 (F28).
    */
   reviewGraceEpochs: number;
   /** Bounties are this share of amounts actually RECOVERED (D41). */
@@ -148,6 +175,8 @@ export interface EngineParams {
 }
 
 export interface HoldbackTranche {
+  /** Review 06 R06-7: a stable identity (`<epoch>:<beneficiary>`, one tranche per beneficiary per epoch) holds can name. */
+  trancheId: string;
   beneficiaryId: string;
   epochNumber: number;
   amount: bigint;
@@ -170,6 +199,14 @@ export interface Reservation {
   ancillary: { pools: ReadonlyArray<{ poolKey: string; amount: bigint }>; security: bigint };
   /** Review 05 B4: the epoch the work was submitted in while the reservation was live (null until then). */
   submittedEpoch: number | null;
+  /**
+   * Review 06 R06-5: the review grace and reward-policy version PINNED at issuance. A later policy never shortens or
+   * lengthens an outstanding reservation (forward-only, like the quote itself).
+   */
+  reviewGraceEpochs: number;
+  policyVersion: string;
+  /** Review 06: a re-issue is a NEW task/reservation generation linked to the one it replaces (null for a first issue). */
+  reissueOf: string | null;
 }
 
 /** The whole amount a reservation holds in Q: the budget plus its provisional ancillary accrual. */
@@ -178,8 +215,21 @@ export function reservationTotal(r: Reservation): bigint {
 }
 
 /** Review 05 B4: the first epoch in which a reservation is no longer live (acceptance refused, the sweep returns it). */
-export function reservationExpiry(r: Reservation, p: Pick<EngineParams, "reviewGraceEpochs">): number {
-  return r.submittedEpoch === null ? r.expiresAtEpoch : r.expiresAtEpoch + p.reviewGraceEpochs;
+export function reservationExpiry(r: Reservation): number {
+  return r.submittedEpoch === null ? r.expiresAtEpoch : r.expiresAtEpoch + r.reviewGraceEpochs;
+}
+
+/**
+ * Review 06 R06-7: a SIMPLE HOLD (V1-active) on a named source: part of a holdback tranche, or part of a beneficiary's
+ * claimable balance. Held units stay owned and counted where they are (never double-counted); they neither mature nor
+ * can be claimed until the hold is released. Execution of a hold (confiscation) is dormant (D55).
+ */
+export interface Hold {
+  beneficiaryId: string;
+  source: "tranche" | "claimable";
+  /** For `tranche`: the tranche's `trancheId`. */
+  trancheId: string | null;
+  amount: bigint;
 }
 
 export interface EngineState {
@@ -201,6 +251,8 @@ export interface EngineState {
    * exactly: every unit of I is owned by someone or already delivered, so nothing can leave I without its owner.
    */
   delivered: bigint;
+  /** Review 06 R06-7: active simple holds by id. */
+  holds: ReadonlyMap<string, Hold>;
   /**
    * Review 05 B3: the last epoch computed. One call per epoch: the engine replays that epoch's events against the one
    * envelope frozen at its opening (`openEpoch`); a second call for the same (or an earlier) epoch is refused.
@@ -222,6 +274,11 @@ export interface EngineReceipt {
 /** D49: a task issued this epoch, in the scheduler's priority order. Pool keys are known at issuance. */
 export interface TaskIssuance {
   taskId: string;
+  /**
+   * Review 06: re-issuing expired or released work creates a NEW task id (a new reservation generation) that names the
+   * one it replaces; the replaced id stays consumed. The database links them (`task_budgets.reissue_of`).
+   */
+  reissueOf?: string;
   kind: TaskSlice;
   budgetAcuMicro: bigint;
   featurePoolKeys: readonly string[];
@@ -296,6 +353,9 @@ export interface EpochInput {
    * unfunded and are NOT consumed (review 05 B8): the same task id can be issued in a later epoch.
    */
   issuances?: readonly TaskIssuance[];
+  /** Review 06 R06-7: simple holds placed this epoch and holds released this epoch (applied first). */
+  holds?: ReadonlyArray<{ id: string; beneficiaryId: string; source: "tranche" | "claimable"; trancheId?: string; amount: bigint }>;
+  holdReleases?: ReadonlyArray<{ holdId: string }>;
   /** Review 05 B4: tasks whose work was submitted this epoch (only while live); protects them from expiry during review. */
   submissions?: ReadonlyArray<{ taskId: string }>;
   /** Applied AFTER this epoch's issuances (review 05 B3): a task can be issued and accepted in the same epoch. */
@@ -421,12 +481,35 @@ export function assertConserved(emissionReserve: bigint, s: EngineState): void {
     if (t.amount < 0n) throw new EngineError(`negative holdback for ${t.beneficiaryId}`);
     held += t.amount;
   }
+  for (const [id, h] of s.holds) {
+    if (h.amount <= 0n) throw new EngineError(`hold ${id} must be positive`);
+    if (h.source === "tranche" && !s.holdback.some((t) => t.trancheId === h.trancheId && t.beneficiaryId === h.beneficiaryId))
+      throw new EngineError(`hold ${id} names no tranche of ${h.beneficiaryId}`);
+  }
+  for (const t of s.holdback)
+    if (heldOnTranche(s.holds, t.trancheId) > t.amount) throw new EngineError(`tranche ${t.trancheId} is held beyond its amount`);
+  for (const [b, v] of s.claimable)
+    if (heldOnClaimable(s.holds, b) > v) throw new EngineError(`claimable of ${b} is held beyond its amount`);
+  for (const [, h] of s.holds)
+    if (h.source === "claimable" && !s.claimable.has(h.beneficiaryId))
+      throw new EngineError(`claimable of ${h.beneficiaryId} is held but empty`);
   if (held + sumMap(s.claimable) + s.delivered !== s.cumulativeIssued)
     throw new EngineError(
       `issuance ${s.cumulativeIssued} is not owned: delivered ${s.delivered} + claimable ${sumMap(s.claimable)} + holdback ${held}`,
     );
   const total = s.remainingReserve + sumMap(s.poolBalances) + s.securityReserve + reservedTotal(s.reserved) + s.cumulativeIssued;
   if (total !== emissionReserve) throw new EngineError(`funding equation broken: ${total} != ${emissionReserve}`);
+}
+
+function heldOnTranche(holds: ReadonlyMap<string, Hold>, trancheId: string): bigint {
+  let s = 0n;
+  for (const h of holds.values()) if (h.source === "tranche" && h.trancheId === trancheId) s += h.amount;
+  return s;
+}
+function heldOnClaimable(holds: ReadonlyMap<string, Hold>, beneficiaryId: string): bigint {
+  let s = 0n;
+  for (const h of holds.values()) if (h.source === "claimable" && h.beneficiaryId === beneficiaryId) s += h.amount;
+  return s;
 }
 
 /** An empty starting state holding the whole emission reserve. */
@@ -442,6 +525,7 @@ export function initialState(emissionReserve: bigint): EngineState {
     offsets: new Map(),
     lossCarry: 0n,
     delivered: 0n,
+    holds: new Map(),
     lastEpoch: 0,
   };
 }
@@ -543,6 +627,7 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
   let delivered = input.state.delivered;
   let tranches = input.state.holdback.map((t) => ({ ...t }));
   const claimable = new Map(input.state.claimable);
+  const holds = new Map(input.state.holds);
   const offsets = new Map(input.state.offsets);
   let lossCarry = input.state.lossCarry - env.absorbedLoss;
   let returned = 0n;
@@ -551,16 +636,18 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
   const allocations: AllocationLine[] = [];
   const addGross = (m: Map<string, bigint>, b: string, a: bigint) => m.set(b, (m.get(b) ?? 0n) + a);
   const addOffset = (b: string, a: bigint) => offsets.set(b, (offsets.get(b) ?? 0n) + a);
+  // R06-7: only UNHELD units can leave a claimable balance or a tranche (held units stay until their hold is released).
   const debitClaimable = (beneficiaryId: string, amount: bigint, why: string) => {
-    const have = claimable.get(beneficiaryId) ?? 0n;
-    if (amount > have) throw new EngineError(`${why}: ${beneficiaryId} has only ${have} claimable, not ${amount}`);
-    claimable.set(beneficiaryId, have - amount);
+    const have = (claimable.get(beneficiaryId) ?? 0n) - heldOnClaimable(holds, beneficiaryId);
+    if (amount > have) throw new EngineError(`${why}: ${beneficiaryId} has only ${have} unheld claimable, not ${amount}`);
+    claimable.set(beneficiaryId, (claimable.get(beneficiaryId) ?? 0n) - amount);
   };
   const takeHoldback = (beneficiaryId: string, amount: bigint, why: string) => {
     let need = amount;
     const mine = tranches.filter((t) => t.beneficiaryId === beneficiaryId).sort((a, b) => a.epochNumber - b.epochNumber);
     for (const t of mine) {
-      const take = t.amount < need ? t.amount : need;
+      const free = t.amount - heldOnTranche(holds, t.trancheId);
+      const take = free < need ? free : need;
       t.amount -= take;
       need -= take;
       if (need === 0n) break;
@@ -589,6 +676,29 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
     }
     return paid;
   };
+
+  // 0. Simple holds (R06-7): releases first, then new holds on a named tranche or claimable balance, unheld units only.
+  for (const r of input.holdReleases ?? []) {
+    consume(`hold-release:${r.holdId}`, "hold release");
+    if (!holds.delete(r.holdId)) throw new EngineError(`hold ${r.holdId} is not active`);
+  }
+  for (const h of input.holds ?? []) {
+    consume(`hold:${h.id}`, "hold");
+    if (h.amount <= 0n) throw new EngineError(`hold ${h.id} must be positive`);
+    if (h.source === "tranche") {
+      const t = tranches.find((x) => x.trancheId === h.trancheId && x.beneficiaryId === h.beneficiaryId);
+      if (!t) throw new EngineError(`hold ${h.id} names no tranche ${h.trancheId} of ${h.beneficiaryId}`);
+      if (heldOnTranche(holds, t.trancheId) + h.amount > t.amount)
+        throw new EngineError(`hold ${h.id} exceeds the unheld part of ${t.trancheId}`);
+    } else if (heldOnClaimable(holds, h.beneficiaryId) + h.amount > (claimable.get(h.beneficiaryId) ?? 0n))
+      throw new EngineError(`hold ${h.id} exceeds the unheld claimable balance of ${h.beneficiaryId}`);
+    holds.set(h.id, {
+      beneficiaryId: h.beneficiaryId,
+      source: h.source,
+      trancheId: h.source === "tranche" ? h.trancheId! : null,
+      amount: h.amount,
+    });
+  }
 
   // 1. Identified returns, accrual corrections and claims.
   for (const r of input.returns ?? []) {
@@ -717,7 +827,12 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
     if (!TASK_SLICES.includes(iss.kind)) throw new EngineError(`task ${iss.taskId}: unknown kind ${iss.kind}`);
     if (iss.budgetAcuMicro <= 0n) throw new EngineError(`task ${iss.taskId} needs a positive budget`);
     if (seenTask.has(iss.taskId) || reserved.has(iss.taskId) || isConsumed(`task:${iss.taskId}`))
-      throw new EngineError(`task issuance task:${iss.taskId} consumed twice (already issued)`);
+      throw new EngineError(`task issuance task:${iss.taskId} consumed twice (already issued; a re-issue is a new task id with reissueOf)`);
+    if (iss.reissueOf !== undefined) {
+      const prev = iss.reissueOf;
+      if (prev === iss.taskId || !isConsumed(`task:${prev}`) || reserved.has(prev) || isConsumed(`accept:${prev}`))
+        throw new EngineError(`task ${iss.taskId} re-issues ${prev}, which is not an issued, unaccepted task whose reservation has ended`);
+    }
     seenTask.add(iss.taskId);
     const amount = budgetToBase(iss.budgetAcuMicro, rate);
     if (amount === 0n || reservedNow + amount > env.taskCapacity) {
@@ -733,6 +848,9 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
       expiresAtEpoch: input.epochNumber + p.budgetExpiryEpochs,
       ancillary: ancillaryOf(iss, amount),
       submittedEpoch: null,
+      reviewGraceEpochs: p.reviewGraceEpochs,
+      policyVersion: p.holdbackPolicyVersion,
+      reissueOf: iss.reissueOf ?? null,
     };
     reservedBySlice[iss.kind] += amount;
     reservedNow += amount;
@@ -762,13 +880,13 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
     consume(`accept:${a.taskId}`, "acceptance");
     const res = reserved.get(a.taskId);
     if (!res) throw new EngineError(`task ${a.taskId} has no reservation (not issued, already accepted, released or expired)`);
-    if (input.epochNumber >= reservationExpiry(res, p))
-      throw new EngineError(`task ${a.taskId} expired at epoch ${reservationExpiry(res, p)}; its reservation is no longer payable`);
+    if (input.epochNumber >= reservationExpiry(res))
+      throw new EngineError(`task ${a.taskId} expired at epoch ${reservationExpiry(res)}; its reservation is no longer payable`);
     const shareSum = a.shares.reduce((t, x) => t + x.shareBp, 0);
     if (shareSum !== 10_000 || a.shares.some((x) => !Number.isInteger(x.shareBp) || x.shareBp <= 0))
       throw new EngineError(`declared shares of ${a.taskId} must be positive and sum to 10000`);
-    const keys = a.shares.map((x) => `${x.beneficiaryId}\u0000${x.accountId}`);
-    if (new Set(keys).size !== keys.length) throw new EngineError(`duplicate share line in ${a.taskId}`);
+    const accounts = a.shares.map((x) => x.accountId);
+    if (new Set(accounts).size !== accounts.length) throw new EngineError(`duplicate share line in ${a.taskId} (one line per contributor)`);
     reserved.delete(a.taskId);
     acceptedBase += res.amount;
     for (const x of res.ancillary.pools) {
@@ -777,12 +895,13 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
     }
     S += res.ancillary.security;
     securityAccrual += res.ancillary.security;
-    const split = largestRemainder(
+    // R06-3: the one shared split (canonical key: the contributor's account id), as the allocation rule.
+    const split = splitTaskReservation(
       res.amount,
-      a.shares.map((x, i) => ({ key: keys[i]!, weight: BigInt(x.shareBp) })),
+      a.shares.map((x) => ({ accountId: x.accountId, shareBp: x.shareBp })),
     );
-    a.shares.forEach((x, i) => {
-      const amount = split.get(keys[i]!) ?? 0n;
+    a.shares.forEach((x) => {
+      const amount = split.get(x.accountId)?.total ?? 0n;
       allocations.push({
         beneficiaryId: x.beneficiaryId,
         accountId: x.accountId,
@@ -814,7 +933,7 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
     giveBack(res);
   }
   for (const [taskId, res] of [...reserved].sort((a, b) => cmp(a[0], b[0]))) {
-    if (input.epochNumber >= reservationExpiry(res, p)) {
+    if (input.epochNumber >= reservationExpiry(res)) {
       reserved.delete(taskId);
       giveBack(res);
       expired.push(taskId);
@@ -945,10 +1064,15 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
   const entitlements = new Map<string, Entitlement>();
   const keys = [...new Set([...gross.keys(), ...bountyGross.keys(), ...tranches.map((t) => t.beneficiaryId)])].sort(cmp);
   const matured = new Map<string, bigint>();
+  // R06-7: a mature tranche releases only its UNHELD units; the held remainder stays (same tranche id) until its hold is
+  // released, then matures in a later epoch — the database's numbered partial releases (R04-2).
   tranches = tranches.filter((t) => {
     if (t.maturesAtEpoch <= input.epochNumber) {
-      addGross(matured, t.beneficiaryId, t.amount);
-      return false;
+      const heldPart = heldOnTranche(holds, t.trancheId);
+      const free = t.amount - heldPart;
+      if (free > 0n) addGross(matured, t.beneficiaryId, free);
+      t.amount = heldPart;
+      return heldPart > 0n;
     }
     return true;
   });
@@ -966,6 +1090,7 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
     const held = (net * p.holdbackBp) / BP;
     if (held > 0n)
       tranches.push({
+        trancheId: `${input.epochNumber}:${b}`,
         beneficiaryId: b,
         epochNumber: input.epochNumber,
         amount: held,
@@ -1008,6 +1133,7 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
     offsets,
     lossCarry,
     delivered,
+    holds,
     lastEpoch: input.epochNumber,
   };
   assertConserved(p.emissionReserve, state);

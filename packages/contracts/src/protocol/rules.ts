@@ -14,8 +14,9 @@
  */
 
 import { canonicalSha256 } from "../canonical.js";
-import { largestRemainder } from "./engine.js";
+import { splitTaskReservation } from "./engine.js";
 import { RunPolicySnapshot } from "./entities.js";
+import { runPolicySnapshotSha256 } from "./receipts.js";
 
 const H = 3_600_000;
 
@@ -139,21 +140,130 @@ export interface QualificationEvidence {
     submissionSha256: string;
     attemptId: string | null;
     documentId: string | null;
-    reviewVerdicts: ReadonlyArray<{ slot: string; verdict: string }>;
+    /** Each agent verdict with the model and reasoning its run actually recorded (review 06 R06-1). */
+    reviewVerdicts: ReadonlyArray<{ slot: string; verdict: string; modelId: string; reasoning: string }>;
   } | null;
   greenCiAtHead: boolean;
   /**
-   * Review 04 finding 6 / review 05 B6: the run-policy snapshot body AS STORED. It is parsed with the typed schema,
-   * which carries the policy-derived `humanReviewRequired`; a missing or malformed field fails closed.
+   * Review 04 finding 6 / review 06 R06-6: the run-policy snapshot AS STORED for the qualified lease — its row (lease,
+   * generation, hash) and its body. The body is parsed with the typed schema and must be the snapshot OF THIS LEASE AND
+   * GENERATION whose canonical hash is the row's and the one the qualification binds; a mismatch fails closed.
    */
   snapshotBody: unknown;
+  snapshotRow: { leaseId: string; generation: number; snapshotSha256: string };
+  /** The snapshot hash the qualification row carries (0007: a foreign key to run_policy_snapshots). */
+  qualificationSnapshotSha256: string;
+  /** Review 06 R06-1: the ReviewPolicy and capability policy PINNED by the snapshot (loaded by its versions). */
+  pinnedReviewPolicy: AcceptancePolicyInput;
+  pinnedCapabilityPolicy: CapabilityInput;
+  /** The separately bound human pre-merge PASS on this round, by an independent human (0007 I6 refuses authors). */
   humanPreMergePassOnRound: boolean;
+  /** The review labels the resulting receipt will carry. */
+  receiptLabels: ReadonlyArray<{ label: string; reason: string }>;
+}
+
+/** The parts of a ReviewPolicy the acceptance requirement reads (review 06 R06-1). */
+export interface AcceptancePolicyInput {
+  policyVersion: string;
+  rules: ReadonlyArray<{ riskClass: string; agentReviews: ReadonlyArray<{ capability: string }>; humans: { count: number } }>;
+  fallbacks: ReadonlyArray<{ key: string; active: boolean; authoringModel: string }>;
+}
+export interface CapabilityInput {
+  classes: ReadonlyArray<{ id: string; qualified: ReadonlyArray<{ provider: string; modelId: string }> }>;
+}
+
+/** Review 06 R06-1: what accepting work of a risk class requires under the pinned ReviewPolicy (incl. the D53 fallback). */
+export interface AcceptanceRequirement {
+  policyVersion: string;
+  fallback: "none" | "fable_unavailable";
+  agentSeats: ReadonlyArray<"astra" | "fable">;
+  /** Models that may hold each seat (the qualified models of REVIEW_A / REVIEW_B). */
+  seatModels: Readonly<Record<"astra" | "fable", readonly string[]>>;
+  humanRequired: boolean;
+  labels: ReadonlyArray<{ label: "single_lab_review"; reason: string }>;
+  /** While the fallback is active, the only builder/author model (D53: Opus). */
+  authoringModel: string | null;
+  /** Review seats always run at the maximum permitted effort. */
+  seatReasoning: "max";
+}
+
+/**
+ * Review 06 R06-1: ONE acceptance requirement, derived from the stored ReviewPolicy for the risk class (and the pinned
+ * snapshot's human requirement), shared by qualification, self-pick and build-next. The D53 fallback drops the Fable seat,
+ * requires the human, labels the outputs and pins the authoring model.
+ */
+export function acceptanceRequirement(
+  policy: AcceptancePolicyInput,
+  capability: CapabilityInput,
+  riskClass: string,
+  snapshotHumanRequired = false,
+): AcceptanceRequirement {
+  const rule = policy.rules.find((x) => x.riskClass === riskClass);
+  const fb = policy.fallbacks.find((f) => f.key === "fable_unavailable" && f.active);
+  const fallback = fb ? "fable_unavailable" : "none";
+  const seatOf = (cap: string) => (cap === "REVIEW_A" ? "astra" : cap === "REVIEW_B" ? "fable" : null);
+  const seats = [...new Set((rule?.agentReviews ?? []).map((a) => seatOf(a.capability)).filter((x) => x !== null))] as (
+    | "astra"
+    | "fable"
+  )[];
+  const models = (cls: string) => capability.classes.find((c) => c.id === cls)?.qualified.map((q) => q.modelId) ?? [];
+  return {
+    policyVersion: policy.policyVersion,
+    fallback,
+    agentSeats: fb ? seats.filter((x) => x !== "fable") : seats,
+    seatModels: { astra: models("REVIEW_A"), fable: models("REVIEW_B") },
+    humanRequired: Boolean(fb) || (rule?.humans.count ?? 0) > 0 || snapshotHumanRequired,
+    labels: requiredReviewSeats(fallback).labels,
+    authoringModel: fb?.authoringModel ?? null,
+    seatReasoning: "max",
+  };
+}
+
+/**
+ * Review 06 R06-1: can work built by this model be accepted under the requirement at all? Refused when the fallback pins
+ * another authoring model, or when some required agent seat has no qualified model other than the builder's (no legal
+ * reviewer would exist). Used before reservation or lease, in self-pick and in build-next alike.
+ */
+export function builderAcceptanceRefusals(req: AcceptanceRequirement, builderModelId: string): string[] {
+  const r: string[] = [];
+  if (req.authoringModel !== null && builderModelId !== req.authoringModel)
+    r.push(`while ${req.fallback} is active only ${req.authoringModel} builds (D53)`);
+  for (const seat of req.agentSeats)
+    if (!req.seatModels[seat].some((m) => m !== builderModelId))
+      r.push(`work built by ${builderModelId} has no legal ${seat} reviewer (same-model self-review is refused)`);
+  return r;
 }
 
 /** The pinned human-review requirement of a stored snapshot, or null when the snapshot does not parse (fail closed). */
 export function snapshotHumanRequirement(body: unknown): { required: boolean; riskClass: string } | null {
   const p = RunPolicySnapshot.safeParse(body);
   return p.success ? { required: p.data.humanReviewRequired, riskClass: p.data.riskClass } : null;
+}
+
+/**
+ * Review 06 R06-6: the ONE resolver of a lease's snapshot. The body must parse, belong to this lease and generation (in
+ * the body and in its row), and hash to the row's hash, which the qualification binds. Null = fail closed.
+ */
+export function boundRunPolicySnapshot(
+  lease: { id: string; generation: number },
+  row: { leaseId: string; generation: number; snapshotSha256: string },
+  body: unknown,
+  qualificationSnapshotSha256: string,
+): { snapshot: RunPolicySnapshot; refusals: string[] } {
+  const p = RunPolicySnapshot.safeParse(body);
+  if (!p.success)
+    return {
+      snapshot: null as unknown as RunPolicySnapshot,
+      refusals: ["the run-policy snapshot does not parse (humanReviewRequired and riskClass are required): fail closed"],
+    };
+  const s = p.data;
+  const r: string[] = [];
+  if (s.leaseId !== lease.id || s.leaseGeneration !== lease.generation || row.leaseId !== lease.id || row.generation !== lease.generation)
+    r.push("the run-policy snapshot belongs to another lease or generation");
+  const h = runPolicySnapshotSha256(s);
+  if (h !== row.snapshotSha256 || h !== qualificationSnapshotSha256)
+    r.push("the run-policy snapshot hash differs from its row or from the qualification");
+  return { snapshot: s, refusals: r };
 }
 
 export function qualificationRefusals(q: QualificationEvidence): string[] {
@@ -186,7 +296,6 @@ export function qualificationRefusals(q: QualificationEvidence): string[] {
     r.push("a document qualification cites the document's own author lease");
   }
   const rd = q.round;
-  const both = rd ? new Set(rd.reviewVerdicts.filter((v) => v.verdict === "NO_MATERIAL_GAPS").map((v) => v.slot)).size === 2 : false;
   const anyGap = rd ? rd.reviewVerdicts.some((v) => v.verdict !== "NO_MATERIAL_GAPS") : true;
   const ofSubject = rd ? (q.subjectKind === "attempt" ? rd.attemptId === q.subjectId : rd.documentId === q.subjectId) : false;
   if (
@@ -197,13 +306,36 @@ export function qualificationRefusals(q: QualificationEvidence): string[] {
     !c ||
     rd.submissionSha256 !== c.submissionSha256 ||
     !ofSubject ||
-    !both ||
     anyGap
   )
-    r.push("needs the revealed consensus round of this subject at this revision (both seats passing)");
-  const human = snapshotHumanRequirement(q.snapshotBody);
-  if (!human) r.push("the run-policy snapshot does not parse (humanReviewRequired and riskClass are required): fail closed");
-  else if (human.required && !q.humanPreMergePassOnRound) r.push("the pinned policy requires a human pre-merge PASS on this round");
+    r.push("needs the revealed consensus round of this subject at this revision (every required seat passing)");
+  // R06-6: the snapshot of THIS lease and generation, bound by hash.
+  const bound = boundRunPolicySnapshot(l, q.snapshotRow, q.snapshotBody, q.qualificationSnapshotSha256);
+  if (bound.refusals.length > 0) {
+    r.push(...bound.refusals);
+    return r;
+  }
+  const snap = bound.snapshot;
+  // R06-1: the acceptance requirement of the ReviewPolicy that snapshot pinned, including the D53 fallback.
+  if (q.pinnedReviewPolicy.policyVersion !== snap.policyVersions.review) r.push("the ReviewPolicy used is not the one the snapshot pinned");
+  const req = acceptanceRequirement(q.pinnedReviewPolicy, q.pinnedCapabilityPolicy, snap.riskClass, snap.humanReviewRequired);
+  const verdicts = rd?.reviewVerdicts ?? [];
+  for (const seat of req.agentSeats) {
+    const vs = verdicts.filter((v) => v.slot === seat);
+    const v = vs[0];
+    if (vs.length !== 1 || !v || v.verdict !== "NO_MATERIAL_GAPS") r.push(`the ${seat} seat needs exactly one passing verdict`);
+    else {
+      if (!req.seatModels[seat].includes(v.modelId)) r.push(`${v.modelId} is not qualified for the ${seat} seat`);
+      if (v.modelId === snap.modelId) r.push(`${v.modelId} may not review work built by ${snap.modelId} (same-model self-review)`);
+      if (v.reasoning !== req.seatReasoning) r.push(`the ${seat} verdict ran at ${v.reasoning}, not ${req.seatReasoning}`);
+    }
+  }
+  for (const v of verdicts)
+    if (!(req.agentSeats as readonly string[]).includes(v.slot)) r.push(`${v.slot} is not a seat of the pinned acceptance requirement`);
+  r.push(...builderAcceptanceRefusals(req, snap.modelId));
+  if (req.humanRequired && !q.humanPreMergePassOnRound) r.push("the pinned policy requires a human pre-merge PASS on this round");
+  for (const lab of req.labels)
+    if (!q.receiptLabels.some((x) => x.label === lab.label && x.reason.length > 0)) r.push(`the receipt must carry the ${lab.label} label`);
   return r;
 }
 
@@ -579,7 +711,7 @@ export function claimRefusals(x: {
 /**
  * D39 minimum windows, and (review 04 finding 4) FINITE maxima from notice: the reply closes within `maxReplyHours`
  * of notice, the appeal within `maxAppealHours` after the reply, the hold lapses within `maxHoldAfterAppealHours`
- * after the appeal closes (and not before it). Maxima come from the pinned reward policy (provisional, F17).
+ * after the appeal closes (and not before it). Maxima come from the pinned reward policy (F17, accepted by D57).
  */
 export function confiscationNoticeRefusals(x: {
   nowMs: number;
@@ -1043,21 +1175,20 @@ export function modelClaimRefusals(
  */
 export function taskAllocationRefusals(x: {
   reservedBase: bigint;
-  receipts: ReadonlyArray<{ receiptId: string; shareBp: number; orgShareBp: number }>;
+  /** Each receipt with its contributor: the split's canonical key is the ACCOUNT id (review 06 R06-3). */
+  receipts: ReadonlyArray<{ receiptId: string; accountId: string; shareBp: number; orgShareBp: number }>;
   lines: ReadonlyArray<{ receiptId: string; beneficiary: "person" | "organization"; amount: bigint }>;
 }): string[] {
   const sum = x.receipts.reduce((t, c) => t + c.shareBp, 0);
   if (sum !== 10_000) return ["declared shares of the task must sum to 10000 bp before allocation"];
-  const perReceipt = largestRemainder(
-    x.reservedBase,
-    x.receipts.map((c) => ({ key: c.receiptId, weight: BigInt(c.shareBp) })),
-  );
+  if (new Set(x.receipts.map((c) => c.accountId)).size !== x.receipts.length) return ["one receipt per contributor and task"];
+  // R06-3: the engine's own split function — receipt ids never change an amount.
+  const split = splitTaskReservation(x.reservedBase, x.receipts);
   const want = new Map<string, bigint>();
   for (const c of x.receipts) {
-    const amt = perReceipt.get(c.receiptId) ?? 0n;
-    const org = (amt * BigInt(c.orgShareBp)) / 10_000n;
-    want.set(`${c.receiptId}/person`, amt - org);
-    if (c.orgShareBp > 0) want.set(`${c.receiptId}/organization`, org);
+    const a = split.get(c.accountId)!;
+    want.set(`${c.receiptId}/person`, a.person);
+    if (c.orgShareBp > 0) want.set(`${c.receiptId}/organization`, a.organization);
   }
   const got = new Map<string, bigint>();
   for (const l of x.lines) got.set(`${l.receiptId}/${l.beneficiary}`, (got.get(`${l.receiptId}/${l.beneficiary}`) ?? 0n) + l.amount);
@@ -1077,10 +1208,15 @@ export function budgetReleaseRefusals(x: {
   epochNumber: number;
   expiresEpoch: number;
   submittedEpoch: number | null;
+  /** The grace PINNED on the reservation at issuance (review 06 R06-5), never the current policy's. */
   reviewGraceEpochs: number;
   accepted: boolean;
   activeLease: boolean;
   authorizationRefusals: string[] | null;
+  /** Review 06 R06-4: the authoritative task row is terminal (failed/abandoned), not merely "no active lease". */
+  taskTerminal: boolean;
+  /** Review 06 R06-4: an explicit, final rejection bound to the submitted work (the review gate's decision). */
+  finalRejectionOfSubmission: boolean;
 }): string[] {
   const r: string[] = [];
   const expiry = x.submittedEpoch !== null && x.submittedEpoch < x.expiresEpoch ? x.expiresEpoch + x.reviewGraceEpochs : x.expiresEpoch;
@@ -1088,6 +1224,15 @@ export function budgetReleaseRefusals(x: {
   if (x.reason === "expired" && x.epochNumber < expiry) r.push(`the reservation is live until epoch ${expiry}`);
   if ((x.reason === "failed" || x.reason === "abandoned") && x.activeLease)
     r.push("a task with an active lease is not failed or abandoned");
+  if ((x.reason === "failed" || x.reason === "abandoned") && !x.taskTerminal)
+    r.push("failed or abandoned needs the task's authoritative terminal state");
+  if (
+    (x.reason === "failed" || x.reason === "abandoned") &&
+    x.submittedEpoch !== null &&
+    !x.finalRejectionOfSubmission &&
+    (x.authorizationRefusals === null || x.authorizationRefusals.length > 0)
+  )
+    r.push("submitted work awaiting review is released only after its final rejection or an authorized cancellation");
   if (
     (x.reason === "cancelled" || x.reason === "repriced") &&
     (x.activeLease || x.submittedEpoch !== null) &&
@@ -1223,16 +1368,80 @@ export function reviewPolicySwitchRefusals(x: {
  * normal review gate. No recruited reviewer pool or ratification queue is needed; nothing waits on an independent human
  * before bootstrap ends.
  */
+export interface ChallengePublicationRow {
+  receiptSha256: string;
+  bootstrapEndedAtMs: number;
+  /** Server-stamped when the publication row was written (0007 `provisional_publications`). */
+  publishedAtMs: number;
+  /** Fixed at publication: publishedAt + the pinned window. */
+  closesAtMs: number;
+  notified: boolean;
+}
+
+/**
+ * D54 / review 06 R06-2: the state of a PROVISIONAL receipt from its PERSISTED challenge publication — never from a
+ * boolean and an arbitrary timestamp. A publication written before bootstrap ended, for another receipt hash, or without
+ * its notification evidence does not start a window.
+ */
 export function provisionalReceiptOutcome(x: {
-  bootstrapEnded: boolean;
-  publishedAtMs: number | null;
-  challengeWindowHours: number;
+  receiptSha256: string;
+  publication: ChallengePublicationRow | null;
   challenged: boolean;
+  /** The challenged receipt's one review-gate decision, when made. */
+  decision: "accepted" | "rejected" | null;
   nowMs: number;
-}): "provisional" | "in_challenge_window" | "final_by_silence" | "to_review_gate" {
-  if (!x.bootstrapEnded || x.publishedAtMs === null) return "provisional";
-  if (x.challenged) return "to_review_gate";
-  return x.nowMs >= x.publishedAtMs + x.challengeWindowHours * H ? "final_by_silence" : "in_challenge_window";
+}): "provisional" | "in_challenge_window" | "final_by_silence" | "to_review_gate" | "ratified" | "rejected" {
+  const p = x.publication;
+  if (!p || p.publishedAtMs < p.bootstrapEndedAtMs || p.receiptSha256 !== x.receiptSha256 || !p.notified) return "provisional";
+  if (x.challenged) return x.decision === "accepted" ? "ratified" : x.decision === "rejected" ? "rejected" : "to_review_gate";
+  return x.nowMs >= p.closesAtMs ? "final_by_silence" : "in_challenge_window";
+}
+
+/** D54: publishing a PROVISIONAL receipt for challenge (server time; after bootstrap; window pinned from policy). */
+export function challengePublicationRefusals(x: {
+  status: string;
+  bootstrapOn: boolean;
+  nowMs: number;
+  bootstrapEndedAtMs: number | null;
+  closesAtMs: number;
+  windowHours: number;
+  notified: boolean;
+  alreadyPublished: boolean;
+}): string[] {
+  const r: string[] = [];
+  if (x.status !== "PROVISIONAL") r.push("only a PROVISIONAL receipt is published for challenge");
+  if (x.bootstrapOn || x.bootstrapEndedAtMs === null || x.nowMs < x.bootstrapEndedAtMs)
+    r.push("a challenge publication is written after bootstrap ended");
+  if (x.closesAtMs !== x.nowMs + x.windowHours * H) r.push("the window closes exactly the pinned hours after publication");
+  if (!x.notified) r.push("the publication records its public place and notification");
+  if (x.alreadyPublished) r.push("a receipt is published for challenge once");
+  return r;
+}
+
+/** D54: a challenge is admitted only while the window is open and the receipt is not final (checked under the lock). */
+export function challengeAdmissionRefusals(x: {
+  publication: ChallengePublicationRow | null;
+  nowMs: number;
+  finalized: boolean;
+}): string[] {
+  if (!x.publication) return ["the receipt has no open challenge publication"];
+  if (x.finalized) return ["the receipt is already final"];
+  return x.nowMs < x.publication.closesAtMs ? [] : ["the challenge window has closed"];
+}
+
+/** D54: silence finalizes only after the window closed with no challenge (checked under the same lock). */
+export function silenceFinalizationRefusals(x: {
+  publication: ChallengePublicationRow | null;
+  nowMs: number;
+  challenged: boolean;
+  status: string;
+}): string[] {
+  const r: string[] = [];
+  if (x.status !== "PROVISIONAL") r.push("only a PROVISIONAL receipt finalizes by silence");
+  if (!x.publication) r.push("no challenge publication");
+  else if (x.nowMs < x.publication.closesAtMs) r.push("the challenge window is still open");
+  if (x.challenged) r.push("a challenged receipt waits for its review-gate decision");
+  return r;
 }
 
 // ------------------------------------------------------------------------------------------------ D55 V1-active and dormant modules
@@ -1301,8 +1510,11 @@ export function nextUnitEligibilityRefusals(
   c: NextUnitContributor,
   u: NextUnitCandidate,
   epochNumber: number,
+  /** Review 06 R06-1: the unit's acceptance requirement (the same one qualification will apply). */
+  acceptance: AcceptanceRequirement,
 ): string[] {
   const r = modelClaimRefusals(capability, { provider: c.provider, modelId: c.modelId, requiredClass: u.requiredClass, role: "builder" });
+  r.push(...builderAcceptanceRefusals(acceptance, c.modelId));
   if (u.requiredToolchains.some((t) => !c.attestedToolchains.includes(t))) r.push("the device does not attest the unit's toolchains");
   if ((c.activeLeasesByProvider[c.provider] ?? 0) >= (c.leaseLimitByProvider[c.provider] ?? 1)) r.push(`no free ${c.provider} lease slot`);
   if (u.proposerAccountId === c.accountId || c.relatedAccountIds.includes(u.proposerAccountId))
@@ -1312,6 +1524,30 @@ export function nextUnitEligibilityRefusals(
     r.push("the unit exceeds the contributor's remaining ACU limit");
   if (c.remaining.wallTimeMinutes !== null && u.estimatedMinutes > c.remaining.wallTimeMinutes)
     r.push("the unit exceeds the contributor's remaining wall time");
+  return r;
+}
+
+/** Review 06 R06-1: self-pick and build-next share one eligibility rule (the claim's), including acceptability. */
+export const claimEligibilityRefusals = nextUnitEligibilityRefusals;
+
+/**
+ * Review 06: re-issuing expired or released work is a NEW task/reservation generation linked to the one it replaces
+ * (0007 `task_budgets.reissue_of`): same objective, the replaced reservation ended (released or expired) and was never
+ * accepted; the replaced id is never reused and its budget is never edited.
+ */
+export function reissueRefusals(x: {
+  newTaskId: string;
+  replaced: { taskId: string; objectiveId: string; released: boolean; accepted: boolean } | null;
+  objectiveId: string;
+  alreadyReissued: boolean;
+}): string[] {
+  const p = x.replaced;
+  if (!p) return ["a re-issue names the task it replaces"];
+  const r: string[] = [];
+  if (p.taskId === x.newTaskId) r.push("a re-issue is a new task id");
+  if (p.objectiveId !== x.objectiveId) r.push("a re-issue stays under the replaced task's objective");
+  if (!p.released || p.accepted) r.push("only a released or expired, unaccepted task is re-issued");
+  if (x.alreadyReissued) r.push("a task is re-issued once (re-issue the latest generation)");
   return r;
 }
 

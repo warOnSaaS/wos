@@ -135,5 +135,26 @@ race "B2 (review 05): one task's reservation allocated in two epochs concurrentl
   "select wos_test.alloc(gen_random_uuid(), 23, '$D', '$X-0000000000e8', 'execution', 67);" \
   "select case when (select coalesce(sum(amount_base), 0) from wos.allocations where receipt_id in ('$X-0000000000e7', '$X-0000000000e8')) <= 100
                then 'ok' else (select sum(amount_base) from wos.allocations where receipt_id in ('$X-0000000000e7', '$X-0000000000e8')) || ' allocated against 100' end;"
+# Review 06 R06-2: a free challenge racing silence finalization of a PROVISIONAL receipt (D54). The window closes 0.4 s
+# after it opens: the first session challenges inside it and holds its transaction; the second finalizes after the close.
+# Both take the receipt's subject lock and read state after it: exactly one of them may commit.
+"${PSQL[@]}" >/dev/null <<SQL
+insert into wos.work_dedup_keys (dedup_key, source) values ('work:race:d54', 'receipt');
+insert into wos.contribution_receipts (id, account_id, contribution_type, slice, evidence_class, acceptance_event, independence, initial_status,
+  weight_micro, subject_kind, subject_id, dedup_key, admitted_epoch, body, receipt_sha256, qualified_at)
+values ('$X-0000000000d5', '00000000-0000-0000-0000-00000000000c', 'PROPOSAL', 'outcomes', 'outcome', 'proposal_incorporated', 'founder_bootstrap', 'PROVISIONAL',
+        1000000, 'proposal', gen_random_uuid(), 'work:race:d54', 21, '{}', 'sha256:' || repeat('5', 64), now());
+insert into wos.receipt_status_events (receipt_id, seq, from_status, to_status, kind) values ('$X-0000000000d5', 1, null, 'PROVISIONAL', 'issued');
+set session_replication_role = replica;
+insert into wos.provisional_publications (receipt_id, receipt_sha256, review_policy_version, bootstrap_ended_at, window_hours, published_at, closes_at, notification)
+values ('$X-0000000000d5', 'sha256:' || repeat('5', 64), 'review-policy.v1', now() - interval '1 day', 48, clock_timestamp(), clock_timestamp() + interval '0.4 seconds',
+        '{"publicUrl": "u", "notifiedParticipants": 1}');
+SQL
+race "R06-2: a free challenge racing silence finalization of a provisional receipt" \
+  "insert into wos.provisional_challenges (receipt_id, challenger_account_id, reason_untrusted) values ('$X-0000000000d5', '$D', 'challenged inside the window, committed after it closed');" \
+  "insert into wos.receipt_status_events (receipt_id, seq, from_status, to_status, kind) values ('$X-0000000000d5', 2, 'PROVISIONAL', 'FINAL_BY_SILENCE', 'final_by_silence');" \
+  "select case when exists (select 1 from wos.provisional_challenges where receipt_id = '$X-0000000000d5')
+                and exists (select 1 from wos.receipt_status_events where receipt_id = '$X-0000000000d5' and kind = 'final_by_silence')
+               then 'challenged AND finalized by silence' else 'ok' end;"
 [ "$fail" = 0 ] && echo "all concurrency races hold"
 exit "$fail"
