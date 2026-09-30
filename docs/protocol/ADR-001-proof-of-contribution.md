@@ -126,6 +126,8 @@ Every finding of both reviews was re-run on the current code first (`reviews/AST
 
 ## 6. Founder decisions required
 
+**2026-09-30 (D57): the founder accepted every recommendation and provisional value below (F15, F17, F18, F20–F34).** Values marked provisional are now the devnet/shadow policy values, still tunable by public AdminAction.
+
 | # | Decision | Default in the draft |
 |---|---|---|
 | F1 | ~~Mainnet eligibility of ATTESTED usage (3.4)~~ — **largely dissolved by D49**: usage no longer pays, so there is nothing to make eligible. What remains is the mainnet readiness gate itself and the calibration-poisoning residual (G-91) | mainnet closed |
