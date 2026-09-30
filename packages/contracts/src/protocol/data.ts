@@ -2,6 +2,7 @@
 import capabilityJson from "./data/capability-policy.v1.json" with { type: "json" };
 import completionJson from "./data/completion-policy.v1.json" with { type: "json" };
 import genesisJson from "./data/genesis-policy.v1.json" with { type: "json" };
+import governanceJson from "./data/governance-policy.v1.json" with { type: "json" };
 import mergeJson from "./data/merge-policy.v1.json" with { type: "json" };
 import oracleJson from "./data/model-rate-oracle.v1.json" with { type: "json" };
 import reviewJson from "./data/review-policy.v1.json" with { type: "json" };
@@ -19,6 +20,7 @@ import {
   RiskPolicy,
   UsageProofPolicy,
 } from "./policies.js";
+import { GovernancePolicy } from "./governance.js";
 
 export const MODEL_RATE_ORACLE_V1: ModelRateOracle = ModelRateOracle.parse(oracleJson);
 export const REWARD_POLICY_V1: RewardPolicy = RewardPolicy.parse(rewardJson);
@@ -29,3 +31,4 @@ export const RISK_POLICY_V1: RiskPolicy = RiskPolicy.parse(riskJson);
 export const MERGE_POLICY_V1: MergePolicy = MergePolicy.parse(mergeJson);
 export const COMPLETION_POLICY_V1: CompletionRewardPolicy = CompletionRewardPolicy.parse(completionJson);
 export const GENESIS_POLICY_V1: GenesisAllocationPolicy = GenesisAllocationPolicy.parse(genesisJson);
+export const GOVERNANCE_POLICY_V1: GovernancePolicy = GovernancePolicy.parse(governanceJson);

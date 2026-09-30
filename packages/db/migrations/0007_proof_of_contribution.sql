@@ -1,7 +1,7 @@
 -- 0007_proof_of_contribution.sql — DRAFT pending the Astra review (docs/protocol/REVIEW-PACKET.md). Owner: Lead Architect.
 -- DO NOT APPLY TO PRODUCTION. It applies cleanly on 0006 and is exercised by db:test so the design is executable.
 --
--- Proof of Contribution (Amendment 02, D18–D33): run-policy snapshots and lease fencing, usage receipts with
+-- Proof of Contribution (Amendment 02, D18–D38): run-policy snapshots and lease fencing, usage receipts with
 -- provider-response dedup and scrubbed run logs, immutable contribution receipts with append-only status
 -- (ACTIVE / PROVISIONAL / RATIFIED / REVOKED), optimistic payouts with a challenge window, disputes over any set of
 -- allocations with focused audit gates, anomaly metrics, payout audit duty with sealed quorums,
@@ -9,7 +9,7 @@
 -- review with reviewer qualifications, epochs (append-only transitions, frozen manifests, exactly-once allocations),
 -- claim leaves and retry-safe settlement records, offsets, wallet bindings, completion pools with frozen definitions,
 -- Genesis historical credit with a shared dedup namespace, abuse signals and risk flags, and the hash-chained
--- admin action log. Every evidence table is append-only for every role (the ledger's rule); state is derived from
+-- admin action log, governance proposals/votes/weight snapshots, and the settlement adapter off-ramp. Every evidence table is append-only for every role (the ledger's rule); state is derived from
 -- the latest append-only event, never updated in place.
 
 -- ============================================================================================
@@ -204,6 +204,71 @@ alter table wos.tasks add constraint tasks_role_check check (role in ('roadmap_a
   'implementation_reviewer_astra', 'implementation_reviewer_fable', 'conflict_resolver', 'payout_auditor'));
 
 -- ============================================================================================
+-- 3b. Organizations as beneficiaries (D38): sponsorship links and RELATED ACCOUNTS
+-- ============================================================================================
+create table wos.sponsorship_links (
+  id                      uuid primary key default gen_random_uuid(),
+  organization_id         uuid not null references wos.organizations (id),
+  contributor_account_id  uuid not null references wos.accounts (id),
+  organization_share_bp   integer not null default 10000 check (organization_share_bp between 0 and 10000),
+  approved_by_account_id  uuid not null references wos.accounts (id),
+  effective_from          timestamptz not null default now(),
+  created_at              timestamptz not null default now()
+);
+-- Ending a link is an append-only event (forward only; past receipts never change).
+create table wos.sponsorship_link_ends (
+  sponsorship_id   uuid primary key references wos.sponsorship_links (id),
+  ended_by         uuid not null references wos.accounts (id),
+  ended_at         timestamptz not null default now()
+);
+
+create or replace function wos.check_sponsorship_link() returns trigger
+language plpgsql as $$
+begin
+  if not exists (select 1 from wos.memberships m where m.organization_id = new.organization_id
+                  and m.account_id = new.approved_by_account_id and m.role in ('owner', 'admin')) then
+    raise exception 'wos: a sponsorship must be approved by an owner or admin of the organization' using errcode = 'check_violation';
+  end if;
+  if exists (select 1 from wos.organizations o where o.id = new.organization_id and o.kind = 'personal') then
+    raise exception 'wos: a personal organization cannot sponsor contributions' using errcode = 'check_violation';
+  end if;
+  if exists (select 1 from wos.sponsorship_links s where s.contributor_account_id = new.contributor_account_id
+              and not exists (select 1 from wos.sponsorship_link_ends e where e.sponsorship_id = s.id)) then
+    raise exception 'wos: a contributor has at most one active sponsorship' using errcode = 'check_violation';
+  end if;
+  return new;
+end $$;
+create trigger sponsorship_links_check before insert on wos.sponsorship_links for each row execute function wos.check_sponsorship_link();
+
+-- Related accounts: the same account, or two accounts with active sponsorships to the same organization.
+create or replace function wos.related_accounts(a uuid, b uuid) returns boolean
+language sql stable as $$
+  select a = b or exists (
+    select 1 from wos.sponsorship_links x join wos.sponsorship_links y on y.organization_id = x.organization_id
+     where x.contributor_account_id = a and y.contributor_account_id = b
+       and not exists (select 1 from wos.sponsorship_link_ends e where e.sponsorship_id = x.id)
+       and not exists (select 1 from wos.sponsorship_link_ends e where e.sponsorship_id = y.id))
+$$;
+
+-- Agent reviews (0001-0003 rules still apply): a reviewer may not be related to the attempt's builder or to the
+-- other slot's reviewer of the same round.
+create or replace function wos.check_review_related() returns trigger
+language plpgsql as $$
+declare
+  builder uuid;
+begin
+  select a.account_id into builder from wos.rounds r join wos.attempts a on a.id = r.attempt_id where r.id = new.round_id;
+  if builder is not null and new.independence = 'independent' and builder <> new.account_id and wos.related_accounts(builder, new.account_id) then
+    raise exception 'wos: reviewer % is related to the builder (same organization)', new.account_id using errcode = 'check_violation';
+  end if;
+  if exists (select 1 from wos.reviews o where o.round_id = new.round_id and o.account_id <> new.account_id and wos.related_accounts(o.account_id, new.account_id)) then
+    raise exception 'wos: related accounts may not fill two seats of one round' using errcode = 'check_violation';
+  end if;
+  return new;
+end $$;
+create trigger reviews_related before insert on wos.reviews for each row execute function wos.check_review_related();
+
+-- ============================================================================================
 -- 4. Usage receipts (one per agent run) and provider response dedup
 -- ============================================================================================
 create table wos.usage_receipts (
@@ -361,6 +426,9 @@ create table wos.contribution_receipts (
   attested_acu_micro    bigint not null check (attested_acu_micro >= 0),
   cap_acu_micro         bigint not null check (cap_acu_micro >= 0),
   lowest_verification   text not null check (lowest_verification in ('VERIFIED', 'ATTESTED', 'ESTIMATED', 'UNVERIFIED')),
+  beneficiary_org_id    uuid references wos.organizations (id),       -- D38: null = the contributor is the beneficiary
+  beneficiary_org_share_bp integer not null default 0 check (beneficiary_org_share_bp between 0 and 10000),
+  sponsorship_id        uuid,
   subject_kind          text not null,
   subject_id            uuid not null,
   lease_id              uuid references wos.leases (id),
@@ -374,7 +442,9 @@ create table wos.contribution_receipts (
   check ((independence = 'independent') = (initial_status = 'ACTIVE')),
   check (evidence_class <> 'attested_usage' or weight_micro <= cap_acu_micro),
   check (evidence_class <> 'attested_usage' or weight_micro <= attested_acu_micro),
-  check ((lease_id is null) = (lease_generation is null))
+  check ((lease_id is null) = (lease_generation is null)),
+  check ((beneficiary_org_id is null) = (sponsorship_id is null)),
+  check (beneficiary_org_id is not null or beneficiary_org_share_bp = 0)
 );
 create index contribution_receipts_account on wos.contribution_receipts (account_id, created_at);
 
@@ -538,6 +608,9 @@ begin
   if author = new.reviewer_account_id then
     raise exception 'wos: a human reviewer may not review their own work' using errcode = 'check_violation';
   end if;
+  if author is not null and wos.related_accounts(author, new.reviewer_account_id) then
+    raise exception 'wos: a human reviewer may not review an org-mate''s work (related accounts)' using errcode = 'check_violation';
+  end if;
   if new.subject_kind = 'document' and exists (
       select 1 from wos.changesets c join wos.tasks t on t.id = c.task_id
        where t.document_id = new.subject_id and c.account_id = new.reviewer_account_id and c.ok) then
@@ -638,10 +711,17 @@ begin
   if q.outcome is not null then
     raise exception 'wos: quorum % is already revealed', q.id using errcode = 'check_violation';
   end if;
+  if exists (select 1 from wos.payout_audit_verdicts o where o.quorum_id = new.quorum_id and o.reviewer_account_id <> new.reviewer_account_id
+              and wos.related_accounts(o.reviewer_account_id, new.reviewer_account_id)) then
+    raise exception 'wos: related accounts may not fill two seats of one audit quorum' using errcode = 'check_violation';
+  end if;
   if not q.is_canary then
     select * into c from wos.contribution_receipts where id = q.receipt_id;
     if c.account_id = new.reviewer_account_id then
       raise exception 'wos: a contributor may not audit their own receipt' using errcode = 'check_violation';
+    end if;
+    if wos.related_accounts(c.account_id, new.reviewer_account_id) then
+      raise exception 'wos: an org-mate may not audit this receipt (related accounts)' using errcode = 'check_violation';
     end if;
     -- outside_feature must be true only for auditors with no receipt on the same feature
     select exists (select 1 from wos.contribution_receipts o
@@ -1012,7 +1092,8 @@ create table wos.dispute_settlements (
 -- ============================================================================================
 create table wos.wallet_bindings (
   id           uuid primary key default gen_random_uuid(),
-  account_id   uuid not null references wos.accounts (id),
+  account_id   uuid not null references wos.accounts (id),          -- the person binding (for an org: an owner/admin)
+  organization_id uuid references wos.organizations (id),           -- D38: set when binding the org's beneficiary wallet
   cluster      text not null check (cluster in ('devnet', 'mainnet-beta')),
   wallet       text not null check (wallet ~ '^[1-9A-HJ-NP-Za-km-z]{32,44}$'),
   kind         text not null check (kind in ('external', 'cli_keypair')),
@@ -1111,6 +1192,85 @@ create trigger genesis_contributions_dedup before insert on wos.genesis_contribu
   for each row execute function wos.check_genesis_dedup();
 
 -- ============================================================================================
+-- 13b. Governance (D34, D36, D37) and the settlement off-ramp (D35)
+-- ============================================================================================
+create table wos.governance_proposals (
+  id               uuid primary key default gen_random_uuid(),
+  kind             text not null check (kind in ('policy_change', 'adapter_switch', 'migration', 'ratify_emergency', 'governance_change')),
+  tier             text not null check (tier in ('routine', 'structural', 'governance', 'emergency_ratification')),
+  body             jsonb not null,     -- GovernanceProposal
+  snapshot_epoch   integer not null references wos.epochs (epoch_number),
+  voting_opens_at  timestamptz not null,
+  voting_closes_at timestamptz not null,
+  created_at       timestamptz not null default now(),
+  check (voting_closes_at > voting_opens_at),
+  check ((kind = 'ratify_emergency') = (tier = 'emergency_ratification')),
+  check (kind not in ('adapter_switch', 'migration') or tier in ('structural', 'governance')),
+  check (kind <> 'governance_change' or tier = 'governance')
+);
+
+-- Weights frozen at the snapshot (distributed, never max supply; D37): one row per eligible account.
+create table wos.governance_weight_snapshots (
+  proposal_id        uuid not null references wos.governance_proposals (id),
+  account_id         uuid not null references wos.accounts (id),
+  locked_base        bigint not null check (locked_base >= 0),
+  contribution_micro bigint not null check (contribution_micro >= 0),
+  primary key (proposal_id, account_id)
+);
+
+create table wos.governance_votes (
+  proposal_id   uuid not null references wos.governance_proposals (id),
+  account_id    uuid not null references wos.accounts (id),
+  choice        text not null check (choice in ('yes', 'no', 'abstain')),
+  body          jsonb not null,       -- GovernanceVote (signed)
+  created_at    timestamptz not null default clock_timestamp(),
+  primary key (proposal_id, account_id)
+);
+create or replace function wos.check_governance_vote() returns trigger
+language plpgsql as $$
+declare
+  g wos.governance_proposals%rowtype;
+begin
+  select * into g from wos.governance_proposals where id = new.proposal_id;
+  if new.created_at < g.voting_opens_at or new.created_at >= g.voting_closes_at then
+    raise exception 'wos: voting on % is closed', new.proposal_id using errcode = 'check_violation';
+  end if;
+  if not exists (select 1 from wos.governance_weight_snapshots w where w.proposal_id = new.proposal_id and w.account_id = new.account_id) then
+    raise exception 'wos: account % has no weight in the snapshot', new.account_id using errcode = 'check_violation';
+  end if;
+  return new;
+end $$;
+create trigger governance_votes_check before insert on wos.governance_votes for each row execute function wos.check_governance_vote();
+
+-- Settlement adapter history. The ledger is canonical; this only says how final leaves are paid. An emergency pause
+-- must carry an expiry at most 14 days out; price is never a trigger.
+create table wos.settlement_adapter_events (
+  seq                     bigint generated always as identity primary key,
+  action                  text not null check (action in ('activate', 'pause', 'resume', 'retire')),
+  adapter                 text not null check (adapter in ('solana_wos', 'in_app_credits', 'paused_accrual', 'successor')),
+  trigger_kind            text not null check (trigger_kind in ('security_incident', 'chain_failure', 'legal_order', 'program_bug', 'governance_decision')),
+  expires_at              timestamptz,
+  admin_action_id         uuid references wos.admin_actions (id),
+  governance_proposal_id  uuid references wos.governance_proposals (id),
+  created_at              timestamptz not null default clock_timestamp(),
+  check (admin_action_id is not null or governance_proposal_id is not null),
+  check ((action = 'pause') = (expires_at is not null)),
+  check (action <> 'pause' or expires_at <= created_at + interval '336 hours'),
+  check (action not in ('activate', 'retire') or governance_proposal_id is not null or trigger_kind <> 'governance_decision')
+);
+
+create table wos.migration_snapshots (
+  id                   uuid primary key default gen_random_uuid(),
+  at_epoch             integer not null references wos.epochs (epoch_number),
+  from_adapter         text not null,
+  to_adapter           text not null,
+  body                 jsonb not null,      -- MigrationSnapshot
+  snapshot_sha256      text not null unique check (snapshot_sha256 ~ '^sha256:[0-9a-f]{64}$'),
+  governance_proposal_id uuid references wos.governance_proposals (id),
+  created_at           timestamptz not null default now()
+);
+
+-- ============================================================================================
 -- 14. Abuse signals and risk flags (private)
 -- ============================================================================================
 create table wos.abuse_signals (
@@ -1151,7 +1311,8 @@ begin
     'anomaly_metrics', 'allocation_acceptances', 'allocation_disputes', 'dispute_gates', 'dispute_items', 'dispute_replies',
     'dispute_item_resolutions', 'dispute_settlements', 'allocations', 'claim_leaves', 'settlement_records',
     'offsets', 'wallet_bindings', 'completion_pools', 'completion_definitions', 'pool_accruals', 'pool_events',
-    'genesis_contributions', 'abuse_signals', 'risk_flags'
+    'genesis_contributions', 'abuse_signals', 'risk_flags', 'sponsorship_links', 'sponsorship_link_ends', 'governance_proposals', 'governance_weight_snapshots',
+    'governance_votes', 'settlement_adapter_events', 'migration_snapshots'
   ] loop
     perform wos.protocol_append_only(t);
     execute format('alter table wos.%I enable row level security', t);
@@ -1173,7 +1334,8 @@ begin
     'reviewer_qualification_events', 'human_reviews', 'review_eval_cases', 'payout_audit_quorums', 'duty_statements',
     'epoch_manifest_entries', 'allocations', 'claim_leaves', 'settlement_records', 'offsets', 'completion_pools',
     'completion_definitions', 'pool_accruals', 'pool_events', 'genesis_contributions', 'anomaly_metrics',
-    'dispute_gates', 'dispute_item_resolutions', 'dispute_settlements'
+    'dispute_gates', 'dispute_item_resolutions', 'dispute_settlements', 'sponsorship_links', 'sponsorship_link_ends', 'governance_proposals', 'governance_weight_snapshots',
+    'settlement_adapter_events', 'migration_snapshots'
   ] loop
     execute format('create policy public_read on wos.%I for select to wos_app using (true)', t);
     execute format('create policy privileged_write on wos.%I for insert to wos_app with check (wos.is_privileged())', t);
@@ -1185,7 +1347,7 @@ do $$
 declare
   t text;
 begin
-  foreach t in array array['allocation_disputes', 'dispute_items', 'dispute_replies', 'allocation_acceptances'] loop
+  foreach t in array array['allocation_disputes', 'dispute_items', 'dispute_replies', 'allocation_acceptances', 'governance_votes'] loop
     execute format('create policy public_read on wos.%I for select to wos_app using (true)', t);
   end loop;
 end $$;
@@ -1193,6 +1355,7 @@ create policy own_insert on wos.allocation_disputes for insert to wos_app with c
 create policy own_insert on wos.dispute_items for insert to wos_app
   with check (wos.is_privileged() or exists (select 1 from wos.allocation_disputes d where d.id = dispute_id and d.disputer_account_id = wos.actor_id()));
 create policy own_insert on wos.dispute_replies for insert to wos_app with check (wos.is_privileged() or account_id = wos.actor_id());
+create policy own_insert on wos.governance_votes for insert to wos_app with check (wos.is_privileged() or account_id = wos.actor_id());
 create policy own_insert on wos.allocation_acceptances for insert to wos_app with check (wos.is_privileged() or account_id = wos.actor_id());
 create policy privileged_update on wos.payout_audit_quorums for update to wos_app using (wos.is_privileged()) with check (wos.is_privileged());
 
@@ -1230,4 +1393,4 @@ begin
   end loop;
 end $$;
 
-grant execute on function wos.epoch_state_at(integer, text), wos.epoch_state(integer), wos.receipt_status(uuid), wos.effective_weight(uuid), wos.reviewer_qualified(uuid), wos.is_maintainer(uuid), wos.bootstrap_on() to wos_app;
+grant execute on function wos.related_accounts(uuid, uuid), wos.epoch_state_at(integer, text), wos.epoch_state(integer), wos.receipt_status(uuid), wos.effective_weight(uuid), wos.reviewer_qualified(uuid), wos.is_maintainer(uuid), wos.bootstrap_on() to wos_app;

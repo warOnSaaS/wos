@@ -12,7 +12,14 @@ import {
   disputeStake,
   allocationTree,
   assertConserved,
+  applyWeightCaps,
   CAPABILITY_POLICY_V1,
+  contributionWeight,
+  GOVERNANCE_POLICY_V1,
+  lockedWeight,
+  OFFRAMP_DISCLOSURE,
+  proposalTier,
+  tallyDualMajority,
   COMPLETION_POLICY_V1,
   type ClaimLeaf,
   clipToCap,
@@ -149,6 +156,14 @@ describe("computeEpoch", () => {
     expect(r.emittedBySlice.execution).toBeLessThan(r.slices.execution!);
     assertConserved(RESERVE, r);
   });
+  it("low participation: pools accrue only in proportion to what was actually emitted", () => {
+    const r = computeEpoch({ ...fresh(), receipts: [receipt(1, 1, 50)] }, params);
+    const dist = r.emittedBySlice.execution;
+    const accrued = [...r.accruals.values()].reduce((s, v) => s + v, 0n);
+    // 1500 bp completion vs 8000 bp distributing: accrual <= 15/80 of what the distributing slices emitted.
+    expect(accrued).toBeLessThanOrEqual((dist * 1500n) / 8000n + 1n);
+    assertConserved(RESERVE, r);
+  });
   it("high participation: the slice binds and is split pro rata, exactly", () => {
     const receipts = Array.from({ length: 200 }, (_, i) => receipt(i, 1 + (i % 50), 1000 + i));
     const r = computeEpoch({ ...fresh(), receipts }, params);
@@ -261,6 +276,96 @@ describe("optimistic payouts, disputes, anomalies, activation (D28–D33)", () =
   });
 });
 
+describe("governance and off-ramp (D34, D35)", () => {
+  const w = (id: number, locked: bigint, contribution: bigint) => ({ accountId: u(id), locked, contribution });
+  const p = GOVERNANCE_POLICY_V1;
+  it("needs a majority of BOTH weights and turnout in each", () => {
+    const weights = [w(1, 900n, 10n), w(2, 50n, 60n), w(3, 50n, 30n)];
+    const whale = tallyDualMajority(
+      [
+        { accountId: u(1), choice: "yes" },
+        { accountId: u(2), choice: "no" },
+      ],
+      weights,
+      p,
+    );
+    expect(whale.passes).toBe(false);
+    expect(whale.reasons).toContain("contribution weight below the routine threshold");
+    const both = tallyDualMajority(
+      [
+        { accountId: u(1), choice: "yes" },
+        { accountId: u(2), choice: "yes" },
+      ],
+      weights,
+      p,
+    );
+    expect(both.passes).toBe(true);
+  });
+  it("uses tiered supermajorities: 55% passes nothing, 70% passes routine and structural but not governance (D36)", () => {
+    const weights = [w(1, 55n, 55n), w(2, 45n, 45n), w(3, 70n, 70n), w(4, 30n, 30n)];
+    const v = (a: number, b: number) => [
+      { accountId: u(a), choice: "yes" as const },
+      { accountId: u(b), choice: "no" as const },
+    ];
+    expect(tallyDualMajority(v(1, 2), weights, p, "routine").passes).toBe(false);
+    expect(tallyDualMajority(v(3, 4), weights, p, "routine").passes).toBe(true);
+    expect(tallyDualMajority(v(3, 4), weights, p, "structural").passes).toBe(true);
+    expect(tallyDualMajority(v(3, 4), weights, p, "governance").passes).toBe(false);
+    expect(
+      proposalTier("policy_change", "reward", { emissionOrSupply: true, genesisCap: false, newCategory: false, withinLimits: true }),
+    ).toBe("structural");
+    expect(
+      proposalTier("policy_change", "governance", { emissionOrSupply: false, genesisCap: false, newCategory: false, withinLimits: true }),
+    ).toBe("governance");
+    expect(
+      proposalTier("ratify_emergency", null, { emissionOrSupply: false, genesisCap: false, newCategory: false, withinLimits: true }),
+    ).toBe("emergency_ratification");
+  });
+  it("caps an organization's share of each weight at 10% (D38)", () => {
+    const ws = [
+      { accountId: u(1), organizationId: u(900), locked: 300n, contribution: 300n },
+      { accountId: u(2), organizationId: u(900), locked: 300n, contribution: 300n },
+      { accountId: u(3), organizationId: null, locked: 400n, contribution: 400n },
+    ];
+    const capped = applyWeightCaps(ws, { perWalletCapBp: 10_000, orgCapBp: GOVERNANCE_POLICY_V1.orgCapBp });
+    expect(capped[0]!.contribution + capped[1]!.contribution).toBe(100n);
+    expect(capped[2]!.contribution).toBe(400n);
+  });
+  it("ignores locked weight of voters with no recent contribution (recommended rule)", () => {
+    const weights = [w(1, 1000n, 0n), w(2, 10n, 100n)];
+    const r = tallyDualMajority(
+      [
+        { accountId: u(1), choice: "yes" },
+        { accountId: u(2), choice: "no" },
+      ],
+      weights,
+      p,
+    );
+    expect(r.lockedYes).toBe(0n);
+    expect(r.passes).toBe(false);
+  });
+  it("falls back to contribution-only weight when the token adapter is retired", () => {
+    const weights = [w(1, 0n, 70n), w(2, 0n, 30n)];
+    const r = tallyDualMajority(
+      [
+        { accountId: u(1), choice: "yes" },
+        { accountId: u(2), choice: "no" },
+      ],
+      weights,
+      { ...p, mode: "contribution_only" },
+    );
+    expect(r.passes).toBe(true);
+  });
+  it("ages contribution out linearly and counts locks only while >= 12 months remain", () => {
+    expect(contributionWeight(2600n, 10, 10, 26)).toBe(2600n);
+    expect(contributionWeight(2600n, 10, 23, 26)).toBe(1300n);
+    expect(contributionWeight(2600n, 10, 36, 26)).toBe(0n);
+    expect(lockedWeight(5n, 400 * 86_400_000, 0, 365)).toBe(5n);
+    expect(lockedWeight(5n, 300 * 86_400_000, 0, 365)).toBe(0n);
+    expect(OFFRAMP_DISCLOSURE).toMatch(/may become worthless/);
+  });
+});
+
 describe("receipt status and epochs (D23)", () => {
   it("test epochs count provisional receipts; live epochs never do", () => {
     expect(receiptCountsIn("test", "PROVISIONAL")).toBe(true);
@@ -308,6 +413,7 @@ describe("hashing and Merkle (P-1..P-4)", () => {
     attestedAcuMicro: "3820000",
     capAcuMicro: "12000000",
     lowestVerificationLevel: "ATTESTED",
+    beneficiary: { kind: "person", organizationId: null, sponsorshipId: null, organizationShareBp: 0 },
     independence: "independent",
     initialStatus: "ACTIVE",
     policyVersions: {

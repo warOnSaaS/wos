@@ -1,7 +1,7 @@
 {
   "policyVersion": "genesis-policy.v1",
   "status": "draft",
-  "capBase": "20000000000000",
+  "capBase": "5000000000000",
   "cutoff": {
     "description": "Work merged to waronsaas/wos main before the first ContributionReceipt of epoch 1",
     "lastPreProtocolCommit": null

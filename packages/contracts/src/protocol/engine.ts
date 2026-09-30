@@ -248,10 +248,19 @@ export function computeEpoch(input: EpochInput, p: EngineParams): EpochResult {
     }
   }
 
-  // 2. Accrual slices. An empty epoch (no qualified weight) accrues nothing: everything returns to R.
+  // 2. Accrual slices scale with utilisation: they accrue the same fraction of their slice that the distributing
+  //    slices actually emitted (so a quiet epoch cannot pile the budget into pools that a few people later collect).
+  //    An empty epoch accrues nothing. The unaccrued part returns to R.
   const accruals = new Map<string, bigint>();
-  const completion$ = slices.completion_accrual ?? 0n;
-  const security$ = slices.security_reserve ?? 0n;
+  const distSlices = DIST.reduce((t, k) => t + (slices[k] ?? 0n), 0n);
+  const distEmitted = DIST.reduce((t, k) => t + emittedBySlice[k], 0n);
+  const scale = (x: bigint) => (distSlices === 0n ? 0n : (x * distEmitted) / distSlices);
+  const completionSlice = slices.completion_accrual ?? 0n;
+  const securitySlice = slices.security_reserve ?? 0n;
+  const completion$ = scale(completionSlice);
+  const security$ = scale(securitySlice);
+  R += completionSlice - completion$ + (securitySlice - security$);
+  returned += completionSlice - completion$ + (securitySlice - security$);
   let securityAccrual = 0n;
   if (totalWeight === 0n) {
     R += completion$ + security$;

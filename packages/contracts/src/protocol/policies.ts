@@ -482,7 +482,18 @@ export type GenesisAllocationPolicy = z.infer<typeof GenesisAllocationPolicy>;
 
 // ------------------------------------------------------------------------------------------------ Activation (D33)
 
-export const PolicyKind = z.enum(["reward", "oracle", "review", "capability", "usage_proof", "risk", "merge", "completion", "genesis"]);
+export const PolicyKind = z.enum([
+  "reward",
+  "oracle",
+  "review",
+  "capability",
+  "usage_proof",
+  "risk",
+  "merge",
+  "completion",
+  "genesis",
+  "governance",
+]);
 export type PolicyKind = z.infer<typeof PolicyKind>;
 
 /**

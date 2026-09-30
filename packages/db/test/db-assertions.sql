@@ -606,6 +606,38 @@ select wos_test.expect_error($$insert into wos.policy_activations (kind, version
 insert into wos.policy_activations (kind, version, effective_epoch, preview_sha256, admin_action_id)
 values ('reward', 'reward-policy.v2', 10, 'sha256:' || repeat('2', 64), '00000000-0000-0000-0000-0000000aa001');
 
+-- organizations (D38): org-mates are related accounts for every independence rule
+do $$
+declare
+  acme uuid;
+begin
+  select id into acme from wos.organizations where slug = 'acme';
+  begin
+    insert into wos.sponsorship_links (organization_id, contributor_account_id, approved_by_account_id)
+    values (acme, '00000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-00000000000b');
+    raise exception 'EXPECTED FAILURE did not happen: sponsorship approved by a non-admin';
+  exception when check_violation then raise notice 'ok (rejected): sponsorship approved by a non-admin';
+  end;
+  insert into wos.sponsorship_links (organization_id, contributor_account_id, approved_by_account_id)
+  values (acme, '00000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-00000000000a'),
+         (acme, '00000000-0000-0000-0000-00000000000c', '00000000-0000-0000-0000-00000000000a');
+  if not wos.related_accounts('00000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-00000000000c') then
+    raise exception 'org-mates must be related accounts';
+  end if;
+  raise notice 'ok: sponsorship links make org-mates related';
+end $$;
+select wos_test.expect_error($$insert into wos.human_reviews (purpose, subject_kind, subject_id, context_sha256, reviewer_account_id, risk_class, verdict, review_policy_version, body, review_sha256)
+  values ('audit', 'receipt', '00000000-0000-0000-0000-0000000cc001', 'sha256:' || repeat('1', 64), '00000000-0000-0000-0000-00000000000c', 'standard', 'PASS', 'review-policy.v1', '{}', 'sha256:' || repeat('0', 64))$$,
+  'a human review of an org-mate''s receipt', 'related accounts');
+
+-- off-ramp: an emergency pause always expires (<= 14 days); price is never a trigger (no such trigger value exists)
+select wos_test.expect_error($$insert into wos.settlement_adapter_events (action, adapter, trigger_kind, admin_action_id)
+  values ('pause', 'paused_accrual', 'security_incident', '00000000-0000-0000-0000-0000000aa001')$$, 'a pause without an expiry');
+select wos_test.expect_error($$insert into wos.settlement_adapter_events (action, adapter, trigger_kind, expires_at, admin_action_id)
+  values ('pause', 'paused_accrual', 'price_fell', now() + interval '1 day', '00000000-0000-0000-0000-0000000aa001')$$, 'a price-based trigger');
+insert into wos.settlement_adapter_events (action, adapter, trigger_kind, expires_at, admin_action_id)
+values ('pause', 'paused_accrual', 'security_incident', now() + interval '7 days', '00000000-0000-0000-0000-0000000aa001');
+
 -- RLS: canaries and abuse signals are private; the app role cannot rewrite protocol records
 insert into wos.abuse_signals (kind, severity, subject_kind, subject_id, detector, detector_version, evidence)
 values ('payout_canary_passed', 'high', 'account', 'x', 'canary', 'v1', '{}');

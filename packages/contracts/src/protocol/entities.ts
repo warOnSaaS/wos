@@ -292,6 +292,18 @@ export const ContributionReceipt = z.object({
   capAcuMicro: U64String,
   lowestVerificationLevel: VerificationLevel,
   /**
+   * D38: the Contributor (the natural person above, accountable) and the Beneficiary (who receives the allocation), as
+   * of qualification time. Default beneficiary is the contributor; with an active sponsorship link it is the
+   * organization, with the link's split. Past receipts never change when a link ends.
+   */
+  beneficiary: z.object({
+    kind: z.enum(["person", "organization"]),
+    organizationId: Uuid.nullable(),
+    sponsorshipId: Uuid.nullable(),
+    /** Share to the organization in bp; the rest to the contributor. 10000 = all to the organization. */
+    organizationShareBp: z.number().int().min(0).max(10_000),
+  }),
+  /**
    * D23 (founder, resolving Astra-01 item 2): merge authority is separate from reward qualification.
    *   independent        the review policy was satisfied by non-authors; born ACTIVE
    *   founder_bootstrap  the founder's own work merged under bootstrap authority; the receipt is born PROVISIONAL
@@ -1177,6 +1189,27 @@ export const ReviewEvalCase = z.object({
 });
 export type ReviewEvalCase = z.infer<typeof ReviewEvalCase>;
 
+// ------------------------------------------------------------------------------------------------ Organizations (D38)
+
+/**
+ * A contributor contributes on behalf of an organization (Amendment 01's Organization). Requested by the contributor,
+ * approved by an org admin; effective from approval until ended (forward only). While active, the contributor and every
+ * other member with an active link to the same organization are RELATED ACCOUNTS for all independence rules.
+ */
+export const SponsorshipLink = z.object({
+  id: Uuid,
+  organizationId: Uuid,
+  contributorAccountId: Uuid,
+  organizationShareBp: z.number().int().min(0).max(10_000),
+  requestedAt: Timestamp,
+  approvedByAccountId: Uuid,
+  effectiveFrom: Timestamp,
+  endedAt: Timestamp.nullable(),
+});
+export type SponsorshipLink = z.infer<typeof SponsorshipLink>;
+
+export const DEFAULT_ORGANIZATION_SHARE_BP = 10_000 as const;
+
 // ------------------------------------------------------------------------------------------------ Wallet
 
 /** The exact message a wallet signs to bind itself to an account (SOLANA-ARCHITECTURE.md section 7). */
@@ -1199,7 +1232,9 @@ export function walletBindingMessage(input: {
 }
 
 export const WalletBinding = z.object({
-  accountId: Uuid,
+  /** A person's wallet, or an organization's (recommended: a multisig) as its beneficiary wallet (D38). */
+  accountId: Uuid.nullable(),
+  organizationId: Uuid.nullable(),
   cluster: SolanaCluster,
   wallet: SolanaAddress,
   kind: z.enum(["external", "cli_keypair"]),

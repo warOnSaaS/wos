@@ -14,7 +14,7 @@
   },
   "emission": {
     "maxSupplyBase": "1000000000000000",
-    "emissionReserveBase": "980000000000000",
+    "emissionReserveBase": "995000000000000",
     "budgetPpmOfRemaining": 3327,
     "rateCeiling": {
       "initialBasePerAcu": "100000000",
