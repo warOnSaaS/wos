@@ -699,6 +699,9 @@ export class FakeControlPlane {
       case "releaseLease": {
         const l = this.leases.get(params.id!)!;
         l.state = "released";
+        // As the control plane's afterLeaseLost: an author task whose lease is released is open again.
+        const t = this.tasks.get(l.taskId);
+        if (t && t.state === "leased" && t.kind !== "abu_build" && t.kind !== "abu_revision") t.state = "open";
         return this.leaseView(l);
       }
       case "createProposal":

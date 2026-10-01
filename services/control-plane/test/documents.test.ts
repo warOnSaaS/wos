@@ -297,7 +297,7 @@ describe.skipIf(!HAS_DB)("roadmap and feature contract workflows", () => {
       parentCommit: doc!.head_sha ?? plan.source.commit,
       manifestSha256: m.manifestSha256,
       files,
-      summary: { schema: "author-summary.v1", summary: "Revision.", responses: [], proposalsAddressed: [] },
+      summary: { schema: "author-summary.v1", summary: "Revision.", responses: [], proposalsAddressed: [], ensemble: null },
     });
     return h.call("POST", `/v1/leases/${claim.body.lease.id}/changeset`, { token: acct.token, idem: true, body: cs });
   };
@@ -339,7 +339,7 @@ describe.skipIf(!HAS_DB)("roadmap and feature contract workflows", () => {
       parentCommit: probe.body.contextPlan.source.commit,
       manifestSha256: pm.manifestSha256,
       files: [{ path: "modules/contacts/evil.ts", content: "x" }],
-      summary: { schema: "author-summary.v1", summary: "Sneaky.", responses: [], proposalsAddressed: [] },
+      summary: { schema: "author-summary.v1", summary: "Sneaky.", responses: [], proposalsAddressed: [], ensemble: null },
     });
     const refused = await h.call("POST", `/v1/leases/${probe.body.lease.id}/changeset`, { token: writer.token, idem: true, body: evil });
     expect(refused.status).toBe(422);

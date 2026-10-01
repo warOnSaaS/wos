@@ -3,10 +3,11 @@
  * PATH, launched by createNodeProcessRunner with the argv the REAL agent-policy builds. Also `status()`
  * probing the same binaries.
  */
-import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import type { OrchestratorEvent } from "@waronsaas/contracts";
+import type { AuthorSummary, OrchestratorEvent } from "@waronsaas/contracts";
+import { roadmapFiles } from "../../../services/control-plane/test/support/roadmap-fixture.js";
 import { afterEach, describe, expect, it } from "vitest";
 import { createNodeProcessRunner, createOrchestrator } from "../src/index.js";
 import { ABU_KEY, TARGET } from "./support/fake-control-plane.js";
@@ -53,7 +54,7 @@ process.stdin.on("end", () => {
  * writing ROADMAP.yaml and the output file, and printing json events: sub-agents (task), a fetch, a search, tokens.
  * WOS_FAKE_OPENCODE (written into the fake itself by the test) picks the scenario.
  */
-const OPENCODE = (scenario: "ok" | "off-allowlist" | "no-output") => `#!/usr/bin/env node
+const OPENCODE = (scenario: "ok" | "off-allowlist" | "no-output" | "files", filesJson = "") => `#!/usr/bin/env node
 const fs = require("node:fs");
 const argv = process.argv.slice(2);
 if (argv[0] === "--version") { console.log("1.18.31"); process.exit(0); }
@@ -71,6 +72,11 @@ process.stdin.on("end", () => {
   if (config.permission?.task !== "allow" || config.agent?.general?.permission?.webfetch !== "deny") { console.error("config"); process.exit(4); }
   fs.mkdirSync("roadmaps/salesforce", { recursive: true });
   fs.writeFileSync("roadmaps/salesforce/ROADMAP.yaml", ["schema: wos-roadmap.v1", "target: salesforce", ""].join(String.fromCharCode(10)));
+  if (${JSON.stringify(scenario)} === "files")
+    for (const f of JSON.parse(fs.readFileSync(${JSON.stringify(filesJson)}, "utf8"))) {
+      fs.mkdirSync(require("node:path").dirname(f.path), { recursive: true });
+      fs.writeFileSync(f.path, f.content);
+    }
   const out = { schema: "author-summary.v1", summary: "drafted by fake opencode", responses: [], proposalsAddressed: [] };
   if (${JSON.stringify(scenario)} !== "no-output") fs.writeFileSync(".wos-agent-output.json", JSON.stringify(out));
   const ev = (type, part) => console.log(JSON.stringify({ type, timestamp: 1, sessionID: "ses_1", part }));
@@ -92,13 +98,17 @@ grep -q BROKEN modules/contacts/list.ts && { echo "FAIL"; exit 1; }
 echo PASS
 `;
 
-function installBinaries(opencode: "ok" | "off-allowlist" | "no-output" = "ok"): string {
+function installBinaries(
+  opencode: "ok" | "off-allowlist" | "no-output" | "files" = "ok",
+  files: Array<{ path: string; content: string }> = [],
+): string {
   const dir = mkdtempSync(join(tmpdir(), "wos-bin-"));
   mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "files.json"), JSON.stringify(files));
   for (const [name, text] of [
     ["claude", AGENT("claude")],
     ["codex", AGENT("codex")],
-    ["opencode", OPENCODE(opencode)],
+    ["opencode", OPENCODE(opencode, join(dir, "files.json"))],
     ["wos-fake-check", FAKE_CHECK],
   ] as const) {
     writeFileSync(join(dir, name), text);
@@ -178,6 +188,7 @@ describe("glm on the opencode CLI (D69 candidate trial, D70 web), with a fake op
     registry: [],
   };
   const LAUNCH = { provider: "opencode-go", baseUrl: null, identity: "self_reported" } as const;
+  const FETCHED = "https://help.salesforce.com/s/articleView?id=sf.exporting_data.htm";
   const recorded = () => {
     const calls: Array<{ binary: string; argv: string[]; env: Record<string, string> }> = [];
     const real = createNodeProcessRunner();
@@ -307,6 +318,51 @@ describe("glm on the opencode CLI (D69 candidate trial, D70 web), with a fake op
     expect(run.validation.ok).toBe(false);
     expect(readFileSync(join(base, runDir!, "roadmaps/salesforce/ROADMAP.yaml"), "utf8")).toContain("wos-roadmap.v1");
     expect(readFileSync(join(base, runDir!, "transcript.jsonl"), "utf8")).toContain("step_finish");
+  });
+
+  it("D73 ensemble: N shadow runs on one manifest, merged, validated and submitted once with the runs as provenance", async () => {
+    h = harness();
+    h.server.authorWeb = WEB;
+    // The fixture roadmap, citing the one page the fake fetches (grounding).
+    const files = roadmapFiles({ target: "salesforce" }).map((f) => ({
+      ...f,
+      content: f.content.replaceAll("https://example.com/docs", FETCHED).replaceAll("https://example.com/export", FETCHED),
+    }));
+    bin = installBinaries("files", files);
+    const o = orchestrator(h, bin, { modelLaunch: { glm: LAUNCH } });
+    const t = h.server.openAuthorTask("roadmap_author");
+    const res = await o.author({ taskId: t.id, model: "glm", ensemble: 3 }, () => undefined);
+    const archived = join(h.root, "ensemble", t.id);
+    expect(res, `${JSON.stringify(res)} ${existsSync(archived) ? readdirSync(archived) : ""}`).toMatchObject({ ok: true });
+    const shadows = h.server.agentRuns.filter((r) => (r as { mode?: string }).mode === "shadow") as Array<Record<string, string>>;
+    expect(shadows).toHaveLength(3);
+    expect(h.server.submissions).toHaveLength(1);
+    const cs = h.server.submissions[0] as { summary: AuthorSummary; files: Array<{ path: string }> };
+    expect(cs.summary.ensemble).toMatchObject({
+      threshold: 2,
+      majority: "strict_majority",
+      decisions: 0,
+      stability: { capabilitiesMatchBp: 10_000, featuresMatchBp: 10_000, groundingBp: 10_000, belowTarget: [] },
+    });
+    expect(cs.summary.ensemble!.runs.map((r) => r.leaseId)).toEqual(shadows.map((r) => r.leaseId));
+    expect(new Set(cs.summary.ensemble!.runs.map((r) => r.manifestSha256)).size).toBe(1);
+    expect(cs.files.map((f) => f.path)).toContain("roadmaps/salesforce/DECISIONS.md");
+  });
+
+  it("D73 ensemble: a run whose roadmap does not parse stops the merge; nothing is submitted and the lease is released", async () => {
+    h = harness();
+    h.server.authorWeb = WEB;
+    bin = installBinaries("ok");
+    const o = orchestrator(h, bin, { modelLaunch: { glm: LAUNCH } });
+    const t = h.server.openAuthorTask("roadmap_author");
+    const res = await o.author({ taskId: t.id, model: "glm", ensemble: 2 }, () => undefined);
+    expect(res, JSON.stringify(res)).toMatchObject({ ok: false, code: "ENSEMBLE_RUN_INVALID" });
+    expect(h.server.submissions).toHaveLength(0);
+    expect([...h.server.leases.values()].every((l) => l.state === "released")).toBe(true);
+    expect(await o.author({ taskId: t.id, model: "glm", ensemble: 9 }, () => undefined)).toMatchObject({
+      ok: false,
+      code: "VALIDATION_FAILED",
+    });
   });
 
   it("D70: a fetch off the plan's allowlist refuses the submission (after the run is recorded)", async () => {

@@ -76,6 +76,7 @@ export class DemoProcesses implements ProcessRunner {
         summary: "No material gaps.",
         findings: [],
         priorFindings: [],
+        decisionRulings: [],
       };
       return this.emit(input, modelId, verdict, ["Reading the diff against the Feature Contract.", "Checking R-001 coverage."]);
     }

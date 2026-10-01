@@ -40,6 +40,8 @@ describe("wos help and usage (exit 2)", () => {
     [["review", "--slot", "opus"], "argument 'opus' is invalid"],
     [["resolve", "--model", "opus"], "argument 'opus' is invalid"],
     [["roadmap", "--model", "sol"], "argument 'sol' is invalid"],
+    [["roadmap", "t", "--ensemble", "three"], "--ensemble takes a number of runs"],
+    [["roadmap", "t", "--ensemble", "3", "--shadow"], "cannot be combined with --shadow"],
     [["login", "not-an-email"], "login needs an email address"],
     [["propose", "--target", "salesforce", "--title", "t"], "exactly one of --body or --body-file"],
     [["events", "--after", "x"], "--after takes an event id"],

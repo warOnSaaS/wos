@@ -2,7 +2,7 @@
  * A valid roadmap revision for any target (the documents.test.ts fixture, parameterised), and the author's side of a
  * document revision driven through the API. Used by the first-run tests (D53 human seat, repository case, versions).
  */
-import { AGENT_POLICY } from "@waronsaas/contracts";
+import { AGENT_POLICY, type EnsembleRecord } from "@waronsaas/contracts";
 import { defaultCatalogEntry } from "@waronsaas/planning";
 import { expect } from "vitest";
 import { type Account, type Harness, manifestFor, signedChangeset, signedRun } from "./harness.js";
@@ -164,6 +164,8 @@ type Summary = {
   summary: string;
   responses: Array<{ findingId: string; action: "fixed" | "disputed"; note: string }>;
   proposalsAddressed: string[];
+  /** D73: an ensemble revision's provenance and stability. */
+  ensemble?: EnsembleRecord;
 };
 
 /** Claims an author task, builds its context, runs a signed (fake) agent run and submits the files. */
@@ -201,7 +203,7 @@ export async function authorRevision(
     parentCommit: doc!.head_sha ?? plan.source.commit,
     manifestSha256: m.manifestSha256,
     files,
-    summary: opts.summary ?? { schema: "author-summary.v1", summary: "Revision.", responses: [], proposalsAddressed: [] },
+    summary: { ensemble: null, ...(opts.summary ?? { schema: "author-summary.v1", summary: "Revision.", responses: [], proposalsAddressed: [] }) },
   });
   const res = await h.call("POST", `/v1/leases/${claim.body.lease.id}/changeset`, { token: acct.token, idem: true, body: cs });
   return { claim, plan, manifest: m, res };

@@ -131,6 +131,7 @@ export class FakeProcesses implements ProcessRunner {
       summary: `drafted ${this.authorFile.path}`,
       responses: [],
       proposalsAddressed: [],
+      ensemble: null,
     };
     return this.emit(input, modelId, summary);
   }
@@ -162,6 +163,7 @@ export class FakeProcesses implements ProcessRunner {
             ]
           : [],
       priorFindings: [],
+      decisionRulings: [],
     };
     return this.emit(input, modelId, verdict);
   }
