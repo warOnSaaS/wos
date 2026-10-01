@@ -9,9 +9,14 @@ describe("normalizeAuthorOutput (opencode authors write the summary by hand)", (
     expect(parsed.success).toBe(true);
     expect(parsed.success && parsed.data.summary.length).toBe(4000);
   });
+  it("states that a structured report had no summary instead of inventing one", () => {
+    const out = normalizeAuthorOutput({ schema: "author-summary.v1", inventory: {}, capabilities: [] }) as { summary: string };
+    expect(out.summary).toContain("no summary field");
+    expect(AuthorSummary.safeParse(out).success).toBe(true);
+  });
   it("still fails closed on anything else", () => {
     expect(AuthorSummary.safeParse(normalizeAuthorOutput(null)).success).toBe(false);
     expect(AuthorSummary.safeParse(normalizeAuthorOutput({ summary: "" })).success).toBe(false);
-    expect(AuthorSummary.safeParse(normalizeAuthorOutput({ unparsedOutput: "not json" })).success).toBe(false);
+    expect(AuthorSummary.safeParse(normalizeAuthorOutput({ summary: 7 })).success).toBe(false);
   });
 });

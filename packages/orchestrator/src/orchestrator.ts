@@ -1995,6 +1995,9 @@ export function normalizeAuthorOutput(output: unknown): unknown {
   if (o.schema === undefined) o.schema = "author-summary.v1";
   if (o.responses === undefined) o.responses = [];
   if (o.proposalsAddressed === undefined) o.proposalsAddressed = [];
+  // A hand-written report without a prose summary (GLM ensemble run 3, 2026-10-01): say so rather than invent one.
+  if (o.summary === undefined && Object.keys(o).length > 0)
+    o.summary = `The author wrote no summary field; its report has: ${Object.keys(o).slice(0, 20).join(", ")}.`;
   if (typeof o.summary === "string" && o.summary.length > 4000) o.summary = `${o.summary.slice(0, 3999)}\u2026`;
   return o;
 }
