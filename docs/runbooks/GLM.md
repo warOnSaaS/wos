@@ -181,3 +181,26 @@ The report covers:
 - D59 completeness and citation share;
 - for the shadow side, inventory sources found in its fetch log and the required reading it read;
 - coverage of the 52 Salesforce scan capabilities.
+
+## Ensemble runs (D73, agent-policy.v4, contracts 5.21.0)
+
+Run A and run B on the identical context disagreed on the capability list (21 vs 15, 4 matching keys), the feature keys (15 shared of 35 and 50) and the weight order (Spearman 0.78), see `docs/experiments/roadmap-drift/salesforce/glm-B-vs-glm-A/COMPARE.md`. agent-policy.v4 fixes the capabilities to the scan's template, makes the vocabulary ids the default features, requires every cited URL to have been fetched, and lets the CLI merge several runs into one revision (ROADMAP-PROTOCOL section 10).
+
+**Wait until main is green on GitHub and waronsaas-api has deployed it**: the server must issue agent-policy.v4 plans (they carry `wos:method/<target>` with the template and the default catalog) to a v4 CLI. No migration.
+
+```sh
+cd ~/waronsaas && git pull && nvm use 22 && npm ci --ignore-scripts && npm run build && npm run bundle -w @waronsaas/cli
+# A lease still held on the task from an earlier run must go first (the task holds one lease at a time):
+node apps/cli/dist/wos.mjs work        # your leases; release any active one on this task:
+node apps/cli/dist/wos.mjs release <lease-id> --reason "make way for the D73 ensemble"
+
+# Three shadow runs on one manifest, merged deterministically, validated and submitted once:
+caffeinate -i node apps/cli/dist/wos.mjs roadmap 01a0f47a-0b77-7043-9299-0b237bb8d59c --ensemble 3 --provider opencode --model glm-5.3
+```
+
+- **Time and cost.** Three full runs one after the other (each about as long as run A), then a merge of seconds. Each run prints its `usage total` line.
+- **Archives.** Each run under `~/.wos/shadow/<task>/<run>/`, the merge under `~/.wos/ensemble/<task>/<run>/` (its run.json has the local validation and the stability).
+- **If product main moves during the runs**, the manifests differ and the ensemble stops with `ENSEMBLE_CONTEXT_CHANGED`. Run it again.
+- **If the merge does not validate** (`ENSEMBLE_MERGE_INVALID`), nothing is submitted and the lease is released; the archive lists the validator codes.
+- **The task is a candidate trial**, so only glm can claim it, and the PR, round and commit carry `candidate_trial:glm`. The PR body shows the stability table and, below a target, the label `low-stability` (it does not block).
+- **Review.** Each reviewer rules on every decision in `roadmaps/salesforce/DECISIONS.md` (`decisionRulings`); a verdict that leaves one unruled is refused.

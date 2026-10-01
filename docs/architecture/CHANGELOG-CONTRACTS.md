@@ -535,3 +535,23 @@ MINOR, additive. No migration.
 - `Changeset.resubmission` (optional `{fromLeaseId, reason}`), `COMMIT_TRAILERS.resubmittedFromRun` (`wOS-Resubmitted-From-Run`), event `changeset.resubmitted` (public), `AuthorOptions.resubmitFrom`.
 - Control plane: a resubmission must name another lease of the same task and account. That lease must have ended, have no committed submission, and have a signed agent run of the same model as the new lease. The commit then carries that run's id in the trailer, and the event records both leases.
 - Orchestrator and CLI: `wos resubmit <workspace>/failed/<task>/<run>/`. It reads `run.json` and `output.json`, releases the old lease if it is still active, and claims the task again with the archived run's model and launch. It builds and posts this lease's context manifest and submits the archived files and summary unchanged. No model runs.
+
+## 5.21.0 — 2026-10-01 (D73 drift control: template, catalog-first, grounding, ensemble)
+
+MINOR, additive. No migration.
+- **`agent-policy.v4`** (AGENT-POLICY section 11). v3 is unchanged. `AGENT_POLICY_V4`; `AGENT_POLICY` is now v4.
+  - `roadmapMethod` version `wos-roadmap-method.v2`: `templateRule`, `catalogRule`, `groundingRule`, `vocabulary`, per target `template` and `scanSources`; eight steps.
+  - `AgentPolicyDocument.ensemble`: roles, default and maximum runs, the strict-majority rule, the stability targets and the `low-stability` label.
+  - roadmap_author obligations Template, Catalog-first, Grounding; roadmap reviewer obligation and material rule for decisions.
+- **Artifacts.** `InventoryItem.scanId` (optional, nullable); `RoadmapCapability.templateDeviation`; `RoadmapDecision` and `Roadmap.decisions` (optional).
+- **Agent I/O.** `ReviewVerdict.decisionRulings` (default `[]`; a reject requires `MATERIAL_GAPS`); `EnsembleRecord` and `AuthorSummary.ensemble` (default `null`). Both are required properties of the generated strict JSON Schemas.
+- **Orchestrator.** `AuthorOptions.ensemble` (N runs). N shadow runs on one manifest, a deterministic merge, local validation with the runs' fetch logs, one submission on a fresh lease. Codes `ENSEMBLE_CONTEXT_CHANGED`, `ENSEMBLE_RUN_INVALID`, `ENSEMBLE_MERGE_INVALID`; archives under `<workspace>/ensemble/<task>/<run>/`. Research plans always record `fetches` (possibly empty), so grounding can tell "fetched nothing" from "no log".
+- **Planning.** `validateRoadmap` method v2 with the codes `TEMPLATE_CAPABILITY_MISSING`, `TEMPLATE_DEVIATION_UNREASONED`, `ITEM_SCAN_ID_MISSING`, `ITEM_OUTSIDE_TEMPLATE`, `CATALOG_PROPOSAL_UNDECIDED`, `CATALOG_DEFAULT_MODIFIED`, `UNGROUNDED_SOURCE`, `DECISION_MISSING`, `DECISION_DUPLICATE`; `defaultCatalogEntry`, `citedUrls`, `groundingKey`; `mergeRoadmapRuns`, `ensembleStability`, `spearmanRank`, `majorityThreshold`, `renderDecisionsMd`, `toYaml`.
+- **Control plane.**
+  - Method v2 checks for revisions authored under a v4 plan, grounding against the fetch logs of the revision's lease and its ensemble runs.
+  - `submitChangeset` verifies an ensemble's runs (distinct signed shadow runs of the caller, same task, same manifest).
+  - `submitVerdict` and `submitHumanReview` refuse a verdict that leaves a decision unruled.
+  - `wos:method/<target>` carries `defaultCatalog`; roadmap plans include `roadmaps/<target>/DECISIONS.md`.
+  - The roadmap PR body shows an ensemble's runs and stability; below target it gets the `low-stability` label.
+- **CLI.** `wos roadmap <task> --ensemble <n>` (not with `--shadow`).
+- **Tools.** `compare.ts` reports the D73 stability metrics against the policy's targets.

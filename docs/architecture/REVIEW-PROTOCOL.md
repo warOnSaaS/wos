@@ -69,6 +69,9 @@ The agent's final output must validate as `review-verdict.v1` (passed as `--json
 | `summary` | up to 4000 chars |
 | `findings[]` | up to 50; `localId` `f1..`, `severity` `material` or `minor`, `category`, `title`, `detail`, `evidence[]` (path, lines, quote), `suggestedResolution` |
 | `priorFindings[]` | every still-open prior finding id with `resolved` or `still_open` |
+| `decisionRulings[]` | contracts 5.21.0 (D73): one per decision of the roadmap under review (`ROADMAP.yaml` `decisions`, rendered in `roadmaps/<target>/DECISIONS.md`): `decisionId`, `accept` or `reject`, a note. Empty when there are none. A `reject` requires `MATERIAL_GAPS` (schema refinement) |
+
+**Ruling on decisions (D73, ROADMAP-PROTOCOL section 10.4).** A roadmap revision lists what it asks the reviewers to decide: template deviations (a capability split, merged or added against the fixed template), catalog proposals (a new feature that is not a vocabulary default), and an ensemble's disagreements (what the runs' majority did not settle, with each run's version). Each reviewer rules on every one. The server refuses a verdict that leaves a decision of the round's revision unruled (`VALIDATION_FAILED`, `details.unruled`); the human seat's verdict likewise. A rejected decision is a material gap: the reviewer adds a material finding saying why and what to do instead, and the author answers it like any other finding. An accepted decision needs nothing more.
 
 Material vs minor: material = matches a rule in the role's `materialFindingRules` or would make the subject wrong, incomplete, unsafe or unbuildable. Minor findings are shown publicly but never block and never earn rewards.
 
