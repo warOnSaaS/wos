@@ -5,7 +5,7 @@ import { WHITEPAPER_META } from "@/lib/whitepaper";
 
 // No lastModified, except for the white paper, whose date comes from git (never typed by hand).
 export default function sitemap(): MetadataRoute.Sitemap {
-  const pages = ["/", "/briefing", "/how-it-works", "/contribute", "/download", "/tokens", "/leaderboard", "/faq", "/about", "/log", "/targets/waronsaas", "/whitepaper/read", "/assessments", "/assessments/gaps"];
+  const pages = ["/", "/briefing", "/how-it-works", "/contribute", "/download", "/tokens", "/receipts", "/leaderboard", "/faq", "/about", "/log", "/targets/waronsaas", "/whitepaper/read", "/assessments", "/assessments/gaps"];
   return [
     ...pages.map((p) => ({ url: abs(p), changeFrequency: "weekly" as const, priority: p === "/" ? 1 : 0.7 })),
     {

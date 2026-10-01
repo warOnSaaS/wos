@@ -13,6 +13,7 @@ export * from "./rewards.js";
 export * from "./domain.js";
 export * from "./events.js";
 export * from "./api.js";
+export * from "./shadow.js";
 export * from "./blocker.js";
 export * from "./progress.js";
 export * from "./architecture.js";

@@ -1021,6 +1021,7 @@ function datetime$1(args) {
 	return new RegExp(`^${dateSource}T(?:${timeRegex})$`);
 }
 const anyString = /^[\s\S]{0,}$/;
+const bigint$1 = /^-?\d+n?$/;
 const integer = /^-?\d+$/;
 const number$2 = /^-?\d+(?:\.\d+)?$/;
 const boolean$1 = /^(?:true|false)$/i;
@@ -1837,6 +1838,23 @@ const $ZodBoolean = /*@__PURE__*/ $constructor("$ZodBoolean", (inst, def) => {
 			expected: "boolean",
 			code: "invalid_type",
 			input,
+			inst
+		});
+		return payload;
+	};
+});
+const $ZodBigInt = /*@__PURE__*/ $constructor("$ZodBigInt", (inst, def) => {
+	$ZodType.init(inst, def);
+	inst._zod.pattern = bigint$1;
+	inst._zod.parse = (payload, _ctx) => {
+		if (def.coerce) try {
+			payload.value = BigInt(payload.value);
+		} catch (_) {}
+		if (typeof payload.value === "bigint") return payload;
+		payload.issues.push({
+			expected: "bigint",
+			code: "invalid_type",
+			input: payload.value,
 			inst
 		});
 		return payload;
@@ -3540,6 +3558,13 @@ function _boolean(Class, params) {
 	});
 }
 // @__NO_SIDE_EFFECTS__
+function _bigint(Class, params) {
+	return new Class({
+		type: "bigint",
+		...normalizeParams(params)
+	});
+}
+// @__NO_SIDE_EFFECTS__
 function _null$1(Class, params) {
 	return new Class({
 		type: "null",
@@ -4306,6 +4331,9 @@ const numberProcessor = (schema, ctx, _json, params) => {
 };
 const booleanProcessor = (_schema, _ctx, json, _params) => {
 	json.type = "boolean";
+};
+const bigintProcessor = (schema, ctx, json, params) => {
+	handleUnrepresentable(schema, ctx, json, params, "BigInt cannot be represented in JSON Schema");
 };
 const nullProcessor = (_schema, ctx, json, _params) => {
 	if (ctx.target === "openapi-3.0") {
@@ -5195,6 +5223,52 @@ const ZodBoolean = /*@__PURE__*/ $constructor("ZodBoolean", (inst, def) => {
 function boolean(params) {
 	return _boolean(ZodBoolean, params);
 }
+const ZodBigInt = /*@__PURE__*/ $constructor("ZodBigInt", (inst, def) => {
+	$ZodBigInt.init(inst, def);
+	ZodType.init(inst, def);
+	inst._zod.processJSONSchema = (ctx, json, params) => bigintProcessor(inst, ctx, json, params);
+}, /*@__PURE__*/ derived({
+	minValue: (inst) => aggregateChecks(inst).minimum ?? null,
+	maxValue: (inst) => aggregateChecks(inst).maximum ?? null,
+	format: (inst) => aggregateChecks(inst).format ?? null
+}, {
+	gte(value, params) {
+		return this.check(_gte(value, params));
+	},
+	min(value, params) {
+		return this.check(_gte(value, params));
+	},
+	gt(value, params) {
+		return this.check(_gt(value, params));
+	},
+	lt(value, params) {
+		return this.check(_lt(value, params));
+	},
+	lte(value, params) {
+		return this.check(_lte(value, params));
+	},
+	max(value, params) {
+		return this.check(_lte(value, params));
+	},
+	positive(params) {
+		return this.check(_gt(BigInt(0), params));
+	},
+	negative(params) {
+		return this.check(_lt(BigInt(0), params));
+	},
+	nonpositive(params) {
+		return this.check(_lte(BigInt(0), params));
+	},
+	nonnegative(params) {
+		return this.check(_gte(BigInt(0), params));
+	},
+	multipleOf(value, params) {
+		return this.check(_multipleOf(value, params));
+	}
+}));
+function bigint(params) {
+	return _bigint(ZodBigInt, params);
+}
 const ZodNull = /*@__PURE__*/ $constructor("ZodNull", (inst, def) => {
 	$ZodNull.init(inst, def);
 	ZodType.init(inst, def);
@@ -5970,7 +6044,7 @@ const AppReleaseView = object({
 	yankedAt: Timestamp.nullable(),
 	yankReason: string().nullable()
 });
-const Bp = number$1().int().min(0).max(1e4);
+const Bp$1 = number$1().int().min(0).max(1e4);
 const Points = number$1().int().nonnegative();
 const ApplicationProgressView = object({
 	app: AppId,
@@ -5980,7 +6054,7 @@ const ApplicationProgressView = object({
 		"none"
 	]),
 	manifestVersion: SemVer.nullable(),
-	builtBp: Bp,
+	builtBp: Bp$1,
 	relevantPoints: Points,
 	mergedPoints: Points,
 	complete: boolean(),
@@ -5988,7 +6062,7 @@ const ApplicationProgressView = object({
 		surface: ProductSurface,
 		relevantPoints: Points,
 		mergedPoints: Points,
-		builtBp: Bp,
+		builtBp: Bp$1,
 		acceptancePassed: boolean(),
 		complete: boolean()
 	})),
@@ -9961,6 +10035,5339 @@ const EmailChangeRequest = object({
 });
 
 //#endregion
+//#region packages/contracts/dist/canonical.js
+function canonicalJson(value) {
+	if (value === null) return "null";
+	switch (typeof value) {
+		case "boolean": return value ? "true" : "false";
+		case "string": return JSON.stringify(value);
+		case "number":
+			if (!Number.isFinite(value)) throw new TypeError("canonicalJson: non-finite number");
+			return JSON.stringify(value);
+		case "object": {
+			if (Array.isArray(value)) return `[${value.map((v) => {
+				if (v === void 0) throw new TypeError("canonicalJson: undefined in array");
+				return canonicalJson(v);
+			}).join(",")}]`;
+			const proto = Object.getPrototypeOf(value);
+			if (proto !== Object.prototype && proto !== null) throw new TypeError("canonicalJson: only plain objects");
+			const obj = value;
+			return `{${Object.keys(obj).filter((k) => obj[k] !== void 0).sort().map((k) => `${JSON.stringify(k)}:${canonicalJson(obj[k])}`).join(",")}}`;
+		}
+		default: throw new TypeError(`canonicalJson: cannot canonicalise ${typeof value}`);
+	}
+}
+function sha256Of(data) {
+	const h = createHash("sha256");
+	if (typeof data === "string") h.update(data, "utf8");
+	else h.update(data);
+	return `sha256:${h.digest("hex")}`;
+}
+function canonicalSha256(value) {
+	return sha256Of(canonicalJson(value));
+}
+function submissionEntries(files) {
+	const entries = files.map((f) => f.op === "upsert" ? {
+		path: f.path,
+		op: "upsert",
+		mode: f.mode,
+		sha256: f.sha256
+	} : {
+		path: f.path,
+		op: "delete"
+	});
+	entries.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+	for (let i = 1; i < entries.length; i++) if (entries[i].path === entries[i - 1].path) throw new Error(`submissionSha256: duplicate path ${entries[i].path}`);
+	return entries;
+}
+function submissionSha256(parentCommit, files) {
+	return canonicalSha256({
+		parentCommit,
+		files: submissionEntries(files)
+	});
+}
+const UnsignedChangeset = Changeset.omit({ signature: true });
+const UnsignedAgentRun = AgentRunRecord.omit({ signature: true });
+const ED25519_SPKI_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
+const ED25519_PKCS8_PREFIX = Buffer.from("302e020100300506032b657004220420", "hex");
+
+//#endregion
+//#region packages/contracts/dist/protocol/data/capability-policy.v1.json
+var capability_policy_v1_default = {
+	policyVersion: "capability-policy.v1",
+	status: "draft",
+	classes: [
+		{
+			"id": "BUILD_L4",
+			"description": "Builds any ABU size",
+			"qualified": [{
+				"provider": "claude_cli",
+				"modelId": "claude-opus-5-5",
+				"minReasoning": "high",
+				"qualifiedBy": "founder_bootstrap",
+				"evalSuiteVersion": null
+			}, {
+				"provider": "codex_cli",
+				"modelId": "gpt-6-astra",
+				"minReasoning": "high",
+				"qualifiedBy": "founder_bootstrap",
+				"evalSuiteVersion": null
+			}]
+		},
+		{
+			"id": "BUILD_L3",
+			"description": "Builds ABUs of size 1-2",
+			"qualified": [{
+				"provider": "codex_cli",
+				"modelId": "gpt-6-sol",
+				"minReasoning": "high",
+				"qualifiedBy": "founder_bootstrap",
+				"evalSuiteVersion": null
+			}]
+		},
+		{
+			"id": "PLAN_L1",
+			"description": "Authors roadmaps and feature contracts",
+			"qualified": [
+				{
+					"provider": "claude_cli",
+					"modelId": "claude-fable-5-1",
+					"minReasoning": "max",
+					"qualifiedBy": "founder_bootstrap",
+					"evalSuiteVersion": null
+				},
+				{
+					"provider": "claude_cli",
+					"modelId": "claude-opus-5-5",
+					"minReasoning": "max",
+					"qualifiedBy": "founder_bootstrap",
+					"evalSuiteVersion": null
+				},
+				{
+					"provider": "codex_cli",
+					"modelId": "gpt-6-astra",
+					"minReasoning": "max",
+					"qualifiedBy": "founder_bootstrap",
+					"evalSuiteVersion": null
+				}
+			]
+		},
+		{
+			"id": "REVIEW_A",
+			"description": "Required agent review slot A (V1: Astra)",
+			"qualified": [{
+				"provider": "codex_cli",
+				"modelId": "gpt-6-astra",
+				"minReasoning": "max",
+				"qualifiedBy": "founder_bootstrap",
+				"evalSuiteVersion": null
+			}]
+		},
+		{
+			"id": "REVIEW_B",
+			"description": "Required agent review slot B (V1: Fable)",
+			"qualified": [{
+				"provider": "claude_cli",
+				"modelId": "claude-fable-5-1",
+				"minReasoning": "max",
+				"qualifiedBy": "founder_bootstrap",
+				"evalSuiteVersion": null
+			}]
+		},
+		{
+			"id": "ARCHITECT_L1",
+			"description": "Architecture conflict resolution",
+			"qualified": [{
+				"provider": "claude_cli",
+				"modelId": "claude-fable-5-1",
+				"minReasoning": "max",
+				"qualifiedBy": "founder_bootstrap",
+				"evalSuiteVersion": null
+			}]
+		}
+	],
+	taskRequirements: [
+		{
+			"taskKind": "abu_build",
+			"capability": "BUILD_L3",
+			"minSizePointsForL4": 3
+		},
+		{
+			"taskKind": "abu_revision",
+			"capability": "BUILD_L3",
+			"minSizePointsForL4": 3
+		},
+		{
+			"taskKind": "roadmap_author",
+			"capability": "PLAN_L1",
+			"minSizePointsForL4": null
+		},
+		{
+			"taskKind": "feature_author",
+			"capability": "PLAN_L1",
+			"minSizePointsForL4": null
+		},
+		{
+			"taskKind": "implementation_review",
+			"capability": "REVIEW_A",
+			"minSizePointsForL4": null
+		},
+		{
+			"taskKind": "roadmap_review",
+			"capability": "REVIEW_A",
+			"minSizePointsForL4": null
+		},
+		{
+			"taskKind": "feature_review",
+			"capability": "REVIEW_A",
+			"minSizePointsForL4": null
+		},
+		{
+			"taskKind": "conflict_resolution",
+			"capability": "ARCHITECT_L1",
+			"minSizePointsForL4": null
+		}
+	],
+	candidates: [{
+		"key": "glm",
+		"provider": "zai",
+		"modelIdPattern": "glm-5.*",
+		"status": "candidate",
+		"allowedRoles": [],
+		"targetClasses": ["BUILD_L1", "BUILD_L2"],
+		"reviewerOrResolverRequiresSeparateQualification": true,
+		"launchPaths": [{
+			"kind": "claude_cli_anthropic_compatible",
+			"status": "documented",
+			"env": {
+				"ANTHROPIC_BASE_URL": "the contributor's Z.ai Anthropic-compatible endpoint (value UNVERIFIED until checked on Z.ai's docs)",
+				"ANTHROPIC_AUTH_TOKEN": "the contributor's own GLM Coding Plan key; never read or stored by wOS",
+				"ANTHROPIC_MODEL": "the GLM model id (glm-5.x)"
+			},
+			"identity": "self_reported",
+			"notes": "claude CLI pointed at Z.ai's Anthropic-compatible endpoint (how most GLM Coding Plan users run it). The orchestrator detects ANTHROPIC_BASE_URL (env or claude settings) and records base URL and provider as declared in the run record; a non-Anthropic base URL never passes as an Anthropic model."
+		}, {
+			"kind": "zcode_cli",
+			"status": "later",
+			"env": {},
+			"identity": "self_reported",
+			"notes": "Z.ai's open-source ZCode CLI (zcode, Sept 2026): an adapter is noted for later, not built."
+		}],
+		"qualificationSuite": "model-qualification.build-l1-l2.v1"
+	}],
+	assignment: {
+		"rankingPolicyVersion": "build-next-ranking.v1",
+		"modes": ["self_pick", "assigned_next"],
+		"weights": {
+			"reuse": 100,
+			"unlock": 60,
+			"ageingPerEpoch": 25
+		},
+		"ageingCapEpochs": 8,
+		"focus": [{
+			"target": "salesforce",
+			"capabilityClass": null,
+			"priority": 200
+		}, {
+			"target": "salesforce",
+			"capabilityClass": "BUILD_L3",
+			"priority": 50
+		}],
+		"tieBreak": "unit_id_ascending",
+		"assignedOnlyWindowMinutes": 0
+	},
+	qualificationSuites: [{
+		"suiteVersion": "model-qualification.build-l1-l2.v1",
+		"targetClass": "BUILD_L1",
+		"mode": "devnet_shadow",
+		"unitsManifestSha256": null,
+		"passThresholds": {
+			"minUnits": 20,
+			"minAcceptedOfAcceptableBp": 8e3,
+			"maxAcceptedOfRejectedBp": 500
+		},
+		"recordedPer": "model_version",
+		"affectsBudgets": false
+	}, {
+		"suiteVersion": "model-qualification.build-l1-l2.v1",
+		"targetClass": "BUILD_L2",
+		"mode": "devnet_shadow",
+		"unitsManifestSha256": null,
+		"passThresholds": {
+			"minUnits": 20,
+			"minAcceptedOfAcceptableBp": 8e3,
+			"maxAcceptedOfRejectedBp": 500
+		},
+		"recordedPer": "model_version",
+		"affectsBudgets": false
+	}],
+	budgets: [
+		{
+			"taskKind": "abu_build",
+			"baseMicro": "0",
+			"perSizePointMicro": "4000000",
+			"peerBaseline": {
+				"minSamples": 30,
+				"headroomBp": 12500
+			}
+		},
+		{
+			"taskKind": "implementation_review",
+			"baseMicro": "3000000",
+			"perSizePointMicro": "1000000",
+			"peerBaseline": {
+				"minSamples": 30,
+				"headroomBp": 12500
+			}
+		},
+		{
+			"taskKind": "roadmap_author",
+			"baseMicro": "60000000",
+			"perSizePointMicro": "0",
+			"peerBaseline": {
+				"minSamples": 10,
+				"headroomBp": 12500
+			}
+		},
+		{
+			"taskKind": "roadmap_review",
+			"baseMicro": "15000000",
+			"perSizePointMicro": "0",
+			"peerBaseline": {
+				"minSamples": 10,
+				"headroomBp": 12500
+			}
+		},
+		{
+			"taskKind": "feature_author",
+			"baseMicro": "30000000",
+			"perSizePointMicro": "0",
+			"peerBaseline": {
+				"minSamples": 10,
+				"headroomBp": 12500
+			}
+		},
+		{
+			"taskKind": "feature_review",
+			"baseMicro": "10000000",
+			"perSizePointMicro": "0",
+			"peerBaseline": {
+				"minSamples": 10,
+				"headroomBp": 12500
+			}
+		},
+		{
+			"taskKind": "conflict_resolution",
+			"baseMicro": "10000000",
+			"perSizePointMicro": "0",
+			"peerBaseline": {
+				"minSamples": 10,
+				"headroomBp": 12500
+			}
+		}
+	]
+};
+
+//#endregion
+//#region packages/contracts/dist/protocol/data/capability-policy.v2.json
+var capability_policy_v2_default = {
+	policyVersion: "capability-policy.v2",
+	status: "draft",
+	classes: [
+		{
+			"id": "BUILD_L4",
+			"description": "Builds any ABU size",
+			"qualified": [{
+				"provider": "claude_cli",
+				"modelId": "claude-opus-5-5",
+				"minReasoning": "high",
+				"qualifiedBy": "founder_bootstrap",
+				"evalSuiteVersion": null
+			}, {
+				"provider": "codex_cli",
+				"modelId": "gpt-6-astra",
+				"minReasoning": "high",
+				"qualifiedBy": "founder_bootstrap",
+				"evalSuiteVersion": null
+			}]
+		},
+		{
+			"id": "BUILD_L3",
+			"description": "Builds ABUs of size 1-2",
+			"qualified": [{
+				"provider": "codex_cli",
+				"modelId": "gpt-6-sol",
+				"minReasoning": "high",
+				"qualifiedBy": "founder_bootstrap",
+				"evalSuiteVersion": null
+			}]
+		},
+		{
+			"id": "PLAN_L1",
+			"description": "Authors roadmaps and feature contracts",
+			"qualified": [
+				{
+					"provider": "claude_cli",
+					"modelId": "claude-fable-5-1",
+					"minReasoning": "max",
+					"qualifiedBy": "founder_bootstrap",
+					"evalSuiteVersion": null
+				},
+				{
+					"provider": "claude_cli",
+					"modelId": "claude-opus-5-5",
+					"minReasoning": "max",
+					"qualifiedBy": "founder_bootstrap",
+					"evalSuiteVersion": null
+				},
+				{
+					"provider": "codex_cli",
+					"modelId": "gpt-6-astra",
+					"minReasoning": "max",
+					"qualifiedBy": "founder_bootstrap",
+					"evalSuiteVersion": null
+				}
+			]
+		},
+		{
+			"id": "REVIEW_A",
+			"description": "Required agent review slot A (V1: Astra)",
+			"qualified": [{
+				"provider": "codex_cli",
+				"modelId": "gpt-6-astra",
+				"minReasoning": "max",
+				"qualifiedBy": "founder_bootstrap",
+				"evalSuiteVersion": null
+			}]
+		},
+		{
+			"id": "REVIEW_B",
+			"description": "Required agent review slot B (V1: Fable)",
+			"qualified": [{
+				"provider": "claude_cli",
+				"modelId": "claude-fable-5-1",
+				"minReasoning": "max",
+				"qualifiedBy": "founder_bootstrap",
+				"evalSuiteVersion": null
+			}]
+		},
+		{
+			"id": "ARCHITECT_L1",
+			"description": "Architecture conflict resolution",
+			"qualified": [{
+				"provider": "claude_cli",
+				"modelId": "claude-fable-5-1",
+				"minReasoning": "max",
+				"qualifiedBy": "founder_bootstrap",
+				"evalSuiteVersion": null
+			}]
+		}
+	],
+	taskRequirements: [
+		{
+			"taskKind": "abu_build",
+			"capability": "BUILD_L3",
+			"minSizePointsForL4": 3
+		},
+		{
+			"taskKind": "abu_revision",
+			"capability": "BUILD_L3",
+			"minSizePointsForL4": 3
+		},
+		{
+			"taskKind": "roadmap_author",
+			"capability": "PLAN_L1",
+			"minSizePointsForL4": null
+		},
+		{
+			"taskKind": "feature_author",
+			"capability": "PLAN_L1",
+			"minSizePointsForL4": null
+		},
+		{
+			"taskKind": "implementation_review",
+			"capability": "REVIEW_A",
+			"minSizePointsForL4": null
+		},
+		{
+			"taskKind": "roadmap_review",
+			"capability": "REVIEW_A",
+			"minSizePointsForL4": null
+		},
+		{
+			"taskKind": "feature_review",
+			"capability": "REVIEW_A",
+			"minSizePointsForL4": null
+		},
+		{
+			"taskKind": "conflict_resolution",
+			"capability": "ARCHITECT_L1",
+			"minSizePointsForL4": null
+		}
+	],
+	candidates: [{
+		"key": "glm",
+		"provider": "zai",
+		"modelIdPattern": "glm-5.*",
+		"status": "candidate",
+		"allowedRoles": [],
+		"targetClasses": ["BUILD_L1", "BUILD_L2"],
+		"reviewerOrResolverRequiresSeparateQualification": true,
+		"launchPaths": [{
+			"kind": "claude_cli_anthropic_compatible",
+			"status": "documented",
+			"env": {
+				"ANTHROPIC_BASE_URL": "the contributor's Z.ai Anthropic-compatible endpoint (value UNVERIFIED until checked on Z.ai's docs)",
+				"ANTHROPIC_AUTH_TOKEN": "the contributor's own GLM Coding Plan key; never read or stored by wOS",
+				"ANTHROPIC_MODEL": "the GLM model id (glm-5.x)"
+			},
+			"identity": "self_reported",
+			"notes": "claude CLI pointed at Z.ai's Anthropic-compatible endpoint (how most GLM Coding Plan users run it). The orchestrator detects ANTHROPIC_BASE_URL (env or claude settings) and records base URL and provider as declared in the run record; a non-Anthropic base URL never passes as an Anthropic model."
+		}, {
+			"kind": "zcode_cli",
+			"status": "later",
+			"env": {},
+			"identity": "self_reported",
+			"notes": "Z.ai's open-source ZCode CLI (zcode, Sept 2026): an adapter is noted for later, not built."
+		}],
+		"qualificationSuite": "model-qualification.build-l1-l2.v1"
+	}],
+	assignment: {
+		"rankingPolicyVersion": "build-next-ranking.v1",
+		"modes": ["self_pick", "assigned_next"],
+		"weights": {
+			"reuse": 100,
+			"unlock": 60,
+			"ageingPerEpoch": 25
+		},
+		"ageingCapEpochs": 8,
+		"focus": [{
+			"target": "salesforce",
+			"capabilityClass": null,
+			"priority": 200
+		}, {
+			"target": "salesforce",
+			"capabilityClass": "BUILD_L3",
+			"priority": 50
+		}],
+		"tieBreak": "unit_id_ascending",
+		"assignedOnlyWindowMinutes": 0
+	},
+	qualificationSuites: [{
+		"suiteVersion": "model-qualification.build-l1-l2.v1",
+		"targetClass": "BUILD_L1",
+		"mode": "devnet_shadow",
+		"unitsManifestSha256": null,
+		"passThresholds": {
+			"minUnits": 20,
+			"minAcceptedOfAcceptableBp": 8e3,
+			"maxAcceptedOfRejectedBp": 500
+		},
+		"recordedPer": "model_version",
+		"affectsBudgets": false
+	}, {
+		"suiteVersion": "model-qualification.build-l1-l2.v1",
+		"targetClass": "BUILD_L2",
+		"mode": "devnet_shadow",
+		"unitsManifestSha256": null,
+		"passThresholds": {
+			"minUnits": 20,
+			"minAcceptedOfAcceptableBp": 8e3,
+			"maxAcceptedOfRejectedBp": 500
+		},
+		"recordedPer": "model_version",
+		"affectsBudgets": false
+	}],
+	budgets: [
+		{
+			"taskKind": "abu_build",
+			"baseMicro": "0",
+			"perSizePointMicro": "4000000",
+			"peerBaseline": {
+				"minSamples": 30,
+				"headroomBp": 12500
+			}
+		},
+		{
+			"taskKind": "implementation_review",
+			"baseMicro": "3000000",
+			"perSizePointMicro": "1000000",
+			"peerBaseline": {
+				"minSamples": 30,
+				"headroomBp": 12500
+			}
+		},
+		{
+			"taskKind": "roadmap_author",
+			"baseMicro": "60000000",
+			"perSizePointMicro": "0",
+			"peerBaseline": {
+				"minSamples": 10,
+				"headroomBp": 12500
+			}
+		},
+		{
+			"taskKind": "roadmap_review",
+			"baseMicro": "15000000",
+			"perSizePointMicro": "0",
+			"peerBaseline": {
+				"minSamples": 10,
+				"headroomBp": 12500
+			}
+		},
+		{
+			"taskKind": "feature_author",
+			"baseMicro": "30000000",
+			"perSizePointMicro": "0",
+			"peerBaseline": {
+				"minSamples": 10,
+				"headroomBp": 12500
+			}
+		},
+		{
+			"taskKind": "feature_review",
+			"baseMicro": "10000000",
+			"perSizePointMicro": "0",
+			"peerBaseline": {
+				"minSamples": 10,
+				"headroomBp": 12500
+			}
+		},
+		{
+			"taskKind": "conflict_resolution",
+			"baseMicro": "10000000",
+			"perSizePointMicro": "0",
+			"peerBaseline": {
+				"minSamples": 10,
+				"headroomBp": 12500
+			}
+		},
+		{
+			"taskKind": "bug_triage",
+			"baseMicro": "2000000",
+			"perSizePointMicro": "0",
+			"peerBaseline": {
+				"minSamples": 30,
+				"headroomBp": 12500
+			}
+		},
+		{
+			"taskKind": "abu_revision",
+			"baseMicro": "0",
+			"perSizePointMicro": "4000000",
+			"peerBaseline": {
+				"minSamples": 30,
+				"headroomBp": 12500
+			}
+		},
+		{
+			"taskKind": "architecture_author",
+			"baseMicro": "30000000",
+			"perSizePointMicro": "0",
+			"peerBaseline": {
+				"minSamples": 10,
+				"headroomBp": 12500
+			}
+		}
+	],
+	workNext: {
+		"rankingPolicyVersion": "work-next-ranking.v1",
+		"weights": {
+			"reuse": 100,
+			"unlock": 60,
+			"ageingPerEpoch": 25
+		},
+		"ageingCapEpochs": 8,
+		"focus": [{
+			"target": "salesforce",
+			"capabilityClass": null,
+			"priority": 200
+		}, {
+			"target": "salesforce",
+			"capabilityClass": "BUILD_L3",
+			"priority": 50
+		}],
+		"tieBreak": "unit_id_ascending",
+		"structuralUnlock": {
+			"roadmap_author": 0,
+			"roadmap_review": 1,
+			"feature_author": 0,
+			"feature_review": 1,
+			"abu_build": 0,
+			"abu_revision": 0,
+			"implementation_review": 1,
+			"conflict_resolution": 0,
+			"architecture_author": 0,
+			"bug_triage": 1,
+			"bug_sweep": 0
+		},
+		"kindBase": {
+			"roadmap_author": 0,
+			"roadmap_review": 60,
+			"feature_author": 0,
+			"feature_review": 60,
+			"abu_build": 0,
+			"abu_revision": 0,
+			"implementation_review": 60,
+			"conflict_resolution": 0,
+			"architecture_author": 0,
+			"bug_triage": 60,
+			"bug_sweep": 0
+		},
+		"severityBoost": {
+			"low": 0,
+			"medium": 150,
+			"high": 1e3,
+			"critical": 2e5
+		},
+		"architectureMigration": 1e5,
+		"declines": {
+			"windowHours": 168,
+			"cooldownAfter": 3,
+			"cooldownHours": 24
+		},
+		"priorityVote": {
+			"status": "dormant",
+			"subjects": [
+				"target",
+				"feature",
+				"bug"
+			],
+			"eligibility": "governance_seasoning",
+			"maxBoost": 500,
+			"saturationWeight": 1e6
+		}
+	}
+};
+
+//#endregion
+//#region packages/contracts/dist/protocol/data/capability-policy.v3.json
+var capability_policy_v3_default = {
+	policyVersion: "capability-policy.v3",
+	status: "draft",
+	classes: [
+		{
+			"id": "BUILD_L4",
+			"description": "Builds any ABU size",
+			"qualified": [{
+				"provider": "claude_cli",
+				"modelId": "claude-opus-5-5",
+				"minReasoning": "high",
+				"qualifiedBy": "founder_bootstrap",
+				"evalSuiteVersion": null
+			}, {
+				"provider": "codex_cli",
+				"modelId": "gpt-6-astra",
+				"minReasoning": "high",
+				"qualifiedBy": "founder_bootstrap",
+				"evalSuiteVersion": null
+			}]
+		},
+		{
+			"id": "BUILD_L3",
+			"description": "Builds ABUs of size 1-2",
+			"qualified": [{
+				"provider": "codex_cli",
+				"modelId": "gpt-6-sol",
+				"minReasoning": "high",
+				"qualifiedBy": "founder_bootstrap",
+				"evalSuiteVersion": null
+			}]
+		},
+		{
+			"id": "PLAN_L1",
+			"description": "Authors roadmaps and feature contracts",
+			"qualified": [
+				{
+					"provider": "claude_cli",
+					"modelId": "claude-fable-5-1",
+					"minReasoning": "max",
+					"qualifiedBy": "founder_bootstrap",
+					"evalSuiteVersion": null
+				},
+				{
+					"provider": "claude_cli",
+					"modelId": "claude-opus-5-5",
+					"minReasoning": "max",
+					"qualifiedBy": "founder_bootstrap",
+					"evalSuiteVersion": null
+				},
+				{
+					"provider": "codex_cli",
+					"modelId": "gpt-6-astra",
+					"minReasoning": "max",
+					"qualifiedBy": "founder_bootstrap",
+					"evalSuiteVersion": null
+				}
+			]
+		},
+		{
+			"id": "REVIEW_A",
+			"description": "Required agent review slot A (V1: Astra)",
+			"qualified": [{
+				"provider": "codex_cli",
+				"modelId": "gpt-6-astra",
+				"minReasoning": "max",
+				"qualifiedBy": "founder_bootstrap",
+				"evalSuiteVersion": null
+			}]
+		},
+		{
+			"id": "REVIEW_B",
+			"description": "Required agent review slot B (V1: Fable)",
+			"qualified": [{
+				"provider": "claude_cli",
+				"modelId": "claude-fable-5-1",
+				"minReasoning": "max",
+				"qualifiedBy": "founder_bootstrap",
+				"evalSuiteVersion": null
+			}]
+		},
+		{
+			"id": "ARCHITECT_L1",
+			"description": "Architecture conflict resolution",
+			"qualified": [{
+				"provider": "claude_cli",
+				"modelId": "claude-fable-5-1",
+				"minReasoning": "max",
+				"qualifiedBy": "founder_bootstrap",
+				"evalSuiteVersion": null
+			}]
+		}
+	],
+	taskRequirements: [
+		{
+			"taskKind": "abu_build",
+			"capability": "BUILD_L3",
+			"minSizePointsForL4": 3
+		},
+		{
+			"taskKind": "abu_revision",
+			"capability": "BUILD_L3",
+			"minSizePointsForL4": 3
+		},
+		{
+			"taskKind": "roadmap_author",
+			"capability": "PLAN_L1",
+			"minSizePointsForL4": null
+		},
+		{
+			"taskKind": "feature_author",
+			"capability": "PLAN_L1",
+			"minSizePointsForL4": null
+		},
+		{
+			"taskKind": "implementation_review",
+			"capability": "REVIEW_A",
+			"minSizePointsForL4": null
+		},
+		{
+			"taskKind": "roadmap_review",
+			"capability": "REVIEW_A",
+			"minSizePointsForL4": null
+		},
+		{
+			"taskKind": "feature_review",
+			"capability": "REVIEW_A",
+			"minSizePointsForL4": null
+		},
+		{
+			"taskKind": "conflict_resolution",
+			"capability": "ARCHITECT_L1",
+			"minSizePointsForL4": null
+		}
+	],
+	candidates: [{
+		"key": "glm",
+		"provider": "opencode-go",
+		"modelIdPattern": "*glm-5.*",
+		"status": "candidate",
+		"allowedRoles": [],
+		"targetClasses": ["BUILD_L1", "BUILD_L2"],
+		"reviewerOrResolverRequiresSeparateQualification": true,
+		"launchPaths": [
+			{
+				"kind": "opencode_cli",
+				"status": "verified",
+				"verifiedOn": "2026-09-30",
+				"sources": ["https://opencode.ai/docs/cli/", "https://opencode.ai/docs/permissions/"],
+				"env": {
+					"model": "opencode-go/glm-5.3 (`opencode models opencode-go`, opencode 1.18.31: GLM-5.3, context 1000000, variants low/high/max)",
+					"credentials": "the contributor's own OpenCode Go login (opencode providers login); wOS never reads ~/.local/share/opencode/auth.json",
+					"reasoning": "--variant max"
+				},
+				"identity": "self_reported",
+				"notes": "PRIMARY launch (founder, 2026-09-30): `opencode run -m opencode-go/glm-5.3 --variant max --format json --pure` in the task worktree, with a per-run permission config (agent-policy.v2 provider opencode_cli). Verified locally from `opencode run --help`, `opencode models --verbose` and `opencode providers list` (no model call). The claim and the agent run declare launch.provider opencode-go."
+			},
+			{
+				"kind": "claude_cli_anthropic_compatible",
+				"status": "verified",
+				"env": {
+					"ANTHROPIC_BASE_URL": "https://api.z.ai/api/anthropic",
+					"ANTHROPIC_AUTH_TOKEN": "the contributor's own GLM Coding Plan key; never read, logged or sent by wOS",
+					"ANTHROPIC_MODEL": "glm-5.3 (the GLM Coding Plan flagship, 2026-09-30); the haiku slot glm-5.3-flash as Z.ai documents",
+					"API_TIMEOUT_MS": "3000000 (Z.ai's documented value)"
+				},
+				"identity": "self_reported",
+				"notes": "DOCUMENTED ALTERNATIVE for Z.ai GLM Coding Plan users (not wired in wOS V1): the claude CLI pointed at Z.ai's Anthropic-compatible endpoint, as Z.ai documents it for Claude Code. GLM-5.3 always reasons, efforts low/high/max, default max. The key would stay in the contributor's environment; a claim would declare launch.provider zai.",
+				"verifiedOn": "2026-09-30",
+				"sources": [
+					"https://docs.z.ai/devpack/tool/claude",
+					"https://docs.z.ai/devpack/overview",
+					"https://docs.z.ai/guides/llm/glm-5.3"
+				]
+			},
+			{
+				"kind": "zcode_cli",
+				"status": "later",
+				"env": {},
+				"identity": "self_reported",
+				"notes": "Z.ai's open-source ZCode CLI (zcode, Sept 2026): an adapter is noted for later, not built."
+			}
+		],
+		"qualificationSuite": "model-qualification.build-l1-l2.v1",
+		"trials": {
+			"taskKinds": ["roadmap_author"],
+			"designatedBy": "admin_action",
+			"label": "candidate_trial:glm",
+			"mayMerge": true,
+			"maxSubagents": 4
+		},
+		"alternativeProviders": ["zai"]
+	}],
+	assignment: {
+		"rankingPolicyVersion": "build-next-ranking.v1",
+		"modes": ["self_pick", "assigned_next"],
+		"weights": {
+			"reuse": 100,
+			"unlock": 60,
+			"ageingPerEpoch": 25
+		},
+		"ageingCapEpochs": 8,
+		"focus": [{
+			"target": "salesforce",
+			"capabilityClass": null,
+			"priority": 200
+		}, {
+			"target": "salesforce",
+			"capabilityClass": "BUILD_L3",
+			"priority": 50
+		}],
+		"tieBreak": "unit_id_ascending",
+		"assignedOnlyWindowMinutes": 0
+	},
+	qualificationSuites: [{
+		"suiteVersion": "model-qualification.build-l1-l2.v1",
+		"targetClass": "BUILD_L1",
+		"mode": "devnet_shadow",
+		"unitsManifestSha256": null,
+		"passThresholds": {
+			"minUnits": 20,
+			"minAcceptedOfAcceptableBp": 8e3,
+			"maxAcceptedOfRejectedBp": 500
+		},
+		"recordedPer": "model_version",
+		"affectsBudgets": false
+	}, {
+		"suiteVersion": "model-qualification.build-l1-l2.v1",
+		"targetClass": "BUILD_L2",
+		"mode": "devnet_shadow",
+		"unitsManifestSha256": null,
+		"passThresholds": {
+			"minUnits": 20,
+			"minAcceptedOfAcceptableBp": 8e3,
+			"maxAcceptedOfRejectedBp": 500
+		},
+		"recordedPer": "model_version",
+		"affectsBudgets": false
+	}],
+	budgets: [
+		{
+			"taskKind": "abu_build",
+			"baseMicro": "0",
+			"perSizePointMicro": "4000000",
+			"peerBaseline": {
+				"minSamples": 30,
+				"headroomBp": 12500
+			}
+		},
+		{
+			"taskKind": "implementation_review",
+			"baseMicro": "3000000",
+			"perSizePointMicro": "1000000",
+			"peerBaseline": {
+				"minSamples": 30,
+				"headroomBp": 12500
+			}
+		},
+		{
+			"taskKind": "roadmap_author",
+			"baseMicro": "60000000",
+			"perSizePointMicro": "0",
+			"peerBaseline": {
+				"minSamples": 10,
+				"headroomBp": 12500
+			}
+		},
+		{
+			"taskKind": "roadmap_review",
+			"baseMicro": "15000000",
+			"perSizePointMicro": "0",
+			"peerBaseline": {
+				"minSamples": 10,
+				"headroomBp": 12500
+			}
+		},
+		{
+			"taskKind": "feature_author",
+			"baseMicro": "30000000",
+			"perSizePointMicro": "0",
+			"peerBaseline": {
+				"minSamples": 10,
+				"headroomBp": 12500
+			}
+		},
+		{
+			"taskKind": "feature_review",
+			"baseMicro": "10000000",
+			"perSizePointMicro": "0",
+			"peerBaseline": {
+				"minSamples": 10,
+				"headroomBp": 12500
+			}
+		},
+		{
+			"taskKind": "conflict_resolution",
+			"baseMicro": "10000000",
+			"perSizePointMicro": "0",
+			"peerBaseline": {
+				"minSamples": 10,
+				"headroomBp": 12500
+			}
+		},
+		{
+			"taskKind": "bug_triage",
+			"baseMicro": "2000000",
+			"perSizePointMicro": "0",
+			"peerBaseline": {
+				"minSamples": 30,
+				"headroomBp": 12500
+			}
+		},
+		{
+			"taskKind": "abu_revision",
+			"baseMicro": "0",
+			"perSizePointMicro": "4000000",
+			"peerBaseline": {
+				"minSamples": 30,
+				"headroomBp": 12500
+			}
+		},
+		{
+			"taskKind": "architecture_author",
+			"baseMicro": "30000000",
+			"perSizePointMicro": "0",
+			"peerBaseline": {
+				"minSamples": 10,
+				"headroomBp": 12500
+			}
+		}
+	],
+	workNext: {
+		"rankingPolicyVersion": "work-next-ranking.v1",
+		"weights": {
+			"reuse": 100,
+			"unlock": 60,
+			"ageingPerEpoch": 25
+		},
+		"ageingCapEpochs": 8,
+		"focus": [{
+			"target": "salesforce",
+			"capabilityClass": null,
+			"priority": 200
+		}, {
+			"target": "salesforce",
+			"capabilityClass": "BUILD_L3",
+			"priority": 50
+		}],
+		"tieBreak": "unit_id_ascending",
+		"structuralUnlock": {
+			"roadmap_author": 0,
+			"roadmap_review": 1,
+			"feature_author": 0,
+			"feature_review": 1,
+			"abu_build": 0,
+			"abu_revision": 0,
+			"implementation_review": 1,
+			"conflict_resolution": 0,
+			"architecture_author": 0,
+			"bug_triage": 1,
+			"bug_sweep": 0
+		},
+		"kindBase": {
+			"roadmap_author": 0,
+			"roadmap_review": 60,
+			"feature_author": 0,
+			"feature_review": 60,
+			"abu_build": 0,
+			"abu_revision": 0,
+			"implementation_review": 60,
+			"conflict_resolution": 0,
+			"architecture_author": 0,
+			"bug_triage": 60,
+			"bug_sweep": 0
+		},
+		"severityBoost": {
+			"low": 0,
+			"medium": 150,
+			"high": 1e3,
+			"critical": 2e5
+		},
+		"architectureMigration": 1e5,
+		"declines": {
+			"windowHours": 168,
+			"cooldownAfter": 3,
+			"cooldownHours": 24
+		},
+		"priorityVote": {
+			"status": "dormant",
+			"subjects": [
+				"target",
+				"feature",
+				"bug"
+			],
+			"eligibility": "governance_seasoning",
+			"maxBoost": 500,
+			"saturationWeight": 1e6
+		}
+	}
+};
+
+//#endregion
+//#region packages/contracts/dist/protocol/data/completion-policy.v1.json
+var completion_policy_v1_default = {
+	policyVersion: "completion-policy.v1",
+	status: "draft",
+	feature: {
+		"implementersBp": 7500,
+		"contractAuthorsBp": 1e3,
+		"roadmapAuthorsBp": 500,
+		"reviewersBp": 800,
+		"finderBp": 200
+	},
+	application: { "basis": "lifetime_weight_on_target" },
+	completeness: {
+		"requireEverySurfaceInProfile": true,
+		"requireAcceptanceSuite": true,
+		"requireSecurityReview": true,
+		"requireExitRightsCheck": true
+	},
+	definitionChange: "append_new_version",
+	sharedFeatureAccrual: "equal_split_across_referencing_targets",
+	returnAfterEpochs: 52
+};
+
+//#endregion
+//#region packages/contracts/dist/protocol/data/genesis-policy.v1.json
+var genesis_policy_v1_default = {
+	policyVersion: "genesis-policy.v1",
+	status: "draft",
+	capBase: "5000000000000",
+	cutoff: {
+		"description": "Work merged to waronsaas/wos main before the first ContributionReceipt of epoch 1",
+		"lastPreProtocolCommit": null
+	},
+	valuation: {
+		"method": "accepted_output_reference",
+		"referenceEpochs": {
+			"from": 1,
+			"to": 12
+		},
+		"minReferenceReceipts": 30,
+		"referencePopulation": "frozen_list_reviewed_independently_excluding_genesis_beneficiaries_and_related_parties",
+		"fallbackBasePerSizePoint": "400000000"
+	},
+	vesting: {
+		"startsAt": "mainnet_launch",
+		"durationDays": 730,
+		"cliffDays": 0
+	},
+	review: {
+		"riskClass": "protocol",
+		"founderMayReview": false,
+		"minIndependentHumans": 2
+	},
+	mintOnDevnet: false,
+	excludes: {
+		"provisionalReceipts": true,
+		"testEpochs": true
+	},
+	canonicalMapping: "each_commit_maps_to_exactly_one_retro_unit"
+};
+
+//#endregion
+//#region packages/contracts/dist/protocol/data/governance-policy.v1.json
+var governance_policy_v1_default = {
+	policyVersion: "governance-policy.v1",
+	status: "draft",
+	mode: "founder",
+	activation: {
+		"minEligibleVoters": 50,
+		"minLockedBase": "10000000000000",
+		"maxSingleVoterShareBp": 2e3
+	},
+	lock: {
+		"minRemainingDays": 365,
+		"weightRule": "full_while_remaining_at_least_min",
+		"perWalletCapBp": 500,
+		"seasoningEpochs": 1
+	},
+	contribution: {
+		"windowEpochs": 26,
+		"decay": "linear_age_out"
+	},
+	lockedVoterMustHaveContributed: true,
+	votingHours: 168,
+	timelockEpochs: 1,
+	limits: {
+		"maxSliceChangeBp": 500,
+		"maxOracleChangeBp": 3e3
+	},
+	emergency: {
+		"multisigThreshold": "3-of-5",
+		"pauseMaxHours": 336
+	},
+	tiers: {
+		"routine": {
+			"thresholdBp": 6e3,
+			"turnoutLockedBp": 2e3,
+			"turnoutContributionBp": 2e3
+		},
+		"structural": {
+			"thresholdBp": 7e3,
+			"turnoutLockedBp": 3e3,
+			"turnoutContributionBp": 3e3
+		},
+		"governance": {
+			"thresholdBp": 7500,
+			"turnoutLockedBp": 4e3,
+			"turnoutContributionBp": 4e3
+		},
+		"emergency_ratification": {
+			"thresholdBp": 5001,
+			"turnoutLockedBp": 1e3,
+			"turnoutContributionBp": 1e3
+		}
+	},
+	orgCapBp: 1e3,
+	beneficialOwner: "organization_or_person_with_all_controlled_accounts_and_wallets"
+};
+
+//#endregion
+//#region packages/contracts/dist/protocol/data/merge-policy.v1.json
+var merge_policy_v1_default = {
+	policyVersion: "merge-policy.v1",
+	status: "draft",
+	requireQualified: true,
+	requireReviewPolicySatisfied: true,
+	mergeMethod: "merge_queue",
+	maintainerApprovalPathGlobs: [
+		"wos.json",
+		"package.json",
+		"package-lock.json",
+		"packages/contracts/**",
+		"packages/db/migrations/**",
+		"docs/protocol/**"
+	]
+};
+
+//#endregion
+//#region packages/contracts/dist/protocol/data/model-rate-oracle.v1.json
+var model_rate_oracle_v1_default = {
+	oracleVersion: "oracle.v1",
+	status: "draft",
+	effectiveEpoch: 1,
+	calibration: "1 ACU = the provider's published standard API list price of USD 1 for the same tokens, as captured in this version. ACU is a unit of compute, never shown as money. Rates are micro-ACU per million tokens.",
+	maxChangePerVersionBp: 3e3,
+	rates: [
+		{
+			"provider": "claude_cli",
+			"modelId": "claude-opus-5-5",
+			"inputPerM": 4e6,
+			"cachedInputPerM": 2e5,
+			"cacheWritePerM": 5e6,
+			"outputPerM": 2e7,
+			"source": "Anthropic model table in the claude-api reference (cached 2026-09-25): $4 in, $20 out, cache reads $0.20; cache write = 1.25x input (5-minute TTL). 1-hour cache writes (observed in Claude Code transcripts) are priced as 5-minute writes here: UNVERIFIED. Check platform.claude.com pricing before activation.",
+			"verified": false
+		},
+		{
+			"provider": "claude_cli",
+			"modelId": "claude-fable-5-1",
+			"inputPerM": 1e7,
+			"cachedInputPerM": 25e4,
+			"cacheWritePerM": 125e5,
+			"outputPerM": 5e7,
+			"source": "Anthropic model table in the claude-api reference (cached 2026-09-25): $10 in, $50 out, 'cache reads at $0.25/MTok'. The cache-read figure is unusually low (0.025x input vs 0.1x elsewhere): SUSPECT, verify before activation.",
+			"verified": false
+		},
+		{
+			"provider": "codex_cli",
+			"modelId": "gpt-6-astra",
+			"inputPerM": 1e7,
+			"cachedInputPerM": 1e6,
+			"cacheWritePerM": 125e5,
+			"outputPerM": 5e7,
+			"source": "Third-party summaries of OpenAI standard API pricing found by web search 2026-09-29 ($10 in, $50 out, cached $1, cache write $12.50; >272K-token prompts priced higher, ignored here). UNVERIFIED against openai.com.",
+			"verified": false
+		},
+		{
+			"provider": "codex_cli",
+			"modelId": "gpt-6-sol",
+			"inputPerM": 2e6,
+			"cachedInputPerM": 2e5,
+			"cacheWritePerM": 25e5,
+			"outputPerM": 1e7,
+			"source": "Third-party summaries of OpenAI standard API pricing found by web search 2026-09-29 ($2 in, $10 out, cached $0.20, cache write $2.50). UNVERIFIED against openai.com.",
+			"verified": false
+		}
+	]
+};
+
+//#endregion
+//#region packages/contracts/dist/protocol/data/review-policy.v1.json
+var review_policy_v1_default = {
+	policyVersion: "review-policy.v1",
+	status: "draft",
+	riskClasses: [
+		{
+			"id": "protocol",
+			"priority": 10,
+			"description": "Contracts, migrations, rewards, protocol docs, policy data",
+			"match": {
+				"anyPathGlobs": [
+					"packages/contracts/**",
+					"packages/db/migrations/**",
+					"packages/rewards/**",
+					"docs/protocol/**"
+				],
+				"contributionTypes": ["GENESIS"],
+				"labels": []
+			}
+		},
+		{
+			"id": "accounting",
+			"priority": 20,
+			"description": "Money-like records in the suite (ledgers, invoices, payments)",
+			"match": {
+				"anyPathGlobs": [
+					"modules/invoices/**",
+					"modules/payments/**",
+					"modules/ledger/**"
+				],
+				"contributionTypes": [],
+				"labels": ["accounting"]
+			}
+		},
+		{
+			"id": "security",
+			"priority": 30,
+			"description": "Auth, sessions, secrets, crypto, permissions, security reports",
+			"match": {
+				"anyPathGlobs": [
+					"**/auth/**",
+					"**/crypto/**",
+					"**/permissions/**",
+					"services/control-plane/src/auth/**"
+				],
+				"contributionTypes": ["SECURITY"],
+				"labels": ["security"]
+			}
+		},
+		{
+			"id": "low_risk",
+			"priority": 90,
+			"description": "Docs, tests and copy only: every changed path matches",
+			"match": {
+				"anyPathGlobs": [
+					"docs/**",
+					"**/*.md",
+					"**/test/**",
+					"**/tests/**",
+					"**/*.test.ts",
+					"**/copy/**"
+				],
+				"contributionTypes": ["DOCUMENTATION"],
+				"labels": []
+			}
+		},
+		{
+			"id": "standard",
+			"priority": 100,
+			"description": "Everything else",
+			"match": {
+				"anyPathGlobs": [],
+				"contributionTypes": [],
+				"labels": []
+			}
+		}
+	],
+	defaultRiskClass: "standard",
+	rules: [
+		{
+			"riskClass": "low_risk",
+			"deterministicVerification": true,
+			"agentReviews": [{
+				"capability": "REVIEW_A",
+				"reasoning": "max"
+			}, {
+				"capability": "REVIEW_B",
+				"reasoning": "max"
+			}],
+			"humans": {
+				"count": 0,
+				"domains": [],
+				"distinctDomains": 0,
+				"minLevel": 1
+			},
+			"adminQuorum": 0
+		},
+		{
+			"riskClass": "standard",
+			"deterministicVerification": true,
+			"agentReviews": [{
+				"capability": "REVIEW_A",
+				"reasoning": "max"
+			}, {
+				"capability": "REVIEW_B",
+				"reasoning": "max"
+			}],
+			"humans": {
+				"count": 1,
+				"domains": [],
+				"distinctDomains": 0,
+				"minLevel": 1
+			},
+			"adminQuorum": 0
+		},
+		{
+			"riskClass": "security",
+			"deterministicVerification": true,
+			"agentReviews": [{
+				"capability": "REVIEW_A",
+				"reasoning": "max"
+			}, {
+				"capability": "REVIEW_B",
+				"reasoning": "max"
+			}],
+			"humans": {
+				"count": 1,
+				"domains": [],
+				"distinctDomains": 0,
+				"minLevel": 1
+			},
+			"adminQuorum": 0
+		},
+		{
+			"riskClass": "accounting",
+			"deterministicVerification": true,
+			"agentReviews": [{
+				"capability": "REVIEW_A",
+				"reasoning": "max"
+			}, {
+				"capability": "REVIEW_B",
+				"reasoning": "max"
+			}],
+			"humans": {
+				"count": 1,
+				"domains": [],
+				"distinctDomains": 0,
+				"minLevel": 1
+			},
+			"adminQuorum": 0
+		},
+		{
+			"riskClass": "protocol",
+			"deterministicVerification": true,
+			"agentReviews": [{
+				"capability": "REVIEW_A",
+				"reasoning": "max"
+			}, {
+				"capability": "REVIEW_B",
+				"reasoning": "max"
+			}],
+			"humans": {
+				"count": 1,
+				"domains": [],
+				"distinctDomains": 0,
+				"minLevel": 1
+			},
+			"adminQuorum": 0
+		}
+	],
+	independence: {
+		"humanMayBeSubjectAuthor": false,
+		"humanMayHoldAgentSlotOfSameRound": false,
+		"maxHumanReviewsOfSameAuthorPer7d": 10,
+		"assignment": "admin_assigned"
+	},
+	humanReviewSlaHours: 72,
+	recordDisagreementsAsEvalCases: true,
+	bootstrap: {
+		"founderMergeAuthority": true,
+		"founderOwnWorkReceipt": "PROVISIONAL",
+		"selfReviewSatisfiesRules": false,
+		"publicLabel": "Merged under founder bootstrap authority: provisional until its challenge window after bootstrap closes (D54)"
+	},
+	ratification: {
+		"mode": "optimistic_challenge",
+		"recruitedReviewerPool": false,
+		"bootstrapEndsAtOutsideContributors": 3,
+		"challengeWindowHours": 48,
+		"notifyAllParticipants": true,
+		"challengeGoesTo": "review_gate",
+		"finalKeepsOriginalTimestamp": true
+	},
+	fallbacks: [{
+		"key": "fable_unavailable",
+		"active": true,
+		"replacesSlot": "fable",
+		"replacementSeat": "human",
+		"agentReviewer": "astra",
+		"authoringModel": "claude-opus-5-5",
+		"label": "single_lab_review",
+		"laterFablePass": "optional_never_blocking",
+		"sameModelSelfReview": false,
+		"eligibleFor": ["devnet", "shadow"],
+		"switchedBy": "admin_action_forward_only",
+		"public": true
+	}],
+	approvalBinding: "head_submission_context_policy",
+	audits: {
+		"baseRateBp": 1e3,
+		"newAccountRateBp": 3e3,
+		"newAccountReceipts": 10,
+		"flaggedAccountRateBp": 5e3,
+		"disagreementRevokesOriginal": true
+	},
+	agentReviewerAssignment: "random_among_eligible",
+	canaries: {
+		"rateBp": 500,
+		"newAccountRateBp": 1500,
+		"flaggedAccountRateBp": 2500,
+		"perturbations": [
+			"budget_mismatch",
+			"unmet_acceptance",
+			"split_stacking",
+			"duplicated_attribution",
+			"wrong_split"
+		],
+		"minMagnitudeBp": 15e3,
+		"maxUsesPerSource": 2,
+		"passEffect": "revoke_unfinalized_and_flag"
+	},
+	payoutAudit: {
+		"quorum": 2,
+		"requireOutsideFeature": true,
+		"ownFeatureSlot": true,
+		"smallPoolThreshold": 10,
+		"maxDutyTasksPerClaim": 3,
+		"dutyReasoning": "high",
+		"requireProviderDiversity": true,
+		"sealedUntilAllSubmit": true,
+		"unmetDutyCarryEpochs": 8,
+		"contradictedJudgmentRevokesCredit": true,
+		"upheldInflationBonusBp": 0,
+		"falseFindingsSignalAfter": 3,
+		"publishUsageAfterFinalization": true
+	}
+};
+
+//#endregion
+//#region packages/contracts/dist/protocol/data/review-policy.v2.json
+var review_policy_v2_default = {
+	policyVersion: "review-policy.v2",
+	status: "draft",
+	riskClasses: [
+		{
+			"id": "protocol",
+			"priority": 10,
+			"description": "Contracts, migrations, rewards, protocol docs, policy data",
+			"match": {
+				"anyPathGlobs": [
+					"packages/contracts/**",
+					"packages/db/migrations/**",
+					"packages/rewards/**",
+					"docs/protocol/**"
+				],
+				"contributionTypes": ["GENESIS"],
+				"labels": []
+			}
+		},
+		{
+			"id": "accounting",
+			"priority": 20,
+			"description": "Money-like records in the suite (ledgers, invoices, payments)",
+			"match": {
+				"anyPathGlobs": [
+					"modules/invoices/**",
+					"modules/payments/**",
+					"modules/ledger/**"
+				],
+				"contributionTypes": [],
+				"labels": ["accounting"]
+			}
+		},
+		{
+			"id": "security",
+			"priority": 30,
+			"description": "Auth, sessions, secrets, crypto, permissions, security reports",
+			"match": {
+				"anyPathGlobs": [
+					"**/auth/**",
+					"**/crypto/**",
+					"**/permissions/**",
+					"services/control-plane/src/auth/**"
+				],
+				"contributionTypes": ["SECURITY"],
+				"labels": ["security"]
+			}
+		},
+		{
+			"id": "low_risk",
+			"priority": 90,
+			"description": "Docs, tests and copy only: every changed path matches",
+			"match": {
+				"anyPathGlobs": [
+					"docs/**",
+					"**/*.md",
+					"**/test/**",
+					"**/tests/**",
+					"**/*.test.ts",
+					"**/copy/**"
+				],
+				"contributionTypes": ["DOCUMENTATION"],
+				"labels": []
+			}
+		},
+		{
+			"id": "standard",
+			"priority": 100,
+			"description": "Everything else",
+			"match": {
+				"anyPathGlobs": [],
+				"contributionTypes": [],
+				"labels": []
+			}
+		}
+	],
+	defaultRiskClass: "standard",
+	rules: [
+		{
+			"riskClass": "low_risk",
+			"deterministicVerification": true,
+			"agentReviews": [{
+				"capability": "REVIEW_A",
+				"reasoning": "max"
+			}, {
+				"capability": "REVIEW_B",
+				"reasoning": "max"
+			}],
+			"humans": {
+				"count": 0,
+				"domains": [],
+				"distinctDomains": 0,
+				"minLevel": 1
+			},
+			"adminQuorum": 0
+		},
+		{
+			"riskClass": "standard",
+			"deterministicVerification": true,
+			"agentReviews": [{
+				"capability": "REVIEW_A",
+				"reasoning": "max"
+			}, {
+				"capability": "REVIEW_B",
+				"reasoning": "max"
+			}],
+			"humans": {
+				"count": 1,
+				"domains": [],
+				"distinctDomains": 0,
+				"minLevel": 1
+			},
+			"adminQuorum": 0
+		},
+		{
+			"riskClass": "security",
+			"deterministicVerification": true,
+			"agentReviews": [{
+				"capability": "REVIEW_A",
+				"reasoning": "max"
+			}, {
+				"capability": "REVIEW_B",
+				"reasoning": "max"
+			}],
+			"humans": {
+				"count": 1,
+				"domains": [],
+				"distinctDomains": 0,
+				"minLevel": 1
+			},
+			"adminQuorum": 0
+		},
+		{
+			"riskClass": "accounting",
+			"deterministicVerification": true,
+			"agentReviews": [{
+				"capability": "REVIEW_A",
+				"reasoning": "max"
+			}, {
+				"capability": "REVIEW_B",
+				"reasoning": "max"
+			}],
+			"humans": {
+				"count": 1,
+				"domains": [],
+				"distinctDomains": 0,
+				"minLevel": 1
+			},
+			"adminQuorum": 0
+		},
+		{
+			"riskClass": "protocol",
+			"deterministicVerification": true,
+			"agentReviews": [{
+				"capability": "REVIEW_A",
+				"reasoning": "max"
+			}, {
+				"capability": "REVIEW_B",
+				"reasoning": "max"
+			}],
+			"humans": {
+				"count": 1,
+				"domains": [],
+				"distinctDomains": 0,
+				"minLevel": 1
+			},
+			"adminQuorum": 0
+		}
+	],
+	independence: {
+		"humanMayBeSubjectAuthor": false,
+		"humanMayHoldAgentSlotOfSameRound": false,
+		"maxHumanReviewsOfSameAuthorPer7d": 10,
+		"assignment": "admin_assigned"
+	},
+	humanReviewSlaHours: 72,
+	recordDisagreementsAsEvalCases: true,
+	bootstrap: {
+		"founderMergeAuthority": true,
+		"founderOwnWorkReceipt": "PROVISIONAL",
+		"selfReviewSatisfiesRules": false,
+		"publicLabel": "Bootstrap review (D67): the founder held the human seat on the founder's own work; provisional until its independent re-review after bootstrap ends (D23, D54)",
+		"bootstrapFounderMayHoldHumanSeatOnOwnWork": true,
+		"bootstrapFounderMayHoldBothSeats": false,
+		"founderOwnWorkLabel": "bootstrap_self"
+	},
+	ratification: {
+		"mode": "optimistic_challenge",
+		"recruitedReviewerPool": false,
+		"bootstrapEndsAtOutsideContributors": 3,
+		"challengeWindowHours": 48,
+		"notifyAllParticipants": true,
+		"challengeGoesTo": "review_gate",
+		"finalKeepsOriginalTimestamp": true
+	},
+	fallbacks: [{
+		"key": "fable_unavailable",
+		"active": true,
+		"replacesSlot": "fable",
+		"replacementSeat": "human",
+		"agentReviewer": "astra",
+		"authoringModel": "claude-opus-5-5",
+		"label": "single_lab_review",
+		"laterFablePass": "optional_never_blocking",
+		"sameModelSelfReview": false,
+		"eligibleFor": ["devnet", "shadow"],
+		"switchedBy": "admin_action_forward_only",
+		"public": true
+	}],
+	approvalBinding: "head_submission_context_policy",
+	audits: {
+		"baseRateBp": 1e3,
+		"newAccountRateBp": 3e3,
+		"newAccountReceipts": 10,
+		"flaggedAccountRateBp": 5e3,
+		"disagreementRevokesOriginal": true
+	},
+	agentReviewerAssignment: "random_among_eligible",
+	canaries: {
+		"rateBp": 500,
+		"newAccountRateBp": 1500,
+		"flaggedAccountRateBp": 2500,
+		"perturbations": [
+			"budget_mismatch",
+			"unmet_acceptance",
+			"split_stacking",
+			"duplicated_attribution",
+			"wrong_split"
+		],
+		"minMagnitudeBp": 15e3,
+		"maxUsesPerSource": 2,
+		"passEffect": "revoke_unfinalized_and_flag"
+	},
+	payoutAudit: {
+		"quorum": 2,
+		"requireOutsideFeature": true,
+		"ownFeatureSlot": true,
+		"smallPoolThreshold": 10,
+		"maxDutyTasksPerClaim": 3,
+		"dutyReasoning": "high",
+		"requireProviderDiversity": true,
+		"sealedUntilAllSubmit": true,
+		"unmetDutyCarryEpochs": 8,
+		"contradictedJudgmentRevokesCredit": true,
+		"upheldInflationBonusBp": 0,
+		"falseFindingsSignalAfter": 3,
+		"publishUsageAfterFinalization": true
+	}
+};
+
+//#endregion
+//#region packages/contracts/dist/protocol/data/review-policy.v3.json
+var review_policy_v3_default = {
+	policyVersion: "review-policy.v3",
+	status: "draft",
+	riskClasses: [
+		{
+			"id": "protocol",
+			"priority": 10,
+			"description": "Contracts, migrations, rewards, protocol docs, policy data",
+			"match": {
+				"anyPathGlobs": [
+					"packages/contracts/**",
+					"packages/db/migrations/**",
+					"packages/rewards/**",
+					"docs/protocol/**"
+				],
+				"contributionTypes": ["GENESIS"],
+				"labels": []
+			}
+		},
+		{
+			"id": "accounting",
+			"priority": 20,
+			"description": "Money-like records in the suite (ledgers, invoices, payments)",
+			"match": {
+				"anyPathGlobs": [
+					"modules/invoices/**",
+					"modules/payments/**",
+					"modules/ledger/**"
+				],
+				"contributionTypes": [],
+				"labels": ["accounting"]
+			}
+		},
+		{
+			"id": "security",
+			"priority": 30,
+			"description": "Auth, sessions, secrets, crypto, permissions, security reports",
+			"match": {
+				"anyPathGlobs": [
+					"**/auth/**",
+					"**/crypto/**",
+					"**/permissions/**",
+					"services/control-plane/src/auth/**"
+				],
+				"contributionTypes": ["SECURITY"],
+				"labels": ["security"]
+			}
+		},
+		{
+			"id": "low_risk",
+			"priority": 90,
+			"description": "Docs, tests and copy only: every changed path matches",
+			"match": {
+				"anyPathGlobs": [
+					"docs/**",
+					"**/*.md",
+					"**/test/**",
+					"**/tests/**",
+					"**/*.test.ts",
+					"**/copy/**"
+				],
+				"contributionTypes": ["DOCUMENTATION"],
+				"labels": []
+			}
+		},
+		{
+			"id": "standard",
+			"priority": 100,
+			"description": "Everything else",
+			"match": {
+				"anyPathGlobs": [],
+				"contributionTypes": [],
+				"labels": []
+			}
+		}
+	],
+	defaultRiskClass: "standard",
+	rules: [
+		{
+			"riskClass": "low_risk",
+			"deterministicVerification": true,
+			"agentReviews": [{
+				"capability": "REVIEW_A",
+				"reasoning": "max"
+			}, {
+				"capability": "REVIEW_B",
+				"reasoning": "max"
+			}],
+			"humans": {
+				"count": 0,
+				"domains": [],
+				"distinctDomains": 0,
+				"minLevel": 1
+			},
+			"adminQuorum": 0
+		},
+		{
+			"riskClass": "standard",
+			"deterministicVerification": true,
+			"agentReviews": [{
+				"capability": "REVIEW_A",
+				"reasoning": "max"
+			}, {
+				"capability": "REVIEW_B",
+				"reasoning": "max"
+			}],
+			"humans": {
+				"count": 1,
+				"domains": [],
+				"distinctDomains": 0,
+				"minLevel": 1
+			},
+			"adminQuorum": 0
+		},
+		{
+			"riskClass": "security",
+			"deterministicVerification": true,
+			"agentReviews": [{
+				"capability": "REVIEW_A",
+				"reasoning": "max"
+			}, {
+				"capability": "REVIEW_B",
+				"reasoning": "max"
+			}],
+			"humans": {
+				"count": 1,
+				"domains": [],
+				"distinctDomains": 0,
+				"minLevel": 1
+			},
+			"adminQuorum": 0
+		},
+		{
+			"riskClass": "accounting",
+			"deterministicVerification": true,
+			"agentReviews": [{
+				"capability": "REVIEW_A",
+				"reasoning": "max"
+			}, {
+				"capability": "REVIEW_B",
+				"reasoning": "max"
+			}],
+			"humans": {
+				"count": 1,
+				"domains": [],
+				"distinctDomains": 0,
+				"minLevel": 1
+			},
+			"adminQuorum": 0
+		},
+		{
+			"riskClass": "protocol",
+			"deterministicVerification": true,
+			"agentReviews": [{
+				"capability": "REVIEW_A",
+				"reasoning": "max"
+			}, {
+				"capability": "REVIEW_B",
+				"reasoning": "max"
+			}],
+			"humans": {
+				"count": 1,
+				"domains": [],
+				"distinctDomains": 0,
+				"minLevel": 1
+			},
+			"adminQuorum": 0
+		}
+	],
+	independence: {
+		"humanMayBeSubjectAuthor": false,
+		"humanMayHoldAgentSlotOfSameRound": false,
+		"maxHumanReviewsOfSameAuthorPer7d": 10,
+		"assignment": "admin_assigned"
+	},
+	humanReviewSlaHours: 72,
+	recordDisagreementsAsEvalCases: true,
+	bootstrap: {
+		"founderMergeAuthority": true,
+		"founderOwnWorkReceipt": "PROVISIONAL",
+		"selfReviewSatisfiesRules": false,
+		"publicLabel": "Solo bootstrap review (D71): the founder held the agent seat and the human seat on the founder's own work; provisional until its independent re-review after bootstrap ends (D23, D54)",
+		"bootstrapFounderMayHoldHumanSeatOnOwnWork": true,
+		"bootstrapFounderMayHoldBothSeats": true,
+		"founderOwnWorkLabel": "bootstrap_self",
+		"bootstrapFounderSkipsSelfReviewWait": true
+	},
+	ratification: {
+		"mode": "optimistic_challenge",
+		"recruitedReviewerPool": false,
+		"bootstrapEndsAtOutsideContributors": 3,
+		"challengeWindowHours": 48,
+		"notifyAllParticipants": true,
+		"challengeGoesTo": "review_gate",
+		"finalKeepsOriginalTimestamp": true
+	},
+	fallbacks: [{
+		"key": "fable_unavailable",
+		"active": true,
+		"replacesSlot": "fable",
+		"replacementSeat": "human",
+		"agentReviewer": "astra",
+		"authoringModel": "claude-opus-5-5",
+		"label": "single_lab_review",
+		"laterFablePass": "optional_never_blocking",
+		"sameModelSelfReview": false,
+		"eligibleFor": ["devnet", "shadow"],
+		"switchedBy": "admin_action_forward_only",
+		"public": true
+	}],
+	approvalBinding: "head_submission_context_policy",
+	audits: {
+		"baseRateBp": 1e3,
+		"newAccountRateBp": 3e3,
+		"newAccountReceipts": 10,
+		"flaggedAccountRateBp": 5e3,
+		"disagreementRevokesOriginal": true
+	},
+	agentReviewerAssignment: "random_among_eligible",
+	canaries: {
+		"rateBp": 500,
+		"newAccountRateBp": 1500,
+		"flaggedAccountRateBp": 2500,
+		"perturbations": [
+			"budget_mismatch",
+			"unmet_acceptance",
+			"split_stacking",
+			"duplicated_attribution",
+			"wrong_split"
+		],
+		"minMagnitudeBp": 15e3,
+		"maxUsesPerSource": 2,
+		"passEffect": "revoke_unfinalized_and_flag"
+	},
+	payoutAudit: {
+		"quorum": 2,
+		"requireOutsideFeature": true,
+		"ownFeatureSlot": true,
+		"smallPoolThreshold": 10,
+		"maxDutyTasksPerClaim": 3,
+		"dutyReasoning": "high",
+		"requireProviderDiversity": true,
+		"sealedUntilAllSubmit": true,
+		"unmetDutyCarryEpochs": 8,
+		"contradictedJudgmentRevokesCredit": true,
+		"upheldInflationBonusBp": 0,
+		"falseFindingsSignalAfter": 3,
+		"publishUsageAfterFinalization": true
+	}
+};
+
+//#endregion
+//#region packages/contracts/dist/protocol/data/reward-policy.v1.json
+var reward_policy_v1_default = {
+	policyVersion: "reward-policy.v1",
+	status: "draft",
+	units: {
+		"decimals": 6,
+		"acuMicroPerAcu": 1e6
+	},
+	epoch: {
+		"lengthDays": 7,
+		"riskReviewHours": 48,
+		"challengeHours": 48,
+		"maxDeferrals": 2,
+		"revertOffsetDays": 14
+	},
+	emission: {
+		"maxSupplyBase": "1000000000000000",
+		"emissionReserveBase": "995000000000000",
+		"budgetPpmOfRemaining": 3327,
+		"rateCeiling": {
+			"initialBasePerAcu": "100000000",
+			"decayPpmPerEpoch": 3327
+		}
+	},
+	slicesBp: {
+		"execution": 6e3,
+		"planning": 1e3,
+		"human_review": 500,
+		"outcomes": 500,
+		"completion_accrual": 1500,
+		"security_reserve": 500
+	},
+	eligibility: {
+		"acceptedEvidenceClasses": {
+			"devnet": ["accepted_budget", "outcome"],
+			"mainnet": []
+		},
+		"requireReviewPolicySatisfied": true,
+		"requireWalletForClaim": true
+	},
+	acceptance: [
+		{
+			"contributionType": "IMPLEMENTATION",
+			"event": "pr_merged",
+			"acceptedBy": "github merge of the qualified PR",
+			"slice": "execution",
+			"weightBasis": "task_budget",
+			"needsLease": true,
+			"needsUsageReceipt": true
+		},
+		{
+			"contributionType": "AGENT_REVIEW",
+			"event": "subject_merged_or_finding_upheld",
+			"acceptedBy": "the subject's merge, or a material finding resolved/upheld",
+			"slice": "execution",
+			"weightBasis": "task_budget",
+			"needsLease": true,
+			"needsUsageReceipt": true
+		},
+		{
+			"contributionType": "ARCHITECTURE_RESOLUTION",
+			"event": "ruling_confirmed_by_maintainer",
+			"acceptedBy": "maintainer confirmation of the ruling",
+			"slice": "execution",
+			"weightBasis": "task_budget",
+			"needsLease": true,
+			"needsUsageReceipt": true
+		},
+		{
+			"contributionType": "APPLICATION_ROADMAP",
+			"event": "document_merged",
+			"acceptedBy": "merge of the roadmap version containing the revision",
+			"slice": "planning",
+			"weightBasis": "task_budget",
+			"needsLease": true,
+			"needsUsageReceipt": true
+		},
+		{
+			"contributionType": "FEATURE_SPECIFICATION",
+			"event": "document_merged",
+			"acceptedBy": "merge of the contract version containing the revision",
+			"slice": "planning",
+			"weightBasis": "task_budget",
+			"needsLease": true,
+			"needsUsageReceipt": true
+		},
+		{
+			"contributionType": "HUMAN_REVIEW",
+			"event": "subject_merged_or_finding_upheld",
+			"acceptedBy": "the subject's merge (PASS) or an upheld material finding (FAIL); no review of reviews, audits sample instead",
+			"slice": "human_review",
+			"weightBasis": "task_budget",
+			"needsLease": false,
+			"needsUsageReceipt": false
+		},
+		{
+			"contributionType": "PROPOSAL",
+			"event": "proposal_incorporated",
+			"acceptedBy": "merge of a roadmap or contract version that incorporates it",
+			"slice": "outcomes",
+			"weightBasis": "acu_equivalent",
+			"needsLease": false,
+			"needsUsageReceipt": false
+		},
+		{
+			"contributionType": "BUG_REPORT",
+			"event": "bug_fix_merged",
+			"acceptedBy": "merge of the fix referencing it, severity confirmed by a maintainer",
+			"slice": "outcomes",
+			"weightBasis": "acu_equivalent",
+			"needsLease": false,
+			"needsUsageReceipt": false
+		},
+		{
+			"contributionType": "SECURITY",
+			"event": "security_confirmed_and_fix_merged",
+			"acceptedBy": "a security-qualified human (not the reporter) confirms severity and the fix merges",
+			"slice": "security_reserve",
+			"weightBasis": "acu_equivalent",
+			"needsLease": false,
+			"needsUsageReceipt": false
+		},
+		{
+			"contributionType": "AUDIT_RERUN",
+			"event": "audit_report_accepted",
+			"acceptedBy": "schema-valid audit report on the assigned lease, whatever it concludes",
+			"slice": "execution",
+			"weightBasis": "task_budget",
+			"needsLease": true,
+			"needsUsageReceipt": true
+		},
+		{
+			"contributionType": "GENESIS",
+			"event": "genesis_approved",
+			"acceptedBy": "protocol-class review by independent humans, never the founder",
+			"slice": "none",
+			"weightBasis": "none",
+			"needsLease": false,
+			"needsUsageReceipt": false
+		}
+	],
+	settlement: {
+		"unboundCarryEpochs": 52,
+		"mechanism": {
+			"devnet": "push_transfer",
+			"mainnet": "undecided"
+		},
+		"maxOffsetRecoveryBp": 5e3
+	},
+	execution: {
+		"capIncludesRepairs": true,
+		"upheldFindingBonusBp": 0,
+		"maxPaidFindingsPerReview": 5,
+		"payReviewsOfFailedAttemptsWithUpheldFindings": true
+	},
+	humanReview: {
+		"weightAcuEqMicro": {
+			"low_risk": "500000",
+			"standard": "1000000",
+			"security": "2000000",
+			"accounting": "2000000",
+			"protocol": "2000000"
+		},
+		"upheldFindingBonusMicro": "0",
+		"maxPaidFindings": 3,
+		"payRatificationReviews": true
+	},
+	outcomes: {
+		"proposalIncorporatedAcuEq": 10,
+		"bugAcuEq": {
+			"low": 2,
+			"medium": 6,
+			"high": 20,
+			"critical": 50
+		},
+		"maxProposalsPaidPerAccountPerEpoch": 5
+	},
+	security: {
+		"severityAcuEq": {
+			"low": 25,
+			"medium": 100,
+			"high": 300,
+			"critical": 1e3
+		},
+		"maxShareOfReserveBp": 2500
+	},
+	completion: {
+		"featurePoolsBp": 6667,
+		"applicationPoolsBp": 3333
+	},
+	challenge: {
+		"windowHours": 48,
+		"replyHours": 24,
+		"gateEscalateAfterHours": 120,
+		"standing": "epoch_participants",
+		"stakePerItemBp": 200,
+		"maxStakeBp": 1e3,
+		"minStakeBase": "1000000",
+		"joinerStake": "min",
+		"maxItemsPerDispute": 25,
+		"maxDisputesPerAccountPerEpoch": 3,
+		"sampledAuditRateBp": 500,
+		"rejectedDisputesSignalAfter": 3,
+		"publicAllocations": true,
+		"appealHours": 72,
+		"relatedPartyBountyPriority": false
+	},
+	holdback: {
+		"shareBp": 2e3,
+		"epochs": 6,
+		"forfeitOnExclusion": true
+	},
+	budgets: {
+		"denomination": "acu",
+		"funding": "reserve_at_issuance",
+		"acceptance": "binary",
+		"qualityFactor": "none",
+		"sharesSumBp": 1e4,
+		"model": {
+			"difficultyBp": {
+				"min": 5e3,
+				"max": 2e4
+			},
+			"importanceBp": {
+				"min": 1e4,
+				"max": 15e3
+			},
+			"maxWithoutHumanBp": 12500,
+			"hardMaxBp": 2e4,
+			"objectiveCap": true,
+			"proposerMayNotBuild": true
+		},
+		"expiryEpochs": 4,
+		"reviewGraceEpochs": 2,
+		"recalibration": {
+			"everyEpochs": 13,
+			"maxChangeBp": 2e3,
+			"minSamples": 20
+		}
+	},
+	losses: {
+		"bountyBpOfRecovered": 2e3,
+		"absorptionMaxBp": 1e3,
+		"publish": true
+	},
+	confiscation: {
+		"replyHours": 72,
+		"appealHours": 168,
+		"maxReplyHours": 336,
+		"maxAppealHours": 720,
+		"maxHoldAfterAppealHours": 336,
+		"maxTimeBoxedExclusionEpochs": 52,
+		"permanentExclusionTier": "structural"
+	},
+	modules: {
+		"active": [
+			"accounting_correctness",
+			"budgets_with_bounds_and_objective_cap",
+			"acceptance_review",
+			"optimistic_challenge_and_publication",
+			"provisional_optimistic_finalization",
+			"append_only_audit_and_admin_actions",
+			"shadow_epoch_pipeline",
+			"simple_hold",
+			"holdback"
+		],
+		"dormant": [
+			{
+				"module": "dispute_stakes_and_bounties",
+				"activationTrigger": "first value-bearing token (mainnet readiness) or first outside disputer",
+				"v1Stub": "a challenge is a free flag for review; no stake, no bounty"
+			},
+			{
+				"module": "multi_allocation_disputes_and_appeals",
+				"activationTrigger": "first outside contributor with a disputed allocation",
+				"v1Stub": "one flagged receipt goes to the review gate: reply, one decision"
+			},
+			{
+				"module": "payout_canaries",
+				"activationTrigger": "at least 10 active outside payout auditors",
+				"v1Stub": "none (no payout audit duty in V1)"
+			},
+			{
+				"module": "organization_caps_and_beneficiary_splits",
+				"activationTrigger": "first sponsoring organization approved",
+				"v1Stub": "every beneficiary is the contributor (person); no organization cap"
+			},
+			{
+				"module": "governance_voting",
+				"activationTrigger": "at least 25 eligible outside voters",
+				"v1Stub": "the founder sets policy by public AdminAction"
+			},
+			{
+				"module": "collusion_and_sybil_detection_beyond_basics",
+				"activationTrigger": "at least 10 outside contributors",
+				"v1Stub": "related-account independence and anomaly metrics only"
+			},
+			{
+				"module": "confiscation_beyond_simple_hold",
+				"activationTrigger": "first value-bearing token (mainnet readiness)",
+				"v1Stub": "a bounded simple hold and release; no confiscation execution"
+			},
+			{
+				"module": "genesis_calibration_population",
+				"activationTrigger": "Genesis finalization (mainnet only)",
+				"v1Stub": "Genesis records only; no reference manifest"
+			}
+		]
+	},
+	auditCapacity: {
+		"unauditedRelease": true,
+		"penalizeContributor": false
+	}
+};
+
+//#endregion
+//#region packages/contracts/dist/protocol/data/reward-policy.v2.json
+var reward_policy_v2_default = {
+	policyVersion: "reward-policy.v2",
+	status: "draft",
+	units: {
+		"decimals": 6,
+		"acuMicroPerAcu": 1e6
+	},
+	epoch: {
+		"lengthDays": 7,
+		"riskReviewHours": 48,
+		"challengeHours": 48,
+		"maxDeferrals": 2,
+		"revertOffsetDays": 14
+	},
+	emission: {
+		"maxSupplyBase": "1000000000000000",
+		"emissionReserveBase": "995000000000000",
+		"budgetPpmOfRemaining": 3327,
+		"rateCeiling": {
+			"initialBasePerAcu": "100000000",
+			"decayPpmPerEpoch": 3327
+		}
+	},
+	slicesBp: {
+		"execution": 6e3,
+		"planning": 1e3,
+		"human_review": 500,
+		"outcomes": 500,
+		"completion_accrual": 1500,
+		"security_reserve": 500
+	},
+	eligibility: {
+		"acceptedEvidenceClasses": {
+			"devnet": ["accepted_budget", "outcome"],
+			"mainnet": []
+		},
+		"requireReviewPolicySatisfied": true,
+		"requireWalletForClaim": true
+	},
+	acceptance: [
+		{
+			"contributionType": "IMPLEMENTATION",
+			"event": "pr_merged",
+			"acceptedBy": "github merge of the qualified PR",
+			"slice": "execution",
+			"weightBasis": "task_budget",
+			"needsLease": true,
+			"needsUsageReceipt": true
+		},
+		{
+			"contributionType": "AGENT_REVIEW",
+			"event": "subject_merged_or_finding_upheld",
+			"acceptedBy": "the subject's merge, or a material finding resolved/upheld",
+			"slice": "execution",
+			"weightBasis": "task_budget",
+			"needsLease": true,
+			"needsUsageReceipt": true
+		},
+		{
+			"contributionType": "ARCHITECTURE_RESOLUTION",
+			"event": "ruling_confirmed_by_maintainer",
+			"acceptedBy": "maintainer confirmation of the ruling",
+			"slice": "execution",
+			"weightBasis": "task_budget",
+			"needsLease": true,
+			"needsUsageReceipt": true
+		},
+		{
+			"contributionType": "APPLICATION_ROADMAP",
+			"event": "document_merged",
+			"acceptedBy": "merge of the roadmap version containing the revision",
+			"slice": "planning",
+			"weightBasis": "task_budget",
+			"needsLease": true,
+			"needsUsageReceipt": true
+		},
+		{
+			"contributionType": "FEATURE_SPECIFICATION",
+			"event": "document_merged",
+			"acceptedBy": "merge of the contract version containing the revision",
+			"slice": "planning",
+			"weightBasis": "task_budget",
+			"needsLease": true,
+			"needsUsageReceipt": true
+		},
+		{
+			"contributionType": "HUMAN_REVIEW",
+			"event": "subject_merged_or_finding_upheld",
+			"acceptedBy": "the subject's merge (PASS) or an upheld material finding (FAIL); no review of reviews, audits sample instead",
+			"slice": "human_review",
+			"weightBasis": "task_budget",
+			"needsLease": false,
+			"needsUsageReceipt": false
+		},
+		{
+			"contributionType": "PROPOSAL",
+			"event": "proposal_incorporated",
+			"acceptedBy": "merge of a roadmap or contract version that incorporates it",
+			"slice": "outcomes",
+			"weightBasis": "acu_equivalent",
+			"needsLease": false,
+			"needsUsageReceipt": false
+		},
+		{
+			"contributionType": "BUG_REPORT",
+			"event": "bug_fix_merged",
+			"acceptedBy": "first reporter of a bug whose triage outcome is fix or contract_revision, once resolved; weight by effective severity (D61)",
+			"slice": "outcomes",
+			"weightBasis": "acu_equivalent",
+			"needsLease": false,
+			"needsUsageReceipt": false
+		},
+		{
+			"contributionType": "SECURITY",
+			"event": "security_confirmed_and_fix_merged",
+			"acceptedBy": "a security-qualified human (not the reporter) confirms severity and the fix merges",
+			"slice": "security_reserve",
+			"weightBasis": "acu_equivalent",
+			"needsLease": false,
+			"needsUsageReceipt": false
+		},
+		{
+			"contributionType": "AUDIT_RERUN",
+			"event": "audit_report_accepted",
+			"acceptedBy": "schema-valid audit report on the assigned lease, whatever it concludes",
+			"slice": "execution",
+			"weightBasis": "task_budget",
+			"needsLease": true,
+			"needsUsageReceipt": true
+		},
+		{
+			"contributionType": "GENESIS",
+			"event": "genesis_approved",
+			"acceptedBy": "protocol-class review by independent humans, never the founder",
+			"slice": "none",
+			"weightBasis": "none",
+			"needsLease": false,
+			"needsUsageReceipt": false
+		},
+		{
+			"contributionType": "BUG_TRIAGE",
+			"event": "triage_decision_confirmed",
+			"acceptedBy": "the bug_triage decision (its canonical hash), once confirmed: by the fix's red-then-green acceptance, the revision merging, an earlier duplicate that acts, or a maintainer's ratification (D61)",
+			"slice": "execution",
+			"weightBasis": "task_budget",
+			"needsLease": true,
+			"needsUsageReceipt": true
+		},
+		{
+			"contributionType": "BUG_FIX",
+			"event": "bug_fix_merged",
+			"acceptedBy": "merge of the fix unit (abu_build / abu_revision with AbuSpec.fix) with red-then-green evidence, the bug's triage outcome fix (D61)",
+			"slice": "execution",
+			"weightBasis": "task_budget",
+			"needsLease": true,
+			"needsUsageReceipt": true
+		}
+	],
+	settlement: {
+		"unboundCarryEpochs": 52,
+		"mechanism": {
+			"devnet": "push_transfer",
+			"mainnet": "undecided"
+		},
+		"maxOffsetRecoveryBp": 5e3
+	},
+	execution: {
+		"capIncludesRepairs": true,
+		"upheldFindingBonusBp": 0,
+		"maxPaidFindingsPerReview": 5,
+		"payReviewsOfFailedAttemptsWithUpheldFindings": true
+	},
+	humanReview: {
+		"weightAcuEqMicro": {
+			"low_risk": "500000",
+			"standard": "1000000",
+			"security": "2000000",
+			"accounting": "2000000",
+			"protocol": "2000000"
+		},
+		"upheldFindingBonusMicro": "0",
+		"maxPaidFindings": 3,
+		"payRatificationReviews": true
+	},
+	outcomes: {
+		"proposalIncorporatedAcuEq": 10,
+		"bugAcuEq": {
+			"low": 2,
+			"medium": 6,
+			"high": 20,
+			"critical": 50
+		},
+		"maxProposalsPaidPerAccountPerEpoch": 5
+	},
+	bugs: {
+		"severityFixBp": {
+			"low": 1e4,
+			"medium": 1e4,
+			"high": 12500,
+			"critical": 15e3
+		},
+		"maxSeverityFixBp": 15e3,
+		"maxBugReportsPaidPerAccountPerEpoch": 10,
+		"rejectedReportsSignalAfter": 5,
+		"introducerWindowDays": 14,
+		"introducerOffsetEqualsReportPay": true,
+		"introducerReportPaid": false,
+		"introducerMayFixWithinWindow": false,
+		"reporterMayFix": true,
+		"sweepsPaid": false
+	},
+	queue: { "queueBonusBp": 2e3 },
+	security: {
+		"severityAcuEq": {
+			"low": 25,
+			"medium": 100,
+			"high": 300,
+			"critical": 1e3
+		},
+		"maxShareOfReserveBp": 2500
+	},
+	completion: {
+		"featurePoolsBp": 6667,
+		"applicationPoolsBp": 3333
+	},
+	challenge: {
+		"windowHours": 48,
+		"replyHours": 24,
+		"gateEscalateAfterHours": 120,
+		"standing": "epoch_participants",
+		"stakePerItemBp": 200,
+		"maxStakeBp": 1e3,
+		"minStakeBase": "1000000",
+		"joinerStake": "min",
+		"maxItemsPerDispute": 25,
+		"maxDisputesPerAccountPerEpoch": 3,
+		"sampledAuditRateBp": 500,
+		"rejectedDisputesSignalAfter": 3,
+		"publicAllocations": true,
+		"appealHours": 72,
+		"relatedPartyBountyPriority": false
+	},
+	holdback: {
+		"shareBp": 2e3,
+		"epochs": 6,
+		"forfeitOnExclusion": true
+	},
+	budgets: {
+		"denomination": "acu",
+		"funding": "reserve_at_issuance",
+		"acceptance": "binary",
+		"qualityFactor": "none",
+		"sharesSumBp": 1e4,
+		"model": {
+			"difficultyBp": {
+				"min": 5e3,
+				"max": 2e4
+			},
+			"importanceBp": {
+				"min": 1e4,
+				"max": 15e3
+			},
+			"maxWithoutHumanBp": 12500,
+			"hardMaxBp": 2e4,
+			"objectiveCap": true,
+			"proposerMayNotBuild": true
+		},
+		"expiryEpochs": 4,
+		"reviewGraceEpochs": 2,
+		"recalibration": {
+			"everyEpochs": 13,
+			"maxChangeBp": 2e3,
+			"minSamples": 20
+		}
+	},
+	losses: {
+		"bountyBpOfRecovered": 2e3,
+		"absorptionMaxBp": 1e3,
+		"publish": true
+	},
+	confiscation: {
+		"replyHours": 72,
+		"appealHours": 168,
+		"maxReplyHours": 336,
+		"maxAppealHours": 720,
+		"maxHoldAfterAppealHours": 336,
+		"maxTimeBoxedExclusionEpochs": 52,
+		"permanentExclusionTier": "structural"
+	},
+	modules: {
+		"active": [
+			"accounting_correctness",
+			"budgets_with_bounds_and_objective_cap",
+			"acceptance_review",
+			"optimistic_challenge_and_publication",
+			"provisional_optimistic_finalization",
+			"append_only_audit_and_admin_actions",
+			"shadow_epoch_pipeline",
+			"simple_hold",
+			"holdback",
+			"bugs_triage_fix_and_first_report",
+			"work_next_queue_and_queue_bonus"
+		],
+		"dormant": [
+			{
+				"module": "dispute_stakes_and_bounties",
+				"activationTrigger": "first value-bearing token (mainnet readiness) or first outside disputer",
+				"v1Stub": "a challenge is a free flag for review; no stake, no bounty"
+			},
+			{
+				"module": "multi_allocation_disputes_and_appeals",
+				"activationTrigger": "first outside contributor with a disputed allocation",
+				"v1Stub": "one flagged receipt goes to the review gate: reply, one decision"
+			},
+			{
+				"module": "payout_canaries",
+				"activationTrigger": "at least 10 active outside payout auditors",
+				"v1Stub": "none (no payout audit duty in V1)"
+			},
+			{
+				"module": "organization_caps_and_beneficiary_splits",
+				"activationTrigger": "first sponsoring organization approved",
+				"v1Stub": "every beneficiary is the contributor (person); no organization cap"
+			},
+			{
+				"module": "governance_voting",
+				"activationTrigger": "at least 25 eligible outside voters",
+				"v1Stub": "the founder sets policy by public AdminAction"
+			},
+			{
+				"module": "collusion_and_sybil_detection_beyond_basics",
+				"activationTrigger": "at least 10 outside contributors",
+				"v1Stub": "related-account independence and anomaly metrics only"
+			},
+			{
+				"module": "confiscation_beyond_simple_hold",
+				"activationTrigger": "first value-bearing token (mainnet readiness)",
+				"v1Stub": "a bounded simple hold and release; no confiscation execution"
+			},
+			{
+				"module": "genesis_calibration_population",
+				"activationTrigger": "Genesis finalization (mainnet only)",
+				"v1Stub": "Genesis records only; no reference manifest"
+			},
+			{
+				"module": "priority_vote",
+				"activationTrigger": "governance_voting is active and at least 25 accounts meet the governance seasoning rules (12-month lock, 6-month contribution, distributed-supply basis, organization cap), after the G-98 preconditions",
+				"v1Stub": "the founder's focus list (F29) is the only priority input to work next"
+			}
+		]
+	},
+	auditCapacity: {
+		"unauditedRelease": true,
+		"penalizeContributor": false
+	}
+};
+
+//#endregion
+//#region packages/contracts/dist/protocol/data/risk-policy.v1.json
+var risk_policy_v1_default = {
+	policyVersion: "risk-policy.v1",
+	status: "draft",
+	detectors: [
+		{
+			"id": "peer-outlier",
+			"signal": "usage_outlier_vs_peers",
+			"params": {
+				"minPeers": 30,
+				"maxLogZ": 2.5
+			},
+			"severity": "medium"
+		},
+		{
+			"id": "cap-saturation",
+			"signal": "cap_saturation_pattern",
+			"params": {
+				"saturationBp": 9500,
+				"maxShareBp": 5e3,
+				"minRuns": 10
+			},
+			"severity": "medium"
+		},
+		{
+			"id": "throughput",
+			"signal": "impossible_throughput",
+			"params": {},
+			"severity": "high"
+		},
+		{
+			"id": "source-mismatch",
+			"signal": "usage_fields_inconsistent",
+			"params": {},
+			"severity": "medium"
+		},
+		{
+			"id": "model-mismatch",
+			"signal": "model_mismatch",
+			"params": {},
+			"severity": "high"
+		},
+		{
+			"id": "duplicate-provider-ids",
+			"signal": "duplicate_provider_ids",
+			"params": {},
+			"severity": "high"
+		},
+		{
+			"id": "audit-divergence",
+			"signal": "audit_divergence",
+			"params": { "factorBp": 3e4 },
+			"severity": "medium"
+		},
+		{
+			"id": "transcript-missing",
+			"signal": "transcript_missing_on_audit",
+			"params": { "graceDays": 7 },
+			"severity": "low"
+		},
+		{
+			"id": "review-pairs",
+			"signal": "collusive_review_pattern",
+			"params": {
+				"minPairReviews": 5,
+				"maxPairShareBp": 5e3
+			},
+			"severity": "medium"
+		},
+		{
+			"id": "rubber-stamp",
+			"signal": "rubber_stamp_pattern",
+			"params": {
+				"minReviews": 20,
+				"minPassBp": 9800,
+				"maxMedianDurationSec": 120
+			},
+			"severity": "low"
+		},
+		{
+			"id": "wallet-rebind",
+			"signal": "wallet_rebind_after_signal",
+			"params": { "windowDays": 30 },
+			"severity": "medium"
+		}
+	],
+	effects: {
+		"info": "none",
+		"low": "none",
+		"medium": "hold",
+		"high": "exclude_pending_review"
+	},
+	twoPersonActions: [
+		"invalidate_receipt",
+		"suspend_account",
+		"record_offset",
+		"activate_policy",
+		"activate_oracle",
+		"record_genesis"
+	],
+	walletRebindCooldownDays: 7
+};
+
+//#endregion
+//#region packages/contracts/dist/protocol/data/usage-proof-policy.v1.json
+var usage_proof_policy_v1_default = {
+	policyVersion: "usage-proof-policy.v1",
+	status: "draft",
+	providers: [{
+		"provider": "claude_cli",
+		"minCliVersion": "2.1.284",
+		"primarySource": "cli_result_event",
+		"crossCheckSource": "cli_stream_sum",
+		"notes": "claude -p --output-format stream-json --verbose: per-message usage on assistant events, run totals on the result event. Shapes: USAGE-PROOF.md section 2.1."
+	}, {
+		"provider": "codex_cli",
+		"minCliVersion": "0.155.0",
+		"primarySource": "transcript",
+		"crossCheckSource": "cli_stream_sum",
+		"notes": "Authoritative: the session rollout (token_usage_record per response_id, deduplicated). The codex exec --json stream (turn.completed usage, no response ids) is a cross-check only (Astra-02 M15)."
+	}],
+	plausibility: {
+		"maxOutputTokensPerSecond": 400,
+		"maxTotalTokensPerSecond": 2e5,
+		"maxSourceMismatchBp": 200,
+		"requireProviderIdsHash": true,
+		"requireTranscriptHash": true,
+		"requireModelMatch": true
+	},
+	audit: {
+		"randomRerunBp": 0,
+		"transcriptRequestBp": 500,
+		"transcriptRetentionDays": 60,
+		"divergenceFactorBp": 3e4
+	},
+	logs: {
+		"required": false,
+		"maxBytes": 1048576,
+		"maxTurns": 2e3,
+		"retentionDays": 365,
+		"requireExactTotals": true
+	}
+};
+
+//#endregion
+//#region packages/contracts/dist/architecture.js
+const ArchElementKey = string().regex(/^arch:[a-z][a-z0-9-]{1,48}[a-z0-9]$/, "arch:<lowercase-name>");
+const ArchitectureRecordId = string().regex(/^ADR-\d{3}$/, "ADR-nnn");
+const ARCHITECTURE_PATHS = {
+	record: (id) => `architecture/${id}.yaml`,
+	buildGraph: (id) => `architecture/${id}/BUILD-GRAPH.yaml`
+};
+const ArchitectureElementChange = object({
+	key: ArchElementKey,
+	change: _enum([
+		"introduce",
+		"change",
+		"retire"
+	]),
+	summary: string().min(20),
+	paths: array(WriteScope).default([])
+});
+const ArchitectureRecord = object({
+	schema: literal("wos-architecture-record.v1"),
+	id: ArchitectureRecordId,
+	version: number$1().int().positive(),
+	title: string().min(5).max(100),
+	context: string().min(40),
+	decision: string().min(40),
+	consequences: string().min(40),
+	alternatives: array(object({
+		option: string().min(3),
+		rejectedBecause: string().min(20)
+	})).min(1),
+	elements: array(ArchitectureElementChange).min(1),
+	migration: object({
+		buildGraph: string().regex(/^architecture\/ADR-\d{3}\/BUILD-GRAPH\.yaml$/),
+		summary: string().min(20)
+	}).nullable(),
+	supersedes: array(ArchitectureRecordId).default([])
+}).superRefine((r, ctx) => {
+	const issue = (path, message) => ctx.addIssue({
+		code: "custom",
+		path,
+		message
+	});
+	for (const [i, e] of r.elements.entries()) {
+		if (e.change !== "retire" && e.paths.length === 0) issue([
+			"elements",
+			i,
+			"paths"
+		], `${e.change} needs the paths the element governs`);
+		if (e.change === "retire" && e.paths.length > 0) issue([
+			"elements",
+			i,
+			"paths"
+		], "a retired element governs no paths");
+	}
+	if (r.elements.some((e) => e.change !== "introduce") && r.migration === null) issue(["migration"], "changing or retiring an element needs a migration build graph");
+	if (r.migration && r.migration.buildGraph !== ARCHITECTURE_PATHS.buildGraph(r.id)) issue(["migration", "buildGraph"], `must be ${ARCHITECTURE_PATHS.buildGraph(r.id)}`);
+});
+const ArchitectureRecordErrorCode = _enum([
+	"ARCH_ELEMENT_DUPLICATE",
+	"ARCH_INTRODUCE_EXISTING",
+	"ARCH_CHANGE_UNKNOWN",
+	"ARCH_PATH_OVERLAP",
+	"ARCH_MIGRATION_KEY",
+	"ARCH_MIGRATION_RESOURCE",
+	"ARCH_MIGRATION_UNCOVERED",
+	"ARCH_VERSION_NOT_NEXT"
+]);
+const ArchitecturePolicy = object({
+	schema: literal("wos-architecture-policy.v1"),
+	maxRounds: number$1().int().positive(),
+	maintainerSignOff: literal(true),
+	migrationBoost: number$1().int().positive(),
+	holds: object({
+		startAt: literal("record_merged"),
+		endAt: literal("migration_merged_or_record_abandoned"),
+		holdTransitiveDependents: literal(false)
+	}),
+	review: object({
+		pauseInFlight: literal(false),
+		recordInContext: literal(true)
+	})
+});
+const ContractArchitecture = array(ArchElementKey).optional();
+
+//#endregion
+//#region packages/contracts/dist/bugs.js
+const BugId = string().regex(/^BUG-\d{1,9}$/);
+const BugSeverity = _enum([
+	"low",
+	"medium",
+	"high",
+	"critical"
+]);
+const BugTaskKind = _enum(["bug_triage", "bug_sweep"]);
+const BugReport = object({
+	schema: literal("wos-bug-report.v1"),
+	title: string().min(8).max(120),
+	surface: ProductSurface,
+	feature: FeatureKey.nullable(),
+	environment: object({
+		version: string().min(1).max(60),
+		os: string().max(60).nullable(),
+		browser: Browser.nullable(),
+		device: string().max(60).nullable()
+	}),
+	steps: array(string().min(3).max(500)).min(1).max(30),
+	expected: string().min(3).max(2e3),
+	actual: string().min(3).max(2e3),
+	failingTest: object({
+		path: RepoPath,
+		content: string().min(1).max(2e4)
+	}).nullable(),
+	reportedVia: _enum([
+		"cli",
+		"desktop",
+		"sweep"
+	]),
+	sweepId: Uuid.nullable()
+});
+const TriageOutcome = _enum([
+	"fix",
+	"contract_revision",
+	"duplicate",
+	"not_reproducible",
+	"not_a_bug",
+	"wont_fix"
+]);
+const TriageDecision = object({
+	schema: literal("wos-triage-decision.v1"),
+	bug: BugId,
+	decidedBy: discriminatedUnion("kind", [object({
+		kind: literal("agent"),
+		taskId: Uuid,
+		leaseId: Uuid
+	}), object({
+		kind: literal("maintainer"),
+		accountId: Uuid
+	})]),
+	reproduced: boolean(),
+	reproduction: object({
+		commit: GitSha,
+		surface: ProductSurface,
+		notes: string().min(20),
+		failingTestRan: boolean()
+	}).nullable(),
+	outcome: TriageOutcome,
+	severity: BugSeverity.nullable(),
+	duplicateOf: BugId.nullable(),
+	mapping: object({
+		feature: FeatureKey,
+		contractVersion: number$1().int().positive(),
+		requirements: array(RequirementKey).min(1),
+		abus: array(AbuKey),
+		files: array(RepoPath).min(1)
+	}).nullable(),
+	rationale: string().min(40),
+	decidedAt: Timestamp
+}).superRefine((d, ctx) => {
+	const issue = (path, message) => ctx.addIssue({
+		code: "custom",
+		path,
+		message
+	});
+	if (d.reproduced !== (d.reproduction !== null)) issue(["reproduction"], "reproduction is set exactly when reproduced");
+	const acts = d.outcome === "fix" || d.outcome === "contract_revision";
+	if (acts && !d.reproduced) issue(["reproduced"], `${d.outcome} needs a reproduced bug`);
+	if (acts && (d.severity === null || d.mapping === null)) issue(["mapping"], `${d.outcome} needs a severity and the mapping`);
+	if (d.outcome === "not_reproducible" && d.reproduced) issue(["outcome"], "a reproduced bug is not not_reproducible");
+	if (d.outcome === "duplicate" !== (d.duplicateOf !== null)) issue(["duplicateOf"], "duplicateOf is set exactly for duplicates");
+	if (d.duplicateOf === d.bug) issue(["duplicateOf"], "a bug is not its own duplicate");
+	if (d.outcome === "wont_fix" && d.decidedBy.kind !== "maintainer") issue(["decidedBy"], "only a maintainer decides wont_fix");
+});
+const RedGreenEvidence = object({
+	bug: BugId,
+	feature: FeatureKey,
+	regressionTest: RepoPath,
+	parent: object({
+		sha: GitSha,
+		conclusion: _enum(["failure", "success"]),
+		failedTests: array(RepoPath)
+	}),
+	head: object({
+		sha: GitSha,
+		conclusion: _enum(["failure", "success"]),
+		failedTests: array(RepoPath)
+	}),
+	testSha256: Sha256
+});
+const BugSweep = object({
+	schema: literal("wos-bug-sweep.v1"),
+	id: Uuid,
+	openedBy: _enum(["schedule", "maintainer"]),
+	commit: GitSha,
+	features: array(FeatureKey),
+	surfaces: array(ProductSurface).min(1),
+	browsers: array(Browser),
+	explore: boolean()
+});
+const SweepOutput = object({
+	schema: literal("wos-sweep-output.v1"),
+	sweepId: Uuid,
+	commit: GitSha,
+	journeysRun: array(object({
+		feature: FeatureKey,
+		journey: string().regex(/^J-\d{3}$/),
+		surface: ProductSurface,
+		browser: Browser.nullable(),
+		result: _enum([
+			"passed",
+			"failed",
+			"skipped"
+		])
+	})),
+	reports: array(BugReport).max(50)
+});
+const BugsPolicy = object({
+	schema: literal("wos-bugs-policy.v1"),
+	severityBoost: object({
+		low: number$1().int().min(0),
+		medium: number$1().int().min(0),
+		high: number$1().int().min(0),
+		critical: number$1().int().min(0)
+	}),
+	criticalHoldsFeature: boolean(),
+	triage: object({
+		requiresReproduction: literal(true),
+		maintainerConfirmsCritical: boolean()
+	}),
+	regressions: object({
+		dir: literal("regressions"),
+		removableOnlyByContractRevision: literal(true)
+	})
+});
+
+//#endregion
+//#region packages/contracts/dist/protocol/entities.js
+const U64_MAX = 18446744073709551615n;
+const U64String = string().regex(/^(0|[1-9][0-9]{0,19})$/, "decimal u64 string").refine((s) => BigInt(s) <= U64_MAX, "exceeds u64");
+const I64String = string().regex(/^(0|-?[1-9][0-9]{0,18})$/, "decimal i64 string");
+const SolanaAddress = string().regex(/^[1-9A-HJ-NP-Za-km-z]{32,44}$/, "base58 Solana address");
+const SolanaCluster = _enum(["devnet", "mainnet-beta"]);
+const VerificationLevel = _enum([
+	"VERIFIED",
+	"ATTESTED",
+	"ESTIMATED",
+	"UNVERIFIED"
+]);
+const ContributionType = _enum([
+	"APPLICATION_ROADMAP",
+	"FEATURE_SPECIFICATION",
+	"ARCHITECTURE_RESOLUTION",
+	"IMPLEMENTATION",
+	"AGENT_REVIEW",
+	"HUMAN_REVIEW",
+	"SECURITY",
+	"INTEGRATION",
+	"DOCUMENTATION",
+	"OTHER_PROTOCOL_APPROVED",
+	"PROPOSAL",
+	"BUG_REPORT",
+	"AUDIT_RERUN",
+	"GENESIS",
+	"BUG_TRIAGE",
+	"BUG_FIX"
+]);
+const RewardSlice = _enum([
+	"execution",
+	"planning",
+	"human_review",
+	"outcomes",
+	"completion_accrual",
+	"security_reserve"
+]);
+const EvidenceClass = _enum([
+	"accepted_budget",
+	"outcome",
+	"historical"
+]);
+const AcceptanceEvent = _enum([
+	"pr_merged",
+	"document_merged",
+	"subject_merged_or_finding_upheld",
+	"ruling_confirmed_by_maintainer",
+	"security_confirmed_and_fix_merged",
+	"proposal_incorporated",
+	"bug_fix_merged",
+	"triage_decision_confirmed",
+	"audit_report_accepted",
+	"genesis_approved"
+]);
+const CapabilityClass = _enum([
+	"BUILD_L1",
+	"BUILD_L2",
+	"BUILD_L3",
+	"BUILD_L4",
+	"PLAN_L1",
+	"REVIEW_A",
+	"REVIEW_B",
+	"ARCHITECT_L1",
+	"SECURITY_REVIEW_L1"
+]);
+const ProviderUsage = object({
+	inputTokens: number$1().int().nonnegative(),
+	cachedInputTokens: number$1().int().nonnegative(),
+	cacheWriteInputTokens: number$1().int().nonnegative(),
+	outputTokens: number$1().int().nonnegative(),
+	reasoningOutputTokens: number$1().int().nonnegative()
+});
+const UsageSource = _enum([
+	"cli_result_event",
+	"cli_stream_sum",
+	"transcript",
+	"provider_api",
+	"server_estimate"
+]);
+const CheckResult = object({
+	id: string().min(1),
+	result: _enum([
+		"pass",
+		"fail",
+		"skip"
+	]),
+	detail: string().max(1e3)
+});
+const PolicyVersions = object({
+	reward: string(),
+	oracle: string(),
+	review: string(),
+	usageProof: string(),
+	agent: string(),
+	capability: string(),
+	risk: string(),
+	merge: string(),
+	completion: string()
+});
+const RunPolicySnapshot = object({
+	schema: literal("wos-run-policy-snapshot.v1"),
+	leaseId: Uuid,
+	leaseGeneration: number$1().int().positive(),
+	policyVersions: PolicyVersions,
+	capabilityClass: string(),
+	provider: ProviderId,
+	modelId: string(),
+	reasoningRequired: ReasoningLevel,
+	reservedCapAcuMicro: U64String,
+	humanReviewRequired: boolean(),
+	riskClass: string().min(1),
+	claim: object({
+		mode: _enum(["queue", "self_pick"]),
+		queueBonusBp: number$1().int().min(0).max(1e4),
+		bonusApplies: boolean()
+	}).refine((c) => !c.bonusApplies || c.mode === "queue", "only a queue claim earns the queue bonus").optional(),
+	issuedAt: Timestamp
+});
+const UsageReceipt = object({
+	schema: literal("wos-usage-receipt.v1"),
+	id: Uuid,
+	agentRunId: Uuid,
+	leaseId: Uuid,
+	accountId: Uuid,
+	provider: ProviderId,
+	cliVersion: string(),
+	modelIdRequested: string(),
+	modelIdReported: string().nullable(),
+	reasoningRequested: ReasoningLevel,
+	reasoningObserved: ReasoningLevel.nullable(),
+	leaseGeneration: number$1().int().positive(),
+	runPolicySnapshotSha256: Sha256,
+	usage: ProviderUsage,
+	usageSource: UsageSource,
+	usageEventCount: number$1().int().nonnegative(),
+	usageEventIdsSha256: Sha256.nullable(),
+	transcriptSha256: Sha256,
+	verificationLevel: VerificationLevel,
+	oracleVersion: string(),
+	acuMicro: U64String,
+	plausibility: array(CheckResult),
+	usageProofPolicyVersion: string(),
+	issuedAt: Timestamp
+});
+const AgentRunView = object({
+	id: Uuid,
+	contributorAccountId: Uuid,
+	wallet: SolanaAddress.nullable(),
+	abu: AbuKey.nullable(),
+	leaseId: Uuid,
+	taskKind: string(),
+	provider: ProviderId,
+	modelIdRequested: string(),
+	modelIdReported: string().nullable(),
+	capabilityClass: CapabilityClass,
+	contextManifestSha256: Sha256,
+	baseCommit: GitSha.nullable(),
+	startedAt: Timestamp,
+	endedAt: Timestamp,
+	usage: ProviderUsage.nullable(),
+	verificationLevel: VerificationLevel,
+	capAcuMicro: U64String,
+	acuMicro: U64String,
+	status: object({
+		verification: _enum([
+			"pending",
+			"passed",
+			"failed",
+			"n/a"
+		]),
+		astra: _enum([
+			"pending",
+			"passed",
+			"gaps",
+			"n/a"
+		]),
+		fable: _enum([
+			"pending",
+			"passed",
+			"gaps",
+			"n/a"
+		]),
+		human: _enum([
+			"pending",
+			"passed",
+			"failed",
+			"n/a"
+		]),
+		contribution: _enum([
+			"running",
+			"pending_merge",
+			"pending_reward",
+			"finalized",
+			"excluded",
+			"failed"
+		])
+	}),
+	pr: object({
+		repo: RepoFullName,
+		number: number$1().int().positive()
+	}).nullable(),
+	mergeCommit: GitSha.nullable(),
+	rewardPolicyVersion: string(),
+	oracleVersion: string()
+});
+const SubjectRef = object({
+	kind: _enum([
+		"attempt",
+		"document",
+		"review",
+		"human_review",
+		"proposal",
+		"security_report",
+		"genesis",
+		"audit",
+		"payout_audit"
+	]),
+	id: Uuid
+});
+const ContributionReceipt = object({
+	schema: literal("wos-contribution-receipt.v1"),
+	id: Uuid,
+	contributorAccountId: Uuid,
+	githubUserId: number$1().int().positive().nullable(),
+	contributionType: ContributionType,
+	slice: RewardSlice,
+	target: TargetSlug.nullable(),
+	feature: FeatureKey.nullable(),
+	abu: AbuKey.nullable(),
+	subject: SubjectRef,
+	agentRunIds: array(Uuid),
+	usageReceiptSha256s: array(Sha256),
+	contextManifestSha256: Sha256.nullable(),
+	baseCommit: GitSha.nullable(),
+	mergeCommit: GitSha.nullable(),
+	pr: object({
+		repo: RepoFullName,
+		number: number$1().int().positive()
+	}).nullable(),
+	verificationResultSha256: Sha256.nullable(),
+	reviews: object({
+		astraReviewSha256: Sha256.nullable(),
+		fableReviewSha256: Sha256.nullable(),
+		humanReviewSha256s: array(Sha256),
+		labels: array(object({
+			label: literal("single_lab_review"),
+			reason: string().min(5)
+		}))
+	}),
+	weightMicro: U64String,
+	weightBasis: _enum(["task_budget", "acu_equivalent"]),
+	taskBudget: object({
+		taskId: Uuid,
+		budgetAcuMicro: U64String,
+		issuedEpoch: number$1().int().positive(),
+		shareBp: number$1().int().min(1).max(1e4)
+	}).nullable(),
+	evidenceClass: EvidenceClass,
+	acceptanceEvent: AcceptanceEvent,
+	leaseId: Uuid.nullable(),
+	leaseGeneration: number$1().int().positive().nullable(),
+	runPolicySnapshotSha256s: array(Sha256),
+	telemetry: object({
+		observedAcuMicro: U64String,
+		lowestVerificationLevel: VerificationLevel
+	}).nullable(),
+	beneficiary: object({
+		kind: _enum(["person", "organization"]),
+		organizationId: Uuid.nullable(),
+		sponsorshipId: Uuid.nullable(),
+		organizationShareBp: number$1().int().min(0).max(1e4)
+	}),
+	independence: _enum(["independent", "founder_bootstrap"]),
+	initialStatus: _enum(["ACTIVE", "PROVISIONAL"]),
+	policyVersions: PolicyVersions,
+	epochNumber: number$1().int().positive(),
+	qualifiedAt: Timestamp
+});
+const ReceiptStatus = _enum([
+	"ACTIVE",
+	"PROVISIONAL",
+	"RATIFIED",
+	"FINAL_BY_SILENCE",
+	"REVOKED"
+]);
+const ReceiptStatusEventKind = _enum([
+	"issued",
+	"quorum_ratified",
+	"human_signoff",
+	"ratification_rejected",
+	"final_by_silence",
+	"revoked",
+	"restored"
+]);
+const ProvisionalChallengePublication = object({
+	receiptId: Uuid,
+	receiptSha256: Sha256,
+	reviewPolicyVersion: string(),
+	bootstrapEndedAt: Timestamp,
+	publishedAt: Timestamp,
+	closesAt: Timestamp,
+	notification: object({
+		publicUrl: string().min(1),
+		notifiedParticipants: number$1().int().nonnegative()
+	})
+});
+const ReceiptStatusEvent = object({
+	receiptId: Uuid,
+	from: ReceiptStatus.nullable(),
+	to: ReceiptStatus,
+	kind: ReceiptStatusEventKind,
+	quorumId: Uuid.nullable(),
+	humanReviewId: Uuid.nullable(),
+	adminActionId: Uuid.nullable(),
+	at: Timestamp
+});
+const AllocationExplanation = object({
+	schema: literal("wos-allocation-explanation.v1"),
+	epochNumber: number$1().int().positive(),
+	pseudonym: string().min(3).max(60),
+	wallet: SolanaAddress.nullable(),
+	slice: string().min(1),
+	amountBase: I64String,
+	sentence: string().min(10).max(1e3),
+	receipts: array(object({
+		receiptId: Uuid,
+		contributionType: ContributionType,
+		model: string().nullable(),
+		usage: ProviderUsage.nullable(),
+		weightMicro: U64String,
+		runLogSummary: object({
+			turns: number$1().int(),
+			repairLoops: number$1().int(),
+			toolCalls: number$1().int()
+		}).nullable(),
+		attribution: array(string().max(200))
+	})),
+	policyVersions: PolicyVersions
+});
+const AnomalyMetrics = object({
+	accountId: Uuid,
+	epochNumber: number$1().int().positive(),
+	receipts: number$1().int().nonnegative(),
+	medianPeerRatioBp: number$1().int().nonnegative(),
+	capSaturationBp: number$1().int().min(0).max(1e4),
+	aboveP50ShareBp: number$1().int().min(0).max(1e4),
+	consistencyMilli: number$1().int(),
+	perLinePeerRatioBp: number$1().int().nonnegative().nullable(),
+	rankScore: number$1().int()
+});
+const DisputeReason = _enum([
+	"budget_mismatch",
+	"unmet_acceptance",
+	"defective_work",
+	"misattribution",
+	"duplicate_work",
+	"split_gaming",
+	"other"
+]);
+const DisputeEvidence = object({
+	kind: _enum([
+		"run_log_turn",
+		"diff",
+		"peer_baseline",
+		"anomaly_metric",
+		"cluster",
+		"other"
+	]),
+	ref: string().min(1).max(300),
+	note: string().min(10).max(2e3)
+});
+const AllocationDispute = object({
+	schema: literal("wos-allocation-dispute.v1"),
+	id: Uuid,
+	epochNumber: number$1().int().positive(),
+	disputerAccountId: Uuid,
+	items: array(object({
+		allocationId: Uuid,
+		reason: DisputeReason,
+		evidence: array(DisputeEvidence).min(1).max(20),
+		proposedAmountBase: U64String.nullable()
+	})).min(1).max(100),
+	sharedEvidence: array(DisputeEvidence).max(20),
+	note: string().max(4e3),
+	stakeBase: U64String,
+	openedAt: Timestamp
+});
+const DisputeItemResolution = object({
+	disputeId: Uuid,
+	allocationId: Uuid,
+	outcome: _enum([
+		"UPHELD",
+		"CLIPPED",
+		"REVOKED"
+	]),
+	quorumId: Uuid.nullable(),
+	adminActionId: Uuid.nullable(),
+	resultingAmountBase: U64String,
+	excessBase: U64String,
+	resolvedAt: Timestamp
+});
+const DisputeSettlement = object({
+	disputeId: Uuid,
+	totalExcessBase: U64String,
+	recoveredBase: U64String,
+	bountyBase: U64String,
+	stakeForfeitedBase: U64String,
+	settledAt: Timestamp
+});
+const ConfiscationSource = _enum([
+	"pending_allocation",
+	"holdback",
+	"unclaimed_entitlement",
+	"genesis_unvested"
+]);
+const Confiscation = object({
+	id: Uuid,
+	beneficiaryId: string().min(1),
+	provenExcessBase: U64String,
+	findingRef: string().min(1),
+	sources: array(object({
+		kind: ConfiscationSource,
+		sourceId: string().min(1),
+		amountBase: U64String
+	})).min(1),
+	adminActionId: Uuid,
+	noticeAt: Timestamp,
+	replyClosesAt: Timestamp,
+	appealClosesAt: Timestamp,
+	holdExpiresAt: Timestamp,
+	appeal: object({
+		appellantAccountId: Uuid,
+		filedAt: Timestamp
+	}).nullable(),
+	decision: object({
+		decision: _enum(["upheld", "overturned"]),
+		adminActionId: Uuid,
+		decidedAt: Timestamp
+	}).nullable(),
+	executedAt: Timestamp.nullable()
+});
+const Exclusion = object({
+	id: Uuid,
+	accountId: Uuid,
+	scope: array(_enum([
+		"rewards",
+		"voting",
+		"review",
+		"duty"
+	])).min(1),
+	untilEpoch: number$1().int().positive().nullable(),
+	governanceProposalId: Uuid.nullable(),
+	adminActionId: Uuid
+});
+const AllocationState = _enum([
+	"PROPOSED",
+	"CHALLENGE_OPEN",
+	"FINALIZED",
+	"DISPUTED",
+	"UNDER_REVIEW",
+	"UPHELD",
+	"CLIPPED",
+	"REVOKED",
+	"FINAL"
+]);
+const RunLog = object({
+	schema: literal("wos-run-log.v1"),
+	agentRunId: Uuid,
+	provider: ProviderId,
+	scrubberVersion: string().min(1),
+	turns: array(object({
+		i: number$1().int().nonnegative(),
+		startedAt: Timestamp,
+		endedAt: Timestamp,
+		responseIdSha256: Sha256.nullable(),
+		usage: object({
+			inputTokens: number$1().int().nonnegative(),
+			cachedInputTokens: number$1().int().nonnegative(),
+			cacheWriteInputTokens: number$1().int().nonnegative(),
+			outputTokens: number$1().int().nonnegative()
+		}),
+		toolCalls: array(object({
+			tool: string().min(1).max(40),
+			path: string().max(400).nullable(),
+			argsSha256: Sha256,
+			exitCode: number$1().int().nullable()
+		})).max(200),
+		chunkSha256: Sha256
+	})).max(2e3),
+	repairLoops: array(object({
+		i: number$1().int().nonnegative(),
+		reason: _enum([
+			"verify_failed_locally",
+			"review_findings",
+			"rebase"
+		]),
+		firstTurn: number$1().int().nonnegative(),
+		lastTurn: number$1().int().nonnegative()
+	}))
+});
+const PayoutAuditPacket = object({
+	schema: literal("wos-payout-audit-packet.v1"),
+	packetId: Uuid,
+	lines: array(object({
+		ref: string().regex(/^L\d{1,3}$/),
+		contributionType: ContributionType,
+		role: string().min(1),
+		model: string().min(1),
+		reasoning: ReasoningLevel,
+		sizePoints: number$1().int().positive().nullable(),
+		usage: ProviderUsage,
+		budgetAcuMicro: U64String,
+		budgetBasis: string().min(1),
+		acceptanceObjectiveRef: string().min(1),
+		acuMicro: U64String,
+		capAcuMicro: U64String,
+		repairLoops: number$1().int().nonnegative(),
+		runLogRefs: array(string().min(1)),
+		attribution: array(object({
+			party: string().min(1),
+			share: string().min(1)
+		}))
+	})).min(1),
+	diff: object({
+		files: number$1().int().nonnegative(),
+		additions: number$1().int().nonnegative(),
+		deletions: number$1().int().nonnegative(),
+		excerptRef: string().min(1)
+	}),
+	contractExcerpts: array(object({
+		ref: string().min(1),
+		text: string()
+	})),
+	peerBaselines: array(object({
+		key: string().min(1),
+		p25AcuMicro: U64String,
+		p50AcuMicro: U64String,
+		p75AcuMicro: U64String,
+		samples: number$1().int().nonnegative()
+	})),
+	focus: object({
+		focusRef: Uuid,
+		concerns: array(object({
+			lineRef: string().regex(/^L\d{1,3}$/),
+			reason: DisputeReason,
+			evidence: array(DisputeEvidence).max(20),
+			proposedAmountBase: U64String.nullable()
+		})).min(1),
+		sharedEvidence: array(DisputeEvidence).max(20),
+		disputerNoteUntrusted: string().max(4e3),
+		accusedReplyUntrusted: string().max(4e3).nullable()
+	}).nullable(),
+	manifestSha256: Sha256
+});
+const PayoutJudgment = _enum([
+	"plausible",
+	"inflated",
+	"misattributed",
+	"insufficient_evidence"
+]);
+const FocusAnswer = object({
+	lineRef: string().regex(/^L\d{1,3}$/),
+	concernHolds: boolean(),
+	answer: string().min(40).max(4e3)
+});
+const PerturbationClass = _enum([
+	"budget_mismatch",
+	"unmet_acceptance",
+	"split_stacking",
+	"duplicated_attribution",
+	"wrong_split"
+]);
+const PayoutAuditVerdict = object({
+	schema: literal("payout-audit-verdict.v1"),
+	packetId: Uuid,
+	manifestSha256: Sha256,
+	lines: array(object({
+		ref: string().regex(/^L\d{1,3}$/),
+		judgment: PayoutJudgment,
+		reason: PerturbationClass.nullable(),
+		plausibleAcuMicro: U64String.nullable(),
+		evidence: array(object({
+			kind: _enum([
+				"budget_record",
+				"acceptance_record",
+				"run_log_turn",
+				"diff_path",
+				"baseline",
+				"contract"
+			]),
+			ref: string().min(1),
+			note: string().min(10).max(2e3)
+		})).min(1).max(20),
+		rationale: string().min(40).max(4e3)
+	}).refine((l) => l.judgment === "inflated" === (l.plausibleAcuMicro !== null), { message: "plausibleAcuMicro iff inflated" }).refine((l) => (l.judgment === "inflated" || l.judgment === "misattributed") === (l.reason !== null), { message: "inflated/misattributed lines must name a reason" })).min(1),
+	focusAnswers: array(FocusAnswer).nullable(),
+	summary: string().min(40).max(4e3)
+});
+const PayoutCanary = object({
+	schema: literal("wos-payout-canary.v1"),
+	id: Uuid,
+	packetId: Uuid,
+	lineRef: string().regex(/^L\d{1,3}$/),
+	sourceReceiptId: Uuid,
+	perturbatorVersion: string().min(1),
+	seedSha256: Sha256,
+	perturbation: PerturbationClass,
+	magnitudeBp: number$1().int().positive(),
+	retiredAfterEpoch: number$1().int().positive()
+});
+const PayoutAuditQuorum = object({
+	id: Uuid,
+	receiptId: Uuid,
+	size: number$1().int().positive(),
+	state: _enum([
+		"assigning",
+		"sealed",
+		"revealed_ratified",
+		"revealed_findings",
+		"expired"
+	]),
+	slots: array(object({
+		slot: number$1().int().positive(),
+		accountId: Uuid.nullable(),
+		provider: ProviderId.nullable(),
+		outsideFeature: boolean()
+	})),
+	reviewPolicyVersion: string()
+});
+const ReceiptClip = object({
+	receiptId: Uuid,
+	newWeightMicro: U64String,
+	quorumId: Uuid.nullable(),
+	adminActionId: Uuid,
+	auditorAccountIds: array(Uuid).min(1),
+	at: Timestamp
+});
+const DutyEvent = object({
+	offerId: Uuid,
+	accountId: Uuid,
+	epochNumber: number$1().int().positive(),
+	kind: _enum([
+		"offered",
+		"completed",
+		"expired_no_fault",
+		"declined"
+	]),
+	quorumId: Uuid.nullable(),
+	deadlineAt: Timestamp.nullable(),
+	at: Timestamp
+});
+const EpochState = _enum([
+	"OPEN",
+	"CALCULATING",
+	"PROPOSED",
+	"FINALIZED",
+	"DISTRIBUTABLE",
+	"CLOSED"
+]);
+const Epoch = object({
+	epochNumber: number$1().int().positive(),
+	startsAt: Timestamp,
+	endsAt: Timestamp,
+	policyVersions: PolicyVersions,
+	cluster: SolanaCluster,
+	mode: _enum(["test", "live"]),
+	state: EpochState
+});
+const EpochTransition = object({
+	epochNumber: number$1().int().positive(),
+	from: EpochState.nullable(),
+	to: EpochState,
+	actor: _enum(["system", "maintainer"]),
+	adminActionId: Uuid.nullable(),
+	receiptsRoot: Sha256.nullable(),
+	allocationsRoot: Sha256.nullable(),
+	resultSha256: Sha256.nullable(),
+	distributorAddress: SolanaAddress.nullable(),
+	fundingSignature: string().nullable(),
+	at: Timestamp
+});
+const EpochManifestEntry = object({
+	epochNumber: number$1().int().positive(),
+	receiptId: Uuid,
+	receiptSha256: Sha256,
+	disposition: _enum([
+		"included",
+		"deferred",
+		"revoked"
+	]),
+	deferralCount: number$1().int().nonnegative()
+});
+const ReceiptRevocation = object({
+	receiptId: Uuid,
+	adminActionId: Uuid,
+	reason: string().min(20),
+	mode: _enum(["exclude_before_finalization", "offset_after_finalization"]),
+	at: Timestamp
+});
+const SettlementRecord = object({
+	epochNumber: number$1().int().positive(),
+	leafIndex: number$1().int().nonnegative(),
+	wallet: SolanaAddress,
+	amountBase: U64String,
+	attempt: number$1().int().positive(),
+	signature: string().min(32).max(100),
+	lastValidBlockHeight: number$1().int().nonnegative(),
+	outcome: _enum([
+		"pending",
+		"confirmed",
+		"expired_not_landed",
+		"failed"
+	]),
+	at: Timestamp
+});
+const Allocation = object({
+	id: Uuid,
+	epochNumber: number$1().int().positive(),
+	accountId: Uuid,
+	receiptId: Uuid.nullable(),
+	slice: _enum([
+		"execution",
+		"planning",
+		"human_review",
+		"outcomes",
+		"completion_payout",
+		"security_payout",
+		"dispute_bounty",
+		"offset"
+	]),
+	weightMicro: U64String,
+	amountBase: I64String
+});
+const PublicationConsent = object({
+	accountId: Uuid,
+	disclosureVersion: string().min(1),
+	disclosureSha256: Sha256,
+	at: Timestamp
+});
+const RunLogCommitment = object({
+	agentRunId: Uuid,
+	logSha256: Sha256,
+	turns: number$1().int().nonnegative(),
+	repairLoops: number$1().int().nonnegative(),
+	toolCalls: number$1().int().nonnegative(),
+	totalsMatch: boolean(),
+	bodyExpiresAt: Timestamp
+});
+const BeneficiaryRef = object({
+	kind: _enum(["person", "organization"]),
+	id: Uuid
+});
+const EntitlementRecord = object({
+	id: Uuid,
+	epochNumber: number$1().int().positive(),
+	cluster: SolanaCluster,
+	mode: _enum(["test", "live"]),
+	beneficiary: BeneficiaryRef,
+	kind: _enum([
+		"release_now",
+		"withheld_release",
+		"holdback_tranche",
+		"holdback_matured",
+		"bounty",
+		"genesis_vesting"
+	]),
+	source: object({
+		kind: _enum([
+			"allocation",
+			"tranche",
+			"dispute_settlement",
+			"genesis"
+		]),
+		id: Uuid
+	}),
+	amountBase: U64String,
+	maturesEpoch: number$1().int().positive().nullable(),
+	policyVersion: string().nullable(),
+	withheldEpochs: number$1().int().nonnegative(),
+	flags: array(_enum(["unaudited", "released_after_dispute"]))
+});
+const SettlementAttempt = object({
+	leafId: Uuid,
+	attempt: number$1().int().positive(),
+	adapterGeneration: number$1().int().positive(),
+	signedTxSha256: Sha256,
+	signature: string().min(32).max(100),
+	lastValidBlockHeight: number$1().int().nonnegative(),
+	persistedAt: Timestamp
+});
+const SettlementOutcome = discriminatedUnion("outcome", [object({
+	leafId: Uuid,
+	attempt: number$1().int().positive(),
+	outcome: literal("confirmed"),
+	commitment: literal("finalized"),
+	slot: number$1().int().positive()
+}), object({
+	leafId: Uuid,
+	attempt: number$1().int().positive(),
+	outcome: literal("expired_not_landed"),
+	observedBlockHeight: number$1().int().positive(),
+	statusObservation: record(string(), unknown())
+})]);
+const ClaimLeaf = object({
+	schema: literal("wos-claim-leaf.v1"),
+	cluster: SolanaCluster,
+	mint: SolanaAddress,
+	epochNumber: number$1().int().positive(),
+	index: number$1().int().nonnegative(),
+	beneficiary: BeneficiaryRef,
+	wallet: SolanaAddress,
+	amountBase: U64String
+});
+const CompletionPoolKind = _enum(["feature", "application"]);
+const CompletionPoolState = _enum([
+	"accruing",
+	"payable",
+	"paid",
+	"returned"
+]);
+const CompletionPool = object({
+	id: Uuid,
+	kind: CompletionPoolKind,
+	key: string().min(3).max(120),
+	accruedBase: U64String,
+	state: CompletionPoolState
+});
+const CompletionDefinition = object({
+	schema: literal("wos-completion-definition.v1"),
+	poolKey: string().min(3).max(120),
+	definitionVersion: number$1().int().positive(),
+	sourceDocuments: array(object({
+		documentId: Uuid,
+		version: number$1().int().positive(),
+		sha256: Sha256
+	})),
+	requiredSurfaces: array(string()),
+	acceptanceChecks: array(string()),
+	requireSecurityReview: boolean(),
+	requireExitRightsCheck: boolean(),
+	frozenAt: Timestamp
+});
+const PoolAccrual = object({
+	poolId: Uuid,
+	epochNumber: number$1().int().positive(),
+	amountBase: U64String,
+	basis: string().max(500)
+});
+const GenesisEvidenceKind = _enum([
+	"git_commit",
+	"wave_report",
+	"retro_abu"
+]);
+const GenesisContribution = object({
+	schema: literal("wos-genesis-contribution.v1"),
+	id: Uuid,
+	contributorAccountId: Uuid,
+	evidenceKind: GenesisEvidenceKind,
+	evidenceRefs: array(string().min(3).max(300)).min(1),
+	evidenceSha256: Sha256,
+	dedupKey: string().min(8).max(200),
+	sizePoints: number$1().int().positive(),
+	genesisPolicyVersion: string(),
+	recordedAt: Timestamp
+});
+const AbuseSignalKind = _enum([
+	"usage_outlier_vs_peers",
+	"cap_saturation_pattern",
+	"impossible_throughput",
+	"usage_fields_inconsistent",
+	"model_mismatch",
+	"duplicate_provider_ids",
+	"transcript_missing_on_audit",
+	"audit_divergence",
+	"repeated_failures",
+	"collusive_review_pattern",
+	"rubber_stamp_pattern",
+	"sybil_cluster",
+	"context_inflation",
+	"intentional_looping",
+	"duplicate_attempt",
+	"compromised_account_suspected",
+	"wallet_rebind_after_signal",
+	"human_review_disagreement",
+	"payout_canary_passed",
+	"inflation_finding_upheld",
+	"false_inflation_findings",
+	"run_log_inconsistent",
+	"consistent_skim_pattern",
+	"rejected_disputes"
+]);
+const AbuseSignal = object({
+	id: Uuid,
+	kind: AbuseSignalKind,
+	severity: _enum([
+		"info",
+		"low",
+		"medium",
+		"high"
+	]),
+	subject: object({
+		kind: _enum([
+			"agent_run",
+			"receipt",
+			"account",
+			"review",
+			"human_review",
+			"wallet",
+			"payout_audit",
+			"canary"
+		]),
+		id: string().min(1)
+	}),
+	accountId: Uuid.nullable(),
+	detector: string().min(1),
+	detectorVersion: string().min(1),
+	evidence: record(string(), union([
+		string(),
+		number$1(),
+		boolean(),
+		_null()
+	])),
+	raisedAt: Timestamp
+});
+const ContributionRiskFlag = object({
+	id: Uuid,
+	receiptId: Uuid,
+	signalIds: array(Uuid).min(1),
+	effect: _enum([
+		"none",
+		"hold",
+		"exclude_pending_review"
+	]),
+	riskPolicyVersion: string(),
+	raisedAt: Timestamp
+});
+const AdminActionKind = _enum([
+	"authorize_reviewer",
+	"revoke_reviewer",
+	"suspend_reward_eligibility",
+	"restore_reward_eligibility",
+	"suspend_reviewer_privileges",
+	"restore_reviewer_privileges",
+	"suspend_account",
+	"restore_account",
+	"invalidate_receipt",
+	"restore_receipt",
+	"hold_receipt",
+	"clear_risk_flag",
+	"uphold_risk_flag",
+	"record_offset",
+	"activate_policy",
+	"activate_oracle",
+	"set_model_eligibility",
+	"open_epoch",
+	"finalize_epoch",
+	"mark_epoch_distributable",
+	"close_epoch",
+	"record_genesis",
+	"award_security",
+	"bootstrap_merge",
+	"ratify_receipt",
+	"reject_ratification",
+	"resolve_ratification_dispute",
+	"clip_receipt",
+	"end_bootstrap",
+	"start_test_epochs",
+	"end_test_epochs"
+]);
+const AdminAction = object({
+	id: Uuid,
+	actorAccountId: Uuid,
+	action: AdminActionKind,
+	target: object({
+		kind: string().min(1),
+		id: string().min(1)
+	}),
+	reason: string().min(20).max(4e3),
+	affectedReceiptIds: array(Uuid),
+	affectedEpochNumbers: array(number$1().int().positive()),
+	previousState: record(string(), unknown()),
+	resultingState: record(string(), unknown()),
+	payload: record(string(), unknown()),
+	coSignerAccountId: Uuid.nullable(),
+	operationSha256: Sha256,
+	createdAt: Timestamp
+});
+const AdminActionApproval = object({
+	adminActionId: Uuid,
+	approverAccountId: Uuid,
+	operationSha256: Sha256,
+	approvedAt: Timestamp
+});
+const PayoutAuditAssignment = object({
+	id: Uuid,
+	quorumId: Uuid,
+	slot: number$1().int().positive(),
+	outsideFeature: boolean(),
+	packetSha256: Sha256,
+	reviewerAccountId: Uuid,
+	taskId: Uuid,
+	leaseId: Uuid,
+	leaseGeneration: number$1().int().positive(),
+	permittedProvider: ProviderId,
+	reviewPolicyVersion: string().min(1)
+});
+const QualificationResult = object({
+	id: Uuid,
+	subjectKind: _enum(["attempt", "document"]),
+	subjectId: Uuid,
+	subjectRevision: string().regex(/^[0-9a-f]{40}$/),
+	leaseId: Uuid,
+	leaseGeneration: number$1().int().positive(),
+	changesetId: Uuid,
+	roundId: Uuid,
+	verificationRunId: Uuid.nullable(),
+	humanReviewId: Uuid.nullable(),
+	policySnapshotSha256: Sha256,
+	evidenceSha256: Sha256
+});
+const GenesisReferenceManifest = object({
+	version: string().min(1),
+	cutoffEpoch: number$1().int().positive(),
+	rules: record(string(), unknown()),
+	receiptIds: array(Uuid).min(1),
+	manifestSha256: Sha256,
+	adminActionId: Uuid
+});
+const RiskClassId = string().regex(/^[a-z][a-z0-9_]{1,39}$/);
+const ReviewDomain = _enum([
+	"general",
+	"frontend",
+	"backend",
+	"mobile",
+	"security",
+	"accounting",
+	"protocol",
+	"data",
+	"infra",
+	"docs"
+]);
+const DocRef = object({
+	ref: string().min(1),
+	sha256: Sha256
+});
+const HumanReviewContext = object({
+	schema: literal("wos-human-review-context.v1"),
+	subject: SubjectRef,
+	riskClass: RiskClassId,
+	riskReasons: array(string().max(300)),
+	taskContract: DocRef.nullable(),
+	featureContract: DocRef.nullable(),
+	architecture: array(DocRef),
+	invariants: array(string().max(2e3)),
+	diff: object({
+		headSha: GitSha,
+		baseSha: GitSha,
+		submissionSha256: Sha256,
+		compareUrl: url()
+	}).nullable(),
+	verification: array(object({
+		check: string(),
+		conclusion: string(),
+		url: url().nullable()
+	})),
+	agentReviews: array(object({
+		slot: _enum(["astra", "fable"]),
+		verdict: _enum(["NO_MATERIAL_GAPS", "MATERIAL_GAPS"]),
+		reviewSha256: Sha256
+	})),
+	affectedInterfaces: array(string().max(300)),
+	checklist: array(object({
+		itemId: string().min(1),
+		question: string().min(5)
+	}))
+});
+const HumanReviewVerdict = _enum(["PASS", "FAIL"]);
+const HumanReview = object({
+	schema: literal("wos-human-review.v1"),
+	id: Uuid,
+	subject: SubjectRef,
+	roundId: Uuid.nullable(),
+	headSha: GitSha.nullable(),
+	submissionSha256: Sha256.nullable(),
+	contextSha256: Sha256,
+	reviewerAccountId: Uuid,
+	qualificationId: Uuid,
+	riskClass: RiskClassId,
+	verdict: HumanReviewVerdict,
+	findings: array(object({
+		localId: string().regex(/^h\d{1,3}$/),
+		severity: _enum(["material", "minor"]),
+		title: string().min(1).max(200),
+		detail: string().min(1).max(8e3)
+	})).max(50),
+	checklist: array(object({
+		itemId: string().min(1),
+		answer: _enum([
+			"yes",
+			"no",
+			"na"
+		]),
+		note: string().max(2e3)
+	})),
+	rationale: string().min(40).max(8e3),
+	reviewPolicyVersion: string(),
+	sealedAt: Timestamp
+}).refine((h) => h.verdict === "PASS" === !h.findings.some((f) => f.severity === "material"), { message: "verdict must be PASS iff there are no material findings" });
+const ReviewerQualification = object({
+	id: Uuid,
+	accountId: Uuid,
+	domains: array(ReviewDomain).min(1),
+	level: union([
+		literal(1),
+		literal(2),
+		literal(3)
+	]),
+	contributionTypes: array(ContributionType).min(1),
+	riskClasses: array(RiskClassId).min(1),
+	grantedByAdminActionId: Uuid,
+	state: _enum([
+		"active",
+		"suspended",
+		"revoked"
+	]),
+	grantedAt: Timestamp
+});
+const ReviewEvalCase = object({
+	id: Uuid,
+	subject: SubjectRef,
+	roundId: Uuid.nullable(),
+	pattern: _enum([
+		"agents_pass_human_fail",
+		"agents_fail_human_pass",
+		"agents_split",
+		"post_merge_defect_missed_by_all"
+	]),
+	astraVerdict: _enum(["NO_MATERIAL_GAPS", "MATERIAL_GAPS"]).nullable(),
+	fableVerdict: _enum(["NO_MATERIAL_GAPS", "MATERIAL_GAPS"]).nullable(),
+	humanVerdict: HumanReviewVerdict.nullable(),
+	outcome: _enum([
+		"pending",
+		"human_upheld",
+		"agents_upheld",
+		"both_wrong"
+	]),
+	contextSha256: Sha256,
+	createdAt: Timestamp
+});
+const SponsorshipLink = object({
+	id: Uuid,
+	organizationId: Uuid,
+	contributorAccountId: Uuid,
+	organizationShareBp: number$1().int().min(0).max(1e4),
+	requestedAt: Timestamp,
+	approvedByAccountId: Uuid,
+	effectiveFrom: Timestamp,
+	endedAt: Timestamp.nullable()
+});
+const WalletBinding = object({
+	accountId: Uuid.nullable(),
+	organizationId: Uuid.nullable(),
+	cluster: SolanaCluster,
+	wallet: SolanaAddress,
+	kind: _enum([
+		"external",
+		"cli_keypair",
+		"multisig_pda"
+	]),
+	message: string().min(1),
+	signature: string().min(64).max(128).nullable(),
+	multisigTxSignature: string().min(32).max(100).nullable(),
+	controllers: array(Uuid),
+	action: _enum(["bind", "unbind"]),
+	at: Timestamp
+});
+const AcceptanceObjective = object({
+	id: Uuid,
+	kind: _enum([
+		"feature_criterion",
+		"planning_deliverable",
+		"review_round",
+		"audit",
+		"resolution"
+	]),
+	ref: string().min(1),
+	budgetAcuMicro: U64String,
+	consensusRoundId: Uuid.nullable(),
+	budgetModelVersion: string().min(1)
+});
+const TaskBudget = object({
+	taskId: Uuid,
+	objectiveId: Uuid,
+	kind: _enum([
+		"execution",
+		"planning",
+		"human_review"
+	]),
+	budgetAcuMicro: U64String,
+	modelAcuMicro: U64String,
+	basis: object({
+		expectedComputeAcuMicro: U64String,
+		sizePoints: number$1().int().positive().nullable(),
+		difficultyBp: number$1().int().positive(),
+		importanceBp: number$1().int().positive(),
+		sharedDependency: boolean(),
+		justification: string().max(4e3)
+	}),
+	budgetModelVersion: string().min(1),
+	proposerAccountId: Uuid,
+	issuedEpoch: number$1().int().positive(),
+	issuanceRateBasePerAcu: U64String,
+	reservedBase: U64String,
+	expiresEpoch: number$1().int().positive()
+});
+const BugTriageRecord = object({
+	bugId: Uuid,
+	bugKey: BugId,
+	decisionSha256: Sha256,
+	outcome: TriageOutcome,
+	severity: BugSeverity.nullable(),
+	duplicateOfBugKey: BugId.nullable(),
+	decidedBy: _enum(["agent", "maintainer"]),
+	triageTaskId: Uuid.nullable(),
+	deciderAccountId: Uuid,
+	reporterAccountId: Uuid,
+	introducingReceiptId: Uuid.nullable(),
+	introducerAccountId: Uuid.nullable(),
+	introducedWithinOffsetWindow: boolean(),
+	decidedAt: Timestamp
+});
+const BugTriageConfirmation = object({
+	bugId: Uuid,
+	kind: _enum([
+		"ratified",
+		"severity_corrected",
+		"resolved"
+	]),
+	correctedSeverity: BugSeverity.nullable(),
+	maintainerAccountId: Uuid,
+	at: Timestamp
+});
+
+//#endregion
+//#region packages/contracts/dist/protocol/policies.js
+const WorkKind = union([
+	TaskKind,
+	BugTaskKind,
+	literal("architecture_author")
+]);
+const Bp = number$1().int().min(0).max(1e4);
+const Ppm = number$1().int().min(0).max(1e6);
+const Status = _enum([
+	"draft",
+	"active",
+	"retired"
+]);
+const ModelRate = object({
+	provider: ProviderId,
+	modelId: string().min(1),
+	inputPerM: number$1().int().nonnegative(),
+	cachedInputPerM: number$1().int().nonnegative(),
+	cacheWritePerM: number$1().int().nonnegative(),
+	outputPerM: number$1().int().nonnegative(),
+	source: string().min(1),
+	verified: boolean()
+});
+const ModelRateOracle = object({
+	oracleVersion: string().regex(/^oracle\.v\d+$/),
+	status: Status,
+	effectiveEpoch: number$1().int().positive(),
+	calibration: string().min(10),
+	maxChangePerVersionBp: Bp,
+	rates: array(ModelRate).min(1)
+});
+const FixBp = number$1().int().min(1e4).max(2e4);
+const RewardPolicy = object({
+	policyVersion: string().regex(/^reward-policy\.v\d+$/),
+	status: Status,
+	units: object({
+		decimals: literal(6),
+		acuMicroPerAcu: literal(1e6)
+	}),
+	epoch: object({
+		lengthDays: number$1().int().positive(),
+		riskReviewHours: number$1().int().positive(),
+		challengeHours: number$1().int().nonnegative(),
+		maxDeferrals: number$1().int().nonnegative(),
+		revertOffsetDays: number$1().int().nonnegative()
+	}),
+	emission: object({
+		maxSupplyBase: U64String,
+		emissionReserveBase: U64String,
+		budgetPpmOfRemaining: Ppm,
+		rateCeiling: object({
+			initialBasePerAcu: U64String,
+			decayPpmPerEpoch: Ppm
+		})
+	}),
+	slicesBp: object({
+		execution: Bp,
+		planning: Bp,
+		human_review: Bp,
+		outcomes: Bp,
+		completion_accrual: Bp,
+		security_reserve: Bp
+	}),
+	eligibility: object({
+		acceptedEvidenceClasses: object({
+			devnet: array(EvidenceClass),
+			mainnet: array(EvidenceClass)
+		}),
+		requireReviewPolicySatisfied: literal(true),
+		requireWalletForClaim: boolean()
+	}),
+	acceptance: array(object({
+		contributionType: ContributionType,
+		event: AcceptanceEvent,
+		acceptedBy: string().min(3),
+		slice: _enum([
+			"execution",
+			"planning",
+			"human_review",
+			"outcomes",
+			"security_reserve",
+			"none"
+		]),
+		weightBasis: _enum([
+			"task_budget",
+			"acu_equivalent",
+			"none"
+		]),
+		needsLease: boolean(),
+		needsUsageReceipt: boolean()
+	})),
+	settlement: object({
+		unboundCarryEpochs: number$1().int().positive(),
+		mechanism: object({
+			devnet: literal("push_transfer"),
+			mainnet: _enum([
+				"undecided",
+				"push_transfer",
+				"merkle_claim"
+			])
+		}),
+		maxOffsetRecoveryBp: Bp
+	}),
+	holdback: object({
+		shareBp: Bp,
+		epochs: number$1().int().positive(),
+		forfeitOnExclusion: literal(true)
+	}),
+	budgets: object({
+		denomination: literal("acu"),
+		funding: literal("reserve_at_issuance"),
+		acceptance: literal("binary"),
+		qualityFactor: literal("none"),
+		sharesSumBp: literal(1e4),
+		model: object({
+			difficultyBp: object({
+				min: Bp,
+				max: number$1().int().positive()
+			}),
+			importanceBp: object({
+				min: Bp,
+				max: number$1().int().positive()
+			}),
+			maxWithoutHumanBp: number$1().int().positive(),
+			hardMaxBp: number$1().int().positive(),
+			objectiveCap: literal(true),
+			proposerMayNotBuild: literal(true)
+		}),
+		expiryEpochs: number$1().int().positive(),
+		reviewGraceEpochs: number$1().int().nonnegative(),
+		recalibration: object({
+			everyEpochs: number$1().int().positive(),
+			maxChangeBp: Bp,
+			minSamples: number$1().int().positive()
+		})
+	}),
+	losses: object({
+		bountyBpOfRecovered: Bp,
+		absorptionMaxBp: Bp,
+		publish: literal(true)
+	}),
+	confiscation: object({
+		replyHours: number$1().int().positive(),
+		appealHours: number$1().int().positive(),
+		maxReplyHours: number$1().int().positive(),
+		maxAppealHours: number$1().int().positive(),
+		maxHoldAfterAppealHours: number$1().int().positive(),
+		maxTimeBoxedExclusionEpochs: number$1().int().positive(),
+		permanentExclusionTier: literal("structural")
+	}),
+	modules: object({
+		active: array(string().min(1)).min(1),
+		dormant: array(object({
+			module: _enum([
+				"dispute_stakes_and_bounties",
+				"multi_allocation_disputes_and_appeals",
+				"payout_canaries",
+				"organization_caps_and_beneficiary_splits",
+				"governance_voting",
+				"collusion_and_sybil_detection_beyond_basics",
+				"confiscation_beyond_simple_hold",
+				"genesis_calibration_population",
+				"priority_vote"
+			]),
+			activationTrigger: string().min(10),
+			v1Stub: string().min(5)
+		}))
+	}),
+	auditCapacity: object({
+		unauditedRelease: literal(true),
+		penalizeContributor: literal(false)
+	}),
+	challenge: object({
+		windowHours: number$1().int().positive(),
+		replyHours: number$1().int().positive(),
+		gateEscalateAfterHours: number$1().int().positive(),
+		standing: literal("epoch_participants"),
+		stakePerItemBp: Bp,
+		maxStakeBp: Bp,
+		minStakeBase: U64String,
+		appealHours: number$1().int().positive(),
+		joinerStake: literal("min"),
+		maxItemsPerDispute: number$1().int().positive(),
+		maxDisputesPerAccountPerEpoch: number$1().int().positive(),
+		relatedPartyBountyPriority: literal(false),
+		sampledAuditRateBp: Bp,
+		rejectedDisputesSignalAfter: number$1().int().positive(),
+		publicAllocations: literal(true)
+	}),
+	execution: object({
+		capIncludesRepairs: literal(true),
+		upheldFindingBonusBp: Bp,
+		maxPaidFindingsPerReview: number$1().int().nonnegative(),
+		payReviewsOfFailedAttemptsWithUpheldFindings: boolean()
+	}),
+	humanReview: object({
+		weightAcuEqMicro: record(RiskClassId, U64String),
+		upheldFindingBonusMicro: U64String,
+		maxPaidFindings: number$1().int().nonnegative(),
+		payRatificationReviews: literal(true)
+	}),
+	outcomes: object({
+		proposalIncorporatedAcuEq: number$1().int().nonnegative(),
+		bugAcuEq: object({
+			low: number$1().int(),
+			medium: number$1().int(),
+			high: number$1().int(),
+			critical: number$1().int()
+		}),
+		maxProposalsPaidPerAccountPerEpoch: number$1().int().positive()
+	}),
+	bugs: object({
+		severityFixBp: object({
+			low: FixBp,
+			medium: FixBp,
+			high: FixBp,
+			critical: FixBp
+		}),
+		maxSeverityFixBp: FixBp,
+		maxBugReportsPaidPerAccountPerEpoch: number$1().int().positive(),
+		rejectedReportsSignalAfter: number$1().int().positive(),
+		introducerWindowDays: number$1().int().positive(),
+		introducerOffsetEqualsReportPay: boolean(),
+		introducerReportPaid: literal(false),
+		introducerMayFixWithinWindow: literal(false),
+		reporterMayFix: literal(true),
+		sweepsPaid: literal(false)
+	}).optional(),
+	queue: object({ queueBonusBp: number$1().int().min(0).max(1e4) }).optional(),
+	security: object({
+		severityAcuEq: object({
+			low: number$1().int(),
+			medium: number$1().int(),
+			high: number$1().int(),
+			critical: number$1().int()
+		}),
+		maxShareOfReserveBp: Bp
+	}),
+	completion: object({
+		featurePoolsBp: Bp,
+		applicationPoolsBp: Bp
+	})
+});
+const RiskMatcher = object({
+	anyPathGlobs: array(string()).default([]),
+	contributionTypes: array(ContributionType).default([]),
+	labels: array(string()).default([])
+});
+const HumanRequirement = object({
+	count: number$1().int().nonnegative(),
+	domains: array(ReviewDomain).default([]),
+	distinctDomains: number$1().int().nonnegative().default(0),
+	minLevel: union([
+		literal(1),
+		literal(2),
+		literal(3)
+	])
+});
+const ReviewRule = object({
+	riskClass: RiskClassId,
+	deterministicVerification: literal(true),
+	agentReviews: array(object({
+		capability: CapabilityClass,
+		reasoning: union([ReasoningLevel, literal("max")])
+	})),
+	humans: HumanRequirement,
+	adminQuorum: number$1().int().nonnegative()
+});
+const ReviewPolicy = object({
+	policyVersion: string().regex(/^review-policy\.v\d+$/),
+	status: Status,
+	riskClasses: array(object({
+		id: RiskClassId,
+		priority: number$1().int(),
+		description: string(),
+		match: RiskMatcher
+	})).min(1),
+	defaultRiskClass: RiskClassId,
+	rules: array(ReviewRule).min(1),
+	independence: object({
+		humanMayBeSubjectAuthor: literal(false),
+		humanMayHoldAgentSlotOfSameRound: boolean(),
+		maxHumanReviewsOfSameAuthorPer7d: number$1().int().nonnegative(),
+		assignment: _enum(["admin_assigned", "random_among_qualified"])
+	}),
+	humanReviewSlaHours: number$1().int().positive(),
+	audits: object({
+		baseRateBp: Bp,
+		newAccountRateBp: Bp,
+		newAccountReceipts: number$1().int().nonnegative(),
+		flaggedAccountRateBp: Bp,
+		disagreementRevokesOriginal: literal(true)
+	}),
+	payoutAudit: object({
+		quorum: number$1().int().positive(),
+		requireOutsideFeature: literal(true),
+		ownFeatureSlot: boolean(),
+		smallPoolThreshold: number$1().int().positive(),
+		maxDutyTasksPerClaim: number$1().int().positive(),
+		dutyReasoning: union([ReasoningLevel, literal("max")]),
+		requireProviderDiversity: boolean(),
+		sealedUntilAllSubmit: literal(true),
+		unmetDutyCarryEpochs: number$1().int().positive(),
+		contradictedJudgmentRevokesCredit: literal(true),
+		upheldInflationBonusBp: Bp,
+		falseFindingsSignalAfter: number$1().int().positive(),
+		publishUsageAfterFinalization: literal(true)
+	}),
+	canaries: object({
+		rateBp: Bp,
+		newAccountRateBp: Bp,
+		flaggedAccountRateBp: Bp,
+		perturbations: array(PerturbationClass).min(1),
+		minMagnitudeBp: number$1().int().positive(),
+		maxUsesPerSource: number$1().int().positive(),
+		passEffect: _enum(["revoke_unfinalized_and_flag", "revoke_unfinalized_and_suspend"])
+	}),
+	agentReviewerAssignment: literal("random_among_eligible"),
+	bootstrap: object({
+		founderMergeAuthority: boolean(),
+		founderOwnWorkReceipt: literal("PROVISIONAL"),
+		selfReviewSatisfiesRules: literal(false),
+		publicLabel: string().min(10),
+		bootstrapFounderMayHoldHumanSeatOnOwnWork: boolean().optional(),
+		bootstrapFounderMayHoldBothSeats: boolean().optional(),
+		bootstrapFounderSkipsSelfReviewWait: boolean().optional(),
+		founderOwnWorkLabel: literal("bootstrap_self").optional()
+	}),
+	ratification: object({
+		mode: literal("optimistic_challenge"),
+		recruitedReviewerPool: literal(false),
+		bootstrapEndsAtOutsideContributors: number$1().int().positive(),
+		challengeWindowHours: number$1().int().positive(),
+		notifyAllParticipants: literal(true),
+		challengeGoesTo: literal("review_gate"),
+		finalKeepsOriginalTimestamp: literal(true)
+	}),
+	fallbacks: array(object({
+		key: literal("fable_unavailable"),
+		active: boolean(),
+		replacesSlot: literal("fable"),
+		replacementSeat: literal("human"),
+		agentReviewer: literal("astra"),
+		authoringModel: string().min(1),
+		label: literal("single_lab_review"),
+		laterFablePass: literal("optional_never_blocking"),
+		sameModelSelfReview: literal(false),
+		eligibleFor: array(_enum(["devnet", "shadow"])).min(1),
+		switchedBy: literal("admin_action_forward_only"),
+		public: literal(true)
+	})),
+	approvalBinding: literal("head_submission_context_policy"),
+	recordDisagreementsAsEvalCases: literal(true)
+});
+const AgentCapabilityPolicy = object({
+	policyVersion: string().regex(/^capability-policy\.v\d+$/),
+	status: Status,
+	classes: array(object({
+		id: CapabilityClass,
+		description: string(),
+		qualified: array(object({
+			provider: ProviderId,
+			modelId: string(),
+			minReasoning: union([ReasoningLevel, literal("max")]),
+			qualifiedBy: _enum(["founder_bootstrap", "eval_suite"]),
+			evalSuiteVersion: string().nullable()
+		}))
+	})).min(1),
+	taskRequirements: array(object({
+		taskKind: TaskKind,
+		capability: CapabilityClass,
+		minSizePointsForL4: number$1().int().positive().nullable()
+	})),
+	candidates: array(object({
+		key: string().min(1),
+		provider: _enum(["zai", "opencode-go"]),
+		alternativeProviders: array(_enum(["zai", "opencode-go"])).optional(),
+		modelIdPattern: string().min(1),
+		status: literal("candidate"),
+		allowedRoles: array(string()).max(0),
+		targetClasses: array(CapabilityClass).min(1),
+		reviewerOrResolverRequiresSeparateQualification: literal(true),
+		launchPaths: array(object({
+			kind: _enum([
+				"claude_cli_anthropic_compatible",
+				"zcode_cli",
+				"opencode_cli"
+			]),
+			status: _enum([
+				"documented",
+				"verified",
+				"later"
+			]),
+			sources: array(url()).optional(),
+			verifiedOn: date().optional(),
+			env: record(string(), string()),
+			identity: literal("self_reported"),
+			notes: string()
+		})),
+		qualificationSuite: string().min(1),
+		trials: object({
+			taskKinds: array(literal("roadmap_author")).min(1),
+			designatedBy: literal("admin_action"),
+			label: string().regex(/^candidate_trial:[a-z][a-z0-9-]*$/),
+			mayMerge: boolean(),
+			maxSubagents: number$1().int().min(0)
+		}).optional()
+	})),
+	assignment: object({
+		rankingPolicyVersion: string().regex(/^build-next-ranking\.v\d+$/),
+		modes: array(_enum(["self_pick", "assigned_next"])).length(2),
+		weights: object({
+			reuse: number$1().int().nonnegative(),
+			unlock: number$1().int().nonnegative(),
+			ageingPerEpoch: number$1().int().nonnegative()
+		}),
+		ageingCapEpochs: number$1().int().positive(),
+		focus: array(object({
+			target: string().min(1),
+			capabilityClass: CapabilityClass.nullable(),
+			priority: number$1().int().nonnegative()
+		})),
+		tieBreak: literal("unit_id_ascending"),
+		assignedOnlyWindowMinutes: number$1().int().nonnegative()
+	}),
+	workNext: object({
+		rankingPolicyVersion: string().regex(/^work-next-ranking\.v\d+$/),
+		weights: object({
+			reuse: number$1().int().nonnegative(),
+			unlock: number$1().int().nonnegative(),
+			ageingPerEpoch: number$1().int().nonnegative()
+		}),
+		ageingCapEpochs: number$1().int().positive(),
+		focus: array(object({
+			target: string().min(1),
+			capabilityClass: CapabilityClass.nullable(),
+			priority: number$1().int().nonnegative()
+		})),
+		tieBreak: literal("unit_id_ascending"),
+		structuralUnlock: record(WorkKind, number$1().int().nonnegative()),
+		kindBase: record(WorkKind, number$1().int().nonnegative()),
+		severityBoost: object({
+			low: number$1().int().nonnegative(),
+			medium: number$1().int().nonnegative(),
+			high: number$1().int().nonnegative(),
+			critical: number$1().int().nonnegative()
+		}),
+		architectureMigration: number$1().int().nonnegative(),
+		declines: object({
+			windowHours: number$1().int().positive(),
+			cooldownAfter: number$1().int().positive(),
+			cooldownHours: number$1().int().positive()
+		}),
+		priorityVote: object({
+			status: _enum(["dormant", "active"]),
+			subjects: array(_enum([
+				"target",
+				"feature",
+				"bug"
+			])).min(1),
+			eligibility: literal("governance_seasoning"),
+			maxBoost: number$1().int().nonnegative(),
+			saturationWeight: number$1().int().positive()
+		})
+	}).optional(),
+	qualificationSuites: array(object({
+		suiteVersion: string().min(1),
+		targetClass: CapabilityClass,
+		mode: literal("devnet_shadow"),
+		unitsManifestSha256: string().nullable(),
+		passThresholds: object({
+			minUnits: number$1().int().positive(),
+			minAcceptedOfAcceptableBp: number$1().int().min(0).max(1e4),
+			maxAcceptedOfRejectedBp: number$1().int().min(0).max(1e4)
+		}),
+		recordedPer: literal("model_version"),
+		affectsBudgets: literal(false)
+	})),
+	budgets: array(object({
+		taskKind: union([
+			TaskKind,
+			BugTaskKind.extract(["bug_triage"]),
+			literal("architecture_author")
+		]),
+		baseMicro: U64String,
+		perSizePointMicro: U64String,
+		peerBaseline: object({
+			minSamples: number$1().int().positive(),
+			headroomBp: number$1().int().min(1e4).max(3e4)
+		})
+	}))
+});
+const UsageProofPolicy = object({
+	policyVersion: string().regex(/^usage-proof-policy\.v\d+$/),
+	status: Status,
+	providers: array(object({
+		provider: ProviderId,
+		minCliVersion: string(),
+		primarySource: _enum([
+			"cli_result_event",
+			"cli_stream_sum",
+			"transcript"
+		]),
+		crossCheckSource: _enum([
+			"cli_stream_sum",
+			"transcript",
+			"none"
+		]),
+		notes: string()
+	})),
+	plausibility: object({
+		maxOutputTokensPerSecond: number$1().int().positive(),
+		maxTotalTokensPerSecond: number$1().int().positive(),
+		maxSourceMismatchBp: Bp,
+		requireProviderIdsHash: boolean(),
+		requireTranscriptHash: literal(true),
+		requireModelMatch: boolean()
+	}),
+	logs: object({
+		required: literal(false),
+		maxBytes: number$1().int().positive(),
+		maxTurns: number$1().int().positive(),
+		retentionDays: number$1().int().positive(),
+		requireExactTotals: literal(true)
+	}),
+	audit: object({
+		randomRerunBp: Bp,
+		transcriptRequestBp: Bp,
+		transcriptRetentionDays: number$1().int().positive(),
+		divergenceFactorBp: number$1().int().positive()
+	})
+});
+const RiskPolicy = object({
+	policyVersion: string().regex(/^risk-policy\.v\d+$/),
+	status: Status,
+	detectors: array(object({
+		id: string().min(1),
+		signal: string().min(1),
+		params: record(string(), number$1()),
+		severity: _enum([
+			"info",
+			"low",
+			"medium",
+			"high"
+		])
+	})),
+	effects: object({
+		info: literal("none"),
+		low: _enum(["none", "hold"]),
+		medium: _enum([
+			"none",
+			"hold",
+			"exclude_pending_review"
+		]),
+		high: _enum(["hold", "exclude_pending_review"])
+	}),
+	twoPersonActions: array(string()),
+	walletRebindCooldownDays: number$1().int().nonnegative()
+});
+const MergePolicy = object({
+	policyVersion: string().regex(/^merge-policy\.v\d+$/),
+	status: Status,
+	requireQualified: literal(true),
+	requireReviewPolicySatisfied: literal(true),
+	mergeMethod: _enum(["merge_queue", "maintainer"]),
+	maintainerApprovalPathGlobs: array(string())
+});
+const CompletionRewardPolicy = object({
+	policyVersion: string().regex(/^completion-policy\.v\d+$/),
+	status: Status,
+	feature: object({
+		implementersBp: Bp,
+		contractAuthorsBp: Bp,
+		roadmapAuthorsBp: Bp,
+		reviewersBp: Bp,
+		finderBp: Bp
+	}),
+	application: object({ basis: literal("lifetime_weight_on_target") }),
+	completeness: object({
+		requireEverySurfaceInProfile: literal(true),
+		requireAcceptanceSuite: literal(true),
+		requireSecurityReview: boolean(),
+		requireExitRightsCheck: boolean()
+	}),
+	definitionChange: literal("append_new_version"),
+	sharedFeatureAccrual: literal("equal_split_across_referencing_targets"),
+	returnAfterEpochs: number$1().int().positive()
+});
+const GenesisAllocationPolicy = object({
+	policyVersion: string().regex(/^genesis-policy\.v\d+$/),
+	status: Status,
+	capBase: U64String,
+	cutoff: object({
+		description: string(),
+		lastPreProtocolCommit: string().nullable()
+	}),
+	valuation: object({
+		method: literal("accepted_output_reference"),
+		referenceEpochs: object({
+			from: number$1().int().positive(),
+			to: number$1().int().positive()
+		}),
+		minReferenceReceipts: number$1().int().positive(),
+		referencePopulation: literal("frozen_list_reviewed_independently_excluding_genesis_beneficiaries_and_related_parties"),
+		fallbackBasePerSizePoint: U64String
+	}),
+	vesting: object({
+		startsAt: literal("mainnet_launch"),
+		durationDays: number$1().int().positive(),
+		cliffDays: number$1().int().nonnegative()
+	}),
+	review: object({
+		riskClass: RiskClassId,
+		founderMayReview: literal(false),
+		minIndependentHumans: number$1().int().positive()
+	}),
+	excludes: object({
+		provisionalReceipts: literal(true),
+		testEpochs: literal(true)
+	}),
+	mintOnDevnet: boolean()
+});
+const PolicyKind = _enum([
+	"reward",
+	"oracle",
+	"review",
+	"capability",
+	"usage_proof",
+	"risk",
+	"merge",
+	"completion",
+	"genesis",
+	"governance"
+]);
+const PolicyActivation = object({
+	kind: PolicyKind,
+	version: string().min(3),
+	effectiveEpoch: number$1().int().positive(),
+	announcedAt: string(),
+	emergency: boolean(),
+	previewSha256: string().regex(/^sha256:[0-9a-f]{64}$/).nullable(),
+	adminActionId: string().uuid()
+});
+
+//#endregion
+//#region packages/contracts/dist/protocol/governance.js
+const GovernancePolicy = object({
+	policyVersion: string().regex(/^governance-policy\.v\d+$/),
+	status: _enum([
+		"draft",
+		"active",
+		"retired"
+	]),
+	mode: _enum([
+		"founder",
+		"dual_majority",
+		"contribution_only"
+	]),
+	activation: object({
+		minEligibleVoters: number$1().int().positive(),
+		minLockedBase: U64String,
+		maxSingleVoterShareBp: number$1().int().min(0).max(1e4)
+	}),
+	lock: object({
+		minRemainingDays: number$1().int().positive(),
+		weightRule: literal("full_while_remaining_at_least_min"),
+		seasoningEpochs: number$1().int().positive(),
+		perWalletCapBp: number$1().int().min(0).max(1e4)
+	}),
+	contribution: object({
+		windowEpochs: number$1().int().positive(),
+		decay: literal("linear_age_out")
+	}),
+	lockedVoterMustHaveContributed: boolean(),
+	beneficialOwner: literal("organization_or_person_with_all_controlled_accounts_and_wallets"),
+	orgCapBp: number$1().int().min(0).max(1e4),
+	tiers: object({
+		routine: object({
+			thresholdBp: number$1().int().min(5001).max(1e4),
+			turnoutLockedBp: number$1().int(),
+			turnoutContributionBp: number$1().int()
+		}),
+		structural: object({
+			thresholdBp: number$1().int().min(5001).max(1e4),
+			turnoutLockedBp: number$1().int(),
+			turnoutContributionBp: number$1().int()
+		}),
+		governance: object({
+			thresholdBp: number$1().int().min(5001).max(1e4),
+			turnoutLockedBp: number$1().int(),
+			turnoutContributionBp: number$1().int()
+		}),
+		emergency_ratification: object({
+			thresholdBp: number$1().int().min(5001).max(1e4),
+			turnoutLockedBp: number$1().int(),
+			turnoutContributionBp: number$1().int()
+		})
+	}),
+	votingHours: number$1().int().positive(),
+	timelockEpochs: number$1().int().positive(),
+	limits: object({
+		maxSliceChangeBp: number$1().int().nonnegative(),
+		maxOracleChangeBp: number$1().int().nonnegative()
+	}),
+	emergency: object({
+		multisigThreshold: string().regex(/^\d+-of-\d+$/),
+		pauseMaxHours: number$1().int().positive()
+	})
+});
+const GovernanceProposal = object({
+	schema: literal("wos-governance-proposal.v1"),
+	id: Uuid,
+	kind: _enum([
+		"policy_change",
+		"adapter_switch",
+		"migration",
+		"ratify_emergency",
+		"governance_change"
+	]),
+	tier: _enum([
+		"routine",
+		"structural",
+		"governance",
+		"emergency_ratification"
+	]),
+	policyKind: PolicyKind.nullable(),
+	toVersion: string().nullable(),
+	prRef: string().regex(/^waronsaas\/wos#\d+$/),
+	previewSha256: Sha256,
+	exploitReviews: object({
+		astra: Sha256,
+		fable: Sha256
+	}),
+	snapshotEpoch: number$1().int().positive(),
+	votingOpensAt: Timestamp,
+	votingClosesAt: Timestamp,
+	effectiveEpoch: number$1().int().positive()
+});
+const GovernanceVote = object({
+	schema: literal("wos-governance-vote.v1"),
+	proposalId: Uuid,
+	accountId: Uuid,
+	wallet: SolanaAddress.nullable(),
+	choice: _enum([
+		"yes",
+		"no",
+		"abstain"
+	]),
+	signature: string().min(64)
+});
+const SettlementAdapterKind = _enum([
+	"solana_wos",
+	"in_app_credits",
+	"paused_accrual",
+	"successor"
+]);
+const OffRampTrigger = _enum([
+	"security_incident",
+	"chain_failure",
+	"legal_order",
+	"program_bug",
+	"governance_decision"
+]);
+const SettlementAdapterEvent = object({
+	seq: number$1().int().positive(),
+	action: _enum([
+		"activate",
+		"pause",
+		"resume",
+		"retire"
+	]),
+	adapter: SettlementAdapterKind,
+	trigger: OffRampTrigger,
+	expiresAt: Timestamp.nullable(),
+	adminActionId: Uuid.nullable(),
+	governanceProposalId: Uuid.nullable(),
+	at: Timestamp
+});
+const MigrationSnapshot = object({
+	schema: literal("wos-migration-snapshot.v1"),
+	id: Uuid,
+	atEpoch: number$1().int().positive(),
+	fromAdapter: SettlementAdapterKind,
+	toAdapter: SettlementAdapterKind,
+	adminActionsHead: Sha256,
+	allocationsRoots: array(object({
+		epochNumber: number$1().int().positive(),
+		root: Sha256
+	})),
+	balancesRoot: Sha256,
+	unclaimedTotalBase: U64String,
+	mappingRule: string().min(3),
+	claimWindowDays: number$1().int().positive()
+});
+
+//#endregion
+//#region packages/contracts/dist/protocol/data.js
+const MODEL_RATE_ORACLE_V1 = ModelRateOracle.parse(model_rate_oracle_v1_default);
+const REWARD_POLICY_V1 = RewardPolicy.parse(reward_policy_v1_default);
+const REVIEW_POLICY_V1 = ReviewPolicy.parse(review_policy_v1_default);
+const REVIEW_POLICY_V2 = ReviewPolicy.parse(review_policy_v2_default);
+const REVIEW_POLICY_V3 = ReviewPolicy.parse(review_policy_v3_default);
+const CAPABILITY_POLICY_V1 = AgentCapabilityPolicy.parse(capability_policy_v1_default);
+const USAGE_PROOF_POLICY_V1 = UsageProofPolicy.parse(usage_proof_policy_v1_default);
+const RISK_POLICY_V1 = RiskPolicy.parse(risk_policy_v1_default);
+const MERGE_POLICY_V1 = MergePolicy.parse(merge_policy_v1_default);
+const COMPLETION_POLICY_V1 = CompletionRewardPolicy.parse(completion_policy_v1_default);
+const GENESIS_POLICY_V1 = GenesisAllocationPolicy.parse(genesis_policy_v1_default);
+const GOVERNANCE_POLICY_V1 = GovernancePolicy.parse(governance_policy_v1_default);
+const REWARD_POLICY_V2 = RewardPolicy.parse(reward_policy_v2_default);
+const CAPABILITY_POLICY_V2 = AgentCapabilityPolicy.parse(capability_policy_v2_default);
+const CAPABILITY_POLICY_V3 = AgentCapabilityPolicy.parse(capability_policy_v3_default);
+
+//#endregion
+//#region packages/contracts/dist/protocol/rules.js
+const ContributorLimits = object({
+	providers: array(string().min(1)).optional(),
+	maxSizePoints: number$1().int().positive().optional(),
+	surfaces: array(string().min(1)).optional(),
+	toolchains: array(string().min(1)).optional(),
+	wallTimeMinutes: number$1().int().positive().optional(),
+	budgetAcuMicro: bigint().positive().optional(),
+	units: number$1().int().positive().optional(),
+	perProviderUnits: record(string(), number$1().int().positive()).optional()
+}).strict();
+
+//#endregion
+//#region packages/contracts/dist/shadow.js
+const MicroString = string().regex(/^[0-9]+$/, "decimal micro string");
+const ShadowReceiptKind = _enum([
+	"abu_build",
+	"abu_revision",
+	"roadmap_author",
+	"feature_author"
+]);
+const ShadowSubjectState = _enum([
+	"submitted",
+	"candidate_pushed",
+	"in_review",
+	"changes_requested",
+	"qualified",
+	"pr_open",
+	"merged",
+	"expired",
+	"abandoned",
+	"failed",
+	"closed_unmerged",
+	"superseded",
+	"in_review",
+	"revising",
+	"escalated",
+	"consensus",
+	"merged",
+	"abandoned"
+]);
+const ShadowReviewVerdict = _enum(["NO_MATERIAL_GAPS", "MATERIAL_GAPS"]);
+const ShadowReviewIndependence = _enum([
+	"independent",
+	"bootstrap_maintainer",
+	"bootstrap_self"
+]);
+const ShadowReceiptReview = object({
+	slot: _enum([
+		"astra",
+		"fable",
+		"human"
+	]),
+	handle: string().nullable(),
+	provider: string().nullable(),
+	modelId: string().nullable(),
+	reasoning: ReasoningLevel.nullable(),
+	verdict: ShadowReviewVerdict,
+	independence: ShadowReviewIndependence.nullable(),
+	reviewLabel: string().nullable(),
+	bootstrapSelf: boolean().nullable(),
+	sealedAt: Timestamp.nullable()
+});
+const ShadowReceiptRound = object({
+	id: Uuid,
+	number: number$1().int().positive(),
+	state: _enum([
+		"awaiting_reviews",
+		"revealed",
+		"cancelled"
+	]),
+	outcome: _enum(["consensus", "gaps"]).nullable(),
+	independence: ShadowReviewIndependence.nullable(),
+	reviewLabel: string().nullable(),
+	trialLabel: string().nullable(),
+	secondSeat: _enum(["fable", "human"]).nullable(),
+	headSha: string(),
+	submissionSha256: Sha256,
+	openedAt: Timestamp,
+	revealedAt: Timestamp.nullable(),
+	reviews: array(ShadowReceiptReview)
+});
+const ShadowReceiptRun = object({
+	id: Uuid,
+	provider: string(),
+	launchProvider: string().nullable(),
+	modelIdRequested: string(),
+	modelIdReported: string().nullable(),
+	reasoning: ReasoningLevel,
+	inputTokens: number$1().int().nullable(),
+	outputTokens: number$1().int().nullable(),
+	costUsd: number$1().nullable(),
+	steps: number$1().int().nullable(),
+	startedAt: Timestamp,
+	endedAt: Timestamp,
+	durationSeconds: number$1().nonnegative(),
+	exitCode: number$1().int().nullable(),
+	mode: _enum(["shadow"]).nullable(),
+	manifestSha256: Sha256,
+	transcriptSha256: Sha256.nullable(),
+	outputSha256: Sha256.nullable()
+});
+const ShadowBudget = object({
+	label: literal("shadow — no value"),
+	policy: object({
+		capability: literal("capability-policy.v2"),
+		reward: literal("reward-policy.v2")
+	}),
+	taskKind: string(),
+	sizePoints: number$1().int().nonnegative(),
+	difficultyBp: number$1().int(),
+	importanceBp: number$1().int(),
+	budgetAcuMicro: MicroString,
+	basePriceAcuMicro: MicroString,
+	queueBonusBp: number$1().int()
+});
+const ShadowReceiptSummary = object({
+	id: Uuid,
+	kind: ShadowReceiptKind,
+	handle: string().nullable(),
+	target: string().nullable(),
+	feature: string().nullable(),
+	abu: string().nullable(),
+	abuTitle: string().nullable(),
+	documentKind: _enum(["roadmap", "feature_contract"]).nullable(),
+	documentVersion: number$1().int().nullable(),
+	provider: string().nullable(),
+	modelId: string().nullable(),
+	reasoning: ReasoningLevel.nullable(),
+	inputTokens: number$1().int().nullable(),
+	outputTokens: number$1().int().nullable(),
+	costUsd: number$1().nullable(),
+	runCount: number$1().int().nonnegative(),
+	roundCount: number$1().int().nonnegative(),
+	reviewCount: number$1().int().nonnegative(),
+	trialLabel: string().nullable(),
+	outcome: object({
+		state: ShadowSubjectState,
+		merged: boolean(),
+		pr: object({
+			number: number$1().int().positive(),
+			url: string()
+		}).nullable(),
+		contribution: _enum([
+			"pending",
+			"accepted",
+			"rejected",
+			"reversed"
+		]).nullable()
+	}),
+	shadowBudget: ShadowBudget.nullable(),
+	createdAt: Timestamp,
+	updatedAt: Timestamp
+});
+const ShadowReceipt = ShadowReceiptSummary.extend({
+	runs: array(ShadowReceiptRun),
+	rounds: array(ShadowReceiptRound),
+	receiptSha256: Sha256
+});
+const SHADOW_MODEL_POLICY = {
+	capabilityBudgets: CAPABILITY_POLICY_V2.budgets,
+	model: REWARD_POLICY_V2.budgets.model,
+	humanReviewWeights: REWARD_POLICY_V2.humanReview.weightAcuEqMicro,
+	bugs: REWARD_POLICY_V2.bugs
+};
+
+//#endregion
 //#region packages/contracts/dist/api.js
 const ApiErrorCode = _enum([
 	"UNAUTHENTICATED",
@@ -10179,6 +15586,30 @@ const Routes = {
 		response: Page(LeaderboardRow).extend({ disclaimer: literal("WOS tokens are in-app credits with no cash value.") }),
 		errors: [],
 		summary: "Opted-in contributors ranked by score."
+	}),
+	listShadowReceipts: route({
+		method: "GET",
+		path: "/v1/public/receipts",
+		auth: "public",
+		idempotent: false,
+		params: None,
+		query: object({ cursor: Cursor.optional() }),
+		body: None,
+		response: Page(ShadowReceiptSummary),
+		errors: [],
+		summary: "Shadow receipts of real agent contributions (handle, model, cost as reported, reviews, outcome, shadow budget), newest first."
+	}),
+	getShadowReceipt: route({
+		method: "GET",
+		path: "/v1/public/receipts/:id",
+		auth: "public",
+		idempotent: false,
+		params: IdParams,
+		query: None,
+		body: None,
+		response: ShadowReceipt,
+		errors: ["NOT_FOUND"],
+		summary: "One shadow receipt in full: agent runs with hashes, review rounds and verdicts with labels, outcome, shadow budget, receipt hash."
 	}),
 	startEmailSignIn: route({
 		method: "POST",
@@ -11754,240 +17185,6 @@ const ArchitectureBlocker = object({
 		note: string(),
 		decidedAt: datetime({ offset: true })
 	}).nullable()
-});
-
-//#endregion
-//#region packages/contracts/dist/architecture.js
-const ArchElementKey = string().regex(/^arch:[a-z][a-z0-9-]{1,48}[a-z0-9]$/, "arch:<lowercase-name>");
-const ArchitectureRecordId = string().regex(/^ADR-\d{3}$/, "ADR-nnn");
-const ARCHITECTURE_PATHS = {
-	record: (id) => `architecture/${id}.yaml`,
-	buildGraph: (id) => `architecture/${id}/BUILD-GRAPH.yaml`
-};
-const ArchitectureElementChange = object({
-	key: ArchElementKey,
-	change: _enum([
-		"introduce",
-		"change",
-		"retire"
-	]),
-	summary: string().min(20),
-	paths: array(WriteScope).default([])
-});
-const ArchitectureRecord = object({
-	schema: literal("wos-architecture-record.v1"),
-	id: ArchitectureRecordId,
-	version: number$1().int().positive(),
-	title: string().min(5).max(100),
-	context: string().min(40),
-	decision: string().min(40),
-	consequences: string().min(40),
-	alternatives: array(object({
-		option: string().min(3),
-		rejectedBecause: string().min(20)
-	})).min(1),
-	elements: array(ArchitectureElementChange).min(1),
-	migration: object({
-		buildGraph: string().regex(/^architecture\/ADR-\d{3}\/BUILD-GRAPH\.yaml$/),
-		summary: string().min(20)
-	}).nullable(),
-	supersedes: array(ArchitectureRecordId).default([])
-}).superRefine((r, ctx) => {
-	const issue = (path, message) => ctx.addIssue({
-		code: "custom",
-		path,
-		message
-	});
-	for (const [i, e] of r.elements.entries()) {
-		if (e.change !== "retire" && e.paths.length === 0) issue([
-			"elements",
-			i,
-			"paths"
-		], `${e.change} needs the paths the element governs`);
-		if (e.change === "retire" && e.paths.length > 0) issue([
-			"elements",
-			i,
-			"paths"
-		], "a retired element governs no paths");
-	}
-	if (r.elements.some((e) => e.change !== "introduce") && r.migration === null) issue(["migration"], "changing or retiring an element needs a migration build graph");
-	if (r.migration && r.migration.buildGraph !== ARCHITECTURE_PATHS.buildGraph(r.id)) issue(["migration", "buildGraph"], `must be ${ARCHITECTURE_PATHS.buildGraph(r.id)}`);
-});
-const ArchitectureRecordErrorCode = _enum([
-	"ARCH_ELEMENT_DUPLICATE",
-	"ARCH_INTRODUCE_EXISTING",
-	"ARCH_CHANGE_UNKNOWN",
-	"ARCH_PATH_OVERLAP",
-	"ARCH_MIGRATION_KEY",
-	"ARCH_MIGRATION_RESOURCE",
-	"ARCH_MIGRATION_UNCOVERED",
-	"ARCH_VERSION_NOT_NEXT"
-]);
-const ArchitecturePolicy = object({
-	schema: literal("wos-architecture-policy.v1"),
-	maxRounds: number$1().int().positive(),
-	maintainerSignOff: literal(true),
-	migrationBoost: number$1().int().positive(),
-	holds: object({
-		startAt: literal("record_merged"),
-		endAt: literal("migration_merged_or_record_abandoned"),
-		holdTransitiveDependents: literal(false)
-	}),
-	review: object({
-		pauseInFlight: literal(false),
-		recordInContext: literal(true)
-	})
-});
-const ContractArchitecture = array(ArchElementKey).optional();
-
-//#endregion
-//#region packages/contracts/dist/bugs.js
-const BugId = string().regex(/^BUG-\d{1,9}$/);
-const BugSeverity = _enum([
-	"low",
-	"medium",
-	"high",
-	"critical"
-]);
-const BugTaskKind = _enum(["bug_triage", "bug_sweep"]);
-const BugReport = object({
-	schema: literal("wos-bug-report.v1"),
-	title: string().min(8).max(120),
-	surface: ProductSurface,
-	feature: FeatureKey.nullable(),
-	environment: object({
-		version: string().min(1).max(60),
-		os: string().max(60).nullable(),
-		browser: Browser.nullable(),
-		device: string().max(60).nullable()
-	}),
-	steps: array(string().min(3).max(500)).min(1).max(30),
-	expected: string().min(3).max(2e3),
-	actual: string().min(3).max(2e3),
-	failingTest: object({
-		path: RepoPath,
-		content: string().min(1).max(2e4)
-	}).nullable(),
-	reportedVia: _enum([
-		"cli",
-		"desktop",
-		"sweep"
-	]),
-	sweepId: Uuid.nullable()
-});
-const TriageOutcome = _enum([
-	"fix",
-	"contract_revision",
-	"duplicate",
-	"not_reproducible",
-	"not_a_bug",
-	"wont_fix"
-]);
-const TriageDecision = object({
-	schema: literal("wos-triage-decision.v1"),
-	bug: BugId,
-	decidedBy: discriminatedUnion("kind", [object({
-		kind: literal("agent"),
-		taskId: Uuid,
-		leaseId: Uuid
-	}), object({
-		kind: literal("maintainer"),
-		accountId: Uuid
-	})]),
-	reproduced: boolean(),
-	reproduction: object({
-		commit: GitSha,
-		surface: ProductSurface,
-		notes: string().min(20),
-		failingTestRan: boolean()
-	}).nullable(),
-	outcome: TriageOutcome,
-	severity: BugSeverity.nullable(),
-	duplicateOf: BugId.nullable(),
-	mapping: object({
-		feature: FeatureKey,
-		contractVersion: number$1().int().positive(),
-		requirements: array(RequirementKey).min(1),
-		abus: array(AbuKey),
-		files: array(RepoPath).min(1)
-	}).nullable(),
-	rationale: string().min(40),
-	decidedAt: Timestamp
-}).superRefine((d, ctx) => {
-	const issue = (path, message) => ctx.addIssue({
-		code: "custom",
-		path,
-		message
-	});
-	if (d.reproduced !== (d.reproduction !== null)) issue(["reproduction"], "reproduction is set exactly when reproduced");
-	const acts = d.outcome === "fix" || d.outcome === "contract_revision";
-	if (acts && !d.reproduced) issue(["reproduced"], `${d.outcome} needs a reproduced bug`);
-	if (acts && (d.severity === null || d.mapping === null)) issue(["mapping"], `${d.outcome} needs a severity and the mapping`);
-	if (d.outcome === "not_reproducible" && d.reproduced) issue(["outcome"], "a reproduced bug is not not_reproducible");
-	if (d.outcome === "duplicate" !== (d.duplicateOf !== null)) issue(["duplicateOf"], "duplicateOf is set exactly for duplicates");
-	if (d.duplicateOf === d.bug) issue(["duplicateOf"], "a bug is not its own duplicate");
-	if (d.outcome === "wont_fix" && d.decidedBy.kind !== "maintainer") issue(["decidedBy"], "only a maintainer decides wont_fix");
-});
-const RedGreenEvidence = object({
-	bug: BugId,
-	feature: FeatureKey,
-	regressionTest: RepoPath,
-	parent: object({
-		sha: GitSha,
-		conclusion: _enum(["failure", "success"]),
-		failedTests: array(RepoPath)
-	}),
-	head: object({
-		sha: GitSha,
-		conclusion: _enum(["failure", "success"]),
-		failedTests: array(RepoPath)
-	}),
-	testSha256: Sha256
-});
-const BugSweep = object({
-	schema: literal("wos-bug-sweep.v1"),
-	id: Uuid,
-	openedBy: _enum(["schedule", "maintainer"]),
-	commit: GitSha,
-	features: array(FeatureKey),
-	surfaces: array(ProductSurface).min(1),
-	browsers: array(Browser),
-	explore: boolean()
-});
-const SweepOutput = object({
-	schema: literal("wos-sweep-output.v1"),
-	sweepId: Uuid,
-	commit: GitSha,
-	journeysRun: array(object({
-		feature: FeatureKey,
-		journey: string().regex(/^J-\d{3}$/),
-		surface: ProductSurface,
-		browser: Browser.nullable(),
-		result: _enum([
-			"passed",
-			"failed",
-			"skipped"
-		])
-	})),
-	reports: array(BugReport).max(50)
-});
-const BugsPolicy = object({
-	schema: literal("wos-bugs-policy.v1"),
-	severityBoost: object({
-		low: number$1().int().min(0),
-		medium: number$1().int().min(0),
-		high: number$1().int().min(0),
-		critical: number$1().int().min(0)
-	}),
-	criticalHoldsFeature: boolean(),
-	triage: object({
-		requiresReproduction: literal(true),
-		maintainerConfirmsCritical: boolean()
-	}),
-	regressions: object({
-		dir: literal("regressions"),
-		removableOnlyByContractRevision: literal(true)
-	})
 });
 
 //#endregion
@@ -25846,63 +31043,6 @@ const ARCHITECTURE_POLICY_V1 = ArchitecturePolicy.parse(architecture_policy_v1_d
 const BUGS_POLICY_V1 = BugsPolicy.parse(bugs_policy_v1_default);
 const IDENTITY_POLICY_V1 = IdentityPolicy.parse(identity_policy_v1_default);
 const DISPOSABLE_EMAIL_DOMAINS = DomainList.parse(disposable_email_domains_v1_default);
-
-//#endregion
-//#region packages/contracts/dist/canonical.js
-function canonicalJson(value) {
-	if (value === null) return "null";
-	switch (typeof value) {
-		case "boolean": return value ? "true" : "false";
-		case "string": return JSON.stringify(value);
-		case "number":
-			if (!Number.isFinite(value)) throw new TypeError("canonicalJson: non-finite number");
-			return JSON.stringify(value);
-		case "object": {
-			if (Array.isArray(value)) return `[${value.map((v) => {
-				if (v === void 0) throw new TypeError("canonicalJson: undefined in array");
-				return canonicalJson(v);
-			}).join(",")}]`;
-			const proto = Object.getPrototypeOf(value);
-			if (proto !== Object.prototype && proto !== null) throw new TypeError("canonicalJson: only plain objects");
-			const obj = value;
-			return `{${Object.keys(obj).filter((k) => obj[k] !== void 0).sort().map((k) => `${JSON.stringify(k)}:${canonicalJson(obj[k])}`).join(",")}}`;
-		}
-		default: throw new TypeError(`canonicalJson: cannot canonicalise ${typeof value}`);
-	}
-}
-function sha256Of(data) {
-	const h = createHash("sha256");
-	if (typeof data === "string") h.update(data, "utf8");
-	else h.update(data);
-	return `sha256:${h.digest("hex")}`;
-}
-function canonicalSha256(value) {
-	return sha256Of(canonicalJson(value));
-}
-function submissionEntries(files) {
-	const entries = files.map((f) => f.op === "upsert" ? {
-		path: f.path,
-		op: "upsert",
-		mode: f.mode,
-		sha256: f.sha256
-	} : {
-		path: f.path,
-		op: "delete"
-	});
-	entries.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
-	for (let i = 1; i < entries.length; i++) if (entries[i].path === entries[i - 1].path) throw new Error(`submissionSha256: duplicate path ${entries[i].path}`);
-	return entries;
-}
-function submissionSha256(parentCommit, files) {
-	return canonicalSha256({
-		parentCommit,
-		files: submissionEntries(files)
-	});
-}
-const UnsignedChangeset = Changeset.omit({ signature: true });
-const UnsignedAgentRun = AgentRunRecord.omit({ signature: true });
-const ED25519_SPKI_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
-const ED25519_PKCS8_PREFIX = Buffer.from("302e020100300506032b657004220420", "hex");
 
 //#endregion
 //#region node_modules/picomatch/lib/constants.js

@@ -195,6 +195,7 @@ describe.skipIf(!HAS_DB)("every route: existence, auth mode, input validation, r
       "/v1/public/catalog",
       "/v1/public/activity",
       "/v1/public/leaderboard",
+      "/v1/public/receipts",
     ]) {
       await call("GET", p);
     }
@@ -318,6 +319,8 @@ describe.skipIf(!HAS_DB)("every route: existence, auth mode, input validation, r
     await call("PATCH", "/v1/me", { token: builder.token, body: { leaderboardOptIn: true } });
     await call("GET", "/v1/public/contributors/scenario-builder");
     await call("GET", "/v1/public/contributors/scenario-builder/ledger");
+    // P1 shadow receipts: the merged attempt has a public receipt, detail included.
+    await call("GET", `/v1/public/receipts/${b.attemptId}`);
 
     // proposals, blockers, resolver, rulings, maintainer
     await call("POST", "/v1/proposals", {
