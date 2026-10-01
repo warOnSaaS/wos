@@ -555,3 +555,15 @@ MINOR, additive. No migration.
   - The roadmap PR body shows an ensemble's runs and stability; below target it gets the `low-stability` label.
 - **CLI.** `wos roadmap <task> --ensemble <n>` (not with `--shadow`).
 - **Tools.** `compare.ts` reports the D73 stability metrics against the policy's targets.
+
+## 5.22.0 — 2026-09-30 (P1 shadow accounting, first slice)
+
+MINOR, additive. No migration: the shadow receipt is a read model built only from tables the control plane already stores in production (0000–0006, 0008–0009, 0011–0016; never 0007/0010, which are devnet-only). Served as the anonymous actor, so RLS hides sealed reviews and every private row; no protocol table is ever written.
+- `shadow.ts` (public read model, S-1…S-4): `ShadowReceiptSummary`, `ShadowReceipt` (summary + `runs`, `rounds`, `receiptSha256`), `ShadowReceiptRun` (provider as declared, model requested/reported, reasoning, token usage and cost as reported, timing, manifest/transcript/output hashes), `ShadowReceiptRound` (state, outcome, `independence`, `reviewLabel` = single_lab_review, `trialLabel` = candidate_trial:\<candidate\>, `secondSeat`) and `ShadowReceiptReview` (slot astra/fable/human, verdict, labels).
+- `shadowBudget(taskKind, sizePoints)` (S-3): the D49 budget model from the pinned v2 policies (`budgetModelMicro`) and the D63 published base price (`basePriceAcuMicro`) at the pinned `queueBonusBp`, on the pinned STANDARD basis (10 000 bp x 10 000 bp; production stores no per-task difficulty or importance), labelled `shadow — no value`. Unknown task kind = no budget.
+- `shadowReceiptSha256` (S-2): canonicalSha256 of the zod-parsed receipt with `receiptSha256` removed (the C-4 pattern), recomputable by anyone.
+- Routes (public): `GET /v1/public/receipts` (cursor-paginated, newest first) and `GET /v1/public/receipts/:id` (NOT_FOUND). Public fields only: handle, no emails, no account/device ids, no signatures.
+- Control plane: `services/control-plane/src/domain/shadow-receipts.ts` reads rounds' 0013/0015 columns through `to_jsonb` and gates `wos.round_human_reviews` on `to_regclass`, so it tolerates a production database without 0013/0015 exactly as before.
+- Website: `/receipts` and `/receipts/[id]` (monochrome, non-technical reader: who, which model, what task, cost as reported, reviews and verdicts, outcome, shadow budget, verify hashes), linked from the nav, footer, sitemap and llms.txt.
+
+Affected workstreams: control-plane, web.

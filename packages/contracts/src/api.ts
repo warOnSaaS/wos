@@ -75,6 +75,7 @@ import {
   ScimToken,
 } from "./identity.js";
 import { AbuKey, Cursor, FeatureKey, GitSha, Page, SemVer, Sha256, TargetSlug, Timestamp, Uuid } from "./primitives.js";
+import { ShadowReceipt, ShadowReceiptSummary } from "./shadow.js";
 
 /**
  * The control-plane HTTP API, as a typed route map. Base URL: https://api.waronsaas.com
@@ -347,6 +348,33 @@ export const Routes = {
     response: Page(LeaderboardRow).extend({ disclaimer: z.literal("WOS tokens are in-app credits with no cash value.") }),
     errors: [],
     summary: "Opted-in contributors ranked by score.",
+  }),
+  // contracts 5.22.0 (P1 shadow accounting): public receipts of real agent contributions. Shadow — no value moves.
+  listShadowReceipts: route({
+    method: "GET",
+    path: "/v1/public/receipts",
+    auth: "public",
+    idempotent: false,
+    params: None,
+    query: z.object({ cursor: Cursor.optional() }),
+    body: None,
+    response: Page(ShadowReceiptSummary),
+    errors: [],
+    summary:
+      "Shadow receipts of real agent contributions (handle, model, cost as reported, reviews, outcome, shadow budget), newest first.",
+  }),
+  getShadowReceipt: route({
+    method: "GET",
+    path: "/v1/public/receipts/:id",
+    auth: "public",
+    idempotent: false,
+    params: IdParams,
+    query: None,
+    body: None,
+    response: ShadowReceipt,
+    errors: ["NOT_FOUND"],
+    summary:
+      "One shadow receipt in full: agent runs with hashes, review rounds and verdicts with labels, outcome, shadow budget, receipt hash.",
   }),
 
   // ------------------------------------------------------------------ auth (D8: email magic link / code)

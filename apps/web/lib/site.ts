@@ -66,6 +66,7 @@ export const NAV = [
   { href: "/assessments", label: "ASSESSMENTS" },
   { href: "/how-it-works", label: "PROCEDURE" },
   { href: "/tokens", label: "TOKENS" },
+  { href: "/receipts", label: "RECEIPTS" },
   { href: "/leaderboard", label: "LEADERBOARD" },
   { href: "/faq", label: "FAQ" },
   { href: "/contribute", label: "CONTRIBUTE" },

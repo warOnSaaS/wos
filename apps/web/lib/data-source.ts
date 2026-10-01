@@ -22,6 +22,7 @@ import type {
   TargetSummary,
 } from "@contracts/domain";
 import type { Surface } from "@contracts/primitives";
+import type { ShadowReceipt, ShadowReceiptSummary } from "@contracts/shadow";
 import bundleJson from "@/generated/waronsaas.roadmap.json";
 import { formatPercent } from "@/generated/contracts-progress";
 import { targets, type Target } from "@/data/targets";
@@ -83,6 +84,32 @@ const isList = (b: unknown): b is { items: TargetSummary[] } =>
 const isDetail = (b: unknown): b is TargetDetail =>
   isSummary(b) && Array.isArray((b as TargetDetail).surfaces) && Array.isArray((b as TargetDetail).capabilities) &&
   (b as TargetDetail).surfaces.every((s) => isBp(s.specifiedBp) && isBp(s.builtBp));
+
+// P1 shadow receipts (contracts 5.20.0): the same minimal-guard discipline, one guard per route.
+const isCount = (n: unknown) => typeof n === "number" && Number.isInteger(n) && n >= 0;
+function isReceiptSummary(x: unknown): x is ShadowReceiptSummary {
+  const r = x as ShadowReceiptSummary;
+  return !!r && typeof r.id === "string" && typeof r.kind === "string" && typeof r.outcome === "object" && r.outcome !== null &&
+    typeof r.outcome.state === "string" && isCount(r.runCount) && isCount(r.roundCount) && isCount(r.reviewCount);
+}
+const isReceiptsPage = (b: unknown): b is { items: ShadowReceiptSummary[]; nextCursor: string | null } =>
+  !!b && Array.isArray((b as { items: unknown }).items) &&
+  (b as { items: unknown[] }).items.every(isReceiptSummary) &&
+  ((b as { nextCursor: unknown }).nextCursor === null || typeof (b as { nextCursor: unknown }).nextCursor === "string");
+const isReceipt = (b: unknown): b is ShadowReceipt =>
+  isReceiptSummary(b) && Array.isArray((b as ShadowReceipt).runs) && Array.isArray((b as ShadowReceipt).rounds) &&
+  typeof (b as ShadowReceipt).receiptSha256 === "string";
+
+/** GET /v1/public/receipts — shadow receipts of real agent contributions, newest first. Null while the receipts
+ *  route is not deployed yet (404): the page then says so, never "no receipts". */
+export async function listReceipts(cursor?: string): Promise<{ items: ShadowReceiptSummary[]; nextCursor: string | null } | null> {
+  return apiGet(`/v1/public/receipts${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`, isReceiptsPage);
+}
+
+/** GET /v1/public/receipts/:id — one receipt in full. Null when the route is not deployed yet or the id is unknown. */
+export async function getReceipt(id: string): Promise<ShadowReceipt | null> {
+  return apiGet(`/v1/public/receipts/${encodeURIComponent(id)}`, isReceipt);
+}
 
 /** Amendment 01 (contracts 5.0.0): the one wOS product ships on web, desktop, iPhone, Android and an API.
  *  Every replacement target is tracked on these until its roadmap inventories the vendor's surfaces. */

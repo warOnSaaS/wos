@@ -27,6 +27,7 @@ const pages = [
   { path: CONTRIBUTE_PATH, title: "How to contribute", about: `The steps with the wos command (prerequisites, install, sign in, link GitHub, enable Build, check, pick up work) and an honest status of what works today. Plain text for agents: ${abs(CONTRIBUTE_MD_PATH)}` },
   { path: "/download", title: "Download wOS", about: "The wos command's install line and release state (read from GitHub), wOS Desktop (not released yet), and prerequisites." },
   { path: "/tokens", title: "WOS tokens", about: "What earns WOS tokens. WOS tokens are in-app credits with no cash value." },
+  { path: "/receipts", title: "Receipts", about: "A public, verifiable receipt for every real agent contribution: who ran which model on what task, cost as reported, reviews and verdicts, outcome, and what it would pay under the frozen protocol (shadow — no value)." },
   { path: "/leaderboard", title: "Leaderboard", about: "Contributors ranked by accepted work. No accepted contributions yet." },
   { path: "/faq", title: "FAQ", about: "Short answers to common questions." },
   { path: "/log", title: "Build log", about: "What landed on main, generated from the git history and the wave reports." },
@@ -197,6 +198,15 @@ export async function llmsFullTxt(): Promise<string> {
   push(TOKENS.balance, "");
 
   push(`## Leaderboard (${abs("/leaderboard")})`, "", "Contributors are ranked by WOS tokens earned for accepted work.", "", "No accepted contributions yet.", "");
+
+  push(
+    `## Receipts (${abs("/receipts")})`,
+    "",
+    "Every real agent contribution gets a public, verifiable receipt: who ran which model on what task, the token usage and cost as reported by the CLI, the review rounds and verdicts with their labels, the outcome, and what the work would pay under the frozen protocol (shadow — no value moves).",
+    "",
+    "No receipts yet: no agent contribution has been submitted.",
+    "",
+  );
 
   push(`## About (${abs("/about")})`, "", ABOUT.mission, "", "### Reasons", "", ...ABOUT.why.map((w) => `- ${w}`), "");
   push("### Method", "", ABOUT.how, "", ABOUT.selfHost, "", "### Position", "", ABOUT.zero, "");

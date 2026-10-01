@@ -4,6 +4,7 @@
  * private row (sealed reviews, emails, leases).
  */
 import { reviewPolicyState } from "../domain/human-review.js";
+import { buildReceipt, listReceipts, parseReceiptCursor, subjectById } from "../domain/shadow-receipts.js";
 import {
   type AbuSummary,
   type AppFeatureDetail,
@@ -307,6 +308,8 @@ export const publicHandlers: Pick<
   | "getContributor"
   | "getContributorLedger"
   | "getLeaderboard"
+  | "listShadowReceipts"
+  | "getShadowReceipt"
 > = {
   async getPlatformStatus(ctx) {
     return inTransaction(ctx.deps.sql, ANON, async (tx) => {
@@ -703,6 +706,19 @@ export const publicHandlers: Pick<
         nextCursor: rows.length > PAGE ? String(offset + PAGE) : null,
         disclaimer: TOKEN_DISCLAIMER,
       };
+    });
+  },
+
+  // contracts 5.22.0 (P1 shadow accounting): public receipts of real agent contributions. Shadow — no value moves.
+  async listShadowReceipts(ctx) {
+    return inTransaction(ctx.deps.sql, ANON, async (tx) => listReceipts(tx, parseReceiptCursor(ctx.query.cursor)));
+  },
+
+  async getShadowReceipt(ctx) {
+    return inTransaction(ctx.deps.sql, ANON, async (tx) => {
+      const subject = await subjectById(tx, ctx.params.id);
+      if (!subject) throw new ApiFailure("NOT_FOUND", `no receipt ${ctx.params.id}`);
+      return buildReceipt(tx, subject);
     });
   },
 };
