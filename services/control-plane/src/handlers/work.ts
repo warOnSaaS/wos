@@ -126,7 +126,36 @@ async function claimResponse(tx: Tx, deps: Deps, taskId: string, lease: LeaseRow
   };
 }
 
-async function withGithubRetries<T>(deps: Deps, what: string, fn: () => Promise<T>): Promise<T> {
+/**
+ * GitHub's own answer, for the error a contributor sees and the logs (never a secret: tokens, Authorization headers and
+ * key blocks are cut out; bounded length). Production incident 2026-10-01: every App commit was refused by the App's own
+ * commit-message check, and the generic "GitHub commit failed" hid it.
+ */
+export function githubErrorDetail(err: unknown): { code: string; status: number | null; message: string } {
+  const e = err as { code?: unknown; status?: unknown; message?: unknown };
+  const raw = typeof e?.message === "string" ? e.message : String(err);
+  const message = raw
+    .replace(/-----BEGIN [A-Z ]+-----[\s\S]*?-----END [A-Z ]+-----/g, "[key]")
+    .replace(/\b(gh[pousr]_|github_pat_)[A-Za-z0-9_]+/g, "[token]")
+    .replace(/(authorization|bearer|token)(["':=\s]+)[A-Za-z0-9._-]{8,}/gi, "$1$2[redacted]")
+    .slice(0, 600);
+  return {
+    code: typeof e?.code === "string" ? e.code : err instanceof ApiFailure ? err.code : "GITHUB_ERROR",
+    status: typeof e?.status === "number" ? e.status : null,
+    message,
+  };
+}
+
+/** Worth retrying: network errors (no status), 5xx, 429, and GitHub's rate-limit 403s. Never our own input refusals. */
+function retryable(err: unknown): boolean {
+  if (err instanceof ApiFailure) return err.code === "UPSTREAM_GITHUB";
+  const d = githubErrorDetail(err);
+  if (["INVALID_INPUT", "CHANGESET_REJECTED", "HEAD_MISMATCH", "REF_CONFLICT", "NOT_INSTALLED"].includes(d.code)) return false;
+  if (d.status === null) return true;
+  return d.status >= 500 || d.status === 429 || (d.status === 403 && /rate limit/i.test(d.message));
+}
+
+export async function withGithubRetries<T>(deps: Deps, what: string, fn: () => Promise<T>): Promise<T> {
   let last: unknown;
   for (let i = 0; i <= deps.config.githubRetries; i++) {
     try {
@@ -134,10 +163,18 @@ async function withGithubRetries<T>(deps: Deps, what: string, fn: () => Promise<
     } catch (err) {
       last = err;
       if (err instanceof ApiFailure && err.code !== "UPSTREAM_GITHUB") throw err;
+      if (!retryable(err)) break;
     }
   }
-  deps.log("warn", `GitHub ${what} failed`, { error: last instanceof Error ? last.message : String(last) });
-  throw new ApiFailure("UPSTREAM_GITHUB", `GitHub ${what} failed; retry with the same Idempotency-Key`);
+  const d = githubErrorDetail(last);
+  deps.log("warn", `GitHub ${what} failed`, { github: d });
+  throw new ApiFailure(
+    "UPSTREAM_GITHUB",
+    `GitHub ${what} failed: ${d.code}${d.status !== null ? ` (HTTP ${d.status})` : ""}: ${d.message}${
+      retryable(last) ? "; retry with the same Idempotency-Key" : ""
+    }`,
+    { github: d, retryable: retryable(last) },
+  );
 }
 
 /** D15: at most `maxConcurrentBuildLeasesPerProvider` active build leases per provider (AGENT-POLICY.md, D15). */
@@ -822,7 +859,31 @@ export const workHandlers: Pick<
       const plan = l.context_plan as unknown as ContextPlan;
       const expectedParent = attempt ? (attempt.head_sha ?? attempt.base_sha) : (doc!.head_sha ?? plan.source.commit);
       const trial = doc ? await documentTrialLabel(tx, doc.id) : null;
-      return { l, task, device, manifestOk: !!manifest, attempt, doc, spec, expectedParent, trial };
+      // contracts 5.20.0 (`wos resubmit`): the content is an earlier lease's archived output. That lease must be of this
+      // task and account, ended without a committed submission, and have a signed agent run of the same model as this lease.
+      let resubmittedFrom: { agentRunId: string } | null = null;
+      if (cs.resubmission) {
+        const from = cs.resubmission.fromLeaseId;
+        const [old] = await tx<{ task_id: string; account_id: string; state: string }[]>`
+          select task_id, account_id, state from wos.leases where id = ${from}`;
+        if (!old || old.task_id !== l.task_id || old.account_id !== caller.accountId || from === l.id)
+          throw new ApiFailure("VALIDATION_FAILED", "resubmission.fromLeaseId must be another lease of this task held by you");
+        if (old.state === "active") throw new ApiFailure("VALIDATION_FAILED", "release the earlier lease before re-submitting its output");
+        const [committed] = await tx`select 1 as x from wos.changesets where lease_id = ${from} and ok`;
+        if (committed) throw new ApiFailure("VALIDATION_FAILED", "the earlier lease's submission was already committed");
+        const [run] = await tx<{ id: string; model_id: string }[]>`
+          select r.id, m.model_id from wos.agent_runs r join wos.context_manifests m on m.id = r.manifest_id
+           where r.lease_id = ${from} and r.signature_valid order by r.created_at desc limit 1`;
+        if (!run)
+          throw new ApiFailure("VALIDATION_FAILED", "the earlier lease has no signed agent run: there is no model output to re-submit");
+        if (run.model_id !== plan.modelId)
+          throw new ApiFailure(
+            "VALIDATION_FAILED",
+            `claim the task with the model that produced the output (${run.model_id}, not ${plan.modelId})`,
+          );
+        resubmittedFrom = { agentRunId: run.id };
+      }
+      return { l, task, device, manifestOk: !!manifest, attempt, doc, spec, expectedParent, trial, resubmittedFrom };
     });
     const repo = pre.doc?.repo ?? pre.attempt!.repo;
     const repoManifest = await repoManifestAt(deps, repo, cs.parentCommit);
@@ -894,8 +955,11 @@ export const workHandlers: Pick<
       [COMMIT_TRAILERS.contributor]: handle,
       // D69: commits of a document under a candidate trial carry its label.
       ...(pre.trial ? { [COMMIT_TRAILERS.candidateTrial]: pre.trial.label } : {}),
+      ...(pre.resubmittedFrom ? { [COMMIT_TRAILERS.resubmittedFromRun]: pre.resubmittedFrom.agentRunId } : {}),
     };
-    const coAuthor = coAuthoredBy(caller.githubUserId!, ghLogin?.github_login ?? handle);
+    // The Co-authored-by trailer is a trailer like the others: buildCommitMessage refuses trailer lines inside the
+    // message text (they would forge provenance) and requires Co-authored-by among the trailers (D9).
+    const coAuthor = coAuthoredBy(caller.githubUserId!, ghLogin?.github_login ?? handle).slice("Co-authored-by: ".length);
     const commit = await withGithubRetries(deps, "commit", () =>
       deps.github.commitChangeset(
         repo,
@@ -910,10 +974,8 @@ export const workHandlers: Pick<
                 ? noreplyEmail(deps.config.appBotUserId, APP_COMMIT_AUTHOR_NAME)
                 : `${APP_COMMIT_AUTHOR_NAME}@users.noreply.github.com`,
           },
-          trailers,
-          message: `${title}\n\n${Object.entries(trailers)
-            .map(([k, v]) => `${k}: ${v}`)
-            .join("\n")}\n${coAuthor}`,
+          trailers: { ...trailers, "Co-authored-by": coAuthor },
+          message: title,
         },
         { createBranch: expectedHead === null, expectedHeadSha: expectedHead },
       ),
@@ -927,6 +989,24 @@ export const workHandlers: Pick<
       await insertChangeset(tx, true, changesetId);
       await tx`insert into wos.candidate_commits (id, changeset_id, repo, branch, commit_sha)
                values (${uuidv7()}, ${changesetId}, ${repo}, ${branch}, ${commit.commitSha})`;
+      if (pre.resubmittedFrom && cs.resubmission)
+        await insertEvent(
+          tx,
+          {
+            type: "changeset.resubmitted",
+            v: 1,
+            visibility: "public",
+            payload: {
+              taskId: pre.task.id,
+              leaseId: pre.l.id,
+              fromLeaseId: cs.resubmission.fromLeaseId,
+              fromAgentRunId: pre.resubmittedFrom.agentRunId,
+              commitSha: commit.commitSha,
+              reason: cs.resubmission.reason,
+            },
+          },
+          { aggregateKind: "task", aggregateId: pre.task.id, actor: "contributor", actorAccountId: caller.accountId },
+        );
       const lease = await tx<
         { id: string }[]
       >`select id from wos.leases where id = ${pre.l.id} and state = 'active' and expires_at > now()`;

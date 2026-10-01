@@ -8493,6 +8493,10 @@ const Changeset = object({
 		durationMs: number$1().int().nonnegative(),
 		outputSha256: Sha256
 	})).default([]),
+	resubmission: object({
+		fromLeaseId: Uuid,
+		reason: string().min(5).max(500)
+	}).optional(),
 	signature: string().min(1)
 });
 const ChangesetErrorCode = _enum([
@@ -9350,6 +9354,14 @@ const DomainEventBody = discriminatedUnion("type", [
 			"expired",
 			"revoked"
 		])
+	}),
+	e("changeset.resubmitted", "public", {
+		taskId: Uuid,
+		leaseId: Uuid,
+		fromLeaseId: Uuid,
+		fromAgentRunId: Uuid,
+		commitSha: GitSha,
+		reason: string()
 	}),
 	e("attempt.created", "public", {
 		attemptId: Uuid,

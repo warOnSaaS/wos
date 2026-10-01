@@ -26,6 +26,13 @@ Commands:
   human-ruling [options] <document>  Rule on an escalated document yourself
                                      (D53: under fable_unavailable every
                                      conflict goes to the human)
+  resubmit <dir>                     Re-submit a failed author run's archived
+                                     output without running a model: releases
+                                     its lease if still active, claims the task
+                                     again with the same model, posts this
+                                     lease's context manifest, and submits the
+                                     same files and summary (recorded as
+                                     re-submitted from that run)
   roadmap [options] [task]           Author a target's canonical roadmap or a
                                      Feature Contract
   resolve [options] [task]           Rule on an escalated dispute or

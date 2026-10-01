@@ -431,3 +431,27 @@ After B3's control-plane change:
 - add the template's `merge_queue` rule: SQUASH, ALLGREEN, 5 to build, minimum 1 to merge, 60-minute check timeout.
 
 Apply it with `gh api -X PUT repos/warOnSaaS/product/rulesets/24267950 --input <file>`.
+
+## 8. Re-submitting a failed run's output without rerunning the model (contracts 5.20.0)
+
+An author run whose submission fails after the agent finished (e.g. the 2026-10-01 incident: `UPSTREAM_GITHUB` from the App's commit-message check) is archived under `~/.wos/failed/<task>/<run>/`: the files, `output.json` (the author summary), `run.json` (lease, model, launch, usage, error) and the transcript. To send exactly that output, with no model run:
+
+```sh
+cd ~/waronsaas && git pull --ff-only && nvm use 22 && npm ci --ignore-scripts && npm run build && npm run bundle -w @waronsaas/cli
+wos status >/dev/null      # refreshes the session
+node apps/cli/dist/wos.mjs resubmit ~/.wos/failed/<task>/<run>
+```
+
+What it does:
+1. It checks that the directory is a failed author run of that task.
+2. It releases the run's lease if it is still active, so the task opens again.
+3. It claims the task again with the archived run's model and launch. For a candidate trial that is `glm` with `opencode-go`, and the trial designation still covers the task.
+4. It builds and posts this lease's context manifest.
+5. It submits the archived files and summary unchanged, with `resubmission.fromLeaseId` set to the old lease.
+
+The control plane accepts this only if the old lease belongs to the same task and account, has ended without a committed submission, and has a signed agent run of the same model. The commit then carries `wOS-Resubmitted-From-Run: <that run's id>`, and the public event `changeset.resubmitted` names both leases. The record says that the content is run A's output and that nothing ran on the new lease. The new lease has no agent run of its own.
+
+For GLM trial run A on the Salesforce roadmap:
+```sh
+node apps/cli/dist/wos.mjs resubmit ~/.wos/failed/01a0f47a-0b77-7043-9299-0b237bb8d59c/2026-10-01T01-31-25-130Z-01a0f4fd
+```

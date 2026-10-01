@@ -103,6 +103,13 @@ export interface AuthorOptions {
    * submitted; the agent run record says `mode: "shadow"`.
    */
   shadow?: boolean;
+  /**
+   * contracts 5.20.0: re-submit the archived output of a failed run of THIS task (`wos resubmit <dir>`, a
+   * <workspace>/failed/<task>/<run>/ directory) instead of running a model: release that run's lease if still active,
+   * claim the task again with the same model (and launch), build and post this lease's context manifest, then submit the
+   * archived files and summary unchanged, with `Changeset.resubmission` naming the earlier lease. No agent runs.
+   */
+  resubmitFrom?: string;
   signal?: AbortSignal;
 }
 
