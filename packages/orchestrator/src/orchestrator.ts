@@ -20,7 +20,9 @@ import {
   type ChangesetValidation,
   type ClaimResponse,
   type ContextPlan,
+  type LaunchDeclaration,
   type LocalStatus,
+  type ModelRef,
   type Me,
   type SignInPrompt,
   type ToolchainAttestation,
@@ -52,6 +54,18 @@ import {
   signChangesetWithDevice,
   writeSession,
 } from "./session.js";
+
+/** An archived failed author run (archiveRun), read back for `wos resubmit` (contracts 5.20.0). */
+interface ArchivedRun {
+  dir: string;
+  leaseId: string;
+  modelId: string;
+  model: ModelRef | null;
+  launch: LaunchDeclaration | null;
+  error: string | null;
+  output: unknown;
+  files: Array<{ path: string; bytes: Buffer }>;
+}
 
 /** ANSI colour sequences (ESC [ ... m), stripped from CLI listings before matching. */
 const ANSI = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
@@ -1134,6 +1148,12 @@ export class OrchestratorImpl {
     let task: TaskView | null = null;
     try {
       const s = await this.session();
+      // contracts 5.20.0: `wos resubmit`: the archived output of an earlier failed run of this task, no model run.
+      const resubmit = options.resubmitFrom ? await this.loadArchivedRun(options.resubmitFrom, options.taskId, observer) : null;
+      if (resubmit && !options.model && !resubmit.model)
+        throw new StepError("VALIDATION_FAILED", `no model ref matches the archived run's model ${resubmit.modelId}`);
+      if (resubmit && !options.model) options = { ...options, model: resubmit.model! };
+      if (resubmit && !options.launch && resubmit.launch) options = { ...options, launch: resubmit.launch };
       const launch = options.launch ?? (options.model ? this.deps.modelLaunch?.[options.model] : undefined);
       const claim = await this.api.call("claimTask", {
         params: { id: options.taskId },
@@ -1166,7 +1186,11 @@ export class OrchestratorImpl {
       }
       const kind = claim.contextPlan.taskKind;
       if (kind === "roadmap_author" || kind === "feature_author")
-        return await this.authorDocument(claim, observer, options.signal, options.shadow === true);
+        return await this.authorDocument(claim, observer, options.signal, options.shadow === true, resubmit);
+      if (resubmit) {
+        await this.releaseQuietly(claim.lease.id, "wos resubmit re-sends document author output only", observer);
+        throw new StepError("VALIDATION_FAILED", `wos resubmit re-sends roadmap or feature author output, not ${kind}`);
+      }
       if (options.shadow) {
         await this.releaseQuietly(claim.lease.id, "a shadow run authors documents only", observer);
         throw new StepError("VALIDATION_FAILED", `--shadow runs roadmap and feature authoring, not ${kind}`);
@@ -1181,6 +1205,99 @@ export class OrchestratorImpl {
     } catch (e) {
       return this.failure(e, task, observer);
     }
+  }
+
+  /**
+   * contracts 5.20.0: reads a <workspace>/failed/<task>/<run>/ directory (archiveRun) for `wos resubmit`, and releases
+   * that run's lease if it is still active (its submission never reached a commit; the task opens again for this claim).
+   */
+  private async loadArchivedRun(dir: string, taskId: string, observer: OrchestratorObserver): Promise<ArchivedRun> {
+    let run: {
+      schema?: string;
+      mode?: string;
+      taskId?: string;
+      taskKind?: string;
+      leaseId?: string;
+      modelId?: string;
+      launch?: LaunchDeclaration | null;
+      files?: string[];
+      error?: { code?: string; message?: string } | null;
+    };
+    try {
+      run = JSON.parse(await readFile(join(dir, "run.json"), "utf8"));
+    } catch {
+      throw new StepError("VALIDATION_FAILED", `${dir} has no readable run.json (an archived failed run)`);
+    }
+    if (run.schema !== "wos-local-run.v1" || run.mode !== "failed")
+      throw new StepError("VALIDATION_FAILED", `${dir} is not an archived failed run (schema wos-local-run.v1, mode failed)`);
+    if (run.taskId !== taskId) throw new StepError("VALIDATION_FAILED", `${dir} belongs to task ${run.taskId}, not ${taskId}`);
+    if (run.taskKind !== "roadmap_author" && run.taskKind !== "feature_author")
+      throw new StepError("VALIDATION_FAILED", `wos resubmit re-sends roadmap or feature author output, not ${run.taskKind}`);
+    if (!run.leaseId || !run.modelId || !run.files?.length)
+      throw new StepError("VALIDATION_FAILED", `${dir}/run.json lacks the lease, the model or the files`);
+    let output: unknown;
+    try {
+      output = JSON.parse(await readFile(join(dir, "output.json"), "utf8"));
+    } catch {
+      throw new StepError("VALIDATION_FAILED", `${dir} has no output.json (the agent's author summary)`);
+    }
+    const files: Array<{ path: string; bytes: Buffer }> = [];
+    for (const path of run.files) files.push({ path, bytes: await readFile(join(dir, path)) });
+    const model = this.engines.policy.models.find((m) => m.modelId === run.modelId)?.ref ?? null;
+    const work = await this.api.call("getMyWork", {});
+    if (work.leases.some((l) => l.id === run.leaseId && l.state === "active"))
+      await this.releaseQuietly(run.leaseId, "wos resubmit: its archived output is re-sent on a fresh lease", observer);
+    return {
+      dir,
+      leaseId: run.leaseId,
+      modelId: run.modelId,
+      model,
+      launch: run.launch ?? null,
+      error: run.error ? `${run.error.code ?? "error"}: ${run.error.message ?? ""}`.slice(0, 300) : null,
+      output,
+      files,
+    };
+  }
+
+  /** contracts 5.20.0: the `wos resubmit` stand-in for leasedRun: context and manifest for this lease, NO agent run. */
+  private async archivedRun(
+    claim: ClaimResponse,
+    archived: ArchivedRun,
+    observer: OrchestratorObserver,
+    holder: { wt: WorktreeHandle | null },
+  ) {
+    const plan = claim.contextPlan;
+    const wt = await createWorktree(
+      this.deps.workspaceRoot,
+      plan.source.repo,
+      plan.source.commit,
+      `r-${claim.lease.id.replace(/-/g, "").slice(0, 12)}`,
+    );
+    holder.wt = wt;
+    observer({ type: "worktree", path: wt.path, baseSha: wt.baseSha });
+    const ctx = await this.engines.buildContext(
+      plan,
+      this.snapshotReader(wt, plan, claim.lease.id, () => null),
+      this.engines.policy,
+    );
+    observer({ type: "context", manifest: ctx.manifest });
+    await this.api.call("postManifest", {
+      params: { id: claim.lease.id },
+      body: ctx.manifest,
+      idempotencyKey: idempotencyKey("postManifest", claim.lease.id, ctx.manifest.manifestSha256),
+    });
+    for (const f of archived.files) {
+      const dest = join(wt.path, f.path);
+      await mkdir(dirname(dest), { recursive: true });
+      await writeFile(dest, f.bytes);
+    }
+    this.step(
+      observer,
+      "BUILD",
+      "passed",
+      `no model run: ${archived.files.length} archived file(s) from lease ${archived.leaseId} (${archived.dir})`,
+    );
+    return { wt, run: { output: archived.output, manifestSha256: ctx.manifest.manifestSha256 } };
   }
 
   /** A leased agent run in a fresh worktree at plan.source.commit: context, manifest, agent, signed run record. */
@@ -1313,6 +1430,7 @@ export class OrchestratorImpl {
     observer: OrchestratorObserver,
     signal?: AbortSignal,
     shadow = false,
+    resubmit: ArchivedRun | null = null,
   ): Promise<RunResult> {
     const plan = claim.contextPlan;
     const hb = this.heartbeat(claim.lease.id, claim.lease.heartbeatSeconds, { value: shadow ? "shadow" : "authoring" });
@@ -1322,7 +1440,9 @@ export class OrchestratorImpl {
     let submitted = false;
     try {
       this.step(observer, "BUILD", "started", `${shadow ? "SHADOW " : ""}${plan.taskKind} for ${plan.feature ?? plan.target}`);
-      const r = await this.leasedRun(claim, "d", observer, signal, holder);
+      const r = resubmit
+        ? await this.archivedRun(claim, resubmit, observer, holder)
+        : await this.leasedRun(claim, "d", observer, signal, holder);
       wt = r.wt;
       const summary = AuthorSummary.safeParse(r.run.output);
       if (!summary.success) throw new StepError("AGENT_OUTPUT_INVALID", "the agent's output does not match author-summary.v1", true);
@@ -1357,6 +1477,14 @@ export class OrchestratorImpl {
         files: cap.files,
         summary: summary.data,
         localVerification: [],
+        ...(resubmit
+          ? {
+              resubmission: {
+                fromLeaseId: resubmit.leaseId,
+                reason: `wos resubmit: the archived output of lease ${resubmit.leaseId} (${resubmit.error ?? "submission failed"}); no model ran on this lease`,
+              },
+            }
+          : {}),
       });
       const local = this.engines.validateChangeset(changeset, {
         kind: plan.taskKind === "feature_author" ? "feature_contract" : "roadmap",

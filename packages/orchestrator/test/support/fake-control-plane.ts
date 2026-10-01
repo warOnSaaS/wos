@@ -277,6 +277,8 @@ export class FakeControlPlane {
   builderModel: "opus" | "astra" | "sol" | null = null;
   /** D70: the web the server issues with author plans (research roles), when a test sets it. */
   authorWeb: ContextPlan["web"] = null;
+  /** The next submitChangeset fails with this error (after the lease checks). */
+  failNextSubmission: { status: number; code: string; message: string } | null = null;
 
   private authorPlan(t: TaskView, leaseId: string): ContextPlan {
     const roleName = t.role;
@@ -647,6 +649,12 @@ export class FakeControlPlane {
       }
       case "submitChangeset": {
         const l = this.activeLease(params.id!);
+        if (this.failNextSubmission) {
+          // Incident 2026-10-01: the control plane refused the commit after validation (the lease stays active).
+          const e = this.failNextSubmission;
+          this.failNextSubmission = null;
+          throw new HttpErr(e.status, e.code, e.message);
+        }
         if (!l.attemptId) {
           this.submissions.push(body as unknown as Changeset);
           l.state = "completed";
@@ -699,6 +707,9 @@ export class FakeControlPlane {
       case "releaseLease": {
         const l = this.leases.get(params.id!)!;
         l.state = "released";
+        // Like the control plane: a released lease's task is open again.
+        const t = this.tasks.get(l.taskId);
+        if (t?.state === "leased") t.state = "open";
         return this.leaseView(l);
       }
       case "createProposal":
