@@ -349,7 +349,7 @@ export const Routes = {
     errors: [],
     summary: "Opted-in contributors ranked by score.",
   }),
-  // contracts 5.20.0 (P1 shadow accounting): public receipts of real agent contributions. Shadow — no value moves.
+  // contracts 5.22.0 (P1 shadow accounting): public receipts of real agent contributions. Shadow — no value moves.
   listShadowReceipts: route({
     method: "GET",
     path: "/v1/public/receipts",
