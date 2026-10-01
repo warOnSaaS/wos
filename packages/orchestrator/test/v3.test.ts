@@ -190,7 +190,7 @@ describe("server documents and repair runs", () => {
     h = harness();
     await h.make("cli").build({ abu: `${TARGET}/${ABU_KEY}`, detachAfterSubmit: true }, () => undefined);
     const taskId = [...h.server.tasks.values()][0]!.id;
-    expect(h.server.documentRequests).toEqual(["wos:policy/builder@agent-policy.v3", `wos:task/${taskId}`]);
+    expect(h.server.documentRequests).toEqual(["wos:policy/builder@agent-policy.v4", `wos:task/${taskId}`]);
     const docCall = h.server.calls.find((c) => c.route === "getLeaseDocument");
     expect(docCall).toBeDefined();
     const m = h.server.manifestBodies[0]!;

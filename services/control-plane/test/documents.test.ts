@@ -4,6 +4,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AGENT_POLICY } from "@waronsaas/contracts";
+import { defaultCatalogEntry } from "@waronsaas/planning";
 import { DEFAULT_LOGIC } from "../src/deps.js";
 import { reviewAs } from "./support/flow.js";
 import {
@@ -33,9 +34,18 @@ const inventory = {
     { surface: "ios", title: "iPhone app", source: 0, platforms: ["iPhone"], browsers: [] },
   ],
   items: [
-    { key: "INV-0001", area: "Sales", title: "Contacts", description: "Contact records", source: 0, weight: 1 },
-    { key: "INV-0002", area: "Analytics", title: "Reports", description: "Reports and dashboards", source: 0, weight: 1 },
-    { key: "INV-0003", area: "Legacy", title: "Classic UI", description: "The retired interface", source: 0, weight: 1 },
+    // D73: every item names its scan capability id (null beyond the scan).
+    { key: "INV-0001", area: "Sales", title: "Contacts", description: "Contact records", source: 0, weight: 1, scanId: "contacts" },
+    {
+      key: "INV-0002",
+      area: "Analytics",
+      title: "Reports",
+      description: "Reports and dashboards",
+      source: 0,
+      weight: 1,
+      scanId: "reporting-dashboards",
+    },
+    { key: "INV-0003", area: "Legacy", title: "Classic UI", description: "The retired interface", source: 0, weight: 1, scanId: null },
   ],
 };
 const R = (score: number) => ({ score, basis: "test fixture basis" });
@@ -111,12 +121,28 @@ const roadmap = (crmWeight: number) => ({
       inventoryItems: ["INV-0002"],
       sources: ["https://www.salesforce.com/editions-pricing/sales-cloud/"],
       rubric: { editionBreadth: R(2), coreDailyUse: R(2), surfaceParity: R(1), migrationGravity: R(1) },
+      // D73: this fixture folds the platform, marketing and service template capabilities into one, as a decision.
+      templateDeviation: {
+        kind: "merge",
+        templateKeys: ["platform", "marketing", "service"],
+        reason: "One analytics capability for the fixture: the other template groups are not mapped yet.",
+      },
       features: [],
     },
   ],
   excluded: [{ item: "INV-0003", reason: "Retired by the vendor itself." }],
   newCatalogFeatures: ["contacts", "import-engine"],
   weightRubric: "wos-weight-rubric.v1",
+  decisions: [
+    {
+      id: "DEC-001",
+      kind: "template_deviation",
+      subject: "analytics",
+      summary: "Platform, marketing and service folded into analytics for this fixture.",
+      options: [],
+      chosen: "merged",
+    },
+  ],
   proposals: [],
   // D59 (contracts 5.4.0): every target roadmap accounts for each data class; this fixture plans no connector yet.
   migration: {
@@ -140,13 +166,8 @@ const importEngineEntry = {
   summary: "Mapping, dry run, verification report, idempotent re-runs and delta sync for importers.",
   aliasOf: null,
 };
-const catalogEntry = {
-  schema: "wos-catalog-entry.v1",
-  key: "contacts",
-  title: "Contacts",
-  summary: "People and companies you work with.",
-  aliasOf: null,
-};
+// D73: contacts is a vocabulary id, so its catalog file is the default entry.
+const catalogEntry = defaultCatalogEntry(AGENT_POLICY.roadmapMethod!.vocabulary!.find((v) => v.id === "contacts")!);
 const contract = {
   schema: "wos-feature-contract.v1",
   feature: "contacts",
@@ -362,8 +383,25 @@ describe.skipIf(!HAS_DB)("roadmap and feature contract workflows", () => {
       body: { deviceId: writer.deviceId, slot: "astra", kinds: ["roadmap_review"] },
     });
     expect(selfReview.body).toBeNull(); // the author is never assigned their own subject
-    await reviewAs(h, await h.contributor("rm-astra"), "astra", "roadmap_review", verdict("NO_MATERIAL_GAPS"));
-    await reviewAs(h, await h.contributor("rm-fable"), "fable", "roadmap_review", verdict("NO_MATERIAL_GAPS"));
+    // D73: the revision carries decision DEC-001 (the analytics merge); a verdict that leaves it unruled is refused.
+    const ruled = {
+      ...verdict("NO_MATERIAL_GAPS"),
+      decisionRulings: [{ decisionId: "DEC-001", ruling: "accept" as const, note: "The merge is reasoned and sourced." }],
+    };
+    const rmAstra = await h.contributor("rm-astra");
+    const unruled = await reviewAs(h, rmAstra, "astra", "roadmap_review", verdict("NO_MATERIAL_GAPS"));
+    expect(unruled.res.status, JSON.stringify(unruled.res.body)).toBe(400);
+    expect(unruled.res.body.error).toMatchObject({ code: "VALIDATION_FAILED", details: { unruled: ["DEC-001"] } });
+    const [rnd] = await h.owner<{ head_sha: string; submission_sha256: string }[]>`
+      select head_sha, submission_sha256 from wos.rounds where id = ${unruled.plan.roundId}`;
+    const [arun] = await h.owner<{ id: string }[]>`select id from wos.agent_runs where lease_id = ${unruled.claim.body.lease.id}`;
+    const accepted = await h.call("POST", `/v1/leases/${unruled.claim.body.lease.id}/verdict`, {
+      token: rmAstra.token,
+      idem: true,
+      body: { verdict: ruled, headSha: rnd!.head_sha, submissionSha256: rnd!.submission_sha256, agentRunId: arun!.id },
+    });
+    expect(accepted.status, JSON.stringify(accepted.body)).toBe(200);
+    await reviewAs(h, await h.contributor("rm-fable"), "fable", "roadmap_review", ruled);
     const [d3] = await h.owner<{ state: string }[]>`select state from wos.documents where id = ${opened.body.documentId}`;
     expect(d3!.state).toBe("consensus");
     await dispatch();

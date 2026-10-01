@@ -103,6 +103,11 @@ export interface AuthorOptions {
    * submitted; the agent run record says `mode: "shadow"`.
    */
   shadow?: boolean;
+  /**
+   * contracts 5.20.0 (D73): ensemble authoring: run N shadow runs (2..policy maxRuns) on one manifest, merge them
+   * deterministically, and submit the merged revision (roadmap_author; the policy's `ensemble`).
+   */
+  ensemble?: number;
   signal?: AbortSignal;
 }
 

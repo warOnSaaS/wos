@@ -11,7 +11,14 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { AGENT_POLICY, type CatalogEntry, type Inventory, MIGRATION_DATA_CLASSES, type Roadmap } from "@waronsaas/contracts";
-import { parseCatalogEntryYaml, parseInventoryYaml, parseRoadmapYaml, rubricWeights, validateRoadmap } from "@waronsaas/planning";
+import {
+  ensembleStability,
+  parseCatalogEntryYaml,
+  parseInventoryYaml,
+  parseRoadmapYaml,
+  rubricWeights,
+  validateRoadmap,
+} from "@waronsaas/planning";
 
 export interface Side {
   label: string;
@@ -364,8 +371,22 @@ export function compareSides(a: Side, b: Side, target: string) {
     const both = scanIds.filter((id) => ha.has(id) && hb.has(id));
     return { comparable: both.length, same: both.filter((id) => pairOf.get(ha.get(id)!) === hb.get(id)).length };
   })();
+  // D73: the policy's stability targets (capabilities, features, weights, grounding), measured the way an ensemble is.
+  const targets = AGENT_POLICY.ensemble?.stabilityTargets ?? null;
+  const ms = AGENT_POLICY.roadmapMethod?.targets[target]?.scanSources ?? [];
+  const asRun = (s: Side) => ({
+    inventory: s.inventory!,
+    roadmap: s.roadmap!,
+    catalog: s.catalog,
+    fetchedUrls: (s.fetches ?? []).filter((f) => f.kind === "fetch").map((f) => f.target),
+  });
+  const stability =
+    targets && a.inventory && a.roadmap && b.inventory && b.roadmap
+      ? { ...ensembleStability([asRun(a), asRun(b)], ms, targets), targets, groundingMeasured: a.fetches !== null && b.fetches !== null }
+      : null;
   return {
     schema: "wos-drift-compare.v2",
+    stability,
     target,
     a: fa,
     b: fb,
@@ -442,6 +463,22 @@ export function renderCompareMd(c: Comparison): string {
       for (const x of all) codes.set(x.code, (codes.get(x.code) ?? 0) + 1);
       L.push("Errors by code:", "", ...sorted(codes.keys()).map((k) => `- ${k}: ${codes.get(k)}`), "");
     } else if (!s.schemaViolations.length) L.push("No schema violations and no validator errors.", "");
+  }
+  if (c.stability) {
+    const st = c.stability;
+    const t = st.targets;
+    const ok = (k: string) => (st.belowTarget.includes(k) ? "BELOW TARGET" : "meets target");
+    L.push(
+      "## Stability against the D73 targets",
+      "",
+      "| measure | value | target | |",
+      "|---|---|---|---|",
+      `| capabilities matched (by key) | ${bp(st.capabilitiesMatchBp)} | ${bp(t.capabilitiesMatchBp)} | ${ok("capabilities")} |`,
+      `| features matched (Jaccard) | ${bp(st.featuresMatchBp)} | ${bp(t.featuresMatchBp)} | ${ok("features")} |`,
+      `| weight rank correlation (Spearman, common capabilities) | ${v(st.weightSpearman)} | ${t.weightSpearman} | ${ok("weights")} |`,
+      `| sources grounded (fetch log or scan) | ${bp(st.groundingBp)} | ${bp(t.groundingBp)} | ${st.groundingMeasured ? ok("grounding") : "no fetch log on a side"} |`,
+      "",
+    );
   }
   L.push("## Scan coverage (D72)", "", `| | ${a.label} | ${b.label} |`, "|---|---|---|");
   row(

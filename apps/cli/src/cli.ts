@@ -426,6 +426,10 @@ export async function runCli(argv: string[], io: CliIo, deps: CliDeps): Promise<
       .option("--target <slug>", "only tasks for this target")
       .option("--feature <key>", "only tasks for this feature")
       .option(
+        "--ensemble <n>",
+        "run N shadow runs on one manifest, merge them deterministically (majority; disagreements become decisions in roadmaps/<target>/DECISIONS.md) and submit the merge (D73)",
+      )
+      .option(
         "--shadow",
         "run the same claim and context, validate and archive under $WOS_HOME/shadow/<task>/<run>/, then release the lease: nothing is submitted",
       )
@@ -433,10 +437,12 @@ export async function runCli(argv: string[], io: CliIo, deps: CliDeps): Promise<
       .action(
         async (
           taskArg: string | undefined,
-          raw: { target?: string; feature?: string; model?: string; provider?: "opencode"; shadow?: boolean },
+          raw: { target?: string; feature?: string; model?: string; provider?: "opencode"; shadow?: boolean; ensemble?: string },
           cmd: Command,
         ) => {
           const c = ctx(cmd);
+          if (raw.ensemble !== undefined && (raw.shadow || !/^\d+$/.test(raw.ensemble)))
+            throw new UsageError("--ensemble takes a number of runs and cannot be combined with --shadow (its runs are shadow runs)");
           const ref = raw.model === undefined ? undefined : modelRefFor(raw.model);
           if (ref === null || (ref !== undefined && !models.includes(ref)))
             throw new UsageError(
@@ -480,6 +486,7 @@ export async function runCli(argv: string[], io: CliIo, deps: CliDeps): Promise<
                 model: opts.model,
                 ...(viaOpencode ? { launch: OPENCODE_LAUNCH } : {}),
                 ...(raw.shadow ? { shadow: true } : {}),
+                ...(raw.ensemble !== undefined ? { ensemble: Number(raw.ensemble) } : {}),
                 signal: deps.signal,
               },
               c.printer.observe,

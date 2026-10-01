@@ -12,6 +12,7 @@ import { ApiFailure } from "../errors.js";
 import type { Caller, Handlers } from "../http/router.js";
 import { uuidv7 } from "../util/crypto.js";
 import { applyConfirmedRuling } from "./admin.js";
+import { unruledDecisions } from "../domain/decisions.js";
 
 const SYSTEM_TX = { kind: "system" as const, accountId: null };
 
@@ -188,6 +189,10 @@ export const humanReviewHandlers: Pick<Handlers, "listHumanReviews" | "getHumanR
       if (reasons.length > 0) throw new ApiFailure("NOT_ELIGIBLE", "you may not hold the human seat of this round", { reasons });
       if (b.headSha !== r.head_sha || b.submissionSha256 !== r.submission_sha256)
         throw new ApiFailure("VALIDATION_FAILED", "the verdict must be bound to the round's head sha and submission hash");
+      // D73: the human seat rules on every decision too.
+      const unruled = await unruledDecisions(tx, deps, { document_id: r.document_id, head_sha: r.head_sha }, b.verdict);
+      if (unruled.length > 0)
+        throw new ApiFailure("VALIDATION_FAILED", "rule on every decision of the roadmap (decisionRulings)", { unruled });
       const id = uuidv7();
       try {
         await tx`

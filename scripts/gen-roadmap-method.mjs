@@ -1,5 +1,5 @@
 // D72 (contracts 5.19.0): writes the roadmap method data of agent-policy.v3 from the scans. Deterministic.
-//   node scripts/gen-roadmap-method.mjs           regenerate packages/contracts/src/data/agent-policy.v3.json `roadmapMethod.targets`
+//   node scripts/gen-roadmap-method.mjs           regenerate `roadmapMethod` of agent-policy.v3 (method v1) and v4 (method v2)
 //   node scripts/gen-roadmap-method.mjs --check   fail if it is stale
 // Per target (docs/scans/<target>.json):
 //   scanCapabilityIds  every capability id of the scan, in scan order;
@@ -80,16 +80,53 @@ function method(slug) {
   return { scanCapabilityIds: ids, requiredReading: reading, partition: helpers.filter((h) => h.scanIds.length > 0) };
 }
 
-const policy = JSON.parse(readFileSync(policyPath, "utf8"));
-const targets = Object.fromEntries(TARGETS.map((t) => [t, method(t)]));
-const before = JSON.stringify(policy.roadmapMethod?.targets ?? null);
-if (check) {
-  if (before !== JSON.stringify(targets)) {
-    console.error("agent-policy.v3 roadmapMethod.targets is stale: run node scripts/gen-roadmap-method.mjs");
-    process.exit(1);
-  }
-} else {
-  policy.roadmapMethod = { ...policy.roadmapMethod, targets };
-  writeFileSync(policyPath, `${JSON.stringify(policy, null, 2)}\n`);
-  console.log(`wrote roadmapMethod.targets for ${TARGETS.length} targets`);
+// D73 (agent-policy.v4, method v2): the fixed capability template (one capability per vocabulary group the scan uses,
+// in vocabulary order, key = the group in kebab case), every URL the scan cites (the grounding allowlist besides the
+// run's fetch log), and the vocabulary itself (every id is a default catalog feature).
+const groupOrder = [...new Set(vocab.capabilities.map((c) => c.group))];
+const kebab = (g) =>
+  g
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+function methodV2(slug) {
+  const scan = JSON.parse(readFileSync(`${root}docs/scans/${slug}.json`, "utf8"));
+  const ids = scan.capabilities.map((c) => c.id);
+  const template = groupOrder
+    .map((g) => ({ key: kebab(g), title: g, group: g, scanIds: ids.filter((id) => groupOf.get(id) === g) }))
+    .filter((t) => t.scanIds.length > 0);
+  const urls = new Set();
+  const walk = (v) => {
+    if (typeof v === "string" && /^https?:\/\//.test(v)) urls.add(v);
+    else if (Array.isArray(v)) v.forEach(walk);
+    else if (v && typeof v === "object") Object.values(v).forEach(walk);
+  };
+  walk(scan);
+  return { ...method(slug), template, scanSources: [...urls].sort() };
 }
+
+const files = [
+  { path: policyPath, targets: Object.fromEntries(TARGETS.map((t) => [t, method(t)])), vocabulary: undefined },
+  {
+    path: `${root}packages/contracts/src/data/agent-policy.v4.json`,
+    targets: Object.fromEntries(TARGETS.map((t) => [t, methodV2(t)])),
+    vocabulary: vocab.capabilities.map((c) => ({ id: c.id, group: c.group, definition: c.definition })),
+  },
+];
+let stale = false;
+for (const f of files) {
+  const policy = JSON.parse(readFileSync(f.path, "utf8"));
+  const want = { targets: f.targets, vocabulary: f.vocabulary };
+  const have = { targets: policy.roadmapMethod?.targets ?? null, vocabulary: policy.roadmapMethod?.vocabulary };
+  if (check) {
+    if (JSON.stringify(have) !== JSON.stringify(want)) {
+      console.error(`${f.path}: roadmapMethod is stale: run node scripts/gen-roadmap-method.mjs`);
+      stale = true;
+    }
+    continue;
+  }
+  policy.roadmapMethod = { ...policy.roadmapMethod, targets: f.targets, ...(f.vocabulary ? { vocabulary: f.vocabulary } : {}) };
+  writeFileSync(f.path, `${JSON.stringify(policy, null, 2)}\n`);
+  console.log(`wrote roadmapMethod for ${TARGETS.length} targets into ${f.path}`);
+}
+if (stale) process.exit(1);

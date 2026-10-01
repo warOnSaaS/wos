@@ -1,6 +1,7 @@
 import policyJson from "./data/agent-policy.v1.json" with { type: "json" };
 import policyV2Json from "./data/agent-policy.v2.json" with { type: "json" };
 import policyV3Json from "./data/agent-policy.v3.json" with { type: "json" };
+import policyV4Json from "./data/agent-policy.v4.json" with { type: "json" };
 import scheduleJson from "./data/reward-schedule.v1.json" with { type: "json" };
 import architectureJson from "./data/architecture-policy.v1.json" with { type: "json" };
 import { AgentPolicyDocument } from "./agent-policy.js";
@@ -25,8 +26,14 @@ export const AGENT_POLICY_V2: AgentPolicyDocument = AgentPolicyDocument.parse(po
  * v2 is unchanged: the API had issued v2 plans, and a policy version names fixed content.
  */
 export const AGENT_POLICY_V3: AgentPolicyDocument = AgentPolicyDocument.parse(policyV3Json);
+/**
+ * contracts 5.20.0 (D73 drift control): agent-policy.v4 = v3 plus roadmap method v2 (the fixed capability template,
+ * catalog-first features, grounding, decisions for the reviewers) and ensemble authoring with stability targets.
+ * v3 is unchanged, so plans issued under it keep their rules.
+ */
+export const AGENT_POLICY_V4: AgentPolicyDocument = AgentPolicyDocument.parse(policyV4Json);
 /** The agent policy in force (the control plane issues plans under it; clients build invocations with it). */
-export const AGENT_POLICY: AgentPolicyDocument = AGENT_POLICY_V3;
+export const AGENT_POLICY: AgentPolicyDocument = AGENT_POLICY_V4;
 
 /** The proposed V1 reward schedule (status "proposal" until the founder activates it). */
 export const REWARD_SCHEDULE_V1: RewardSchedule = RewardSchedule.parse(scheduleJson);

@@ -378,7 +378,7 @@ describe.skipIf(!HAS_DB)("every route: existence, auth mode, input validation, r
       idem: true,
       body: { action: "switch_review_policy", fallback: "fable_unavailable", reason: "D53: Fable is unavailable" },
     });
-    const authored = await authorRevision(h, builder, slack.body.taskId, roadmapFiles({ target: "slack", feature: "chat" }), {
+    const authored = await authorRevision(h, builder, slack.body.taskId, roadmapFiles({ target: "slack", feature: "direct-messages" }), {
       model: "opus",
     });
     expect(authored.res.status, JSON.stringify(authored.res.body)).toBe(200);

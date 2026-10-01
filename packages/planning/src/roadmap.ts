@@ -66,6 +66,16 @@ export const ROADMAP_ERROR_CODES = [
   "SCAN_ADDITION_UNSOURCED",
   "RUBRIC_MISSING",
   "RUBRIC_WEIGHT_MISMATCH",
+  // drift control (D73, contracts 5.20.0): capability template, catalog-first features, grounding, decisions
+  "TEMPLATE_CAPABILITY_MISSING",
+  "TEMPLATE_DEVIATION_UNREASONED",
+  "ITEM_SCAN_ID_MISSING",
+  "ITEM_OUTSIDE_TEMPLATE",
+  "CATALOG_PROPOSAL_UNDECIDED",
+  "CATALOG_DEFAULT_MODIFIED",
+  "UNGROUNDED_SOURCE",
+  "DECISION_MISSING",
+  "DECISION_DUPLICATE",
 ] as const;
 export type RoadmapErrorCode = (typeof ROADMAP_ERROR_CODES)[number];
 export interface RoadmapIssue {
@@ -91,11 +101,12 @@ export function validateRoadmap(
    * target scan's capability ids (every one must be placed or excluded with a source) and the weight rubric (scores
    * present and weights derived from them). Omitted = no method checks (documents authored before agent-policy.v3).
    */
-  method?: { scanCapabilityIds: readonly string[] | null; requireRubric: boolean },
+  method?: RoadmapMethodCheck,
 ): RoadmapIssue[] {
   const out: RoadmapIssue[] = [];
   const add = (code: RoadmapErrorCode, message: string) => out.push({ code, message });
   if (method) validateMethod(roadmap, method, add);
+  if (method?.v2) validateMethodV2(roadmap, inventory, catalog, method.v2, add);
 
   // --- migration (D59): every target roadmap plans how customers leave the target ---
   validateMigration(roadmap, catalog, add);
@@ -329,11 +340,7 @@ export function rubricWeights(capabilities: ReadonlyArray<Pick<Roadmap["capabili
   return floors;
 }
 
-function validateMethod(
-  roadmap: Roadmap,
-  method: { scanCapabilityIds: readonly string[] | null; requireRubric: boolean },
-  add: (code: RoadmapErrorCode, message: string) => void,
-): void {
+function validateMethod(roadmap: Roadmap, method: RoadmapMethodCheck, add: (code: RoadmapErrorCode, message: string) => void): void {
   if (method.scanCapabilityIds) {
     const scan = new Set(method.scanCapabilityIds);
     const placed = new Set<string>();
@@ -367,5 +374,135 @@ function validateMethod(
       if (Math.abs(c.weightBp - derived[i]!) > 1)
         add("RUBRIC_WEIGHT_MISMATCH", `capability ${c.key} has weightBp ${c.weightBp}; its rubric scores give ${derived[i]} (D72)`);
     });
+  }
+}
+
+/** The roadmap method checks to apply (D72; `v2` adds D73's). Built by the control plane from the policy in force. */
+export interface RoadmapMethodCheck {
+  scanCapabilityIds: readonly string[] | null;
+  requireRubric: boolean;
+  /** contracts 5.20.0 (D73, wos-roadmap-method.v2). */
+  v2?: {
+    /** The target's fixed capability template (null for a target without a scan). */
+    template: ReadonlyArray<{ key: string; group: string; scanIds: readonly string[] }> | null;
+    /** The scan vocabulary (every id is a default catalog feature). */
+    vocabulary: ReadonlyArray<{ id: string; group: string; definition: string }>;
+    /** Grounding allowlist: the URLs the revision's runs fetched (null = no fetch log: grounding not checked). */
+    fetchedUrls: readonly string[] | null;
+    /** URLs the target's scan cites (also grounded). */
+    scanSources: readonly string[];
+  };
+}
+
+/** D73: the default catalog entry of a vocabulary capability id (key = the id), shared across targets. */
+export function defaultCatalogEntry(v: { id: string; definition: string }): CatalogEntry {
+  const title = v.id
+    .split("-")
+    .map((w, i) => (i === 0 ? w.charAt(0).toUpperCase() + w.slice(1) : w))
+    .join(" ");
+  return { schema: "wos-catalog-entry.v1", key: v.id, title, summary: v.definition, aliasOf: null };
+}
+
+/** URL identity for grounding: host without www, path without trailing slash, query kept; fragment dropped. */
+export function groundingKey(u: string): string {
+  try {
+    const x = new URL(u);
+    return `${x.hostname.toLowerCase().replace(/^www\./, "")}${x.pathname.replace(/\/+$/, "")}${x.search}`;
+  } catch {
+    return u.trim();
+  }
+}
+
+const URLS = /https?:\/\/[^\s)>\]"']+/g;
+
+/**
+ * D73 grounding: every URL a revision cites (inventory sources, capability sources, URLs in a rubric basis, migration
+ * extraction, delta-sync and not-extractable sources, scan exclusions), sorted and distinct.
+ */
+export function citedUrls(roadmap: Roadmap, inventory: Inventory): string[] {
+  const urls = new Set<string>(inventory.sources.map((x) => x.url));
+  for (const c of roadmap.capabilities) {
+    for (const u of c.sources ?? []) urls.add(u);
+    for (const s of Object.values(c.rubric ?? {})) for (const u of (s as { basis: string }).basis.match(URLS) ?? []) urls.add(u);
+  }
+  for (const k of roadmap.migration?.classes ?? []) {
+    if (k.extraction) urls.add(k.extraction.source);
+    if (k.deltaSync) urls.add(k.deltaSync.source);
+    for (const n of k.notExtractable ?? []) urls.add(n.source);
+  }
+  for (const x of roadmap.scanExcluded ?? []) urls.add(x.source);
+  return [...urls].sort();
+}
+
+function validateMethodV2(
+  roadmap: Roadmap,
+  inventory: Inventory,
+  catalog: ReadonlyMap<string, CatalogEntry>,
+  m: NonNullable<RoadmapMethodCheck["v2"]>,
+  add: (code: RoadmapErrorCode, message: string) => void,
+): void {
+  const decisions = roadmap.decisions ?? [];
+  const seen = new Set<string>();
+  for (const d of decisions) {
+    if (seen.has(d.id)) add("DECISION_DUPLICATE", `decision ${d.id} is listed twice`);
+    seen.add(d.id);
+  }
+  const decided = (kind: string, subject: string) => decisions.some((d) => d.kind === kind && d.subject === subject);
+  const vocab = new Map(m.vocabulary.map((v) => [v.id, v]));
+  // Template: every template capability present (or named by a deviation); others need a reasoned deviation and a decision.
+  if (m.template) {
+    const tKeys = new Set(m.template.map((t) => t.key));
+    const covered = new Set(roadmap.capabilities.flatMap((c) => [c.key, ...(c.templateDeviation?.templateKeys ?? [])]));
+    for (const t of m.template)
+      if (!covered.has(t.key))
+        add("TEMPLATE_CAPABILITY_MISSING", `template capability ${t.key} (${t.group}) is missing and no deviation names it (D73)`);
+    for (const c of roadmap.capabilities) {
+      const dev = c.templateDeviation;
+      if (!tKeys.has(c.key) && !dev)
+        add(
+          "TEMPLATE_DEVIATION_UNREASONED",
+          `capability ${c.key} is not in the template: state its split, merge or addition and why (D73)`,
+        );
+      if (dev && !decided("template_deviation", c.key))
+        add(
+          "DECISION_MISSING",
+          `capability ${c.key} deviates from the template (${dev.kind}): add a template_deviation decision for the reviewers (D73)`,
+        );
+    }
+    // Items go to the capability of their scan id's group (or a deviation that names that group's template key).
+    const groupKey = new Map(m.template.flatMap((t) => t.scanIds.map((id) => [id, t.key] as const)));
+    const capOf = new Map(roadmap.capabilities.flatMap((c) => c.inventoryItems.map((i) => [i, c] as const)));
+    for (const it of inventory.items) {
+      if (it.scanId === undefined) {
+        add("ITEM_SCAN_ID_MISSING", `inventory item ${it.key} has no scanId (a scan capability id, or null beyond the scan) (D73)`);
+        continue;
+      }
+      const want = it.scanId ? groupKey.get(it.scanId) : undefined;
+      const cap = capOf.get(it.key);
+      if (want && cap && cap.key !== want && !(cap.templateDeviation?.templateKeys ?? []).includes(want))
+        add("ITEM_OUTSIDE_TEMPLATE", `${it.key} (scan id ${it.scanId}) belongs in template capability ${want}, not ${cap.key} (D73)`);
+    }
+  }
+  // Catalog-first: a new catalog feature that is not a vocabulary default (or import-engine) is a proposal to rule on;
+  // a default's catalog file is the default entry, unchanged.
+  for (const k of roadmap.newCatalogFeatures) {
+    const v = vocab.get(k);
+    if (v) {
+      const e = catalog.get(k);
+      const d = defaultCatalogEntry(v);
+      if (e && (e.title !== d.title || e.summary !== d.summary || e.aliasOf !== null))
+        add("CATALOG_DEFAULT_MODIFIED", `catalog/${k}.yaml must be the default entry of vocabulary id ${k} (D73)`);
+    } else if (k !== IMPORT_ENGINE_FEATURE && !decided("catalog_proposal", k))
+      add(
+        "CATALOG_PROPOSAL_UNDECIDED",
+        `new catalog feature ${k} is not a vocabulary default: add a catalog_proposal decision for the reviewers (D73)`,
+      );
+  }
+  // Grounding: every URL the revision cites (citedUrls) was fetched by the run(s) or is cited by the scan.
+  if (m.fetchedUrls) {
+    const ok = new Set([...m.fetchedUrls, ...m.scanSources].map(groundingKey));
+    for (const u of citedUrls(roadmap, inventory))
+      if (!ok.has(groundingKey(u)))
+        add("UNGROUNDED_SOURCE", `${u} is cited but was neither fetched by the run nor cited by the scan (D73)`);
   }
 }

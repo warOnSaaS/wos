@@ -143,6 +143,14 @@ describe.skipIf(!HAS_DB)("D69 candidate trials, D70 web by role", () => {
         contentSha256: `sha256:${"c".repeat(64)}`,
         tool: "webfetch",
       },
+      // D73 grounding: the fixture cites these two pages.
+      ...["https://example.com/docs", "https://example.com/export"].map((target) => ({
+        kind: "fetch",
+        target,
+        at: "2026-09-30T20:00:01.000Z",
+        contentSha256: `sha256:${"d".repeat(64)}`,
+        tool: "webfetch",
+      })),
     ];
     const sub = await authorRevision(h, founder, taskId, roadmapFiles({ target: "salesforce" }), {
       model: "glm",
@@ -155,7 +163,7 @@ describe.skipIf(!HAS_DB)("D69 candidate trials, D70 web by role", () => {
       modelId: "opencode-go/glm-5.3",
       provider: "opencode_cli",
       reasoning: "high",
-      policyVersion: "agent-policy.v3",
+      policyVersion: "agent-policy.v4",
     });
     expect(sub.plan.web.domains).toEqual(expect.arrayContaining(["salesforce.com", "force.com", "apps.apple.com", "play.google.com"]));
     expect(sub.plan.web.search).toBe(true);
@@ -213,7 +221,7 @@ describe.skipIf(!HAS_DB)("D69 candidate trials, D70 web by role", () => {
     await expect(h.owner`update wos.candidate_trials set revoked_at = null, revoked_by = null, revoked_reason = null`).rejects.toThrow();
   });
 
-  it("D72: author plans carry wos:method/<target>; a v3 revision that leaves scan ids unplaced fails validation", async () => {
+  it("D72: author plans carry wos:method/<target>; a v4 revision that leaves scan ids unplaced fails validation", async () => {
     const r = await h.call("POST", "/v1/admin/targets/zendesk/roadmaps", {
       token: founder.token,
       idem: true,
@@ -231,7 +239,7 @@ describe.skipIf(!HAS_DB)("D69 candidate trials, D70 web by role", () => {
     const ref = "wos:method/zendesk";
     expect(sub.plan.artifacts.find((a: { ref?: string }) => a.ref === ref)).toMatchObject({ kind: "server_document", required: true });
     const doc = JSON.parse((await h.owner.begin((tx) => renderServerDocument(tx as never, h.deps, ref)))!);
-    expect(doc).toMatchObject({ version: "wos-roadmap-method.v1", target: "zendesk" });
+    expect(doc).toMatchObject({ version: "wos-roadmap-method.v2", target: "zendesk" });
     expect(doc.scanCapabilityIds).toHaveLength(40);
     const [state] = await h.owner<{ state: string }[]>`select state from wos.documents where id = ${r.body.documentId}`;
     expect(state!.state).toBe("revising");
@@ -239,6 +247,27 @@ describe.skipIf(!HAS_DB)("D69 candidate trials, D70 web by role", () => {
       select carry from wos.tasks where document_id = ${r.body.documentId} and kind = 'roadmap_author' and state = 'open'`;
     expect(task!.carry.validatorErrors.map((e) => e.code)).toEqual(["SCAN_CAPABILITY_UNACCOUNTED"]);
     await action(founder, { action: "abandon_document", documentId: r.body.documentId, reason: "D72 test only" });
+  });
+
+  it("D73: a revision whose run fetched pages must have fetched (or the scan cite) every URL it cites", async () => {
+    const r = await h.call("POST", "/v1/admin/targets/jira/roadmaps", { token: founder.token, idem: true, body: { reason: "Open jira" } });
+    expect(r.status).toBe(200);
+    const fetches = [
+      {
+        kind: "fetch",
+        target: "https://example.com/docs",
+        at: "2026-09-30T20:00:00.000Z",
+        contentSha256: `sha256:${"e".repeat(64)}`,
+        tool: "webfetch",
+      },
+    ];
+    const sub = await authorRevision(h, astra, r.body.taskId, roadmapFiles({ target: "jira" }), { model: "opus", run: { fetches } });
+    expect(sub.res.status, JSON.stringify(sub.res.body)).toBe(200);
+    const [task] = await h.owner<{ carry: { validatorErrors: Array<{ code: string; message: string }> } }[]>`
+      select carry from wos.tasks where document_id = ${r.body.documentId} and kind = 'roadmap_author' and state = 'open'`;
+    expect(task!.carry.validatorErrors.map((e) => e.code)).toEqual(["UNGROUNDED_SOURCE"]);
+    expect(task!.carry.validatorErrors[0]!.message).toContain("https://example.com/export");
+    await action(founder, { action: "abandon_document", documentId: r.body.documentId, reason: "D73 test only" });
   });
 
   it("D70: offline roles get no web; the implementation-side plans stay offline", async () => {

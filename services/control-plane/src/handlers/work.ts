@@ -71,6 +71,7 @@ import {
   type TaskRow,
   taskView,
 } from "../views.js";
+import { unruledDecisions } from "../domain/decisions.js";
 
 const asContributor = (c: Caller) => ({ kind: "contributor" as const, accountId: c.accountId });
 const SYSTEM_TX = { kind: "system" as const, accountId: null };
@@ -822,6 +823,39 @@ export const workHandlers: Pick<
       const plan = l.context_plan as unknown as ContextPlan;
       const expectedParent = attempt ? (attempt.head_sha ?? attempt.base_sha) : (doc!.head_sha ?? plan.source.commit);
       const trial = doc ? await documentTrialLabel(tx, doc.id) : null;
+      // D73: an ensemble revision names the N shadow runs it merges; each must be this contributor's signed shadow run
+      // of this same task, on the very manifest the revision is submitted with.
+      const ensemble = (cs.summary as AuthorSummary).ensemble;
+      if (ensemble) {
+        if (!doc) throw new ApiFailure("VALIDATION_FAILED", "only document revisions are merged from an ensemble");
+        const ids = ensemble.runs.map((r) => r.agentRunId);
+        const runs = await tx<
+          { id: string; lease_id: string; task_id: string; account_id: string; ok: boolean; mode: string | null; manifest: string }[]
+        >`
+          select r.id, r.lease_id, l.task_id, r.account_id, r.signature_valid as ok, r.record->>'mode' as mode, r.record->>'manifestSha256' as manifest
+            from wos.agent_runs r join wos.leases l on l.id = r.lease_id where r.id in ${tx(ids)}`;
+        const bad = ensemble.runs.filter((e) => {
+          const r = runs.find((x) => x.id === e.agentRunId);
+          return (
+            !r ||
+            !r.ok ||
+            r.mode !== "shadow" ||
+            r.account_id !== caller.accountId ||
+            r.task_id !== task.id ||
+            r.lease_id !== e.leaseId ||
+            r.manifest !== cs.manifestSha256 ||
+            e.manifestSha256 !== cs.manifestSha256
+          );
+        });
+        if (bad.length > 0 || new Set(ids).size !== ids.length)
+          throw new ApiFailure(
+            "VALIDATION_FAILED",
+            "the ensemble must name distinct signed shadow runs of this task on this manifest (D73)",
+            {
+              runs: bad.map((b) => b.agentRunId),
+            },
+          );
+      }
       return { l, task, device, manifestOk: !!manifest, attempt, doc, spec, expectedParent, trial };
     });
     const repo = pre.doc?.repo ?? pre.attempt!.repo;
@@ -986,6 +1020,10 @@ export const workHandlers: Pick<
       if (b.headSha !== round.head_sha || b.submissionSha256 !== round.submission_sha256) {
         throw new ApiFailure("VALIDATION_FAILED", "verdict must be bound to the round's head sha and submission hash");
       }
+      // D73: a roadmap's decisions are the reviewers' to rule on; a verdict that leaves one unruled is refused.
+      const unruled = await unruledDecisions(tx, deps, round, b.verdict);
+      if (unruled.length > 0)
+        throw new ApiFailure("VALIDATION_FAILED", "rule on every decision of the roadmap (decisionRulings)", { unruled });
       // The verdict is bound to exactly this signed run of this lease (migration 0003, B-0003-architect).
       const [run] = await tx<{ manifest_id: string; signature_valid: boolean }[]>`
         select manifest_id, signature_valid from wos.agent_runs where id = ${b.agentRunId} and lease_id = ${l.id} and account_id = ${caller.accountId}`;

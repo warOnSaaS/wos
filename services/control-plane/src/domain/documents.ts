@@ -268,7 +268,19 @@ export async function validateDocumentRevision(
       { v: string | null }[]
     >`select context_plan->>'policyVersion' as v from wos.leases where id = ${changeset.leaseId}`;
     const rm = lease?.v === deps.policy.policyVersion ? deps.policy.roadmapMethod : undefined;
-    const method = rm ? { scanCapabilityIds: rm.targets[slug]?.scanCapabilityIds ?? null, requireRubric: true } : undefined;
+    const t = rm?.targets[slug];
+    // D73 (method v2, agent-policy.v4): template, catalog-first features, decisions and grounding against the fetch logs
+    // of the runs behind this revision (its own lease's runs, or the ensemble's shadow runs).
+    const v2 =
+      rm && rm.version === "wos-roadmap-method.v2"
+        ? {
+            template: t?.template ?? null,
+            vocabulary: rm.vocabulary ?? [],
+            fetchedUrls: await revisionFetchedUrls(tx, changeset),
+            scanSources: t?.scanSources ?? [],
+          }
+        : undefined;
+    const method = rm ? { scanCapabilityIds: t?.scanCapabilityIds ?? null, requireRubric: true, ...(v2 ? { v2 } : {}) } : undefined;
     for (const e of deps.logic.validateRoadmap(roadmap.value, inventory.value, catalog, prev?.v ?? null, method)) {
       errors.push({ path: ARTIFACT_PATHS.roadmap(slug), code: e.code, message: e.message });
     }
@@ -334,6 +346,21 @@ export async function validateDocumentRevision(
     errors.push({ path: `${ARTIFACT_PATHS.buildGraph(key)}${i.abu ? `:${i.abu}` : ""}`, code: i.code, message: i.message });
   }
   return errors;
+}
+
+/**
+ * D73: the URLs fetched by the runs behind a revision: the agent runs of its lease and, for an ensemble, the shadow runs
+ * its summary names (verified at submission). Null when no run recorded a fetch log at all (grounding is not checked
+ * then: a revision without any fetch log cannot be graded, and agent runs before contracts 5.17.0 had none).
+ */
+async function revisionFetchedUrls(tx: Tx, changeset: Changeset): Promise<string[] | null> {
+  const ens = (changeset.summary as { ensemble?: { runs: Array<{ agentRunId: string }> } }).ensemble;
+  const ids = ens?.runs.map((r) => r.agentRunId) ?? [];
+  const rows = await tx<{ fetches: Array<{ kind: string; target: string }> | null }[]>`
+    select record->'fetches' as fetches from wos.agent_runs
+     where signature_valid and (lease_id = ${changeset.leaseId} or id in ${tx(ids.length ? ids : ["00000000-0000-0000-0000-000000000000"])})`;
+  if (rows.length === 0 || rows.every((r) => r.fetches === null)) return null;
+  return rows.flatMap((r) => (r.fetches ?? []).filter((f) => f.kind === "fetch").map((f) => f.target));
 }
 
 /**

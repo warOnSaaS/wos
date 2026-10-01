@@ -29,7 +29,17 @@ export { type ArtifactFile, roadmapBundleToFiles } from "./bundle.js";
 export { CONTRACT_ERROR_CODES, type ContractErrorCode, type ContractIssue, validateFeatureContract } from "./contract.js";
 export { type FixUnitIssue, validateFixUnit } from "./fix-unit.js";
 export { globMatches, scopeCanTouchGlob } from "./globs.js";
-export { ROADMAP_ERROR_CODES, type RoadmapErrorCode, type RoadmapIssue, rubricWeights, validateRoadmap } from "./roadmap.js";
+export {
+  defaultCatalogEntry,
+  citedUrls,
+  groundingKey,
+  ROADMAP_ERROR_CODES,
+  type RoadmapErrorCode,
+  type RoadmapIssue,
+  type RoadmapMethodCheck,
+  rubricWeights,
+  validateRoadmap,
+} from "./roadmap.js";
 export { computeRoundOutcome, type RoundOutcome, type RoundOutcomeInput } from "./round.js";
 export { formatPath, MAX_YAML_ALIASES, MAX_YAML_BYTES, type ParseError, type ParseResult, parseYamlWith } from "./yaml.js";
 
@@ -48,3 +58,13 @@ export function parseBuildGraphYaml(text: string): ParseResult<BuildGraphT> {
 export function parseCatalogEntryYaml(text: string): ParseResult<CatalogEntryT> {
   return parseYamlWith(CatalogEntry, text);
 }
+export {
+  type EnsembleMerge,
+  type EnsembleRun,
+  ensembleStability,
+  majorityThreshold,
+  mergeRoadmapRuns,
+  renderDecisionsMd,
+  spearmanRank,
+  toYaml,
+} from "./ensemble.js";

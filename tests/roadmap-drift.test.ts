@@ -28,13 +28,15 @@ describe("roadmap drift compare", () => {
     expect(c.a.validation).toEqual([]);
     expect(c.a.methodValidation).toEqual([]);
     expect(c.a.scanCoverage).toEqual({ total: 52, placed: 52, excluded: 0, unaccounted: [] });
-    expect(c.a.rubric).toEqual({ declared: "wos-weight-rubric.v1", scored: 1, weightsFollow: true });
-    expect(c.overlap.inventoryBySourceUrlAndTitle).toEqual({ both: 2, onlyA: [], onlyB: [] });
+    expect(c.a.rubric).toEqual({ declared: "wos-weight-rubric.v1", scored: 4, weightsFollow: true });
+    expect(c.overlap.inventoryBySourceUrlAndTitle).toEqual({ both: 5, onlyA: [], onlyB: [] });
     expect(c.overlap.scanIdsInMatchedCapabilities).toEqual({ comparable: 52, same: 52 });
-    expect(c.weights).toMatchObject({ matchedCapabilities: 1, meanAbsDeltaBp: 0, perScanId: { comparable: 52, meanAbsDeltaBp: 0 } });
+    expect(c.weights).toMatchObject({ matchedCapabilities: 4, meanAbsDeltaBp: 0, perScanId: { comparable: 52, meanAbsDeltaBp: 0 } });
     expect(c.a.migration.classes.every((m) => m.present && m.complete)).toBe(true);
     expect(c.a.inventory.placeholderSourceUrls).toEqual(["https://example.com/docs"]);
     expect(c.a.fetchLog).toBeNull();
+    // D73: identical sides are fully stable.
+    expect(c.stability).toMatchObject({ capabilitiesMatchBp: 10_000, featuresMatchBp: 10_000, weightSpearman: null }); // even weights: no rank order
     const md = renderCompareMd(c);
     expect(md).toContain("A textual difference is not");
     expect(renderCompareMd(c)).toBe(md);
@@ -70,7 +72,7 @@ describe("roadmap drift compare", () => {
     git("branch", "wos/roadmap/salesforce/v1");
     const s = loadSide(`${repo}@wos/roadmap/salesforce/v1`, "salesforce");
     expect(s.schemaViolations).toEqual([]);
-    expect(s.roadmap?.capabilities).toHaveLength(1);
+    expect(s.roadmap?.capabilities).toHaveLength(4); // D73: the salesforce template's four capabilities
     expect(s.catalog.size).toBe(2);
     expect(s.label).toBe("wos/roadmap/salesforce/v1");
   });

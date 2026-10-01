@@ -1,6 +1,13 @@
 import { Inventory, Roadmap } from "@waronsaas/contracts";
 import { describe, expect, it } from "vitest";
-import { ROADMAP_ERROR_CODES, type RoadmapErrorCode, rubricWeights, validateRoadmap } from "../src/index.js";
+import {
+  ROADMAP_ERROR_CODES,
+  type RoadmapErrorCode,
+  type RoadmapMethodCheck,
+  citedUrls,
+  rubricWeights,
+  validateRoadmap,
+} from "../src/index.js";
 import { catalog, clone, inventory, roadmap } from "./fixtures.js";
 
 type R = ReturnType<typeof roadmap>;
@@ -26,19 +33,67 @@ function withMethod(r: R) {
     c.scanIds = [SCAN[k]!];
   });
 }
-type Method = { scanCapabilityIds: readonly string[] | null; requireRubric: boolean };
+type Method = RoadmapMethodCheck;
 
 function run(mut: { r?: (r: R) => void; i?: (i: I) => void; c?: (c: Cat) => void; prev?: number | null; method?: Method } = {}) {
   const r = clone(roadmap());
   const i = clone(inventory());
   const c = catalog();
   if (mut.method) withMethod(r);
+  if (mut.method?.v2) withMethodV2(r, i);
   mut.r?.(r);
   mut.i?.(i);
   mut.c?.(c);
   return validateRoadmap(r, i, c, mut.prev === undefined ? null : mut.prev, mut.method);
 }
 const M: Method = { scanCapabilityIds: SCAN, requireRubric: true };
+
+/** D73 (method v2): a template of three capabilities over four scan ids, a vocabulary, and a grounding allowlist. */
+const SCAN2 = ["s-contacts", "s-import", "s-deals", "s-reports"];
+const VOCAB = SCAN2.map((id) => ({
+  id,
+  group: id === "s-deals" ? "Sales" : id === "s-reports" ? "Analytics" : "CRM",
+  definition: `The ${id} capability.`,
+}));
+const TEMPLATE = [
+  { key: "contacts", group: "CRM", scanIds: ["s-contacts", "s-import"] },
+  { key: "deals", group: "Sales", scanIds: ["s-deals"] },
+  { key: "reports", group: "Analytics", scanIds: ["s-reports"] },
+];
+const M2: Method = {
+  scanCapabilityIds: SCAN2,
+  requireRubric: true,
+  v2: {
+    template: TEMPLATE,
+    vocabulary: VOCAB,
+    // The run fetched every help-center page the fixture cites (inventory, migration); the mobile page is the scan's.
+    fetchedUrls: citedUrls(roadmap(), inventory()).filter((u) => u.startsWith("https://help.example.com")),
+    scanSources: ["https://example.com/mobile"],
+  },
+};
+function withMethodV2(r: R, i: I) {
+  r.capabilities[0]!.scanIds = ["s-contacts", "s-import"];
+  r.capabilities[1]!.scanIds = ["s-deals"];
+  r.capabilities[2]!.scanIds = ["s-reports"];
+  const ids: Record<string, string | null> = {
+    "INV-0001": "s-contacts",
+    "INV-0002": "s-import",
+    "INV-0003": "s-deals",
+    "INV-0004": null,
+    "INV-0005": "s-reports",
+  };
+  for (const it of i.items) it.scanId = ids[it.key] ?? null;
+  r.decisions = [
+    {
+      id: "DEC-001",
+      kind: "catalog_proposal",
+      subject: "csv-import",
+      summary: "A CSV import feature beyond the vocabulary.",
+      options: [],
+      chosen: "proposed",
+    },
+  ];
+}
 const codes = (xs: ReturnType<typeof run>) => [...new Set(xs.map((x) => x.code))].sort();
 const contacts = (r: R) => r.capabilities[0]!.features[0]!;
 
@@ -249,6 +304,63 @@ const CASES: Record<RoadmapErrorCode, { why: string; mut: Parameters<typeof run>
       },
     },
   },
+  TEMPLATE_CAPABILITY_MISSING: {
+    req: "D73",
+    why: "a template capability is missing and no deviation names it",
+    mut: {
+      method: { ...M2, v2: { ...M2.v2!, template: [...TEMPLATE, { key: "forecasts", group: "Forecasts", scanIds: ["s-forecasts"] }] } },
+    },
+  },
+  TEMPLATE_DEVIATION_UNREASONED: {
+    req: "D73",
+    why: "a capability outside the template states no deviation",
+    mut: { method: { ...M2, v2: { ...M2.v2!, template: TEMPLATE.filter((t) => t.key !== "reports") } } },
+  },
+  ITEM_SCAN_ID_MISSING: { req: "D73", why: "an item without a scanId", mut: { method: M2, i: (i) => delete i.items[0]!.scanId } },
+  ITEM_OUTSIDE_TEMPLATE: {
+    req: "D73",
+    why: "an item placed outside its scan id's template capability",
+    mut: { method: M2, i: (i) => (i.items[2]!.scanId = "s-reports") },
+  },
+  CATALOG_PROPOSAL_UNDECIDED: {
+    req: "D73",
+    why: "a new non-default feature without a decision",
+    mut: { method: M2, r: (r) => (r.decisions = []) },
+  },
+  CATALOG_DEFAULT_MODIFIED: {
+    req: "D73",
+    why: "a default feature's catalog file edited",
+    mut: {
+      method: M2,
+      r: (r) => r.newCatalogFeatures.push("s-deals"),
+      c: (c) =>
+        c.set("s-deals", { schema: "wos-catalog-entry.v1", key: "s-deals", title: "Deals", summary: "My own words here.", aliasOf: null }),
+    },
+  },
+  UNGROUNDED_SOURCE: {
+    req: "D73",
+    why: "an inventory source neither fetched nor cited by the scan",
+    mut: { method: M2, i: (i) => (i.sources[0]!.url = "https://unfetched.example.com/page") },
+  },
+  DECISION_MISSING: {
+    req: "D73",
+    why: "a template deviation without a decision",
+    mut: {
+      method: M2,
+      r: (r) => {
+        r.capabilities[2]!.templateDeviation = {
+          kind: "merge",
+          templateKeys: ["reports"],
+          reason: "Reports merged with dashboards for this app.",
+        };
+      },
+    },
+  },
+  DECISION_DUPLICATE: {
+    req: "D73",
+    why: "two decisions with one id",
+    mut: { method: M2, r: (r) => r.decisions!.push({ ...r.decisions![0]!, subject: "other" }) },
+  },
   RUBRIC_MISSING: { req: "D72", why: "a capability has no rubric scores", mut: { method: M, r: (r) => delete r.capabilities[1]!.rubric } },
   RUBRIC_WEIGHT_MISMATCH: {
     req: "D72",
@@ -282,6 +394,19 @@ describe("validateRoadmap", () => {
       for (const i of issues) expect(i.message.length).toBeGreaterThan(10);
     });
   }
+
+  it("D73: the method v2 baseline passes; without a fetch log grounding is not checked", () => {
+    expect(run({ method: M2 })).toEqual([]);
+    // Grounding covers every cited URL, the migration's sources included.
+    const mig = run({
+      method: M2,
+      r: (r) => (r.migration!.classes[0]!.extraction!.source = "https://unfetched.example.com/export"),
+    });
+    expect(mig.map((x) => x.code)).toEqual(["UNGROUNDED_SOURCE"]);
+    expect(
+      run({ method: { ...M2, v2: { ...M2.v2!, fetchedUrls: null } }, i: (i) => (i.sources[0]!.url = "https://unfetched.example.com/") }),
+    ).toEqual([]);
+  });
 
   it("D72: the method baseline passes; excluding a scan id with a source accounts for it; rubricWeights apportions exactly", () => {
     expect(run({ method: M })).toEqual([]);

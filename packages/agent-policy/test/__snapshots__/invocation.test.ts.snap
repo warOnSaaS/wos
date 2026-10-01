@@ -93,7 +93,7 @@ exports[`agent-policy buildInvocation: argv snapshots for all ten roles > agent-
     "--effort",
     "max",
     "--json-schema",
-    "<schemaJson author-summary.v1 5b05e4d1ca22f7b1>",
+    "<schemaJson author-summary.v1 95f75094450dcbbc>",
   ],
   "binary": "claude",
   "env": {
@@ -157,7 +157,7 @@ exports[`agent-policy buildInvocation: argv snapshots for all ten roles > agent-
     "--effort",
     "max",
     "--json-schema",
-    "<schemaJson review-verdict.v1 ca5b755a852aa1b2>",
+    "<schemaJson review-verdict.v1 faf6a90c887a5be1>",
   ],
   "binary": "claude",
   "env": {
@@ -221,7 +221,7 @@ exports[`agent-policy buildInvocation: argv snapshots for all ten roles > agent-
     "--effort",
     "max",
     "--json-schema",
-    "<schemaJson review-verdict.v1 ca5b755a852aa1b2>",
+    "<schemaJson review-verdict.v1 faf6a90c887a5be1>",
   ],
   "binary": "claude",
   "env": {
@@ -254,7 +254,7 @@ exports[`agent-policy buildInvocation: argv snapshots for all ten roles > agent-
     "--effort",
     "max",
     "--json-schema",
-    "<schemaJson author-summary.v1 5b05e4d1ca22f7b1>",
+    "<schemaJson author-summary.v1 95f75094450dcbbc>",
   ],
   "binary": "claude",
   "env": {
@@ -318,7 +318,7 @@ exports[`agent-policy buildInvocation: argv snapshots for all ten roles > agent-
     "--effort",
     "max",
     "--json-schema",
-    "<schemaJson review-verdict.v1 ca5b755a852aa1b2>",
+    "<schemaJson review-verdict.v1 faf6a90c887a5be1>",
   ],
   "binary": "claude",
   "env": {

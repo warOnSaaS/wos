@@ -35,7 +35,17 @@ import {
 } from "@waronsaas/contracts";
 import { canonicalJson, canonicalSha256, sha256Of, submissionSha256 } from "@waronsaas/contracts/canonical";
 import { captureChanges, createWorktree, isBlockingRejection, removeWorktree, type WorktreeHandle } from "@waronsaas/github/local";
-import { parseBuildGraphYaml, parseCatalogEntryYaml, parseInventoryYaml, parseRoadmapYaml, validateRoadmap } from "@waronsaas/planning";
+import {
+  ensembleStability,
+  mergeRoadmapRuns,
+  parseBuildGraphYaml,
+  parseCatalogEntryYaml,
+  parseInventoryYaml,
+  parseRoadmapYaml,
+  renderDecisionsMd,
+  toYaml,
+  validateRoadmap,
+} from "@waronsaas/planning";
 import { validateChangeset } from "@waronsaas/verification";
 import { ApiCallError, createApiClient } from "./api-client.js";
 import { offAllowlist, parseAgentEvents } from "./agent-events.js";
@@ -777,7 +787,8 @@ export class OrchestratorImpl {
       ...(events.subagents.maxConcurrent !== null && events.subagents.count > 0
         ? { maxConcurrentSubagents: events.subagents.maxConcurrent }
         : {}),
-      ...(events.fetches.length > 0 ? { fetches: events.fetches } : {}),
+      // A research plan always records its fetch log (empty included), so grounding (D73) can be checked.
+      ...(events.fetches.length > 0 || plan.web ? { fetches: events.fetches } : {}),
       ...(events.usageDetail ? { usageDetail: events.usageDetail } : {}),
       ...(this.shadowLeases.has(leaseId) ? { mode: "shadow" as const } : {}),
     };
@@ -1130,7 +1141,10 @@ export class OrchestratorImpl {
     }
   }
 
+  private claimSeq = 0;
+
   async author(options: AuthorOptions, observer: OrchestratorObserver): Promise<RunResult> {
+    if (options.ensemble !== undefined) return this.authorEnsemble(options, observer);
     let task: TaskView | null = null;
     try {
       const s = await this.session();
@@ -1147,6 +1161,8 @@ export class OrchestratorImpl {
           options.model ?? "",
           launch ? JSON.stringify(launch) : "",
           this.now().toISOString().slice(0, 16),
+          // contracts 5.20.0: every claim of this process is its own request (an ensemble claims one task N + 1 times).
+          String(this.claimSeq++),
         ),
       });
       task = claim.task;
@@ -1242,7 +1258,7 @@ export class OrchestratorImpl {
   private async archiveRun(
     claim: ClaimResponse,
     wt: WorktreeHandle | null,
-    kind: "failed" | "shadow",
+    kind: "failed" | "shadow" | "ensemble",
     extra: Record<string, unknown>,
     observer: OrchestratorObserver,
   ): Promise<string> {
@@ -1302,6 +1318,227 @@ export class OrchestratorImpl {
     }
   >();
   private readonly shadowLeases = new Set<string>();
+  /** The last shadow run per task (contracts 5.20.0): what an ensemble merges. */
+  private readonly lastShadow = new Map<
+    string,
+    {
+      leaseId: string;
+      agentRunId: string;
+      manifestSha256: string;
+      files: ChangesetFile[];
+      existing: string[];
+      fetchedUrls: string[];
+      output: AuthorSummary;
+    }
+  >();
+
+  /**
+   * contracts 5.20.0 (D73) ensemble authoring: N shadow runs of the task on one manifest, one after the other (one task
+   * holds one lease at a time), merged deterministically (planning mergeRoadmapRuns: strict majority, median rubric
+   * scores, disagreements as decisions), then submitted as the real revision on a fresh lease whose manifest must be the
+   * same. The summary names the N runs (provenance) and their stability; the merge writes roadmaps/<target>/DECISIONS.md.
+   */
+  private async authorEnsemble(options: AuthorOptions, observer: OrchestratorObserver): Promise<RunResult> {
+    const pol = this.engines.policy.ensemble;
+    const n = options.ensemble ?? 0;
+    try {
+      if (!pol) throw new StepError("VALIDATION_FAILED", `${this.engines.policy.policyVersion} has no ensemble authoring`);
+      if (!Number.isInteger(n) || n < 2 || n > pol.maxRuns)
+        throw new StepError("VALIDATION_FAILED", `--ensemble takes 2..${pol.maxRuns} runs`);
+      const runs: Array<NonNullable<ReturnType<typeof this.lastShadow.get>>> = [];
+      for (let i = 1; i <= n; i++) {
+        this.step(observer, "BUILD", "started", `ensemble run ${i} of ${n} (shadow)`);
+        this.lastShadow.delete(options.taskId);
+        const res = await this.author({ ...options, ensemble: undefined, shadow: true }, observer);
+        if (!res.ok) throw new StepError(res.code, `ensemble run ${i} of ${n} failed: ${res.message}`);
+        const shadow = this.lastShadow.get(options.taskId);
+        if (!shadow) throw new StepError("VALIDATION_FAILED", "an ensemble merges roadmap_author runs only (feature contracts: not yet)");
+        if (runs.length > 0 && shadow.manifestSha256 !== runs[0]!.manifestSha256)
+          throw new StepError(
+            "ENSEMBLE_CONTEXT_CHANGED",
+            `run ${i} got another context (${shadow.manifestSha256}) than run 1 (${runs[0]!.manifestSha256})`,
+          );
+        runs.push(shadow);
+      }
+      // The real lease: same task, same manifest, the merged files.
+      const s = await this.session();
+      const launch = options.launch ?? (options.model ? this.deps.modelLaunch?.[options.model] : undefined);
+      const claim = await this.api.call("claimTask", {
+        params: { id: options.taskId },
+        body: { deviceId: s.deviceId, ...(options.model ? { model: options.model } : {}), ...(launch ? { launch } : {}) },
+        idempotencyKey: idempotencyKey(
+          "claimTask",
+          options.taskId,
+          s.deviceId,
+          "ensemble",
+          this.now().toISOString(),
+          String(this.claimSeq++),
+        ),
+      });
+      observer({ type: "lease", lease: claim.lease });
+      return await this.submitEnsemble(claim, runs, observer);
+    } catch (e) {
+      return this.failure(e, null, observer);
+    }
+  }
+
+  private async submitEnsemble(
+    claim: ClaimResponse,
+    runs: Array<NonNullable<ReturnType<typeof this.lastShadow.get>>>,
+    observer: OrchestratorObserver,
+  ): Promise<RunResult> {
+    const plan = claim.contextPlan;
+    const target = plan.target!;
+    const pol = this.engines.policy.ensemble!;
+    const rm = this.engines.policy.roadmapMethod;
+    const hb = this.heartbeat(claim.lease.id, claim.lease.heartbeatSeconds, { value: "merging" });
+    let wt: WorktreeHandle | null = null;
+    let submitted = false;
+    try {
+      wt = await createWorktree(
+        this.deps.workspaceRoot,
+        plan.source.repo,
+        plan.source.commit,
+        `e-${claim.lease.id.replace(/-/g, "").slice(0, 12)}`,
+      );
+      observer({ type: "worktree", path: wt.path, baseSha: wt.baseSha });
+      const ctx = await this.engines.buildContext(
+        plan,
+        this.snapshotReader(wt, plan, claim.lease.id, () => null),
+        this.engines.policy,
+      );
+      observer({ type: "context", manifest: ctx.manifest });
+      if (ctx.manifest.manifestSha256 !== runs[0]!.manifestSha256)
+        throw new StepError(
+          "ENSEMBLE_CONTEXT_CHANGED",
+          `the merge lease's context ${ctx.manifest.manifestSha256} is not the runs' ${runs[0]!.manifestSha256}`,
+        );
+      await this.api.call("postManifest", {
+        params: { id: claim.lease.id },
+        body: ctx.manifest,
+        idempotencyKey: idempotencyKey("postManifest", claim.lease.id, ctx.manifest.manifestSha256),
+      });
+      // Parse every run (a run that does not parse stops the ensemble: nothing is merged from a broken document).
+      const text = (r: (typeof runs)[number], path: string) => {
+        const f = r.files.find((x) => x.path === path);
+        return f && f.op === "upsert" ? Buffer.from(f.contentBase64, "base64").toString("utf8") : null;
+      };
+      const parsed = runs.map((r, i) => {
+        const inv = parseInventoryYaml(text(r, `roadmaps/${target}/INVENTORY.yaml`) ?? "");
+        const road = parseRoadmapYaml(text(r, `roadmaps/${target}/ROADMAP.yaml`) ?? "");
+        if (!inv.ok || !road.ok)
+          throw new StepError("ENSEMBLE_RUN_INVALID", `run ${i + 1}'s INVENTORY.yaml or ROADMAP.yaml does not parse`);
+        const catalog = new Map<string, CatalogEntry>();
+        for (const f of r.files)
+          if (f.op === "upsert" && /^catalog\/[a-z][a-z0-9-]*\.yaml$/.test(f.path)) {
+            const e = parseCatalogEntryYaml(Buffer.from(f.contentBase64, "base64").toString("utf8"));
+            if (e.ok) catalog.set(e.value.key, e.value);
+          }
+        return { inventory: inv.value, roadmap: road.value, catalog, fetchedUrls: r.fetchedUrls };
+      });
+      const existingCatalog = new Set(
+        runs[0]!.existing.filter((p) => /^catalog\/[a-z][a-z0-9-]*\.yaml$/.test(p)).map((p) => p.slice("catalog/".length, -".yaml".length)),
+      );
+      const merged = mergeRoadmapRuns(parsed, { vocabulary: rm?.vocabulary ?? [], existingCatalog });
+      const stability = ensembleStability(parsed, rm?.targets[target]?.scanSources ?? [], pol.stabilityTargets);
+      // Write the merged revision into the worktree.
+      const put = async (path: string, content: string) => {
+        await mkdir(dirname(join(wt!.path, path)), { recursive: true });
+        await writeFile(join(wt!.path, path), content);
+      };
+      await put(`roadmaps/${target}/INVENTORY.yaml`, toYaml(merged.inventory));
+      await put(`roadmaps/${target}/ROADMAP.yaml`, toYaml(merged.roadmap));
+      for (const c of merged.catalogFiles) await put(`catalog/${c.key}.yaml`, toYaml(c));
+      await put(
+        `roadmaps/${target}/DECISIONS.md`,
+        renderDecisionsMd(
+          target,
+          merged.decisions,
+          `Merged deterministically from ${runs.length} runs on manifest ${runs[0]!.manifestSha256} (strict majority: ${merged.threshold} of ${runs.length}; D73).`,
+        ),
+      );
+      const cap = await captureChanges(wt);
+      const existing = new Set(runs[0]!.existing);
+      const fetched = [...new Set(runs.flatMap((r) => r.fetchedUrls))];
+      const validation = await this.validateRoadmapLocally(plan, cap.files, existing, wt, fetched);
+      // Findings answered by the majority action, with the first such note; proposals addressed by the majority.
+      const outputs = runs.map((r) => r.output);
+      const findingIds = [...new Set(outputs.flatMap((o) => o.responses.map((x) => x.findingId)))].sort();
+      const responses = findingIds.map((id) => {
+        const votes = outputs.flatMap((o) => o.responses.filter((x) => x.findingId === id));
+        const fixed = votes.filter((v) => v.action === "fixed").length;
+        const action = fixed >= votes.length - fixed ? ("fixed" as const) : ("disputed" as const);
+        return votes.find((v) => v.action === action)!;
+      });
+      const proposalsAddressed = [...new Set(outputs.flatMap((o) => o.proposalsAddressed))]
+        .filter((p) => outputs.filter((o) => o.proposalsAddressed.includes(p)).length >= merged.threshold)
+        .sort();
+      const summary: AuthorSummary = {
+        schema: "author-summary.v1",
+        summary:
+          `Ensemble of ${runs.length} runs on one manifest, merged deterministically (D73, strict majority ${merged.threshold} of ${runs.length}): ${merged.inventory.items.length} items, ${merged.roadmap.capabilities.length} capabilities, ${merged.decisions.length} decisions for the reviewers (roadmaps/${target}/DECISIONS.md). Stability: capabilities ${stability.capabilitiesMatchBp / 100}%, features ${stability.featuresMatchBp / 100}%, weight Spearman ${stability.weightSpearman ?? "n/a"}, grounding ${stability.groundingBp / 100}%${stability.belowTarget.length ? `; below target: ${stability.belowTarget.join(", ")}` : ""}.`.slice(
+            0,
+            4000,
+          ),
+        responses,
+        proposalsAddressed,
+        ensemble: {
+          runs: runs.map((r) => ({ leaseId: r.leaseId, agentRunId: r.agentRunId, manifestSha256: r.manifestSha256 })),
+          threshold: merged.threshold,
+          majority: "strict_majority",
+          decisions: merged.decisions.length,
+          stability,
+        },
+      };
+      const archive = await this.archiveRun(claim, wt, "ensemble", { validation, stability, runs: summary.ensemble!.runs }, observer);
+      if (!validation.ok)
+        throw new StepError(
+          "ENSEMBLE_MERGE_INVALID",
+          `the merged revision does not validate (${validation.errors
+            .slice(0, 5)
+            .map((e) => e.code)
+            .join(", ")}); archived in ${archive}`,
+        );
+      const changeset = await signChangesetWithDevice(this.deps.secrets, {
+        schema: "wos-changeset.v1",
+        taskId: plan.taskId,
+        leaseId: claim.lease.id,
+        deviceId: (await this.session()).deviceId,
+        parentCommit: wt.baseSha,
+        manifestSha256: ctx.manifest.manifestSha256,
+        submissionSha256: submissionSha256(wt.baseSha, cap.files),
+        files: cap.files,
+        summary,
+        localVerification: [],
+      });
+      const local = this.engines.validateChangeset(changeset, {
+        kind: "roadmap",
+        abu: null,
+        documentPaths: documentPaths(plan, cap.files, existing),
+        repoManifest: await this.repoManifest(wt),
+        existingPaths: existing,
+      });
+      observer({ type: "scope", validation: local });
+      if (!local.ok) throw new StepError("SCOPE_VIOLATION", local.errors.map((e) => `${e.code} ${e.path ?? ""}`.trim()).join("; "));
+      submitted = true;
+      const res = await this.api.call("submitChangeset", {
+        params: { id: claim.lease.id },
+        body: changeset,
+        idempotencyKey: idempotencyKey("submitChangeset", claim.lease.id, changeset.submissionSha256),
+      });
+      observer({ type: "scope", validation: res.validation });
+      if (!res.validation.ok) throw new StepError("SCOPE_VIOLATION", "the control plane refused the submission");
+      this.step(observer, "VERIFY", "passed", `submitted the merged revision of ${runs.length} runs (${changeset.files.length} file(s))`);
+      return { ok: true, attempt: null, task: claim.task, output: summary };
+    } catch (e) {
+      if (!submitted)
+        await this.releaseQuietly(claim.lease.id, `ensemble merge failed: ${e instanceof StepError ? e.code : "INTERNAL"}`, observer);
+      throw e;
+    } finally {
+      hb.stop();
+      if (wt) await removeWorktree(wt).catch(() => undefined);
+    }
+  }
 
   /**
    * roadmap_author / feature_author: the agent edits the canonical document files, the changeset is
@@ -1369,7 +1606,18 @@ export class OrchestratorImpl {
       if (!local.ok) throw new StepError("SCOPE_VIOLATION", local.errors.map((e) => `${e.code} ${e.path ?? ""}`.trim()).join("; "));
       if (shadow) {
         // contracts 5.19.0: a shadow run validates locally, archives, gives the lease back and submits nothing.
-        const validation = plan.taskKind === "roadmap_author" ? this.validateRoadmapLocally(plan, cap.files, existing, wt) : null;
+        const last = this.lastRuns.get(claim.lease.id);
+        const fetched = last ? last.events.fetches.filter((f) => f.kind === "fetch").map((f) => f.target) : null;
+        const validation = plan.taskKind === "roadmap_author" ? this.validateRoadmapLocally(plan, cap.files, existing, wt, fetched) : null;
+        this.lastShadow.set(plan.taskId, {
+          leaseId: claim.lease.id,
+          agentRunId: r.run.agentRunId,
+          manifestSha256: r.run.manifestSha256,
+          files: cap.files,
+          existing: [...existing],
+          fetchedUrls: fetched ?? [],
+          output: summary.data,
+        });
         const dir = await this.archiveRun(claim, wt, "shadow", { validation: await validation, scope: local }, observer);
         await this.releaseQuietly(claim.lease.id, "shadow run: nothing submitted", observer);
         this.step(observer, "VERIFY", "passed", `shadow run done (nothing submitted): ${dir}`);
@@ -1407,7 +1655,13 @@ export class OrchestratorImpl {
   }
 
   /** contracts 5.19.0: a shadow roadmap's local validation, as the control plane would run it (D72 method included). */
-  private async validateRoadmapLocally(plan: ContextPlan, files: ChangesetFile[], existing: ReadonlySet<string>, wt: WorktreeHandle) {
+  private async validateRoadmapLocally(
+    plan: ContextPlan,
+    files: ChangesetFile[],
+    existing: ReadonlySet<string>,
+    wt: WorktreeHandle,
+    fetchedUrls: readonly string[] | null = null,
+  ) {
     const target = plan.target!;
     const text = async (path: string) => {
       const f = files.find((x) => x.path === path);
@@ -1433,7 +1687,16 @@ export class OrchestratorImpl {
       else if (e) for (const x of e.errors) errors.push({ code: "SCHEMA", message: `${p} ${x.path}: ${x.message}` });
     }
     const rm = this.engines.policy.roadmapMethod;
-    const method = rm ? { scanCapabilityIds: rm.targets[target]?.scanCapabilityIds ?? null, requireRubric: true } : undefined;
+    const tm = rm?.targets[target];
+    const method = rm
+      ? {
+          scanCapabilityIds: tm?.scanCapabilityIds ?? null,
+          requireRubric: true,
+          ...(rm.version === "wos-roadmap-method.v2"
+            ? { v2: { template: tm?.template ?? null, vocabulary: rm.vocabulary ?? [], fetchedUrls, scanSources: tm?.scanSources ?? [] } }
+            : {}),
+        }
+      : undefined;
     for (const i of validateRoadmap(roadmap.value, inventory.value, catalog, null, method))
       errors.push({ code: i.code, message: i.message });
     return {

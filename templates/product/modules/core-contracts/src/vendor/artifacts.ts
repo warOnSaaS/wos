@@ -198,6 +198,16 @@ export const InventoryItem = z.object({
   source: z.number().int().nonnegative(),
   /** V1: every weight is 1 (REWARD/ROADMAP protocol). Kept as a field so weighting can change by version. */
   weight: z.literal(1),
+  /**
+   * contracts 5.20.0 (D73): the scan capability id (vocabulary id) this item belongs to, or null for an item beyond the
+   * scan. Under the fixed capability template it decides the item's capability (its vocabulary group) and its default
+   * catalog feature (the id itself).
+   */
+  scanId: z
+    .string()
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+    .nullable()
+    .optional(),
 });
 
 export const Inventory = z.object({
@@ -308,6 +318,30 @@ export const WEIGHT_RUBRIC_V1 = {
   criteria: ["editionBreadth", "coreDailyUse", "surfaceParity", "migrationGravity"],
 } as const;
 
+/** contracts 5.20.0 (D73): a decision for the reviewers. */
+export const RoadmapDecision = z.object({
+  id: z.string().regex(/^DEC-\d{3,4}$/),
+  kind: z.enum(["template_deviation", "catalog_proposal", "ensemble_disagreement"]),
+  /** What it is about: a capability key, a catalog feature key, an inventory title, a data class. */
+  subject: z.string().min(1).max(300),
+  summary: z.string().min(10).max(4000),
+  /** The alternatives (for an ensemble: what each run said), each with its sources. */
+  options: z
+    .array(
+      z.object({
+        label: z.string().min(1).max(200),
+        runs: z.array(z.number().int().positive()),
+        detail: z.string().max(4000),
+        sources: z.array(z.string()).max(20),
+      }),
+    )
+    .max(10)
+    .default([]),
+  /** What this revision does (the majority's choice, or the author's). */
+  chosen: z.string().min(1).max(2000),
+});
+export type RoadmapDecision = z.infer<typeof RoadmapDecision>;
+
 export const RoadmapCapability = ReasonedWeight.extend({
   key: CapabilityKey,
   title: z.string().min(1),
@@ -323,6 +357,13 @@ export const RoadmapCapability = ReasonedWeight.extend({
   scanIds: z.array(z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)).optional(),
   /** D72: public sources for a capability beyond the scan (one with no `scanIds` needs at least one). */
   sources: z.array(z.url()).optional(),
+  /**
+   * contracts 5.20.0 (D73): a capability that is not a template capability (or a template capability that absorbs or
+   * splits others) states how and why; the validator turns it into a decision the reviewers must rule on.
+   */
+  templateDeviation: z
+    .object({ kind: z.enum(["split", "merge", "addition"]), templateKeys: z.array(z.string()), reason: z.string().min(20) })
+    .optional(),
   /** D72: the weight rubric's scores (`wos-weight-rubric.v1`); the weight is derived from them (planning `rubricWeights`). */
   rubric: z
     .object({
@@ -455,6 +496,13 @@ export const Roadmap = z
       .optional(),
     /** contracts 5.19.0 (D72): set when capability weights are derived from rubric scores (`wos-weight-rubric.v1`). */
     weightRubric: z.literal("wos-weight-rubric.v1").optional(),
+    /**
+     * contracts 5.20.0 (D73): the decisions this revision asks the reviewers to rule on: template deviations, catalog
+     * proposals (a new or split feature), and an ensemble's disagreements (what each run said, with its sources).
+     * roadmaps/<target>/DECISIONS.md renders them for people. Each reviewer rules on every one (ReviewVerdict
+     * `decisionRulings`); an unruled decision is material.
+     */
+    decisions: z.array(RoadmapDecision).max(500).optional(),
   })
   .superRefine((r, ctx) => {
     // D12 sum constraints. Item coverage and catalog checks live in @waronsaas/planning validateRoadmap.

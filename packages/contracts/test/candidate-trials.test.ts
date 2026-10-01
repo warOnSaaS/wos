@@ -8,6 +8,7 @@ import {
   AGENT_POLICY_V1,
   AGENT_POLICY_V2,
   AGENT_POLICY_V3,
+  AGENT_POLICY_V4,
   AgentRunRecord,
   CandidateTrialLabel,
   candidateTrialLabel,
@@ -98,8 +99,8 @@ describe("agent-policy.v2 (D70 network by role, opencode, glm)", () => {
     expect(AGENT_POLICY_V1.models.map((m) => m.ref)).toEqual(["fable", "opus", "astra", "sol"]);
     expect(AGENT_POLICY_V1.roles.every((r) => r.web === undefined)).toBe(true);
     expect(AGENT_POLICY_V2.policyVersion).toBe("agent-policy.v2");
-    // contracts 5.19.0: v3 is in force (v2 unchanged: plans had been issued under it).
-    expect(AGENT_POLICY).toBe(AGENT_POLICY_V3);
+    // contracts 5.20.0: v4 is in force (v2 and v3 unchanged: plans had been issued under them).
+    expect(AGENT_POLICY).toBe(AGENT_POLICY_V4);
     expect(AGENT_POLICY_V2.models.find((m) => m.ref === "glm")!.launchEnv).toBeUndefined();
   });
 
@@ -193,6 +194,42 @@ describe("agent-policy.v3 (contracts 5.19.0): glm's launch and the D72 roadmap m
       ).toBe(true);
     const author = AGENT_POLICY_V3.roles.find((r) => r.role === "roadmap_author")!;
     expect(author.obligations.filter((o) => o.includes("D72"))).toHaveLength(4);
+  });
+});
+
+describe("agent-policy.v4 (contracts 5.20.0): D73 template, catalog-first, grounding, ensemble", () => {
+  it("v3 keeps method v1; v4 carries method v2 with a template, scan sources and the vocabulary for every target", () => {
+    expect(AGENT_POLICY_V3.roadmapMethod!.version).toBe("wos-roadmap-method.v1");
+    const rm = AGENT_POLICY_V4.roadmapMethod!;
+    expect(AGENT_POLICY_V4.policyVersion).toBe("agent-policy.v4");
+    expect(rm.version).toBe("wos-roadmap-method.v2");
+    expect(rm.steps).toHaveLength(8);
+    for (const rule of [rm.templateRule, rm.catalogRule, rm.groundingRule]) expect(rule?.length ?? 0).toBeGreaterThan(40);
+    const sf = rm.targets.salesforce!;
+    // The template partitions the scan ids by vocabulary group.
+    expect(sf.template!.map((t) => [t.key, t.scanIds.length])).toEqual([
+      ["platform", 28],
+      ["crm", 18],
+      ["marketing", 4],
+      ["service", 2],
+    ]);
+    expect(sf.template!.flatMap((t) => t.scanIds).sort()).toEqual([...sf.scanCapabilityIds].sort());
+    expect(sf.scanSources!.length).toBeGreaterThan(0);
+    expect(rm.vocabulary!.length).toBeGreaterThan(0);
+    const author = AGENT_POLICY_V4.roles.find((r) => r.role === "roadmap_author")!;
+    expect(author.obligations.filter((o) => o.includes("D73")).length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("ensemble and stability targets are policy data", () => {
+    expect(AGENT_POLICY_V3.ensemble).toBeUndefined();
+    expect(AGENT_POLICY_V4.ensemble).toEqual({
+      roles: ["roadmap_author", "feature_author"],
+      defaultRuns: 3,
+      maxRuns: 5,
+      majority: "strict_majority",
+      stabilityTargets: { capabilitiesMatchBp: 9000, featuresMatchBp: 8000, weightSpearman: 0.85, groundingBp: 10_000 },
+      lowStabilityLabel: "low-stability",
+    });
   });
 });
 

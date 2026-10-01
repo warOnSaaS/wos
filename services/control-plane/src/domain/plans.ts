@@ -20,6 +20,7 @@ import type { Deps } from "../deps.js";
 import { canonicalJson, sha256Of } from "@waronsaas/contracts/canonical";
 import type { TaskRow } from "../views.js";
 import { BUNDLED_SCANS } from "../generated/scans.js";
+import { defaultCatalogEntry } from "@waronsaas/planning";
 
 export const SECRET_EXCLUDE_GLOBS = ["**/.env*", "**/*.pem", "**/*.key", "**/id_*"];
 
@@ -63,11 +64,16 @@ export async function renderServerDocument(tx: Tx, deps: Deps, ref: string): Pro
     // D72: the roadmap method of the policy in force, with the target's scan ids, required reading and partition.
     const rm = deps.policy.roadmapMethod;
     if (!rm) return null;
-    const { targets, ...common } = rm;
+    const { targets, vocabulary, ...common } = rm;
+    const t = targets[m[1]!];
+    // D73 (method v2): the default catalog entries of the target's scan ids, exactly as the roadmap must write them.
+    const ids = new Set(t?.scanCapabilityIds ?? []);
+    const defaultCatalog = (vocabulary ?? []).filter((v) => ids.has(v.id)).map((v) => defaultCatalogEntry(v));
     return canonicalJson({
       ...common,
       target: m[1],
-      ...(targets[m[1]!] ?? { scanCapabilityIds: null, requiredReading: [], partition: [] }),
+      ...(t ?? { scanCapabilityIds: null, requiredReading: [], partition: [] }),
+      ...(vocabulary ? { defaultCatalog } : {}),
     });
   }
   m = /^wos:fetches\/([0-9a-f-]{36})$/.exec(ref);
@@ -355,6 +361,8 @@ export async function buildPlan(tx: Tx, deps: Deps, input: PlanInput): Promise<C
     if (!author && input.subjectId && policyRole.web) push(serverDoc(tx, deps, `wos:fetches/${input.subjectId}`, true));
     // D72: the roadmap method (scan ids, required reading, partition, rubric) for the author and both reviewers.
     if (deps.policy.roadmapMethod) push(serverDoc(tx, deps, `wos:method/${target}`, true));
+    // D73: the decisions of the revision under review, for people (ROADMAP.yaml `decisions` is the record).
+    if (deps.policy.roadmapMethod?.version === "wos-roadmap-method.v2") push(repoFile(repo, `roadmaps/${target}/DECISIONS.md`, false));
     push(repoGlob(repo, "catalog/*.yaml", false));
   } else if (role === "feature_author" || role === "feature_reviewer_astra" || role === "feature_reviewer_fable") {
     const author = role === "feature_author";

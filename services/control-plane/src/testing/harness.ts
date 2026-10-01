@@ -803,6 +803,7 @@ export const verdict = (v: "NO_MATERIAL_GAPS" | "MATERIAL_GAPS", priorFindings: 
         ]
       : [],
   priorFindings,
+  decisionRulings: [],
 });
 
 export function webhookHeaders(event: string, body: unknown, delivery: string = randomUUID()) {

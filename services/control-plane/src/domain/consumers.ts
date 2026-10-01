@@ -20,6 +20,7 @@ import { uuidv7 } from "../util/crypto.js";
 import { provenanceSha256 } from "@waronsaas/contracts/canonical";
 import { loadAttempt } from "../views.js";
 import { repoManifestAt } from "./documents.js";
+import { documentEnsemble, ensembleBlock } from "./ensemble.js";
 import { documentTrialLabel } from "./trials.js";
 import { insertEvent } from "../db/events.js";
 import { createContribution } from "./ledger.js";
@@ -325,15 +326,27 @@ const githubSync: Consumer = {
         const title = doc.kind === "roadmap" ? `${doc.product_name ?? doc.slug} Replacement Roadmap` : `${doc.key} Feature Contract`;
         // D69: a document under a candidate trial carries the trial label on its PR (it may merge like any other).
         const trial = await inTransaction(deps.sql, SYS, (tx) => documentTrialLabel(tx, doc.id));
+        // D73: an ensemble revision reports its stability; below the policy's targets the PR is labelled (not blocked).
+        const ensemble = await inTransaction(deps.sql, SYS, (tx) => documentEnsemble(tx, doc.id));
+        const lowStability =
+          ensemble && ensemble.stability.belowTarget.length > 0 ? [deps.policy.ensemble?.lowStabilityLabel ?? "low-stability"] : [];
+        const body = [
+          "Canonical document workflow run by wOS. Only the wOS GitHub App adds commits to this PR.",
+          ...(trial
+            ? [
+                "",
+                `**${trial.label}** (D69): a maintainer designated this document's author task for the candidate model \`${trial.candidate}\` (identity self-reported, D52). It is validated and reviewed like any other work.`,
+              ]
+            : []),
+          ...(ensemble ? ["", ...ensembleBlock(ensemble, deps)] : []),
+        ].join("\n");
         const pr = await deps.github.openPullRequest(doc.repo, {
           head: doc.branch,
           base: "main",
           title,
-          body: trial
-            ? `Canonical document workflow run by wOS. Only the wOS GitHub App adds commits to this PR.\n\n**${trial.label}** (D69): a maintainer designated this document's author task for the candidate model \`${trial.candidate}\` (identity self-reported, D52). It is validated and reviewed like any other work.`
-            : "Canonical document workflow run by wOS. Only the wOS GitHub App adds commits to this PR.",
+          body,
           draft: true,
-          labels: [doc.kind === "roadmap" ? "wos:roadmap" : "wos:feature-contract", ...(trial ? [trial.label] : [])],
+          labels: [doc.kind === "roadmap" ? "wos:roadmap" : "wos:feature-contract", ...(trial ? [trial.label] : []), ...lowStability],
           provenance: null,
         });
         await inTransaction(deps.sql, SYS, async (tx) => {

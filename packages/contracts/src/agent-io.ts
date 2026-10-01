@@ -213,6 +213,24 @@ export const ReviewVerdict = z
       .max(50),
     /** Status of every finding still open from prior rounds (the reviewer re-checks them). */
     priorFindings: z.array(z.object({ findingId: Uuid, status: z.enum(["resolved", "still_open"]), note: z.string().max(2000) })),
+    /**
+     * contracts 5.20.0 (D73): a ruling on every decision of the roadmap under review (Roadmap `decisions`). A rejected
+     * decision is a material gap (it comes with a material finding); a missing ruling refuses the verdict. Empty when the
+     * roadmap has none; required in the output schema (codex strict output), [] when absent on parse.
+     */
+    decisionRulings: z
+      .array(
+        z.object({
+          decisionId: z.string().regex(/^DEC-\d{3,4}$/),
+          ruling: z.enum(["accept", "reject"]),
+          note: z.string().min(1).max(2000),
+        }),
+      )
+      .max(500)
+      .default([]),
+  })
+  .refine((v) => !(v.decisionRulings ?? []).some((r) => r.ruling === "reject") || v.verdict === "MATERIAL_GAPS", {
+    message: "a rejected decision is a material gap: the verdict must be MATERIAL_GAPS",
   })
   .refine(
     (v) =>
@@ -222,11 +240,35 @@ export const ReviewVerdict = z
   );
 export type ReviewVerdict = z.infer<typeof ReviewVerdict>;
 
+/** contracts 5.20.0 (D73): an ensemble's provenance and stability (AuthorSummary.ensemble). */
+export const EnsembleRecord = z.object({
+  runs: z
+    .array(z.object({ leaseId: Uuid, agentRunId: Uuid, manifestSha256: Sha256 }))
+    .min(2)
+    .max(9),
+  threshold: z.number().int().positive(),
+  majority: z.literal("strict_majority"),
+  decisions: z.number().int().nonnegative(),
+  stability: z.object({
+    capabilitiesMatchBp: z.number().int().min(0).max(10_000),
+    featuresMatchBp: z.number().int().min(0).max(10_000),
+    weightSpearman: z.number().min(-1).max(1).nullable(),
+    groundingBp: z.number().int().min(0).max(10_000),
+    belowTarget: z.array(z.string()),
+  }),
+});
+export type EnsembleRecord = z.infer<typeof EnsembleRecord>;
+
 export const AuthorSummary = z.object({
   schema: z.literal("author-summary.v1"),
   summary: z.string().min(1).max(4000),
   responses: z.array(z.object({ findingId: Uuid, action: z.enum(["fixed", "disputed"]), note: z.string().min(1).max(4000) })),
   proposalsAddressed: z.array(Uuid),
+  /**
+   * contracts 5.20.0 (D73): set by `wos roadmap --ensemble N` on the merged revision (an agent writes null): the N shadow
+   * runs it merges (all on the same manifest), the majority rule, the decisions it left, and its stability metrics.
+   */
+  ensemble: EnsembleRecord.nullable().default(null),
 });
 export type AuthorSummary = z.infer<typeof AuthorSummary>;
 

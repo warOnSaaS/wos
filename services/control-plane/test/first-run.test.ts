@@ -298,9 +298,15 @@ describe.skipIf(!HAS_DB)("first real run: D53 human seat, repository case, PR li
 
   it("B2: a surface naming an unregistered repository is a validation error before any round (not a stuck merge)", async () => {
     const opened = await open("slack");
-    const r = await authorRevision(h, founder, opened.taskId, roadmapFiles({ target: "slack", repo: "someone/else", feature: "chat" }), {
-      model: "opus",
-    });
+    const r = await authorRevision(
+      h,
+      founder,
+      opened.taskId,
+      roadmapFiles({ target: "slack", repo: "someone/else", feature: "direct-messages" }),
+      {
+        model: "opus",
+      },
+    );
     expect(r.res.status).toBe(200);
     const [carry] = await h.owner<{ carry: { validatorErrors: Array<{ code: string }> } }[]>`
       select carry from wos.tasks where document_id = ${opened.documentId} and kind = 'roadmap_author' and state = 'open'`;
@@ -310,7 +316,7 @@ describe.skipIf(!HAS_DB)("first real run: D53 human seat, repository case, PR li
 
   it("D53: gaps go back to the author; a conflict goes to the human (no resolver task); the human's ruling is final", async () => {
     const opened = await open("hubspot");
-    await authorRevision(h, founder, opened.taskId, roadmapFiles({ target: "hubspot", feature: "deals" }), { model: "opus" });
+    await authorRevision(h, founder, opened.taskId, roadmapFiles({ target: "hubspot", feature: "pipelines-deals" }), { model: "opus" });
     const r1 = await roundOf(opened.documentId);
     await reviewAs(h, astra, "astra", "roadmap_review", verdict("MATERIAL_GAPS"));
     const g = await humanVerdict(human, r1.id, {
@@ -336,7 +342,7 @@ describe.skipIf(!HAS_DB)("first real run: D53 human seat, repository case, PR li
       h,
       founder,
       task!.id,
-      roadmapFiles({ target: "hubspot", feature: "deals" }).map((f) => ({ ...f, content: `${f.content}\n` })),
+      roadmapFiles({ target: "hubspot", feature: "pipelines-deals" }).map((f) => ({ ...f, content: `${f.content}\n` })),
       {
         model: "opus",
         summary: {
@@ -443,7 +449,7 @@ describe.skipIf(!HAS_DB)("first real run: D53 human seat, repository case, PR li
 
     // The founder authors (Opus), Astra reviews, the founder holds the human seat: consensus, labelled bootstrap_self.
     const opened = await open("quickbooks");
-    await authorRevision(h, founder, opened.taskId, roadmapFiles({ target: "quickbooks", feature: "ledger" }), { model: "opus" });
+    await authorRevision(h, founder, opened.taskId, roadmapFiles({ target: "quickbooks", feature: "invoicing" }), { model: "opus" });
     const round = await roundOf(opened.documentId);
     await dispatch();
     await reviewAs(h, astra, "astra", "roadmap_review", verdict("NO_MATERIAL_GAPS"));
@@ -477,7 +483,7 @@ describe.skipIf(!HAS_DB)("first real run: D53 human seat, repository case, PR li
 
     // Only the founder named by v2: another maintainer on their own work is still refused.
     const other = await open("docusign");
-    await authorRevision(h, human, other.taskId, roadmapFiles({ target: "docusign", feature: "envelopes" }), { model: "opus" });
+    await authorRevision(h, human, other.taskId, roadmapFiles({ target: "docusign", feature: "e-signature" }), { model: "opus" });
     const r2 = await roundOf(other.documentId);
     await reviewAs(h, astra, "astra", "roadmap_review", verdict("NO_MATERIAL_GAPS"));
     const refused = await humanVerdict(human, r2.id, {
@@ -498,7 +504,7 @@ describe.skipIf(!HAS_DB)("first real run: D53 human seat, repository case, PR li
     expect(status.body.reviewPolicy).toMatchObject({ policyVersion: "review-policy.v3", bootstrapFounder: "fr-founder" });
 
     const opened = await open("shopify");
-    await authorRevision(h, founder, opened.taskId, roadmapFiles({ target: "shopify", feature: "storefront" }), { model: "opus" });
+    await authorRevision(h, founder, opened.taskId, roadmapFiles({ target: "shopify", feature: "online-storefront" }), { model: "opus" });
     const round = await roundOf(opened.documentId);
     // Never the author's model: Astra may review Opus- (or GLM-) authored work, the author's own model may not.
     const seat = (model: string) =>
@@ -601,7 +607,7 @@ describe.skipIf(!HAS_DB)("first real run: D53 human seat, repository case, PR li
       { version: 1, branch: "wos/roadmap/zendesk/v1-2", state: "drafting" },
     ]);
     // Validation expects version 1 too, so the revision opens a round.
-    const r = await authorRevision(h, founder, second.taskId, roadmapFiles({ target: "zendesk", feature: "tickets" }), { model: "opus" });
+    const r = await authorRevision(h, founder, second.taskId, roadmapFiles({ target: "zendesk", feature: "ticketing" }), { model: "opus" });
     expect(r.res.status).toBe(200);
     const [doc] = await h.owner<{ state: string }[]>`select state from wos.documents where id = ${second.documentId}`;
     expect(doc!.state).toBe("in_review");

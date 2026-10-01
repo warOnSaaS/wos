@@ -3,6 +3,7 @@
  * document revision driven through the API. Used by the first-run tests (D53 human seat, repository case, versions).
  */
 import { AGENT_POLICY } from "@waronsaas/contracts";
+import { defaultCatalogEntry } from "@waronsaas/planning";
 import { expect } from "vitest";
 import { type Account, type Harness, manifestFor, signedChangeset, signedRun } from "./harness.js";
 
@@ -19,7 +20,11 @@ export interface RoadmapFixture {
 }
 
 export function roadmapFiles(f: RoadmapFixture): Array<{ path: string; content: string }> {
-  const scanIds = AGENT_POLICY.roadmapMethod?.targets[f.target]?.scanCapabilityIds ?? [];
+  const method = AGENT_POLICY.roadmapMethod?.targets[f.target];
+  const scanIds = method?.scanCapabilityIds ?? [];
+  // D73 (agent-policy.v4): capabilities follow the target's fixed template, one item per template capability (scanId =
+  // the group's first scan id); targets without a scan get one sourced capability.
+  const template = method?.template ?? [{ key: "core", title: "Core", group: "Core", scanIds: [] as string[] }];
   const feature = f.feature ?? "contacts";
   const repo = f.repo ?? "waronsaas/product";
   const newCatalog = f.newCatalogFeatures ?? [feature, "import-engine"];
@@ -30,9 +35,46 @@ export function roadmapFiles(f: RoadmapFixture): Array<{ path: string; content: 
     sources: [{ title: "Vendor docs", url: "https://example.com/docs", retrievedOn: "2026-09-01" }],
     surfaces: [{ surface: "web", title: "Web app", source: 0, platforms: [], browsers: ["chromium", "firefox"] }],
     items: [
-      { key: "INV-0001", area: "Core", title: "Records", description: "The core records", source: 0, weight: 1 },
-      { key: "INV-0002", area: "Legacy", title: "Classic UI", description: "The retired interface", source: 0, weight: 1 },
+      ...template.map((t, k) => ({
+        key: `INV-${String(k + 1).padStart(4, "0")}`,
+        area: t.title,
+        title: k === 0 ? "Records" : `${t.title} records`,
+        description: `The ${t.title} records`,
+        source: 0,
+        weight: 1,
+        scanId: t.scanIds[0] ?? null,
+      })),
+      {
+        key: `INV-${String(template.length + 1).padStart(4, "0")}`,
+        area: "Legacy",
+        title: "Classic UI",
+        description: "The retired interface",
+        source: 0,
+        weight: 1,
+        scanId: null,
+      },
     ],
+  };
+  const score = (n: number, what: string) => ({ score: n, basis: `${what} (test fixture).` });
+  const rubric = {
+    editionBreadth: score(5, "Every edition"),
+    coreDailyUse: score(5, "Used daily"),
+    surfaceParity: score(3, "Web only"),
+    migrationGravity: score(4, "Most records"),
+  };
+  // Every capability has the same scores, so the derived weights split 10000 evenly by largest remainder.
+  const even = Array.from(
+    { length: template.length },
+    (_, k) => Math.floor(10_000 / template.length) + (k < 10_000 % template.length ? 1 : 0),
+  );
+  const journey = {
+    key: "J-001",
+    surface: "web",
+    title: "Find a record",
+    steps: ["Open the list", "Search by name"],
+    entryPoints: ["navigation"],
+    platformBehaviour: "none",
+    nativeCapabilities: [],
   };
   const roadmap = {
     schema: "wos-roadmap.v1",
@@ -48,49 +90,45 @@ export function roadmapFiles(f: RoadmapFixture): Array<{ path: string; content: 
       selfHosting: "Docker.",
     },
     surfaces: [{ surface: "web", status: "in_scope", reason: null, repo, path: "apps/web" }],
-    capabilities: [
-      {
-        key: "core",
-        title: "Core",
-        summary: "The core records",
-        weightBp: 10000,
-        weightRationale: WHY,
-        inventoryItems: ["INV-0001"],
-        // D72 (agent-policy.v3): every scan id of the target placed, and the weight derived from rubric scores.
-        ...(scanIds.length > 0 ? { scanIds } : { sources: ["https://example.com/docs"] }),
-        rubric: {
-          editionBreadth: { score: 5, basis: "Every edition (test fixture)." },
-          coreDailyUse: { score: 5, basis: "Used daily (test fixture)." },
-          surfaceParity: { score: 3, basis: "Web only (test fixture)." },
-          migrationGravity: { score: 4, basis: "Most records (test fixture)." },
-        },
-        features: [
-          {
-            feature,
-            weightBp: 10000,
-            weightRationale: WHY,
-            surfaces: [{ surface: "web", weightBp: 10000, weightRationale: WHY }],
-            journeys: [
+    capabilities: template.map((t, k) => ({
+      key: t.key,
+      title: t.title,
+      summary: `The ${t.title} capability`,
+      weightBp: even[k]!,
+      weightRationale: WHY,
+      inventoryItems: [`INV-${String(k + 1).padStart(4, "0")}`],
+      ...(t.scanIds.length > 0 ? { scanIds: t.scanIds } : { sources: ["https://example.com/docs"] }),
+      rubric,
+      features:
+        k === 0
+          ? [
               {
-                key: "J-001",
-                surface: "web",
-                title: "Find a record",
-                steps: ["Open the list", "Search by name"],
-                entryPoints: ["navigation"],
-                platformBehaviour: "none",
-                nativeCapabilities: [],
+                feature,
+                weightBp: 10000,
+                weightRationale: WHY,
+                surfaces: [{ surface: "web", weightBp: 10000, weightRationale: WHY }],
+                journeys: [journey],
+                inventoryItems: ["INV-0001"],
+                appNotes: "The core records.",
+                phase: "core",
               },
-            ],
-            inventoryItems: ["INV-0001"],
-            appNotes: "The core records.",
-            phase: "core",
-          },
-        ],
-      },
-    ],
-    excluded: [{ item: "INV-0002", reason: "Retired by the vendor itself." }],
+            ]
+          : [],
+    })),
+    excluded: [{ item: `INV-${String(template.length + 1).padStart(4, "0")}`, reason: "Retired by the vendor itself." }],
     newCatalogFeatures: newCatalog,
     weightRubric: "wos-weight-rubric.v1",
+    // D73: a feature that is not a vocabulary default is a catalog proposal the reviewers rule on.
+    decisions: newCatalog
+      .filter((k) => k !== "import-engine" && !(AGENT_POLICY.roadmapMethod?.vocabulary ?? []).some((v) => v.id === k))
+      .map((k, n) => ({
+        id: `DEC-${String(n + 1).padStart(3, "0")}`,
+        kind: "catalog_proposal",
+        subject: k,
+        summary: `The ${k} catalog feature, proposed by this roadmap (test fixture).`,
+        options: [],
+        chosen: "proposed",
+      })),
     proposals: [],
     migration: {
       engine: "import-engine",
@@ -106,13 +144,14 @@ export function roadmapFiles(f: RoadmapFixture): Array<{ path: string; content: 
       })),
     },
   };
-  const entry = (key: string, title: string) => ({
-    schema: "wos-catalog-entry.v1",
-    key,
-    title,
-    summary: `The ${title} shared feature, for tests.`,
-    aliasOf: null,
-  });
+  // D73: a vocabulary id's catalog file is its default entry; other keys get a test entry.
+  const vocab = AGENT_POLICY.roadmapMethod?.vocabulary ?? [];
+  const entry = (key: string, title: string) => {
+    const v = vocab.find((x) => x.id === key);
+    return v
+      ? defaultCatalogEntry(v)
+      : { schema: "wos-catalog-entry.v1", key, title, summary: `The ${title} shared feature, for tests.`, aliasOf: null };
+  };
   return [
     { path: `roadmaps/${f.target}/ROADMAP.yaml`, content: JSON.stringify(roadmap) },
     { path: `roadmaps/${f.target}/INVENTORY.yaml`, content: JSON.stringify(inventory) },
