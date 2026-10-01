@@ -765,7 +765,8 @@ export class OrchestratorImpl {
       try {
         parsed.output = raw === null ? null : JSON.parse(raw);
       } catch {
-        parsed.output = null;
+        // Keep the raw text (truncated) so the archive shows what the agent wrote; the schema check still fails closed.
+        parsed.output = raw === null ? null : { unparsedOutput: raw.slice(0, 20_000) };
       }
     }
     const launch = this.deps.modelLaunch?.[plan.model];
@@ -1681,8 +1682,16 @@ export class OrchestratorImpl {
         ? await this.archivedRun(claim, resubmit, observer, holder)
         : await this.leasedRun(claim, "d", observer, signal, holder);
       wt = r.wt;
-      const summary = AuthorSummary.safeParse(r.run.output);
-      if (!summary.success) throw new StepError("AGENT_OUTPUT_INVALID", "the agent's output does not match author-summary.v1", true);
+      const summary = AuthorSummary.safeParse(normalizeAuthorOutput(r.run.output));
+      if (!summary.success)
+        throw new StepError(
+          "AGENT_OUTPUT_INVALID",
+          `the agent's output does not match author-summary.v1: ${summary.error.issues
+            .slice(0, 4)
+            .map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`)
+            .join("; ")}`,
+          true,
+        );
       this.step(observer, "BUILD", "passed", summary.data.summary.slice(0, 200));
       this.step(observer, "VERIFY", "started", "document scope");
       const s = await this.session();
@@ -1973,4 +1982,19 @@ export async function parseAgentOutput(
     }
   }
   return { output, model, usage };
+}
+
+/**
+ * Agents launched without a schema flag (opencode) write the author summary by hand. Repair only what is mechanical and
+ * loses no meaning: the schema tag, absent empty lists, and an over-long prose summary (kept, cut at 4000 characters).
+ * Anything else still fails the schema check.
+ */
+export function normalizeAuthorOutput(output: unknown): unknown {
+  if (output === null || typeof output !== "object" || Array.isArray(output)) return output;
+  const o = { ...(output as Record<string, unknown>) };
+  if (o.schema === undefined) o.schema = "author-summary.v1";
+  if (o.responses === undefined) o.responses = [];
+  if (o.proposalsAddressed === undefined) o.proposalsAddressed = [];
+  if (typeof o.summary === "string" && o.summary.length > 4000) o.summary = `${o.summary.slice(0, 3999)}\u2026`;
+  return o;
 }
