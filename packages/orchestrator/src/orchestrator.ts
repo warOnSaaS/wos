@@ -1464,19 +1464,40 @@ export class OrchestratorImpl {
       if (!Number.isInteger(n) || n < 2 || n > pol.maxRuns)
         throw new StepError("VALIDATION_FAILED", `--ensemble takes 2..${pol.maxRuns} runs`);
       const runs: Array<NonNullable<ReturnType<typeof this.lastShadow.get>>> = [];
-      for (let i = 1; i <= n; i++) {
-        this.step(observer, "BUILD", "started", `ensemble run ${i} of ${n} (shadow)`);
+      // A run whose output is unusable (bad summary, a document that does not parse) is replaced, up to 2 extra
+      // attempts in total: one malformed file should not throw away the good runs (GLM trial, 2026-10-01).
+      const maxAttempts = n + 2;
+      let attempt = 0;
+      for (let i = 1; i <= n; ) {
+        attempt++;
+        if (attempt > maxAttempts)
+          throw new StepError("ENSEMBLE_RUN_INVALID", `only ${runs.length} of ${n} usable runs after ${maxAttempts} attempts`);
+        this.step(observer, "BUILD", "started", `ensemble run ${i} of ${n} (shadow, attempt ${attempt})`);
         this.lastShadow.delete(options.taskId);
         const res = await this.author({ ...options, ensemble: undefined, shadow: true }, observer);
-        if (!res.ok) throw new StepError(res.code, `ensemble run ${i} of ${n} failed: ${res.message}`);
+        if (!res.ok) {
+          if (res.code !== "AGENT_OUTPUT_INVALID") throw new StepError(res.code, `ensemble run ${i} of ${n} failed: ${res.message}`);
+          this.step(observer, "BUILD", "failed", `ensemble run ${i}: unusable output, replacing it (${res.message})`);
+          continue;
+        }
         const shadow = this.lastShadow.get(options.taskId);
         if (!shadow) throw new StepError("VALIDATION_FAILED", "an ensemble merges roadmap_author runs only (feature contracts: not yet)");
+        const target = shadow.files.find((f) => /^roadmaps\/[^/]+\/ROADMAP\.yaml$/.test(f.path))?.path.split("/")[1];
+        const doc = (name: string) => {
+          const f = shadow.files.find((x) => x.path === `roadmaps/${target}/${name}`);
+          return f && f.op === "upsert" ? Buffer.from(f.contentBase64, "base64").toString("utf8") : "";
+        };
+        if (!target || !parseInventoryYaml(doc("INVENTORY.yaml")).ok || !parseRoadmapYaml(doc("ROADMAP.yaml")).ok) {
+          this.step(observer, "BUILD", "failed", `ensemble run ${i}: INVENTORY.yaml or ROADMAP.yaml does not parse, replacing it`);
+          continue;
+        }
         if (runs.length > 0 && shadow.manifestSha256 !== runs[0]!.manifestSha256)
           throw new StepError(
             "ENSEMBLE_CONTEXT_CHANGED",
             `run ${i} got another context (${shadow.manifestSha256}) than run 1 (${runs[0]!.manifestSha256})`,
           );
         runs.push(shadow);
+        i++;
       }
       // The real lease: same task, same manifest, the merged files.
       const s = await this.session();
