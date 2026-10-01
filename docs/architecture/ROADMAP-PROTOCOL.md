@@ -247,3 +247,36 @@ Target progress (above) is unchanged, and it never reads entitlements or install
 warOnSaaS is its own first target (rank 0). Its V1 roadmap is `docs/roadmap/waronsaas.roadmap.json`, a `RoadmapBundle` with status `PROPOSED`: 41 inventory items drawn from V1-SPEC.md and DECISIONS.md, 7 capabilities, 28 catalog features, weights with rationale, and proposed requirements per feature. A test validates it against the schema and the coverage rules. It has not been through Astra/Fable review; the V1 build is tracked against it exactly like a target (WORKSTREAMS.md).
 
 TGT-00 is exempt from the migration section (D59). It stewards the shared `import-engine` feature, which is catalogued in the product repo because it runs on customer data (section 2, "Migration").
+
+## 9. The roadmap method (D72, agent-policy.v3, contracts 5.19.0)
+
+Every roadmap author, whatever the model, follows one method, so two runs on the same context land close to each other and reviewers can check the result mechanically. The data is in `agent-policy.v3` `roadmapMethod`, generated from the scans by `scripts/gen-roadmap-method.mjs`. The author and both reviewers receive it as the server document `wos:method/<target>`.
+
+1. **Scan-seeded skeleton.** Every capability id of the target's scan (`docs/scans/<target>.json`, vocabulary ids) goes either into exactly one capability's `scanIds`, or into `scanExcluded` with a reason and a public source. A capability beyond the scan lists `sources`. Validator codes: `SCAN_CAPABILITY_UNACCOUNTED`, `SCAN_ID_UNKNOWN`, `SCAN_ADDITION_UNSOURCED`.
+2. **Required reading.** Per target, derived from the scan's sources by a fixed rule: editions and pricing, a feature docs page, the App Store and Google Play listings, the API docs, and the export or bulk API docs. The author fetches these first; extra pages are allowed. Fetches are logged (D70), so a comparison can see whether two runs read the same core pages.
+3. **Weight rubric `wos-weight-rubric.v1`.** Each capability is scored 1–5 on four criteria, each score with a basis (a source URL or a scan fact):
+   - edition breadth;
+   - core daily use;
+   - surface parity need;
+   - migration data gravity.
+
+   Points = the sum of the four scores. `weightBp` = the capability's share of all points × 10000, apportioned by largest remainder (ties: capability order). Planning exposes this as `rubricWeights`. The scores are written in `ROADMAP.yaml` (`rubric`), with `weightRubric: wos-weight-rubric.v1`. D12's reasoned weights remain, derived from the rubric, with a short rationale. Validator codes: `RUBRIC_MISSING`, `RUBRIC_WEIGHT_MISMATCH` (tolerance 1 bp).
+4. **Step order, with files written at each step:**
+   1. `INVENTORY.yaml`;
+   2. capability mapping;
+   3. rubric scores and weights;
+   4. D59 migration;
+   5. catalog proposals;
+   6. self-check;
+   7. the author summary, last.
+5. **Sub-agent partition.** Where a model may use sub-agents, each helper gets a fixed cluster of scan ids. Clusters come from the scan vocabulary's groups: a group larger than a fair share is split into consecutive parts; groups are sorted by size, then name, and each goes to the helper holding the fewest ids so far. The lead merges the clusters and owns keys, weights, consistency and the migration section.
+6. **Self-check before the summary.** Check that:
+   - every scan id is placed;
+   - every inventory item cites a fetched page or a scan source;
+   - the weights match the rubric;
+   - D59 is complete;
+   - the files parse.
+
+   Gaps are fixed first.
+
+The control plane applies the method checks to a revision authored under a plan of the policy in force (agent-policy.v3 or later). Documents authored under earlier plans keep the earlier rules.

@@ -3,6 +3,7 @@
  * author revision -> validation -> round -> consensus -> merge -> materialisation / ingestion -> progress.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { AGENT_POLICY } from "@waronsaas/contracts";
 import { DEFAULT_LOGIC } from "../src/deps.js";
 import { reviewAs } from "./support/flow.js";
 import {
@@ -37,6 +38,7 @@ const inventory = {
     { key: "INV-0003", area: "Legacy", title: "Classic UI", description: "The retired interface", source: 0, weight: 1 },
   ],
 };
+const R = (score: number) => ({ score, basis: "test fixture basis" });
 const roadmap = (crmWeight: number) => ({
   schema: "wos-roadmap.v1",
   target: "salesforce",
@@ -62,6 +64,9 @@ const roadmap = (crmWeight: number) => ({
       weightBp: crmWeight,
       weightRationale: WHY,
       inventoryItems: ["INV-0001"],
+      // D72 (agent-policy.v3): every Salesforce scan id placed; 14 of 20 rubric points -> 7000 bp.
+      scanIds: AGENT_POLICY.roadmapMethod!.targets.salesforce!.scanCapabilityIds,
+      rubric: { editionBreadth: R(4), coreDailyUse: R(4), surfaceParity: R(3), migrationGravity: R(3) },
       features: [
         {
           feature: "contacts",
@@ -104,11 +109,14 @@ const roadmap = (crmWeight: number) => ({
       weightBp: 3000,
       weightRationale: WHY,
       inventoryItems: ["INV-0002"],
+      sources: ["https://www.salesforce.com/editions-pricing/sales-cloud/"],
+      rubric: { editionBreadth: R(2), coreDailyUse: R(2), surfaceParity: R(1), migrationGravity: R(1) },
       features: [],
     },
   ],
   excluded: [{ item: "INV-0003", reason: "Retired by the vendor itself." }],
   newCatalogFeatures: ["contacts", "import-engine"],
+  weightRubric: "wos-weight-rubric.v1",
   proposals: [],
   // D59 (contracts 5.4.0): every target roadmap accounts for each data class; this fixture plans no connector yet.
   migration: {

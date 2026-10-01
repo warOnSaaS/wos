@@ -29,7 +29,7 @@ export { type ArtifactFile, roadmapBundleToFiles } from "./bundle.js";
 export { CONTRACT_ERROR_CODES, type ContractErrorCode, type ContractIssue, validateFeatureContract } from "./contract.js";
 export { type FixUnitIssue, validateFixUnit } from "./fix-unit.js";
 export { globMatches, scopeCanTouchGlob } from "./globs.js";
-export { ROADMAP_ERROR_CODES, type RoadmapErrorCode, type RoadmapIssue, validateRoadmap } from "./roadmap.js";
+export { ROADMAP_ERROR_CODES, type RoadmapErrorCode, type RoadmapIssue, rubricWeights, validateRoadmap } from "./roadmap.js";
 export { computeRoundOutcome, type RoundOutcome, type RoundOutcomeInput } from "./round.js";
 export { formatPath, MAX_YAML_ALIASES, MAX_YAML_BYTES, type ParseError, type ParseResult, parseYamlWith } from "./yaml.js";
 

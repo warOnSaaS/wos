@@ -2,6 +2,7 @@
  * A valid roadmap revision for any target (the documents.test.ts fixture, parameterised), and the author's side of a
  * document revision driven through the API. Used by the first-run tests (D53 human seat, repository case, versions).
  */
+import { AGENT_POLICY } from "@waronsaas/contracts";
 import { expect } from "vitest";
 import { type Account, type Harness, manifestFor, signedChangeset, signedRun } from "./harness.js";
 
@@ -18,6 +19,7 @@ export interface RoadmapFixture {
 }
 
 export function roadmapFiles(f: RoadmapFixture): Array<{ path: string; content: string }> {
+  const scanIds = AGENT_POLICY.roadmapMethod?.targets[f.target]?.scanCapabilityIds ?? [];
   const feature = f.feature ?? "contacts";
   const repo = f.repo ?? "waronsaas/product";
   const newCatalog = f.newCatalogFeatures ?? [feature, "import-engine"];
@@ -54,6 +56,14 @@ export function roadmapFiles(f: RoadmapFixture): Array<{ path: string; content: 
         weightBp: 10000,
         weightRationale: WHY,
         inventoryItems: ["INV-0001"],
+        // D72 (agent-policy.v3): every scan id of the target placed, and the weight derived from rubric scores.
+        ...(scanIds.length > 0 ? { scanIds } : { sources: ["https://example.com/docs"] }),
+        rubric: {
+          editionBreadth: { score: 5, basis: "Every edition (test fixture)." },
+          coreDailyUse: { score: 5, basis: "Used daily (test fixture)." },
+          surfaceParity: { score: 3, basis: "Web only (test fixture)." },
+          migrationGravity: { score: 4, basis: "Most records (test fixture)." },
+        },
         features: [
           {
             feature,
@@ -80,6 +90,7 @@ export function roadmapFiles(f: RoadmapFixture): Array<{ path: string; content: 
     ],
     excluded: [{ item: "INV-0002", reason: "Retired by the vendor itself." }],
     newCatalogFeatures: newCatalog,
+    weightRubric: "wos-weight-rubric.v1",
     proposals: [],
     migration: {
       engine: "import-engine",

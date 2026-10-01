@@ -378,6 +378,8 @@ export const AgentRunRecord = z.object({
    * steps and the last step's finish reason ("length" = the step hit its output cap). Telemetry only; absent = unknown.
    */
   usageDetail: AgentUsageDetail.optional(),
+  /** contracts 5.19.0: "shadow" for a run that is archived locally and never submitted (wos roadmap --shadow). */
+  mode: z.literal("shadow").optional(),
   /** The most sub-agents that ran at the same time (from their start and end times), when the CLI reports them. */
   maxConcurrentSubagents: z.number().int().nonnegative().optional(),
   /**

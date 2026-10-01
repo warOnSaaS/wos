@@ -67,7 +67,7 @@ describe("D70: claude research roles read the allowlist and search; nothing else
       "WEB_NOT_ALLOWED: builder runs offline (D70)",
     );
     expect(checkPlanAgainstPolicy(planFor("roadmap_author", { web: { domains: ["example.org"], search: true, registry: [] } }))).toContain(
-      "WEB_DOMAIN_UNKNOWN: example.org is not a target or shared domain of agent-policy.v2",
+      `WEB_DOMAIN_UNKNOWN: example.org is not a target or shared domain of ${AGENT_POLICY.policyVersion}`,
     );
     expect(
       checkPlanAgainstPolicy(planFor("conflict_resolver", { web: { domains: [], search: false, registry: ["evil.example"] } })),

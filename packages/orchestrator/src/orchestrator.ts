@@ -4,7 +4,7 @@
  */
 import { execFile } from "node:child_process";
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
-import { join, matchesGlob } from "node:path";
+import { dirname, join, matchesGlob } from "node:path";
 import { buildInvocation, DEFAULT_POLICY } from "@waronsaas/agent-policy";
 import { buildContext, type SnapshotReader } from "@waronsaas/context-engine";
 import {
@@ -14,6 +14,7 @@ import {
   type BuildOptions,
   AuthorSummary,
   BuildSummary,
+  type CatalogEntry,
   type Changeset,
   type ChangesetFile,
   type ChangesetValidation,
@@ -34,7 +35,7 @@ import {
 } from "@waronsaas/contracts";
 import { canonicalJson, canonicalSha256, sha256Of, submissionSha256 } from "@waronsaas/contracts/canonical";
 import { captureChanges, createWorktree, isBlockingRejection, removeWorktree, type WorktreeHandle } from "@waronsaas/github/local";
-import { parseBuildGraphYaml } from "@waronsaas/planning";
+import { parseBuildGraphYaml, parseCatalogEntryYaml, parseInventoryYaml, parseRoadmapYaml, validateRoadmap } from "@waronsaas/planning";
 import { validateChangeset } from "@waronsaas/verification";
 import { ApiCallError, createApiClient } from "./api-client.js";
 import { offAllowlist, parseAgentEvents } from "./agent-events.js";
@@ -716,6 +717,7 @@ export class OrchestratorImpl {
     announce();
     // contracts 5.19.0: the CLI's own accounting (tokens, cost, steps, finish reason) is printed with the exit and recorded.
     const events = parseAgentEvents(plan.provider, stdout);
+    this.lastRuns.set(leaseId, { stdout, events, manifestSha256, exitCode: res.exitCode, durationMs: res.durationMs });
     emit({
       type: "agent_exited",
       exitCode: res.exitCode,
@@ -726,7 +728,7 @@ export class OrchestratorImpl {
       emit({
         type: "warning",
         code: "OUTPUT_CAP_REACHED",
-        message: "the agent's last step stopped at its output cap (finish reason \"length\"); its reasoning and output share that cap",
+        message: 'the agent\'s last step stopped at its output cap (finish reason "length"); its reasoning and output share that cap',
       });
     if (res.exitCode !== 0) throw new StepError("AGENT_FAILED", `${inv.binary} exited ${res.exitCode}: ${tail(stderr)}`, true);
     const parsed = await parseAgentOutput(plan.provider, stdout, paths.lastMessagePath);
@@ -777,6 +779,7 @@ export class OrchestratorImpl {
         : {}),
       ...(events.fetches.length > 0 ? { fetches: events.fetches } : {}),
       ...(events.usageDetail ? { usageDetail: events.usageDetail } : {}),
+      ...(this.shadowLeases.has(leaseId) ? { mode: "shadow" as const } : {}),
     };
     const record = await signAgentRunWithDevice(this.deps.secrets, unsigned);
     const posted = await this.api.call("postAgentRun", {
@@ -798,6 +801,8 @@ export class OrchestratorImpl {
     const off = offAllowlist(events.fetches, plan.web ?? null);
     if (off.length > 0)
       throw new StepError("NETWORK_POLICY", `the agent read outside this plan's allowlist (D70): ${off.slice(0, 5).join(", ")}`);
+    const last = this.lastRuns.get(leaseId);
+    if (last) last.output = parsed.output;
     return { output: parsed.output, manifestSha256, agentRunId: posted.agentRunId };
   }
 
@@ -1160,7 +1165,12 @@ export class OrchestratorImpl {
         return await this.drive(state, claim, false, observer, options.signal);
       }
       const kind = claim.contextPlan.taskKind;
-      if (kind === "roadmap_author" || kind === "feature_author") return await this.authorDocument(claim, observer, options.signal);
+      if (kind === "roadmap_author" || kind === "feature_author")
+        return await this.authorDocument(claim, observer, options.signal, options.shadow === true);
+      if (options.shadow) {
+        await this.releaseQuietly(claim.lease.id, "a shadow run authors documents only", observer);
+        throw new StepError("VALIDATION_FAILED", `--shadow runs roadmap and feature authoring, not ${kind}`);
+      }
       if (kind === "conflict_resolution") return await this.resolveConflict(claim, observer, options.signal);
       await this.api.call("releaseLease", {
         params: { id: claim.lease.id },
@@ -1174,7 +1184,14 @@ export class OrchestratorImpl {
   }
 
   /** A leased agent run in a fresh worktree at plan.source.commit: context, manifest, agent, signed run record. */
-  private async leasedRun(claim: ClaimResponse, prefix: string, observer: OrchestratorObserver, signal?: AbortSignal) {
+  private async leasedRun(
+    claim: ClaimResponse,
+    prefix: string,
+    observer: OrchestratorObserver,
+    signal?: AbortSignal,
+    /** Receives the worktree as soon as it exists, so a failed run's partial files can be archived. */
+    holder: { wt: WorktreeHandle | null } = { wt: null },
+  ) {
     const plan = claim.contextPlan;
     const wt = await createWorktree(
       this.deps.workspaceRoot,
@@ -1182,6 +1199,7 @@ export class OrchestratorImpl {
       plan.source.commit,
       `${prefix}-${claim.lease.id.replace(/-/g, "").slice(0, 12)}`,
     );
+    holder.wt = wt;
     observer({ type: "worktree", path: wt.path, baseSha: wt.baseSha });
     const ctx = await this.engines.buildContext(
       plan,
@@ -1198,18 +1216,113 @@ export class OrchestratorImpl {
     return { wt, run };
   }
 
+  /** Gives a lease back without failing the caller (contracts 5.19.0: after a failed or shadow author run). */
+  private async releaseQuietly(leaseId: string, reason: string, observer: OrchestratorObserver): Promise<void> {
+    try {
+      await this.api.call("releaseLease", {
+        params: { id: leaseId },
+        body: { reason: reason.slice(0, 500) },
+        idempotencyKey: idempotencyKey("release", leaseId),
+      });
+      this.step(observer, "LEASE", "passed", `released lease ${leaseId}: the task is open again for a retry`);
+    } catch (e) {
+      observer({
+        type: "warning",
+        code: "LEASE_NOT_RELEASED",
+        message: `lease ${leaseId} was not released (${e instanceof Error ? e.message : String(e)}): wos release ${leaseId}`,
+      });
+    }
+  }
+
+  /**
+   * contracts 5.19.0: keeps what an author run produced, for inspection (failed runs) or comparison (shadow runs):
+   * the changed files at their repo paths, the parsed output, the CLI transcript and a run.json (manifest, model, launch,
+   * reasoning, usage, fetches, sub-agents, error or local validation). Under <workspace>/<kind>/<task>/<run>/.
+   */
+  private async archiveRun(
+    claim: ClaimResponse,
+    wt: WorktreeHandle | null,
+    kind: "failed" | "shadow",
+    extra: Record<string, unknown>,
+    observer: OrchestratorObserver,
+  ): Promise<string> {
+    const plan = claim.contextPlan;
+    const runId = `${this.now().toISOString().replace(/[:.]/g, "-")}-${claim.lease.id.slice(0, 8)}`;
+    const dir = join(this.deps.workspaceRoot, kind, plan.taskId, runId);
+    await mkdir(dir, { recursive: true });
+    const files: string[] = [];
+    if (wt) {
+      const cap = await captureChanges(wt).catch(() => ({ files: [] as ChangesetFile[], rejected: [] }));
+      for (const f of cap.files) {
+        if (f.op !== "upsert") continue;
+        const dest = join(dir, f.path);
+        await mkdir(dirname(dest), { recursive: true });
+        await writeFile(dest, Buffer.from(f.contentBase64, "base64"));
+        files.push(f.path);
+      }
+    }
+    const last = this.lastRuns.get(claim.lease.id);
+    if (last) await writeFile(join(dir, "transcript.jsonl"), last.stdout);
+    if (last && last.output !== undefined) await writeFile(join(dir, "output.json"), `${JSON.stringify(last.output, null, 2)}\n`);
+    const run = {
+      schema: "wos-local-run.v1",
+      mode: kind,
+      taskId: plan.taskId,
+      taskKind: plan.taskKind,
+      leaseId: claim.lease.id,
+      target: plan.target,
+      feature: plan.feature,
+      manifestSha256: last?.manifestSha256 ?? null,
+      provider: plan.provider,
+      modelId: plan.modelId,
+      reasoning: plan.reasoning,
+      launch: this.deps.modelLaunch?.[plan.model] ?? null,
+      web: plan.web ?? null,
+      durationMs: last?.durationMs ?? null,
+      exitCode: last?.exitCode ?? null,
+      usage: last?.events.usageDetail ?? null,
+      subagents: last?.events.subagents ?? null,
+      fetches: last?.events.fetches ?? [],
+      files: files.sort(),
+      ...extra,
+    };
+    await writeFile(join(dir, "run.json"), `${JSON.stringify(run, null, 2)}\n`);
+    this.step(observer, "VERIFY", "passed", `${kind === "shadow" ? "shadow run archived" : "partial output archived"} in ${dir}`);
+    return dir;
+  }
+  private readonly lastRuns = new Map<
+    string,
+    {
+      stdout: string;
+      events: ReturnType<typeof parseAgentEvents>;
+      manifestSha256: string;
+      exitCode: number;
+      durationMs: number;
+      output?: unknown;
+    }
+  >();
+  private readonly shadowLeases = new Set<string>();
+
   /**
    * roadmap_author / feature_author: the agent edits the canonical document files, the changeset is
    * limited to the document paths the control plane will enforce (documentScope), signed and submitted.
    * Review rounds are server-driven; a revision arrives later as a new author task.
    */
-  private async authorDocument(claim: ClaimResponse, observer: OrchestratorObserver, signal?: AbortSignal): Promise<RunResult> {
+  private async authorDocument(
+    claim: ClaimResponse,
+    observer: OrchestratorObserver,
+    signal?: AbortSignal,
+    shadow = false,
+  ): Promise<RunResult> {
     const plan = claim.contextPlan;
-    const hb = this.heartbeat(claim.lease.id, claim.lease.heartbeatSeconds, { value: "authoring" });
+    const hb = this.heartbeat(claim.lease.id, claim.lease.heartbeatSeconds, { value: shadow ? "shadow" : "authoring" });
+    const holder: { wt: WorktreeHandle | null } = { wt: null };
     let wt: WorktreeHandle | null = null;
+    if (shadow) this.shadowLeases.add(claim.lease.id);
+    let submitted = false;
     try {
-      this.step(observer, "BUILD", "started", `${plan.taskKind} for ${plan.feature ?? plan.target}`);
-      const r = await this.leasedRun(claim, "d", observer, signal);
+      this.step(observer, "BUILD", "started", `${shadow ? "SHADOW " : ""}${plan.taskKind} for ${plan.feature ?? plan.target}`);
+      const r = await this.leasedRun(claim, "d", observer, signal, holder);
       wt = r.wt;
       const summary = AuthorSummary.safeParse(r.run.output);
       if (!summary.success) throw new StepError("AGENT_OUTPUT_INVALID", "the agent's output does not match author-summary.v1", true);
@@ -1254,6 +1367,15 @@ export class OrchestratorImpl {
       });
       observer({ type: "scope", validation: local });
       if (!local.ok) throw new StepError("SCOPE_VIOLATION", local.errors.map((e) => `${e.code} ${e.path ?? ""}`.trim()).join("; "));
+      if (shadow) {
+        // contracts 5.19.0: a shadow run validates locally, archives, gives the lease back and submits nothing.
+        const validation = plan.taskKind === "roadmap_author" ? this.validateRoadmapLocally(plan, cap.files, existing, wt) : null;
+        const dir = await this.archiveRun(claim, wt, "shadow", { validation: await validation, scope: local }, observer);
+        await this.releaseQuietly(claim.lease.id, "shadow run: nothing submitted", observer);
+        this.step(observer, "VERIFY", "passed", `shadow run done (nothing submitted): ${dir}`);
+        return { ok: true, attempt: null, task: claim.task, output: summary.data };
+      }
+      submitted = true;
       const res = await this.api.call("submitChangeset", {
         params: { id: claim.lease.id },
         body: changeset,
@@ -1264,10 +1386,61 @@ export class OrchestratorImpl {
       this.step(observer, "VERIFY", "passed", `submitted ${changeset.files.length} file(s) to document ${res.documentId ?? "?"}`);
       this.step(observer, "REVIEW", "waiting", "the document review round is server-driven");
       return { ok: true, attempt: null, task: claim.task, output: summary.data };
+    } catch (e) {
+      // contracts 5.19.0: keep the partial output for inspection and give the lease back, so the same task can be
+      // retried at once (unless the submission already reached the control plane).
+      const code = e instanceof StepError || e instanceof ApiCallError ? e.code : "INTERNAL";
+      await this.archiveRun(
+        claim,
+        holder.wt,
+        shadow ? "shadow" : "failed",
+        { error: { code, message: e instanceof Error ? e.message : String(e) } },
+        observer,
+      ).catch(() => undefined);
+      if (!submitted) await this.releaseQuietly(claim.lease.id, `${shadow ? "shadow " : ""}run failed: ${code}`, observer);
+      throw e;
     } finally {
       hb.stop();
-      if (wt) await removeWorktree(wt).catch(() => undefined);
+      this.shadowLeases.delete(claim.lease.id);
+      if (holder.wt) await removeWorktree(holder.wt).catch(() => undefined);
     }
+  }
+
+  /** contracts 5.19.0: a shadow roadmap's local validation, as the control plane would run it (D72 method included). */
+  private async validateRoadmapLocally(plan: ContextPlan, files: ChangesetFile[], existing: ReadonlySet<string>, wt: WorktreeHandle) {
+    const target = plan.target!;
+    const text = async (path: string) => {
+      const f = files.find((x) => x.path === path);
+      if (f) return f.op === "upsert" ? Buffer.from(f.contentBase64, "base64").toString("utf8") : null;
+      return existing.has(path) ? (await gitOut(wt.path, ["show", `${wt.baseSha}:${path}`])).toString("utf8") : null;
+    };
+    const rt = await text(`roadmaps/${target}/ROADMAP.yaml`);
+    const it = await text(`roadmaps/${target}/INVENTORY.yaml`);
+    if (rt === null || it === null)
+      return { ok: false, errors: [{ code: "MISSING_FILE", message: "ROADMAP.yaml and INVENTORY.yaml are required" }] };
+    const roadmap = parseRoadmapYaml(rt);
+    const inventory = parseInventoryYaml(it);
+    const errors: Array<{ code: string; message: string }> = [];
+    if (!roadmap.ok) for (const e of roadmap.errors) errors.push({ code: "SCHEMA", message: `ROADMAP.yaml ${e.path}: ${e.message}` });
+    if (!inventory.ok) for (const e of inventory.errors) errors.push({ code: "SCHEMA", message: `INVENTORY.yaml ${e.path}: ${e.message}` });
+    if (!roadmap.ok || !inventory.ok) return { ok: false, errors };
+    const catalog = new Map<string, CatalogEntry>();
+    const catalogPaths = new Set([...existing, ...files.map((f) => f.path)].filter((p) => /^catalog\/[a-z][a-z0-9-]*\.yaml$/.test(p)));
+    for (const p of catalogPaths) {
+      const t = await text(p);
+      const e = t === null ? null : parseCatalogEntryYaml(t);
+      if (e?.ok) catalog.set(e.value.key, e.value);
+      else if (e) for (const x of e.errors) errors.push({ code: "SCHEMA", message: `${p} ${x.path}: ${x.message}` });
+    }
+    const rm = this.engines.policy.roadmapMethod;
+    const method = rm ? { scanCapabilityIds: rm.targets[target]?.scanCapabilityIds ?? null, requireRubric: true } : undefined;
+    for (const i of validateRoadmap(roadmap.value, inventory.value, catalog, null, method))
+      errors.push({ code: i.code, message: i.message });
+    return {
+      ok: errors.length === 0,
+      errors,
+      note: "previous merged version assumed none; the repository registry is not checked locally",
+    };
   }
 
   /** conflict_resolution: a read-only resolver run whose Ruling goes to the maintainer for confirmation (V1). */

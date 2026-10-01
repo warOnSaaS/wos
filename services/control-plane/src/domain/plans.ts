@@ -58,6 +58,18 @@ export async function renderServerDocument(tx: Tx, deps: Deps, ref: string): Pro
   }
   m = /^wos:scan\/([a-z0-9-]+)$/.exec(ref);
   if (m) return renderScan(m[1]!);
+  m = /^wos:method\/([a-z0-9-]+)$/.exec(ref);
+  if (m) {
+    // D72: the roadmap method of the policy in force, with the target's scan ids, required reading and partition.
+    const rm = deps.policy.roadmapMethod;
+    if (!rm) return null;
+    const { targets, ...common } = rm;
+    return canonicalJson({
+      ...common,
+      target: m[1],
+      ...(targets[m[1]!] ?? { scanCapabilityIds: null, requiredReading: [], partition: [] }),
+    });
+  }
   m = /^wos:fetches\/([0-9a-f-]{36})$/.exec(ref);
   if (m) return renderFetches(tx, m[1]!);
   m = /^wos:catalog-index@([0-9a-f]{40})$/.exec(ref);
@@ -341,6 +353,8 @@ export async function buildPlan(tx: Tx, deps: Deps, input: PlanInput): Promise<C
     push(serverDoc(tx, deps, `wos:scan/${target}`, true));
     // D70: reviewers see what the authors read on the web.
     if (!author && input.subjectId && policyRole.web) push(serverDoc(tx, deps, `wos:fetches/${input.subjectId}`, true));
+    // D72: the roadmap method (scan ids, required reading, partition, rubric) for the author and both reviewers.
+    if (deps.policy.roadmapMethod) push(serverDoc(tx, deps, `wos:method/${target}`, true));
     push(repoGlob(repo, "catalog/*.yaml", false));
   } else if (role === "feature_author" || role === "feature_reviewer_astra" || role === "feature_reviewer_fable") {
     const author = role === "feature_author";

@@ -88,7 +88,9 @@ export function resolveReasoning(role: RolePolicy, model: ModelSpec): ReasoningL
   if (!role.allowedModels.includes(model.ref)) {
     throw new PolicyViolationError("resolveReasoning", [`MODEL_NOT_ALLOWED: ${model.ref} is not allowed for ${role.role}`]);
   }
-  const level: ReasoningLevel = role.reasoning.required === "max" ? model.maxReasoning : role.reasoning.required;
+  // contracts 5.19.0: a model may run a role at a set level (policy data), e.g. glm authors at high.
+  const level: ReasoningLevel =
+    model.roleReasoning?.[role.role] ?? (role.reasoning.required === "max" ? model.maxReasoning : role.reasoning.required);
   const problems = reasoningProblems(model, level);
   if (problems.length > 0) throw new PolicyViolationError("resolveReasoning", problems);
   return level;
@@ -733,7 +735,7 @@ export function buildInvocation(
   if (provider.runConfig) {
     if (!paths.configHome)
       throw new PolicyViolationError("buildInvocation", [`CONFIG_HOME_REQUIRED: ${provider.id} needs a per-run config home`]);
-    env[provider.runConfig.envVar] = runConfigJson(provider, role, plan, addedTools);
+    env[provider.runConfig.envVar] = runConfigJson(provider, role, model, plan, addedTools);
     env[provider.runConfig.configHomeEnv] = paths.configHome;
   }
   return {
@@ -751,7 +753,13 @@ export function buildInvocation(
  * plan's allowed commands, and write access to the output file even for read-only roles. Sub-agents get the read-only
  * set with no web and no nesting. Every value is allow or deny: nothing asks, so a headless run never waits.
  */
-function runConfigJson(provider: ProviderSpec, role: RolePolicy, plan: ContextPlan, addedTools: readonly string[]): string {
+function runConfigJson(
+  provider: ProviderSpec,
+  role: RolePolicy,
+  model: ModelSpec,
+  plan: ContextPlan,
+  addedTools: readonly string[],
+): string {
   const rc = provider.runConfig!;
   const permission: Record<string, unknown> = { ...rc.permission[role.sandbox] };
   for (const t of addedTools) Object.assign(permission, rc.toolPermissions[t] ?? {});
@@ -766,8 +774,17 @@ function runConfigJson(provider: ProviderSpec, role: RolePolicy, plan: ContextPl
     permission.bash = { "*": "deny", ...Object.fromEntries(plan.allowedCommands.map((c) => [c.join(" "), "allow"])) };
   if (provider.outputFile && role.sandbox === "read_only") permission.edit = { "*": "deny", [provider.outputFile]: "allow" };
   const config: Record<string, unknown> = { ...rc.base, permission };
+  const agents: Record<string, Record<string, unknown>> = {};
   if (rc.subagents && permission.task === "allow")
-    config.agent = Object.fromEntries(rc.subagents.agents.map((a) => [a, { permission: { ...rc.subagents!.permission } }]));
+    for (const a of rc.subagents.agents) agents[a] = { permission: { ...rc.subagents.permission } };
+  // contracts 5.19.0 (D72): author runs use the model's author sampling on opencode's default agent (`build`).
+  const sampling = model.authorSampling;
+  if (sampling && (role.role === "roadmap_author" || role.role === "feature_author"))
+    agents.build = {
+      ...(sampling.temperature !== undefined ? { temperature: sampling.temperature } : {}),
+      ...(sampling.topP !== undefined ? { top_p: sampling.topP } : {}),
+    };
+  if (Object.keys(agents).length > 0) config.agent = agents;
   // Plain JSON.stringify, not canonical JSON: sorting keys would reorder the rules, and the last matching rule wins.
   return JSON.stringify(config);
 }

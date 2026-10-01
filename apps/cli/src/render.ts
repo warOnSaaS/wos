@@ -4,6 +4,7 @@
  * NO_COLOR.
  */
 import type { LocalStatus, OrchestratorEvent, RunResult } from "@waronsaas/contracts";
+import { formatUsage } from "@waronsaas/orchestrator";
 
 export interface Writer {
   write(chunk: string): unknown;
@@ -83,8 +84,11 @@ export class EventPrinter {
         return `${tag("agent")}${tag("started")}${e.role} on ${e.model} (${e.provider}, reasoning ${e.reasoning}) pid ${e.pid}`;
       case "agent_output":
         return this.opts.verbose ? dim(indent(e.chunk, "| ")) : null;
-      case "agent_exited":
-        return `${tag("agent")}${tag("exited")}code ${e.exitCode} after ${formatMs(e.durationMs)}`;
+      case "agent_exited": {
+        const head = `${tag("agent")}${tag("exited")}code ${e.exitCode} after ${formatMs(e.durationMs)}`;
+        // contracts 5.19.0: the CLI's own token accounting, as reported.
+        return e.usage ? `${head}\n${tag("usage")}${tag("total")}${formatUsage(e.usage)}` : head;
+      }
       case "verify": {
         const head = `${tag("verify")}${tag(e.status)}${e.checkId}${e.exitCode === null ? "" : ` exit ${e.exitCode}`}`;
         return e.status === "failed" && e.outputTail.trim() ? `${head}\n${dim(indent(e.outputTail))}` : head;

@@ -21,7 +21,7 @@ import type { validateChangeset } from "@waronsaas/verification";
 import { OrchestratorImpl } from "./orchestrator.js";
 
 export { ApiCallError, createApiClient } from "./api-client.js";
-export { type AgentEvents, type AgentFetch, offAllowlist, parseAgentEvents } from "./agent-events.js";
+export { type AgentEvents, type AgentFetch, formatUsage, offAllowlist, parseAgentEvents } from "./agent-events.js";
 export { createNodeProcessRunner } from "./process-runner.js";
 export { resolveBinary } from "./resolve-binary.js";
 export {

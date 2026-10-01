@@ -3,7 +3,7 @@
  * PATH, launched by createNodeProcessRunner with the argv the REAL agent-policy builds. Also `status()`
  * probing the same binaries.
  */
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { OrchestratorEvent } from "@waronsaas/contracts";
@@ -81,7 +81,8 @@ process.stdin.on("end", () => {
   ev("tool_use", { type: "tool", tool: "webfetch", state: { status: "completed", input: { url }, output: "Data Export Service", time: { start: 8000, end: 9000 } } });
   ev("tool_use", { type: "tool", tool: "websearch", state: { status: "completed", input: { query: "salesforce bulk api 2.0" }, output: "results", time: { start: 9100, end: 9200 } } });
   ev("step_finish", { type: "step-finish", tokens: { input: 1200, output: 340, reasoning: 50, cache: { read: 0, write: 0 } }, cost: 0 });
-  ev("step_finish", { type: "step-finish", tokens: { input: 800, output: 60, reasoning: 0, cache: { read: 0, write: 0 } }, cost: 0 });
+  const reason = ${JSON.stringify(scenario)} === "no-output" ? "length" : "stop";
+  ev("step_finish", { type: "step-finish", reason, tokens: { input: 800, output: 60, reasoning: 0, cache: { read: 97673, write: 0 } }, cost: 0.47 });
 });
 `;
 
@@ -191,7 +192,7 @@ describe("glm on the opencode CLI (D69 candidate trial, D70 web), with a fake op
     };
   };
 
-  it("runs `opencode run -m opencode-go/glm-5.3 --variant max`, reads and removes the output file, records launch, sub-agents, fetches, tokens", async () => {
+  it("runs `opencode run -m opencode-go/glm-5.3 --variant high` (policy data), reads and removes the output file, records launch, sub-agents, fetches, tokens", async () => {
     h = harness();
     h.server.authorWeb = WEB;
     bin = installBinaries("ok");
@@ -221,9 +222,11 @@ describe("glm on the opencode CLI (D69 candidate trial, D70 web), with a fake op
       run.argv[9],
       "--variant",
     ]);
-    expect(run.argv[11]).toBe("max");
+    expect(run.argv[11]).toBe("high"); // agent-policy.v3: glm authors at high (roleReasoning)
+    // agent-policy.v3: opencode's per-step output cap raised to glm-5.3's 131072-token limit; temperature 0 for authors.
+    expect(run.env.OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX).toBe("131072");
     expect(run.argv.at(-1)).toMatch(
-      /write your final output.*author-summary\.v1.*\.wos-agent-output\.json.*at most 4 running at the same time/s,
+      /Write your final output LAST.*author-summary\.v1.*\.wos-agent-output\.json.*at most 4 running at the same time/s,
     );
     const config = JSON.parse(run.env.OPENCODE_CONFIG_CONTENT!);
     expect(config.permission).toMatchObject({
@@ -237,13 +240,14 @@ describe("glm on the opencode CLI (D69 candidate trial, D70 web), with a fake op
     expect(Object.keys(config.permission)[0]).toBe("*");
     expect(config.permission.webfetch).toBe("allow"); // opencode cannot limit domains: the allowlist is checked after the run (D70)
     expect(config.agent.general.permission).toMatchObject({ webfetch: "deny", websearch: "deny", task: "deny", edit: "deny" });
+    expect(config.agent.build).toEqual({ temperature: 0 }); // D72: author sampling on opencode's default agent
     expect(run.env.XDG_CONFIG_HOME).toContain("config-home");
-    expect(Object.keys(run.env).some((k) => /KEY|TOKEN|SECRET/.test(k))).toBe(false);
+    expect(Object.keys(run.env).some((k) => /API_KEY|AUTH_TOKEN|SECRET|PASSWORD/.test(k))).toBe(false);
     const agentRun = h.server.agentRuns.at(-1) as Record<string, unknown>;
     expect(agentRun).toMatchObject({
       provider: "opencode_cli",
       modelIdRequested: "opencode-go/glm-5.3",
-      reasoningRequested: "max",
+      reasoningRequested: "high",
       launch: LAUNCH,
       subagentCount: 5,
       maxConcurrentSubagents: 3,
@@ -260,6 +264,49 @@ describe("glm on the opencode CLI (D69 candidate trial, D70 web), with a fake op
       { kind: "search", target: "salesforce bulk api 2.0", at: "1970-01-01T00:00:09.100Z", contentSha256: null, tool: "websearch" },
     ]);
     expect(events.some((e) => e.type === "warning" && e.code === "SUBAGENT_CAP_EXCEEDED")).toBe(false);
+    // contracts 5.19.0: the run's token accounting as opencode reported it, in the exit event and the signed record.
+    const usage = {
+      inputTokens: 2000,
+      outputTokens: 400,
+      reasoningTokens: 50,
+      cacheReadTokens: 97673,
+      cacheWriteTokens: 0,
+      costUsd: 0.47,
+      steps: 2,
+      lastFinishReason: "stop",
+    };
+    expect(events.find((e) => e.type === "agent_exited")).toMatchObject({ exitCode: 0, usage });
+    expect(agentRun.usageDetail).toEqual(usage);
+  });
+
+  it("shadow: same claim and context, validated and archived under shadow/<task>/<run>/, lease released, nothing submitted", async () => {
+    h = harness();
+    h.server.authorWeb = WEB;
+    bin = installBinaries("ok");
+    const o = orchestrator(h, bin, { modelLaunch: { glm: LAUNCH } });
+    const t = h.server.openAuthorTask("roadmap_author");
+    const res = await o.author({ taskId: t.id, model: "glm", shadow: true }, () => undefined);
+    expect(res, JSON.stringify(res)).toMatchObject({ ok: true, output: { schema: "author-summary.v1" } });
+    expect(h.server.submissions).toHaveLength(0);
+    expect([...h.server.leases.values()].at(-1)!.state).toBe("released");
+    expect((h.server.agentRuns.at(-1) as { mode?: string }).mode).toBe("shadow");
+    const base = join(h.root, "shadow", t.id);
+    const [runDir] = readdirSync(base);
+    const run = JSON.parse(readFileSync(join(base, runDir!, "run.json"), "utf8"));
+    expect(run).toMatchObject({
+      mode: "shadow",
+      taskId: t.id,
+      modelId: "opencode-go/glm-5.3",
+      reasoning: "high",
+      files: ["roadmaps/salesforce/ROADMAP.yaml"],
+    });
+    expect(run.manifestSha256).toMatch(/^sha256:/);
+    expect(run.fetches).toHaveLength(2);
+    expect(run.usage.costUsd).toBe(0.47);
+    // The fake's ROADMAP.yaml is no valid roadmap: the local validation says so (nothing was submitted anyway).
+    expect(run.validation.ok).toBe(false);
+    expect(readFileSync(join(base, runDir!, "roadmaps/salesforce/ROADMAP.yaml"), "utf8")).toContain("wos-roadmap.v1");
+    expect(readFileSync(join(base, runDir!, "transcript.jsonl"), "utf8")).toContain("step_finish");
   });
 
   it("D70: a fetch off the plan's allowlist refuses the submission (after the run is recorded)", async () => {
@@ -281,8 +328,17 @@ describe("glm on the opencode CLI (D69 candidate trial, D70 web), with a fake op
     bin = installBinaries("no-output");
     const o = orchestrator(h, bin, { modelLaunch: { glm: LAUNCH } });
     const t = h.server.openAuthorTask("roadmap_author");
-    const res = await o.author({ taskId: t.id, model: "glm" }, () => undefined);
+    const events: OrchestratorEvent[] = [];
+    const res = await o.author({ taskId: t.id, model: "glm" }, (e) => events.push(e));
     expect(res).toMatchObject({ ok: false, code: "AGENT_OUTPUT_INVALID" });
     expect(h.server.submissions).toHaveLength(0);
+    // contracts 5.19.0: the cap is named, the partial files are archived, and the lease is given back for a retry.
+    expect(events.some((e) => e.type === "warning" && e.code === "OUTPUT_CAP_REACHED")).toBe(true);
+    expect([...h.server.leases.values()].at(-1)!.state).toBe("released");
+    const base = join(h.root, "failed", t.id);
+    const [runDir] = readdirSync(base);
+    expect(readFileSync(join(base, runDir!, "roadmaps/salesforce/ROADMAP.yaml"), "utf8")).toContain("wos-roadmap.v1");
+    const run = JSON.parse(readFileSync(join(base, runDir!, "run.json"), "utf8"));
+    expect(run).toMatchObject({ mode: "failed", error: { code: "AGENT_OUTPUT_INVALID" }, usage: { lastFinishReason: "length" } });
   });
 });

@@ -425,11 +425,15 @@ export async function runCli(argv: string[], io: CliIo, deps: CliDeps): Promise<
       )
       .option("--target <slug>", "only tasks for this target")
       .option("--feature <key>", "only tasks for this feature")
+      .option(
+        "--shadow",
+        "run the same claim and context, validate and archive under $WOS_HOME/shadow/<task>/<run>/, then release the lease: nothing is submitted",
+      )
       .description(description)
       .action(
         async (
           taskArg: string | undefined,
-          raw: { target?: string; feature?: string; model?: string; provider?: "opencode" },
+          raw: { target?: string; feature?: string; model?: string; provider?: "opencode"; shadow?: boolean },
           cmd: Command,
         ) => {
           const c = ctx(cmd);
@@ -471,7 +475,13 @@ export async function runCli(argv: string[], io: CliIo, deps: CliDeps): Promise<
           }
           finish(
             await orchestrator.author(
-              { taskId, model: opts.model, ...(viaOpencode ? { launch: OPENCODE_LAUNCH } : {}), signal: deps.signal },
+              {
+                taskId,
+                model: opts.model,
+                ...(viaOpencode ? { launch: OPENCODE_LAUNCH } : {}),
+                ...(raw.shadow ? { shadow: true } : {}),
+                signal: deps.signal,
+              },
               c.printer.observe,
             ),
             c,

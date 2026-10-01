@@ -7,6 +7,7 @@ import {
   AGENT_POLICY,
   AGENT_POLICY_V1,
   AGENT_POLICY_V2,
+  AGENT_POLICY_V3,
   AgentRunRecord,
   CandidateTrialLabel,
   candidateTrialLabel,
@@ -96,8 +97,10 @@ describe("agent-policy.v2 (D70 network by role, opencode, glm)", () => {
     expect(AGENT_POLICY_V1.policyVersion).toBe("agent-policy.v1");
     expect(AGENT_POLICY_V1.models.map((m) => m.ref)).toEqual(["fable", "opus", "astra", "sol"]);
     expect(AGENT_POLICY_V1.roles.every((r) => r.web === undefined)).toBe(true);
-    expect(AGENT_POLICY).toBe(AGENT_POLICY_V2);
     expect(AGENT_POLICY_V2.policyVersion).toBe("agent-policy.v2");
+    // contracts 5.19.0: v3 is in force (v2 unchanged: plans had been issued under it).
+    expect(AGENT_POLICY).toBe(AGENT_POLICY_V3);
+    expect(AGENT_POLICY_V2.models.find((m) => m.ref === "glm")!.launchEnv).toBeUndefined();
   });
 
   it("research roles read the web; everything that writes or judges code stays offline", () => {
@@ -161,6 +164,35 @@ describe("agent-policy.v2 (D70 network by role, opencode, glm)", () => {
     });
     expect(Object.keys(oc.runConfig!.permission.workspace_write)[0]).toBe("*"); // the catch-all first: the last matching rule wins
     expect(Object.values(oc.runConfig!.permission.read_only)).not.toContain("ask");
+  });
+});
+
+describe("agent-policy.v3 (contracts 5.19.0): glm's launch and the D72 roadmap method", () => {
+  it("glm: opencode's output cap raised to the model's limit, high reasoning and temperature 0 as roadmap author", () => {
+    const m = AGENT_POLICY_V3.models.find((x) => x.ref === "glm")!;
+    expect(m.launchEnv).toEqual({ OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX: "131072" });
+    expect(m.roleReasoning).toEqual({ roadmap_author: "high" });
+    expect(m.authorSampling).toEqual({ temperature: 0 });
+    expect(m.roleInstructions?.roadmap_author).toMatch(/incrementally.*partition n/s);
+  });
+
+  it("the method is the same for every roadmap author: obligations, rubric, steps; per target scan ids, reading, partition", () => {
+    const rm = AGENT_POLICY_V3.roadmapMethod!;
+    expect(rm.rubric.criteria).toEqual(["editionBreadth", "coreDailyUse", "surfaceParity", "migrationGravity"]);
+    expect(rm.steps).toHaveLength(7);
+    const sf = rm.targets.salesforce!;
+    expect(sf.scanCapabilityIds).toHaveLength(52);
+    expect(sf.requiredReading.map((r) => r.kind)).toEqual(["editions_pricing", "feature_docs", "app_store", "google_play", "export_api"]);
+    // The partition covers every scan id exactly once, in at most 4 helpers.
+    expect(sf.partition.length).toBeLessThanOrEqual(4);
+    expect(sf.partition.flatMap((p) => p.scanIds).sort()).toEqual([...sf.scanCapabilityIds].sort());
+    // Every required page is readable under D70 (target or shared domains).
+    for (const r of sf.requiredReading)
+      expect(
+        hostInDomains(new URL(r.url).hostname, [...AGENT_POLICY_V3.targetDomains!.salesforce!, ...AGENT_POLICY_V3.sharedDomains!]),
+      ).toBe(true);
+    const author = AGENT_POLICY_V3.roles.find((r) => r.role === "roadmap_author")!;
+    expect(author.obligations.filter((o) => o.includes("D72"))).toHaveLength(4);
   });
 });
 

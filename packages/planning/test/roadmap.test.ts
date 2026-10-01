@@ -1,21 +1,44 @@
 import { Inventory, Roadmap } from "@waronsaas/contracts";
 import { describe, expect, it } from "vitest";
-import { ROADMAP_ERROR_CODES, type RoadmapErrorCode, validateRoadmap } from "../src/index.js";
+import { ROADMAP_ERROR_CODES, type RoadmapErrorCode, rubricWeights, validateRoadmap } from "../src/index.js";
 import { catalog, clone, inventory, roadmap } from "./fixtures.js";
 
 type R = ReturnType<typeof roadmap>;
 type I = ReturnType<typeof inventory>;
 type Cat = ReturnType<typeof catalog>;
 
-function run(mut: { r?: (r: R) => void; i?: (i: I) => void; c?: (c: Cat) => void; prev?: number | null } = {}) {
+/** D72 (contracts 5.19.0): a scan of three ids, placed in the baseline's capabilities, and rubric scores whose derived
+ * weights (20:10:5 points -> 5714, 2857, 1429 bp by largest remainder) replace the baseline's capability weights. */
+const SCAN = ["s-contacts", "s-deals", "s-reports"];
+const score = (n: number) => ({ score: n, basis: "test fixture basis" });
+function withMethod(r: R) {
+  const pts = [
+    [5, 5, 5, 5],
+    [3, 3, 2, 2],
+    [2, 1, 1, 1],
+  ];
+  const weights = [5714, 2857, 1429];
+  r.weightRubric = "wos-weight-rubric.v1";
+  r.capabilities.forEach((c, k) => {
+    const [a, b, d, e] = pts[k]!;
+    c.rubric = { editionBreadth: score(a!), coreDailyUse: score(b!), surfaceParity: score(d!), migrationGravity: score(e!) };
+    c.weightBp = weights[k]!;
+    c.scanIds = [SCAN[k]!];
+  });
+}
+type Method = { scanCapabilityIds: readonly string[] | null; requireRubric: boolean };
+
+function run(mut: { r?: (r: R) => void; i?: (i: I) => void; c?: (c: Cat) => void; prev?: number | null; method?: Method } = {}) {
   const r = clone(roadmap());
   const i = clone(inventory());
   const c = catalog();
+  if (mut.method) withMethod(r);
   mut.r?.(r);
   mut.i?.(i);
   mut.c?.(c);
-  return validateRoadmap(r, i, c, mut.prev === undefined ? null : mut.prev);
+  return validateRoadmap(r, i, c, mut.prev === undefined ? null : mut.prev, mut.method);
 }
+const M: Method = { scanCapabilityIds: SCAN, requireRubric: true };
 const codes = (xs: ReturnType<typeof run>) => [...new Set(xs.map((x) => x.code))].sort();
 const contacts = (r: R) => r.capabilities[0]!.features[0]!;
 
@@ -199,6 +222,45 @@ const CASES: Record<RoadmapErrorCode, { why: string; mut: Parameters<typeof run>
     why: "the connector is neither in the catalog nor proposed",
     mut: { c: (c) => c.delete("acme-import") },
   },
+  SCAN_CAPABILITY_UNACCOUNTED: {
+    req: "D72",
+    why: "a scan id is in no capability and not excluded",
+    mut: {
+      method: M,
+      r: (r) => {
+        r.capabilities[2]!.scanIds = [];
+        r.capabilities[2]!.sources = ["https://vendor.example.com/reports"];
+      },
+    },
+  },
+  SCAN_ID_UNKNOWN: {
+    req: "D72",
+    why: "a capability lists a scan id the scan does not have",
+    mut: { method: M, r: (r) => r.capabilities[0]!.scanIds!.push("s-typo") },
+  },
+  SCAN_ADDITION_UNSOURCED: {
+    req: "D72",
+    why: "a capability beyond the scan cites no source",
+    mut: {
+      method: M,
+      r: (r) => {
+        r.capabilities[2]!.scanIds = [];
+        r.scanExcluded = [{ scanId: "s-reports", reason: "Not offered by the target any more.", source: "https://vendor.example.com/r" }];
+      },
+    },
+  },
+  RUBRIC_MISSING: { req: "D72", why: "a capability has no rubric scores", mut: { method: M, r: (r) => delete r.capabilities[1]!.rubric } },
+  RUBRIC_WEIGHT_MISMATCH: {
+    req: "D72",
+    why: "a weight that does not follow from the scores",
+    mut: {
+      method: M,
+      r: (r) => {
+        r.capabilities[0]!.weightBp = 5000;
+        r.capabilities[1]!.weightBp = 3571;
+      },
+    },
+  },
 };
 
 describe("validateRoadmap", () => {
@@ -220,6 +282,30 @@ describe("validateRoadmap", () => {
       for (const i of issues) expect(i.message.length).toBeGreaterThan(10);
     });
   }
+
+  it("D72: the method baseline passes; excluding a scan id with a source accounts for it; rubricWeights apportions exactly", () => {
+    expect(run({ method: M })).toEqual([]);
+    expect(
+      run({
+        method: M,
+        r: (r) => {
+          r.capabilities[2]!.scanIds = [];
+          r.capabilities[2]!.sources = ["https://vendor.example.com/reports"];
+          r.scanExcluded = [{ scanId: "s-reports", reason: "Not offered by the target any more.", source: "https://vendor.example.com/r" }];
+        },
+      }),
+    ).toEqual([]);
+    expect(
+      rubricWeights(
+        [1, 2, 3].map(() => ({
+          rubric: { editionBreadth: score(1), coreDailyUse: score(1), surfaceParity: score(1), migrationGravity: score(1) },
+        })),
+      ),
+    ).toEqual([3334, 3333, 3333]);
+    expect(rubricWeights([{ rubric: undefined }])).toBeNull();
+    // Without the method (documents authored before agent-policy.v3) nothing of D72 is checked.
+    expect(run({ r: (r) => (r.weightRubric = undefined) })).toEqual([]);
+  });
 
   it("TGT-00 warOnSaaS has no customers to move and is exempt from the migration section (D59)", () => {
     const tgt00 = (x: { target: string }) => (x.target = "waronsaas");

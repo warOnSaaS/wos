@@ -154,8 +154,8 @@ describe.skipIf(!HAS_DB)("D69 candidate trials, D70 web by role", () => {
       model: "glm",
       modelId: "opencode-go/glm-5.3",
       provider: "opencode_cli",
-      reasoning: "max",
-      policyVersion: "agent-policy.v2",
+      reasoning: "high",
+      policyVersion: "agent-policy.v3",
     });
     expect(sub.plan.web.domains).toEqual(expect.arrayContaining(["salesforce.com", "force.com", "apps.apple.com", "play.google.com"]));
     expect(sub.plan.web.search).toBe(true);
@@ -211,6 +211,34 @@ describe.skipIf(!HAS_DB)("D69 candidate trials, D70 web by role", () => {
     // Forward-only: a trial is never deleted or re-opened.
     await expect(h.owner`delete from wos.candidate_trials`).rejects.toThrow();
     await expect(h.owner`update wos.candidate_trials set revoked_at = null, revoked_by = null, revoked_reason = null`).rejects.toThrow();
+  });
+
+  it("D72: author plans carry wos:method/<target>; a v3 revision that leaves scan ids unplaced fails validation", async () => {
+    const r = await h.call("POST", "/v1/admin/targets/zendesk/roadmaps", {
+      token: founder.token,
+      idem: true,
+      body: { reason: "Open zendesk" },
+    });
+    expect(r.status).toBe(200);
+    const files = roadmapFiles({ target: "zendesk" }).map((f) => {
+      if (!f.path.endsWith("ROADMAP.yaml")) return f;
+      const rm = JSON.parse(f.content);
+      rm.capabilities[0].scanIds = rm.capabilities[0].scanIds.slice(1); // one scan id unaccounted
+      return { ...f, content: JSON.stringify(rm) };
+    });
+    const sub = await authorRevision(h, astra, r.body.taskId, files, { model: "opus" });
+    expect(sub.res.status, JSON.stringify(sub.res.body)).toBe(200);
+    const ref = "wos:method/zendesk";
+    expect(sub.plan.artifacts.find((a: { ref?: string }) => a.ref === ref)).toMatchObject({ kind: "server_document", required: true });
+    const doc = JSON.parse((await h.owner.begin((tx) => renderServerDocument(tx as never, h.deps, ref)))!);
+    expect(doc).toMatchObject({ version: "wos-roadmap-method.v1", target: "zendesk" });
+    expect(doc.scanCapabilityIds).toHaveLength(40);
+    const [state] = await h.owner<{ state: string }[]>`select state from wos.documents where id = ${r.body.documentId}`;
+    expect(state!.state).toBe("revising");
+    const [task] = await h.owner<{ carry: { validatorErrors: Array<{ code: string }> } }[]>`
+      select carry from wos.tasks where document_id = ${r.body.documentId} and kind = 'roadmap_author' and state = 'open'`;
+    expect(task!.carry.validatorErrors.map((e) => e.code)).toEqual(["SCAN_CAPABILITY_UNACCOUNTED"]);
+    await action(founder, { action: "abandon_document", documentId: r.body.documentId, reason: "D72 test only" });
   });
 
   it("D70: offline roles get no web; the implementation-side plans stay offline", async () => {

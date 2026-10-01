@@ -466,3 +466,22 @@ These override `docs/V1-SPEC.md` where they differ. Date: 2026-09-29.
   - the work stays PROVISIONAL (D23) and gets the independent re-review of REVIEW-PROTOCOL section 9 "After exit";
   - it is refused for anyone except the named founder, and for everyone once bootstrap ends.
 - Encoded as `review-policy.v3` (`bootstrapFounderMayHoldBothSeats: true`, `bootstrapFounderSkipsSelfReviewWait: true`). v1 and v2 are unchanged. It is activated by the same forward-only `switch_review_policy`, and a round follows the policy in force when it opened. Contracts 5.18.0, migration 0016.
+
+## D72. The roadmap method: less drift between authors and runs (founder decision, 2026-09-30)
+- Applies to ALL roadmap authors (Opus and GLM alike), as agent-policy.v3 obligations, the `roadmapMethod` policy data and ROADMAP-PROTOCOL section 9. The parts:
+  - the scan-seeded skeleton (every scan capability id placed or excluded with a source);
+  - the per-target required reading;
+  - the weight rubric `wos-weight-rubric.v1` (four 1–5 scores with a basis; weights a documented, deterministic function of the scores);
+  - the fixed step order with files written at each step;
+  - the deterministic sub-agent partition;
+  - the self-check before the summary.
+- Validators, where cheap and deterministic: scan ids accounted for (`SCAN_CAPABILITY_UNACCOUNTED`, `SCAN_ID_UNKNOWN`, `SCAN_ADDITION_UNSOURCED`), and scores present with weights that follow from them (`RUBRIC_MISSING`, `RUBRIC_WEIGHT_MISMATCH`). They apply to revisions authored under a plan of agent-policy.v3 or later.
+- Randomness (GLM on opencode):
+  - glm authors run at temperature 0 (`authorSampling`, opencode's default agent). opencode 1.18.34 accepts the setting (`opencode debug agent build` shows it) and sends it, because glm-5.3 declares temperature support. Whether the OpenCode Go endpoint honours it for this reasoning model is not verified.
+  - The reasoning level is policy data (`roleReasoning`). glm authors default to `high`: in trial run 1, `max` spent opencode's whole 32,000-token step cap on reasoning and wrote nothing. A/B tests of `high` and `max` change this field in a new policy version.
+- Trial run 1 fixes (agent-policy.v3, contracts 5.19.0):
+  - **Output cap.** opencode's per-step output cap is raised to glm-5.3's 131,072-token limit (`launchEnv` `OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX`, read from opencode's source: `min(model.limit.output, cap)`, default cap 32000).
+  - **Incremental writing.** opencode runs write their documents incrementally and their output last.
+  - **Failed runs.** A failed author run archives its partial files and transcript under `<WOS_HOME>/failed/<task>/<run>/` and releases its lease, so the same task can be retried at once.
+  - **Accounting.** Token totals as the CLI reports them (input, output, reasoning, cache, cost, steps, last finish reason) go into the signed run record (`usageDetail`) and a final `usage` line.
+  - **Shadow runs.** `wos roadmap --shadow` claims, runs the identical context, validates locally, archives under `<WOS_HOME>/shadow/<task>/<run>/`, releases the lease and submits nothing. The run record carries `mode: shadow`.

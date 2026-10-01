@@ -17,7 +17,7 @@ Nothing here was run against a model when this was written. The flags come from 
 ## How wOS runs GLM
 
 ```
-opencode run -m opencode-go/glm-5.3 --format json --pure --dir <worktree> --title <session> --variant max "<instructions>"
+OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX=131072 opencode run -m opencode-go/glm-5.3 --format json --pure --dir <worktree> --title <session> --variant high "<instructions>"
 ```
 
 - **Input.** The task and its context go on stdin. wOS never passes `--auto`.
@@ -134,3 +134,50 @@ Z.ai documents running Claude Code against its Anthropic-compatible endpoint:
 GLM-5.3 always reasons (efforts low, high and max; the default is max). How the claude CLI's `--effort` maps on that endpoint is not documented. capability-policy.v3 lists this as `alternativeProviders: [zai]`, but agent-policy.v2 has no model for it yet.
 
 One safeguard already applies. If your claude settings point the CLI at another vendor's endpoint and the answers come from a non-Anthropic model, a claude run for an Anthropic model fails with `MODEL_MISMATCH`.
+
+
+## Trial run 1 and the retry (agent-policy.v3, contracts 5.19.0)
+
+**What happened in run 1.** The agent exited 0 after 16m34s, but the result was `AGENT_OUTPUT_INVALID`. Its last step ended with finish reason `length`: input 776, output 0, reasoning 32,000, cache read 97,673. opencode caps every step's output at 32,000 tokens by default, and reasoning counts against that cap. At `max`, GLM spent the whole cap thinking and wrote nothing.
+
+**The fixes in agent-policy.v3.** v2 is unchanged: the API had issued v2 plans.
+- **Output cap.** opencode's cap is raised to glm-5.3's 131,072-token output limit (`OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX`, read from opencode 1.18.34's source).
+- **Reasoning and sampling.** glm authors run at `high` reasoning and temperature 0 (both policy data; see D72).
+- **Writing order.** The agent writes its files step by step and its output last (the D72 method, for every author).
+- **Failed runs.** A failed run archives its partial files under `~/.wos/failed/<task>/<run>/` and releases its lease.
+- **Usage.** The run prints `usage total in …, out …, reasoning …, cache read …, cost $… (as reported), N step(s), last finish …`, and the signed run record keeps the same figures.
+
+**Retry. Wait until main is green on GitHub and waronsaas-api has deployed it**: the server must issue agent-policy.v3 plans to a v3 CLI.
+
+```sh
+cd ~/waronsaas && git pull && nvm use 22 && npm ci --ignore-scripts && npm run build && npm run bundle -w @waronsaas/cli
+# Run 1's lease (a v2 plan) must go: release it. If it says the lease is not held, it already expired.
+node apps/cli/dist/wos.mjs release 01a0f4bb-ccf4-7960-98f1-9d75b801a7bd --reason "GLM trial run 1: AGENT_OUTPUT_INVALID (opencode 32000-token step cap)"
+
+# B, shadow first. Same claim and context as the real run; nothing submitted; lease released at the end:
+caffeinate -i node apps/cli/dist/wos.mjs roadmap 01a0f47a-0b77-7043-9299-0b237bb8d59c --provider opencode --model glm-5.3 --shadow
+
+# A, the real run (submits; validation and review follow):
+caffeinate -i node apps/cli/dist/wos.mjs roadmap 01a0f47a-0b77-7043-9299-0b237bb8d59c --provider opencode --model glm-5.3
+```
+
+- **Order.** B runs before A. A submission moves the document's head, so a shadow run after A would get a different context.
+- **Checking the context matches.** Both runs print `context built … manifest <hash>`; the hashes match when product main has not moved in between. The shadow archive's run.json records the full hash.
+- **If A fails validation**, the trial covers the new author task. Run the same command with that task's id (`node apps/cli/dist/wos.mjs tasks --kind roadmap_author --target salesforce`).
+
+**Compare A and B (GLM vs GLM).**
+
+```sh
+git clone https://github.com/warOnSaaS/product ~/product 2>/dev/null; git -C ~/product fetch origin
+node tools/experiments/roadmap-drift/compare.ts ~/.wos/shadow/01a0f47a-0b77-7043-9299-0b237bb8d59c/<run> ~/product@origin/wos/roadmap/salesforce/v1 \
+  --target salesforce --out docs/experiments/roadmap-drift/salesforce/glm-shadow-vs-glm-real
+```
+
+The report covers:
+- validator errors, including the D72 scan and rubric checks;
+- inventory overlap by source URL and normalised title;
+- capability overlap;
+- weight deltas, as mean absolute difference and Spearman rank correlation;
+- D59 completeness and citation share;
+- for the shadow side, inventory sources found in its fetch log and the required reading it read;
+- coverage of the 52 Salesforce scan capabilities.

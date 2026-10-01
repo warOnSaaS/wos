@@ -299,6 +299,15 @@ export type RoadmapFeatureRef = z.infer<typeof RoadmapFeatureRef>;
  * inventory items (the skeleton); `features` is filled when the capability is mapped. A roadmap
  * version may map capabilities one at a time (ROADMAP-PROTOCOL.md "Capability-at-a-time").
  */
+/** contracts 5.19.0 (D72): one rubric score, 1-5, with the public source or scan fact it rests on. */
+export const RubricScore = z.object({ score: z.number().int().min(1).max(5), basis: z.string().min(5) });
+export type RubricScore = z.infer<typeof RubricScore>;
+/** The weight rubric of D72: the four criteria, in order. */
+export const WEIGHT_RUBRIC_V1 = {
+  version: "wos-weight-rubric.v1",
+  criteria: ["editionBreadth", "coreDailyUse", "surfaceParity", "migrationGravity"],
+} as const;
+
 export const RoadmapCapability = ReasonedWeight.extend({
   key: CapabilityKey,
   title: z.string().min(1),
@@ -307,6 +316,22 @@ export const RoadmapCapability = ReasonedWeight.extend({
   inventoryItems: z.array(InventoryItemKey).min(1),
   /** Empty = not mapped yet in this version. When non-empty, feature weights sum to 10000. */
   features: z.array(RoadmapFeatureRef).default([]),
+  /**
+   * contracts 5.19.0 (D72 roadmap method): the target scan's capability ids (docs/scans vocabulary) this capability
+   * covers. Every scan id is placed in a capability here or in `Roadmap.scanExcluded`.
+   */
+  scanIds: z.array(z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)).optional(),
+  /** D72: public sources for a capability beyond the scan (one with no `scanIds` needs at least one). */
+  sources: z.array(z.url()).optional(),
+  /** D72: the weight rubric's scores (`wos-weight-rubric.v1`); the weight is derived from them (planning `rubricWeights`). */
+  rubric: z
+    .object({
+      editionBreadth: RubricScore,
+      coreDailyUse: RubricScore,
+      surfaceParity: RubricScore,
+      migrationGravity: RubricScore,
+    })
+    .optional(),
 });
 export type RoadmapCapability = z.infer<typeof RoadmapCapability>;
 
@@ -424,6 +449,12 @@ export const Roadmap = z
      * warOnSaaS, which has no customers to move, is exempt.
      */
     migration: RoadmapMigration.optional(),
+    /** contracts 5.19.0 (D72): scan capability ids deliberately not replaced, each with a reason and a public source. */
+    scanExcluded: z
+      .array(z.object({ scanId: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/), reason: z.string().min(10), source: z.url() }))
+      .optional(),
+    /** contracts 5.19.0 (D72): set when capability weights are derived from rubric scores (`wos-weight-rubric.v1`). */
+    weightRubric: z.literal("wos-weight-rubric.v1").optional(),
   })
   .superRefine((r, ctx) => {
     // D12 sum constraints. Item coverage and catalog checks live in @waronsaas/planning validateRoadmap.

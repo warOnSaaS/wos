@@ -293,3 +293,15 @@ opencode run -m <modelId> --format json --pure --dir <worktree> --title <session
 - Binary: on PATH, else `binarySearchPaths` (e.g. `~/.nvm/versions/node/*/bin/opencode`, newest first). `wos status` reads `opencode providers list` (provider names and methods only) and shows `opencode <version>, signed in (opencode-go), models glm`.
 
 **glm (candidate, D52/D69).** `opencode-go/glm-5.3` on `opencode_cli`, `maxReasoning: max` (`--variant max`), context window 1000000. Allowed only for `roadmap_author`, and the control plane refuses it except on a task a maintainer designated for it (`assign_candidate_trial`). As roadmap author it may start sub-agents (`roleToolAdditions: {roadmap_author: [Agent]}`) with at most 4 at once (`maxConcurrentSubagents`; opencode has no setting for it, so the cap is in `roleInstructions` and the measured concurrency is recorded in the run; a run above the cap warns, `SUBAGENT_CAP_EXCEEDED`). The run declares its launch (`LaunchDeclaration {provider: "opencode-go", baseUrl: null, identity: "self_reported"}`) in the claim and the agent run.
+
+## 10. agent-policy.v3 (contracts 5.19.0)
+
+v2 is unchanged, because the API had issued v2 plans. v3 adds four things:
+
+- **Model fields.** `ModelSpec`:
+  - `launchEnv`: glm sets `OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX=131072`. opencode caps every step's output, reasoning included, at `min(model.limit.output, cap)`, and the default cap is 32000.
+  - `roleReasoning`: glm runs roadmap_author at `high`; `resolveReasoning` uses it.
+  - `authorSampling`: temperature 0 for glm authors, on opencode's `build` agent. It is accepted by opencode 1.18.34 and sent because glm-5.3 declares temperature support; whether the endpoint honours it is unverified.
+- **opencode run message.** It now asks the agent to write incrementally and to write its output last.
+- **The D72 roadmap method.** `roadmapMethod` and the roadmap author obligations (ROADMAP-PROTOCOL section 9).
+- **Records.** The run record's `usageDetail` and `mode: shadow`.

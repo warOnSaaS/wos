@@ -1,5 +1,17 @@
 import type { AgentRole, LaunchDeclaration, ModelRef, ProviderId, ReasoningLevel, ReviewerSlot } from "./agent-policy.js";
-import type { AuthorSummary, BuildSummary, ChangesetValidation, ContextManifest, ContextPlan, ProviderAttestation, TaskKind, ToolchainAttestation, ReviewVerdict, Ruling, AgentUsageDetail } from "./agent-io.js";
+import type {
+  AuthorSummary,
+  BuildSummary,
+  ChangesetValidation,
+  ContextManifest,
+  ContextPlan,
+  ProviderAttestation,
+  TaskKind,
+  ToolchainAttestation,
+  ReviewVerdict,
+  Ruling,
+  AgentUsageDetail,
+} from "./agent-io.js";
 import type { AbuSummary, AttemptView, LeaseView, Me, TaskView } from "./domain.js";
 import type { DomainEvent } from "./events.js";
 
@@ -85,6 +97,12 @@ export interface AuthorOptions {
   model?: ModelRef;
   /** contracts 5.17.0 (D52, D69): sent as claimTask `launch` (as declared); required with the candidate model `glm`. */
   launch?: LaunchDeclaration;
+  /**
+   * contracts 5.19.0: a SHADOW run (roadmap and feature authors): the same claim and context as a real run, run and
+   * validated locally, archived under <workspace>/shadow/<task>/<run>/, then the lease is released. Nothing is
+   * submitted; the agent run record says `mode: "shadow"`.
+   */
+  shadow?: boolean;
   signal?: AbortSignal;
 }
 

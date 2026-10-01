@@ -262,7 +262,14 @@ export async function validateDocumentRevision(
     }
     const [prev] = await tx<{ v: number | null }[]>`
       select max(version)::int as v from wos.documents where kind = 'roadmap' and target_id = ${doc.target_id} and state = 'merged'`;
-    for (const e of deps.logic.validateRoadmap(roadmap.value, inventory.value, catalog, prev?.v ?? null)) {
+    // D72: a revision authored under a policy with a roadmap method (agent-policy.v3+) is checked against it: every scan
+    // capability id accounted for, weights derived from the rubric. Earlier plans keep the earlier rules.
+    const [lease] = await tx<
+      { v: string | null }[]
+    >`select context_plan->>'policyVersion' as v from wos.leases where id = ${changeset.leaseId}`;
+    const rm = lease?.v === deps.policy.policyVersion ? deps.policy.roadmapMethod : undefined;
+    const method = rm ? { scanCapabilityIds: rm.targets[slug]?.scanCapabilityIds ?? null, requireRubric: true } : undefined;
+    for (const e of deps.logic.validateRoadmap(roadmap.value, inventory.value, catalog, prev?.v ?? null, method)) {
       errors.push({ path: ARTIFACT_PATHS.roadmap(slug), code: e.code, message: e.message });
     }
     // First-run fix B2: an in-scope surface names a registered repository (any case; stored lowercase). Unknown ones would

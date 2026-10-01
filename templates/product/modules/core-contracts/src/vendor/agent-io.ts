@@ -333,6 +333,19 @@ export type ChangesetValidation = z.infer<typeof ChangesetValidation>;
 // Agent run attestation (client-signed; see SECURITY.md "What attestation proves").
 // ---------------------------------------------------------------------------------------------
 
+/** contracts 5.19.0: token accounting as a CLI reports it (see AgentRunRecord.usageDetail). */
+export const AgentUsageDetail = z.object({
+  inputTokens: z.number().int().nonnegative().nullable(),
+  outputTokens: z.number().int().nonnegative().nullable(),
+  reasoningTokens: z.number().int().nonnegative().nullable(),
+  cacheReadTokens: z.number().int().nonnegative().nullable(),
+  cacheWriteTokens: z.number().int().nonnegative().nullable(),
+  costUsd: z.number().nonnegative().nullable(),
+  steps: z.number().int().nonnegative(),
+  lastFinishReason: z.string().nullable(),
+});
+export type AgentUsageDetail = z.infer<typeof AgentUsageDetail>;
+
 export const AgentRunRecord = z.object({
   schema: z.literal("wos-agent-run.v1"),
   leaseId: Uuid,
@@ -359,6 +372,14 @@ export const AgentRunRecord = z.object({
    */
   launch: LaunchDeclaration.optional(),
   subagentCount: z.number().int().nonnegative().optional(),
+  /**
+   * contracts 5.19.0: token accounting AS REPORTED by the CLI, summed over its steps where it reports steps (opencode
+   * step_finish): input (uncached), output, reasoning, cache reads and writes, the CLI's own cost figure, the number of
+   * steps and the last step's finish reason ("length" = the step hit its output cap). Telemetry only; absent = unknown.
+   */
+  usageDetail: AgentUsageDetail.optional(),
+  /** contracts 5.19.0: "shadow" for a run that is archived locally and never submitted (wos roadmap --shadow). */
+  mode: z.literal("shadow").optional(),
   /** The most sub-agents that ran at the same time (from their start and end times), when the CLI reports them. */
   maxConcurrentSubagents: z.number().int().nonnegative().optional(),
   /**

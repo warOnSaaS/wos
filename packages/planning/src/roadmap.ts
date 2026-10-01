@@ -60,6 +60,12 @@ export const ROADMAP_ERROR_CODES = [
   "MIGRATION_CLASS_UNACCOUNTED",
   "MIGRATION_EXTRACTION_MISSING",
   "MIGRATION_FEATURE_NOT_IN_CATALOG",
+  // roadmap method (D72, contracts 5.19.0): scan skeleton and weight rubric
+  "SCAN_CAPABILITY_UNACCOUNTED",
+  "SCAN_ID_UNKNOWN",
+  "SCAN_ADDITION_UNSOURCED",
+  "RUBRIC_MISSING",
+  "RUBRIC_WEIGHT_MISMATCH",
 ] as const;
 export type RoadmapErrorCode = (typeof ROADMAP_ERROR_CODES)[number];
 export interface RoadmapIssue {
@@ -80,9 +86,16 @@ export function validateRoadmap(
   inventory: Inventory,
   catalog: ReadonlyMap<string, CatalogEntry>,
   previousMergedVersion: number | null,
+  /**
+   * contracts 5.19.0 (D72): the roadmap method, when the document was authored under a policy that has one: the
+   * target scan's capability ids (every one must be placed or excluded with a source) and the weight rubric (scores
+   * present and weights derived from them). Omitted = no method checks (documents authored before agent-policy.v3).
+   */
+  method?: { scanCapabilityIds: readonly string[] | null; requireRubric: boolean },
 ): RoadmapIssue[] {
   const out: RoadmapIssue[] = [];
   const add = (code: RoadmapErrorCode, message: string) => out.push({ code, message });
+  if (method) validateMethod(roadmap, method, add);
 
   // --- migration (D59): every target roadmap plans how customers leave the target ---
   validateMigration(roadmap, catalog, add);
@@ -291,4 +304,68 @@ function validateMigration(
   for (const dc of MIGRATION_DATA_CLASSES)
     if (!seen.has(dc))
       add("MIGRATION_CLASS_MISSING", `migration has no entry for data class ${dc} (import it or list it as not extractable)`);
+}
+
+/**
+ * D72 weight rubric (`wos-weight-rubric.v1`): each capability's points are the sum of its four scores; its weight is its
+ * share of all points times 10000, apportioned by largest remainder (ties: capability order), so the total is exactly
+ * 10000. Null when a capability has no rubric.
+ */
+export function rubricWeights(capabilities: ReadonlyArray<Pick<Roadmap["capabilities"][number], "rubric">>): number[] | null {
+  if (capabilities.length === 0 || capabilities.some((c) => !c.rubric)) return null;
+  const points = capabilities.map(
+    (c) => c.rubric!.editionBreadth.score + c.rubric!.coreDailyUse.score + c.rubric!.surfaceParity.score + c.rubric!.migrationGravity.score,
+  );
+  const total = points.reduce((a, b) => a + b, 0);
+  const exact = points.map((p) => (p * BP_TOTAL) / total);
+  const floors = exact.map(Math.floor);
+  let left = BP_TOTAL - floors.reduce((a, b) => a + b, 0);
+  const order = exact.map((x, i) => ({ i, r: x - Math.floor(x) })).sort((a, b) => b.r - a.r || a.i - b.i);
+  for (const { i } of order) {
+    if (left <= 0) break;
+    floors[i]!++;
+    left--;
+  }
+  return floors;
+}
+
+function validateMethod(
+  roadmap: Roadmap,
+  method: { scanCapabilityIds: readonly string[] | null; requireRubric: boolean },
+  add: (code: RoadmapErrorCode, message: string) => void,
+): void {
+  if (method.scanCapabilityIds) {
+    const scan = new Set(method.scanCapabilityIds);
+    const placed = new Set<string>();
+    for (const c of roadmap.capabilities) {
+      for (const id of c.scanIds ?? []) {
+        if (!scan.has(id)) add("SCAN_ID_UNKNOWN", `capability ${c.key} lists scan id ${id}, which is not in the target's scan`);
+        placed.add(id);
+      }
+      if ((c.scanIds ?? []).length === 0 && (c.sources ?? []).length === 0)
+        add("SCAN_ADDITION_UNSOURCED", `capability ${c.key} covers no scan id: list the public sources that show it (D72)`);
+    }
+    for (const e of roadmap.scanExcluded ?? []) {
+      if (!scan.has(e.scanId)) add("SCAN_ID_UNKNOWN", `scanExcluded lists ${e.scanId}, which is not in the target's scan`);
+      placed.add(e.scanId);
+    }
+    for (const id of method.scanCapabilityIds)
+      if (!placed.has(id))
+        add("SCAN_CAPABILITY_UNACCOUNTED", `scan capability ${id} is in no capability's scanIds and not in scanExcluded (D72)`);
+  }
+  if (method.requireRubric) {
+    const missing = roadmap.capabilities.filter((c) => !c.rubric).map((c) => c.key);
+    if (roadmap.weightRubric !== "wos-weight-rubric.v1" || missing.length > 0) {
+      add(
+        "RUBRIC_MISSING",
+        `capability weights must come from the rubric (weightRubric: wos-weight-rubric.v1 and scores on every capability)${missing.length ? `; no scores: ${missing.join(", ")}` : ""}`,
+      );
+      return;
+    }
+    const derived = rubricWeights(roadmap.capabilities)!;
+    roadmap.capabilities.forEach((c, i) => {
+      if (Math.abs(c.weightBp - derived[i]!) > 1)
+        add("RUBRIC_WEIGHT_MISMATCH", `capability ${c.key} has weightBp ${c.weightBp}; its rubric scores give ${derived[i]} (D72)`);
+    });
+  }
 }
