@@ -120,6 +120,15 @@ export const DomainEventBody = z.discriminatedUnion("type", [
   e("lease.ended", "private", { leaseId: Uuid, taskId: Uuid, to: z.enum(["completed", "released", "expired", "revoked"]) }),
 
   /** Creating an aggregate in its initial state writes `<aggregate>.created`, never a state_changed from "none". */
+  // contracts 5.20.0: a submission that re-sends an earlier lease's archived output (no model ran on the new lease).
+  e("changeset.resubmitted", "public", {
+    taskId: Uuid,
+    leaseId: Uuid,
+    fromLeaseId: Uuid,
+    fromAgentRunId: Uuid,
+    commitSha: GitSha,
+    reason: z.string(),
+  }),
   e("attempt.created", "public", { attemptId: Uuid, abu: AbuKey, state: z.literal("leased") }),
   e("attempt.state_changed", "public", { attemptId: Uuid, abu: AbuKey, from: z.string(), to: z.string() }),
   // contracts 3.0.0 (B-0002-control-plane): one event type for every transition that had none.

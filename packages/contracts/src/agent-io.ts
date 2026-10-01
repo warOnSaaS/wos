@@ -295,6 +295,13 @@ export const Changeset = z.object({
   localVerification: z
     .array(z.object({ id: z.string(), exitCode: z.number().int(), durationMs: z.number().int().nonnegative(), outputSha256: Sha256 }))
     .default([]),
+  /**
+   * contracts 5.20.0: this submission re-sends the archived output of an earlier lease of the SAME task by the SAME account
+   * whose submission never reached a commit (`wos resubmit`). No model ran on this lease: the content and the summary are
+   * that lease's agent run's, unchanged. The server checks the earlier lease and its signed agent run, records the link
+   * publicly (event `changeset.resubmitted`, commit trailer `wOS-Resubmitted-From-Run`) and requires the same model.
+   */
+  resubmission: z.object({ fromLeaseId: Uuid, reason: z.string().min(5).max(500) }).optional(),
   /** Ed25519 signature, base64 of 64 bytes, over changesetSigningPayload (canonical.ts C-4) with the device key (C-5). */
   signature: z.string().min(1),
 });
@@ -508,4 +515,6 @@ export const COMMIT_TRAILERS = {
   contributor: "wOS-Contributor",
   /** contracts 5.17.0 (D69): `candidate_trial:<key>` on commits of a candidate trial. */
   candidateTrial: "wOS-Candidate-Trial",
+  /** contracts 5.20.0: the agent run whose archived output this commit re-submits (`wos resubmit`). */
+  resubmittedFromRun: "wOS-Resubmitted-From-Run",
 } as const;

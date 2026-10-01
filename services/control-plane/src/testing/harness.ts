@@ -25,6 +25,7 @@ import { buildContext, type SnapshotReader } from "@waronsaas/context-engine";
 import { gitBlobOid } from "@waronsaas/contracts/canonical";
 import { matchesGlob } from "node:path";
 import { renderServerDocument } from "../domain/plans.js";
+import { buildCommitMessage, precheckChangeset, validateAuthor } from "@waronsaas/github/app";
 import postgres from "postgres";
 import { createControlPlane } from "../app.js";
 import { DEFAULT_LOGIC, type Deps, type GithubPort, type GithubUserIdentity, type Logic, type OutboundMail } from "../deps.js";
@@ -98,11 +99,16 @@ export class FakeGithub implements GithubPort {
     repo: string,
     branch: string,
     cs: Changeset,
-    identity: { trailers: Record<string, string>; message: string; author?: { name: string; email: string } },
+    identity: { trailers: Record<string, string>; message: string; author: { name: string; email: string } },
   ) {
+    // The real App's input checks run here too (incident 2026-10-01: they refused every production commit while this
+    // fake accepted them): the changeset precheck, the commit message and trailers, and the author.
+    precheckChangeset(cs);
+    const message = buildCommitMessage(identity);
+    validateAuthor(identity.author);
     if (this.failCommits > 0) {
       this.failCommits--;
-      throw new Error("GitHub 502");
+      throw Object.assign(new Error("GitHub 502"), { status: 502 });
     }
     const sha = sha1(`${repo}:${branch}:${cs.submissionSha256}:${this.n++}`);
     this.commits.push({
@@ -111,8 +117,8 @@ export class FakeGithub implements GithubPort {
       sha,
       parent: cs.parentCommit,
       trailers: identity.trailers,
-      message: identity.message,
-      authorEmail: identity.author?.email,
+      message,
+      authorEmail: identity.author.email,
     });
     // The new commit carries the parent's files plus the upserts (so later reads at the head work).
     for (const [k, v] of this.files) {
