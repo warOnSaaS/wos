@@ -47,7 +47,13 @@ function subject(eligible: boolean, prior = false): HumanReviewSubject {
           url: `https://github.com/waronsaas/product/blob/${HEAD}/roadmaps/salesforce/ROADMAP.yaml`,
         },
       ],
-      authorSummary: { schema: "author-summary.v1", summary: "Roadmap v1 from the scan.", responses: [], proposalsAddressed: [], ensemble: null },
+      authorSummary: {
+        schema: "author-summary.v1",
+        summary: "Roadmap v1 from the scan.",
+        responses: [],
+        proposalsAddressed: [],
+        ensemble: null,
+      },
     },
     agentReview: eligible
       ? {
@@ -152,7 +158,7 @@ describe("wos review --human", () => {
       summary: "Read every file.",
       findings: [],
       priorFindings: [],
-            decisionRulings: [],
+      decisionRulings: [],
     };
     const r = await t.run(["review", "--human", "--round", ROUND, "--verdict-file", tmp("v.json", v)]);
     expect(r.code, r.err).toBe(0);
@@ -167,7 +173,14 @@ describe("wos review --human", () => {
 
   it("a verdict file must answer every open prior material finding and be a consistent review-verdict.v1", async () => {
     const t = setup(subject(true, true));
-    const bad = { schema: "review-verdict.v1", verdict: "NO_MATERIAL_GAPS", summary: "ok", findings: [], priorFindings: [], decisionRulings: [] };
+    const bad = {
+      schema: "review-verdict.v1",
+      verdict: "NO_MATERIAL_GAPS",
+      summary: "ok",
+      findings: [],
+      priorFindings: [],
+      decisionRulings: [],
+    };
     const r = await t.run(["review", "--human", "--round", ROUND, "--verdict-file", tmp("bad.json", bad)]);
     expect(r.code).toBe(1);
     expect(r.err).toContain("VALIDATION_FAILED");

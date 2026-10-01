@@ -104,7 +104,14 @@ export interface AuthorOptions {
    */
   shadow?: boolean;
   /**
-   * contracts 5.20.0 (D73): ensemble authoring: run N shadow runs (2..policy maxRuns) on one manifest, merge them
+   * contracts 5.20.0: re-submit the archived output of a failed run of THIS task (`wos resubmit <dir>`, a
+   * <workspace>/failed/<task>/<run>/ directory) instead of running a model: release that run's lease if still active,
+   * claim the task again with the same model (and launch), build and post this lease's context manifest, then submit the
+   * archived files and summary unchanged, with `Changeset.resubmission` naming the earlier lease. No agent runs.
+   */
+  resubmitFrom?: string;
+  /**
+   * contracts 5.21.0 (D73): ensemble authoring: run N shadow runs (2..policy maxRuns) on one manifest, merge them
    * deterministically, and submit the merged revision (roadmap_author; the policy's `ensemble`).
    */
   ensemble?: number;

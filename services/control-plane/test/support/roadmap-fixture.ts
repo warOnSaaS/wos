@@ -21,7 +21,6 @@ export interface RoadmapFixture {
 
 export function roadmapFiles(f: RoadmapFixture): Array<{ path: string; content: string }> {
   const method = AGENT_POLICY.roadmapMethod?.targets[f.target];
-  const scanIds = method?.scanCapabilityIds ?? [];
   // D73 (agent-policy.v4): capabilities follow the target's fixed template, one item per template capability (scanId =
   // the group's first scan id); targets without a scan get one sourced capability.
   const template = method?.template ?? [{ key: "core", title: "Core", group: "Core", scanIds: [] as string[] }];
@@ -203,7 +202,10 @@ export async function authorRevision(
     parentCommit: doc!.head_sha ?? plan.source.commit,
     manifestSha256: m.manifestSha256,
     files,
-    summary: { ensemble: null, ...(opts.summary ?? { schema: "author-summary.v1", summary: "Revision.", responses: [], proposalsAddressed: [] }) },
+    summary: {
+      ensemble: null,
+      ...(opts.summary ?? { schema: "author-summary.v1", summary: "Revision.", responses: [], proposalsAddressed: [] }),
+    },
   });
   const res = await h.call("POST", `/v1/leases/${claim.body.lease.id}/changeset`, { token: acct.token, idem: true, body: cs });
   return { claim, plan, manifest: m, res };

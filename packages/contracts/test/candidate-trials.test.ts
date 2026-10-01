@@ -99,7 +99,7 @@ describe("agent-policy.v2 (D70 network by role, opencode, glm)", () => {
     expect(AGENT_POLICY_V1.models.map((m) => m.ref)).toEqual(["fable", "opus", "astra", "sol"]);
     expect(AGENT_POLICY_V1.roles.every((r) => r.web === undefined)).toBe(true);
     expect(AGENT_POLICY_V2.policyVersion).toBe("agent-policy.v2");
-    // contracts 5.20.0: v4 is in force (v2 and v3 unchanged: plans had been issued under them).
+    // contracts 5.21.0: v4 is in force (v2 and v3 unchanged: plans had been issued under them).
     expect(AGENT_POLICY).toBe(AGENT_POLICY_V4);
     expect(AGENT_POLICY_V2.models.find((m) => m.ref === "glm")!.launchEnv).toBeUndefined();
   });
@@ -197,7 +197,7 @@ describe("agent-policy.v3 (contracts 5.19.0): glm's launch and the D72 roadmap m
   });
 });
 
-describe("agent-policy.v4 (contracts 5.20.0): D73 template, catalog-first, grounding, ensemble", () => {
+describe("agent-policy.v4 (contracts 5.21.0): D73 template, catalog-first, grounding, ensemble", () => {
   it("v3 keeps method v1; v4 carries method v2 with a template, scan sources and the vocabulary for every target", () => {
     expect(AGENT_POLICY_V3.roadmapMethod!.version).toBe("wos-roadmap-method.v1");
     const rm = AGENT_POLICY_V4.roadmapMethod!;

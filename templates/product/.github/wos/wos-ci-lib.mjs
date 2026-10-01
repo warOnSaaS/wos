@@ -8572,6 +8572,10 @@ const Changeset = object({
 		durationMs: number$1().int().nonnegative(),
 		outputSha256: Sha256
 	})).default([]),
+	resubmission: object({
+		fromLeaseId: Uuid,
+		reason: string().min(5).max(500)
+	}).optional(),
 	signature: string().min(1)
 });
 const ChangesetErrorCode = _enum([
@@ -9429,6 +9433,14 @@ const DomainEventBody = discriminatedUnion("type", [
 			"expired",
 			"revoked"
 		])
+	}),
+	e("changeset.resubmitted", "public", {
+		taskId: Uuid,
+		leaseId: Uuid,
+		fromLeaseId: Uuid,
+		fromAgentRunId: Uuid,
+		commitSha: GitSha,
+		reason: string()
 	}),
 	e("attempt.created", "public", {
 		attemptId: Uuid,
@@ -16542,7 +16554,7 @@ var agent_policy_v3_default = {
 //#region packages/contracts/dist/data/agent-policy.v4.json
 var agent_policy_v4_default = {
 	policyVersion: "agent-policy.v4",
-	contractsVersion: "5.20.0",
+	contractsVersion: "5.21.0",
 	effectiveFrom: "2026-09-30",
 	providers: [
 		{

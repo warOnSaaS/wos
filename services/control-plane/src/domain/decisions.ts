@@ -1,5 +1,5 @@
 /**
- * D73 (contracts 5.20.0): a roadmap revision lists the decisions its reviewers must rule on (Roadmap `decisions`:
+ * D73 (contracts 5.21.0): a roadmap revision lists the decisions its reviewers must rule on (Roadmap `decisions`:
  * template deviations, catalog proposals, an ensemble's disagreements). A verdict (agent seat or human seat) on such a
  * round must rule on every one (ReviewVerdict `decisionRulings`); a verdict that leaves one unruled is refused.
  */

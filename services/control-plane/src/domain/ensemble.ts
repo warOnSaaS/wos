@@ -1,5 +1,5 @@
 /**
- * D73 (contracts 5.20.0): an ensemble revision's provenance and stability, for the PR body, its labels and the round
+ * D73 (contracts 5.21.0): an ensemble revision's provenance and stability, for the PR body, its labels and the round
  * comment. The revision's summary names its N shadow runs and their stability (verified at submission).
  */
 import type { EnsembleRecord } from "@waronsaas/contracts";

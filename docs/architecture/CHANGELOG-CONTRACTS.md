@@ -519,3 +519,19 @@ MINOR, additive. No migration.
   - rubric checks;
   - the mean absolute weight difference and Spearman rank correlation, on matched capabilities and per scan id;
   - the fetch-log check (inventory sources fetched, required reading read).
+
+## 5.20.0 — 2026-10-01 (incident: the first real submission; `wos resubmit`)
+
+MINOR, additive. No migration.
+- **Incident.** GLM trial run A on the Salesforce roadmap task (01a0f47a…) passed local validation, then `submitChangeset` answered `UPSTREAM_GITHUB: GitHub commit failed`.
+  - The request never reached GitHub. The control plane built the commit message with the trailer lines in its text and without `Co-authored-by` among the trailers, and `@waronsaas/github/app` `buildCommitMessage` refuses both (`INVALID_INPUT: commit message contains a reserved trailer line`).
+  - `withGithubRetries` retried that deterministic refusal three times and reported it as a generic GitHub failure.
+  - Every App commit of a submission was refused this way. Tests did not catch it because the fake GitHub skipped the App's input checks.
+  - Reproduced against warOnSaaS/product on a throwaway `wos/firstrun/repro-1` branch (since deleted): run A's 52 files commit in 14 s once the identity is right. The email, the rulesets, the tree size and the token scope were not involved.
+- **Fixes:**
+  - the trailers (including Co-authored-by) go in `identity.trailers` and the message is the title only;
+  - `withGithubRetries` retries only transient failures (network, 5xx, 429, rate-limit 403) and reports GitHub's code, status and message, with tokens, Authorization values and key blocks cut out;
+  - the control plane's fake GitHub now runs the App's real checks (`precheckChangeset`, `buildCommitMessage`, `validateAuthor`, the last newly exported).
+- `Changeset.resubmission` (optional `{fromLeaseId, reason}`), `COMMIT_TRAILERS.resubmittedFromRun` (`wOS-Resubmitted-From-Run`), event `changeset.resubmitted` (public), `AuthorOptions.resubmitFrom`.
+- Control plane: a resubmission must name another lease of the same task and account. That lease must have ended, have no committed submission, and have a signed agent run of the same model as the new lease. The commit then carries that run's id in the trailer, and the event records both leases.
+- Orchestrator and CLI: `wos resubmit <workspace>/failed/<task>/<run>/`. It reads `run.json` and `output.json`, releases the old lease if it is still active, and claims the task again with the archived run's model and launch. It builds and posts this lease's context manifest and submits the archived files and summary unchanged. No model runs.

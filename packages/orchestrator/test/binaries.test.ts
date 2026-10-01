@@ -365,6 +365,44 @@ describe("glm on the opencode CLI (D69 candidate trial, D70 web), with a fake op
     });
   });
 
+  it("wos resubmit (contracts 5.20.0): a failed submission's archived output is re-sent on a fresh lease without a model run", async () => {
+    h = harness();
+    h.server.authorWeb = WEB;
+    bin = installBinaries("ok");
+    const o = orchestrator(h, bin, { modelLaunch: { glm: LAUNCH } });
+    const t = h.server.openAuthorTask("roadmap_author");
+    h.server.failNextSubmission = { status: 502, code: "UPSTREAM_GITHUB", message: "GitHub commit failed: INVALID_INPUT: refused" };
+    const first = await o.author({ taskId: t.id, model: "glm" }, () => undefined);
+    expect(first).toMatchObject({ ok: false, code: "UPSTREAM_GITHUB" });
+    const oldLease = [...h.server.leases.values()].at(-1)!;
+    expect(oldLease.state).toBe("active"); // the submission reached the control plane: the lease is not given back
+    const base = join(h.root, "failed", t.id);
+    const [runDir] = readdirSync(base);
+    const dir = join(base, runDir!);
+    const runsBefore = h.server.agentRuns.length;
+    const claimsBefore = h.server.claimBodies.length;
+    const events: OrchestratorEvent[] = [];
+    const res = await o.author({ taskId: t.id, resubmitFrom: dir }, (e) => events.push(e));
+    expect(res, JSON.stringify(res)).toMatchObject({ ok: true, output: { schema: "author-summary.v1" } });
+    expect(h.server.agentRuns).toHaveLength(runsBefore); // no model ran
+    expect(events.some((e) => e.type === "agent_started")).toBe(false);
+    expect(oldLease.state).toBe("released");
+    // Claimed again with the archived run's model and launch.
+    expect(h.server.claimBodies.slice(claimsBefore)).toEqual([expect.objectContaining({ model: "glm", launch: LAUNCH })]);
+    const sent = h.server.submissions.at(-1)!;
+    expect(sent.resubmission).toEqual({ fromLeaseId: oldLease.id, reason: expect.stringContaining("no model ran on this lease") });
+    expect(sent.leaseId).not.toBe(oldLease.id);
+    expect(sent.files.map((f) => f.path)).toEqual(["roadmaps/salesforce/ROADMAP.yaml"]);
+    const archived = readFileSync(join(dir, "roadmaps/salesforce/ROADMAP.yaml"));
+    expect(Buffer.from((sent.files[0] as { contentBase64: string }).contentBase64, "base64").equals(archived)).toBe(true);
+    // The archived output as parsed (contracts 5.21.0: an absent `ensemble` parses as null).
+    expect(sent.summary).toEqual({ ensemble: null, ...JSON.parse(readFileSync(join(dir, "output.json"), "utf8")) });
+    // Another task's archive is refused before anything is claimed.
+    const other = h.server.openAuthorTask("roadmap_author");
+    const wrong = await o.author({ taskId: other.id, resubmitFrom: dir }, () => undefined);
+    expect(wrong).toMatchObject({ ok: false, code: "VALIDATION_FAILED" });
+  });
+
   it("D70: a fetch off the plan's allowlist refuses the submission (after the run is recorded)", async () => {
     h = harness();
     h.server.authorWeb = WEB;

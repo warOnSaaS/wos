@@ -374,5 +374,12 @@ export const finding = (localId: string, severity: "material" | "minor"): Findin
 export function verdict(findings: Finding[] = [], prior: Array<[string, "resolved" | "still_open"]> = []): ReviewVerdict {
   const priorFindings = prior.map(([findingId, status]) => ({ findingId, status, note: "" }));
   const gaps = findings.some((f) => f.severity === "material") || priorFindings.some((p) => p.status === "still_open");
-  return { schema: "review-verdict.v1", verdict: gaps ? "MATERIAL_GAPS" : "NO_MATERIAL_GAPS", summary: "s", findings, priorFindings, decisionRulings: [] };
+  return {
+    schema: "review-verdict.v1",
+    verdict: gaps ? "MATERIAL_GAPS" : "NO_MATERIAL_GAPS",
+    summary: "s",
+    findings,
+    priorFindings,
+    decisionRulings: [],
+  };
 }

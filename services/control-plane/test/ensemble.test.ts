@@ -1,5 +1,5 @@
 /**
- * D73 ensemble authoring in the control plane (contracts 5.20.0): a revision merged from N shadow runs names them in its
+ * D73 ensemble authoring in the control plane (contracts 5.21.0): a revision merged from N shadow runs names them in its
  * summary; each must be the caller's signed shadow run of the same task on the very manifest of the revision. The PR
  * reports the stability, and is labelled low-stability (not blocked) below the policy's targets.
  */

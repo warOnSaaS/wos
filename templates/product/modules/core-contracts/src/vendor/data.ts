@@ -27,7 +27,7 @@ export const AGENT_POLICY_V2: AgentPolicyDocument = AgentPolicyDocument.parse(po
  */
 export const AGENT_POLICY_V3: AgentPolicyDocument = AgentPolicyDocument.parse(policyV3Json);
 /**
- * contracts 5.20.0 (D73 drift control): agent-policy.v4 = v3 plus roadmap method v2 (the fixed capability template,
+ * contracts 5.21.0 (D73 drift control): agent-policy.v4 = v3 plus roadmap method v2 (the fixed capability template,
  * catalog-first features, grounding, decisions for the reviewers) and ensemble authoring with stability targets.
  * v3 is unchanged, so plans issued under it keep their rules.
  */

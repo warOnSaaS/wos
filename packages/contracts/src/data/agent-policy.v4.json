@@ -1,6 +1,6 @@
 {
   "policyVersion": "agent-policy.v4",
-  "contractsVersion": "5.20.0",
+  "contractsVersion": "5.21.0",
   "effectiveFrom": "2026-09-30",
   "providers": [
     {

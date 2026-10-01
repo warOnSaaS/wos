@@ -199,7 +199,7 @@ export const InventoryItem = z.object({
   /** V1: every weight is 1 (REWARD/ROADMAP protocol). Kept as a field so weighting can change by version. */
   weight: z.literal(1),
   /**
-   * contracts 5.20.0 (D73): the scan capability id (vocabulary id) this item belongs to, or null for an item beyond the
+   * contracts 5.21.0 (D73): the scan capability id (vocabulary id) this item belongs to, or null for an item beyond the
    * scan. Under the fixed capability template it decides the item's capability (its vocabulary group) and its default
    * catalog feature (the id itself).
    */
@@ -318,7 +318,7 @@ export const WEIGHT_RUBRIC_V1 = {
   criteria: ["editionBreadth", "coreDailyUse", "surfaceParity", "migrationGravity"],
 } as const;
 
-/** contracts 5.20.0 (D73): a decision for the reviewers. */
+/** contracts 5.21.0 (D73): a decision for the reviewers. */
 export const RoadmapDecision = z.object({
   id: z.string().regex(/^DEC-\d{3,4}$/),
   kind: z.enum(["template_deviation", "catalog_proposal", "ensemble_disagreement"]),
@@ -358,7 +358,7 @@ export const RoadmapCapability = ReasonedWeight.extend({
   /** D72: public sources for a capability beyond the scan (one with no `scanIds` needs at least one). */
   sources: z.array(z.url()).optional(),
   /**
-   * contracts 5.20.0 (D73): a capability that is not a template capability (or a template capability that absorbs or
+   * contracts 5.21.0 (D73): a capability that is not a template capability (or a template capability that absorbs or
    * splits others) states how and why; the validator turns it into a decision the reviewers must rule on.
    */
   templateDeviation: z
@@ -497,7 +497,7 @@ export const Roadmap = z
     /** contracts 5.19.0 (D72): set when capability weights are derived from rubric scores (`wos-weight-rubric.v1`). */
     weightRubric: z.literal("wos-weight-rubric.v1").optional(),
     /**
-     * contracts 5.20.0 (D73): the decisions this revision asks the reviewers to rule on: template deviations, catalog
+     * contracts 5.21.0 (D73): the decisions this revision asks the reviewers to rule on: template deviations, catalog
      * proposals (a new or split feature), and an ensemble's disagreements (what each run said, with its sources).
      * roadmaps/<target>/DECISIONS.md renders them for people. Each reviewer rules on every one (ReviewVerdict
      * `decisionRulings`); an unruled decision is material.

@@ -412,6 +412,23 @@ export async function runCli(argv: string[], io: CliIo, deps: CliDeps): Promise<
       io.stdout.write(`${tagOf("ruled")}document ${documentId}: ${parsed.data.rulings.length} finding(s)\n`);
     });
 
+  program
+    .command("resubmit")
+    .argument("<dir>", "an archived failed run: <workspace>/failed/<task>/<run>/ (it holds run.json, output.json and the files)")
+    .description(
+      "Re-submit a failed author run's archived output without running a model: releases its lease if still active, claims the task again with the same model, posts this lease's context manifest, and submits the same files and summary (recorded as re-submitted from that run)",
+    )
+    .action(async (dir: string, _opts: unknown, cmd: Command) => {
+      const c = ctx(cmd);
+      let taskId: string;
+      try {
+        taskId = (JSON.parse(await readFile(`${dir.replace(/\/$/, "")}/run.json`, "utf8")) as { taskId: string }).taskId;
+      } catch {
+        throw new UsageError(`${dir} has no readable run.json (wos resubmit takes a <workspace>/failed/<task>/<run>/ directory)`);
+      }
+      finish(await o().author({ taskId, resubmitFrom: dir, signal: deps.signal }, c.printer.observe), c, { lease: "task" });
+    });
+
   const authorCommand = (name: "roadmap" | "resolve", kinds: TaskKind[], models: ModelRef[], description: string) =>
     program
       .command(name)

@@ -1,4 +1,4 @@
-/** D73 ensemble merge (contracts 5.20.0): deterministic majority, median rubric, decisions, stability. */
+/** D73 ensemble merge (contracts 5.21.0): deterministic majority, median rubric, decisions, stability. */
 import type { Inventory, Roadmap } from "@waronsaas/contracts";
 import { describe, expect, it } from "vitest";
 import {

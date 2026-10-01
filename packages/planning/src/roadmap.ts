@@ -66,7 +66,7 @@ export const ROADMAP_ERROR_CODES = [
   "SCAN_ADDITION_UNSOURCED",
   "RUBRIC_MISSING",
   "RUBRIC_WEIGHT_MISMATCH",
-  // drift control (D73, contracts 5.20.0): capability template, catalog-first features, grounding, decisions
+  // drift control (D73, contracts 5.21.0): capability template, catalog-first features, grounding, decisions
   "TEMPLATE_CAPABILITY_MISSING",
   "TEMPLATE_DEVIATION_UNREASONED",
   "ITEM_SCAN_ID_MISSING",
@@ -381,7 +381,7 @@ function validateMethod(roadmap: Roadmap, method: RoadmapMethodCheck, add: (code
 export interface RoadmapMethodCheck {
   scanCapabilityIds: readonly string[] | null;
   requireRubric: boolean;
-  /** contracts 5.20.0 (D73, wos-roadmap-method.v2). */
+  /** contracts 5.21.0 (D73, wos-roadmap-method.v2). */
   v2?: {
     /** The target's fixed capability template (null for a target without a scan). */
     template: ReadonlyArray<{ key: string; group: string; scanIds: readonly string[] }> | null;

@@ -214,7 +214,7 @@ export const ReviewVerdict = z
     /** Status of every finding still open from prior rounds (the reviewer re-checks them). */
     priorFindings: z.array(z.object({ findingId: Uuid, status: z.enum(["resolved", "still_open"]), note: z.string().max(2000) })),
     /**
-     * contracts 5.20.0 (D73): a ruling on every decision of the roadmap under review (Roadmap `decisions`). A rejected
+     * contracts 5.21.0 (D73): a ruling on every decision of the roadmap under review (Roadmap `decisions`). A rejected
      * decision is a material gap (it comes with a material finding); a missing ruling refuses the verdict. Empty when the
      * roadmap has none; required in the output schema (codex strict output), [] when absent on parse.
      */
@@ -240,7 +240,7 @@ export const ReviewVerdict = z
   );
 export type ReviewVerdict = z.infer<typeof ReviewVerdict>;
 
-/** contracts 5.20.0 (D73): an ensemble's provenance and stability (AuthorSummary.ensemble). */
+/** contracts 5.21.0 (D73): an ensemble's provenance and stability (AuthorSummary.ensemble). */
 export const EnsembleRecord = z.object({
   runs: z
     .array(z.object({ leaseId: Uuid, agentRunId: Uuid, manifestSha256: Sha256 }))
@@ -265,7 +265,7 @@ export const AuthorSummary = z.object({
   responses: z.array(z.object({ findingId: Uuid, action: z.enum(["fixed", "disputed"]), note: z.string().min(1).max(4000) })),
   proposalsAddressed: z.array(Uuid),
   /**
-   * contracts 5.20.0 (D73): set by `wos roadmap --ensemble N` on the merged revision (an agent writes null): the N shadow
+   * contracts 5.21.0 (D73): set by `wos roadmap --ensemble N` on the merged revision (an agent writes null): the N shadow
    * runs it merges (all on the same manifest), the majority rule, the decisions it left, and its stability metrics.
    */
   ensemble: EnsembleRecord.nullable().default(null),
@@ -337,6 +337,13 @@ export const Changeset = z.object({
   localVerification: z
     .array(z.object({ id: z.string(), exitCode: z.number().int(), durationMs: z.number().int().nonnegative(), outputSha256: Sha256 }))
     .default([]),
+  /**
+   * contracts 5.20.0: this submission re-sends the archived output of an earlier lease of the SAME task by the SAME account
+   * whose submission never reached a commit (`wos resubmit`). No model ran on this lease: the content and the summary are
+   * that lease's agent run's, unchanged. The server checks the earlier lease and its signed agent run, records the link
+   * publicly (event `changeset.resubmitted`, commit trailer `wOS-Resubmitted-From-Run`) and requires the same model.
+   */
+  resubmission: z.object({ fromLeaseId: Uuid, reason: z.string().min(5).max(500) }).optional(),
   /** Ed25519 signature, base64 of 64 bytes, over changesetSigningPayload (canonical.ts C-4) with the device key (C-5). */
   signature: z.string().min(1),
 });
@@ -550,4 +557,6 @@ export const COMMIT_TRAILERS = {
   contributor: "wOS-Contributor",
   /** contracts 5.17.0 (D69): `candidate_trial:<key>` on commits of a candidate trial. */
   candidateTrial: "wOS-Candidate-Trial",
+  /** contracts 5.20.0: the agent run whose archived output this commit re-submits (`wos resubmit`). */
+  resubmittedFromRun: "wOS-Resubmitted-From-Run",
 } as const;

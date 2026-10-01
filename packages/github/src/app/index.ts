@@ -13,6 +13,7 @@ export { configureGithubApp, GithubAppError, type GithubAppErrorCode, type Githu
 export {
   buildCommitMessage,
   PROVENANCE_MARKER,
+  validateAuthor,
   type QualificationRow,
   type ReviewRow,
   renderProvenanceSection,
