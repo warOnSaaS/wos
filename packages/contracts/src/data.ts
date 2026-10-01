@@ -1,5 +1,6 @@
 import policyJson from "./data/agent-policy.v1.json" with { type: "json" };
 import policyV2Json from "./data/agent-policy.v2.json" with { type: "json" };
+import policyV3Json from "./data/agent-policy.v3.json" with { type: "json" };
 import scheduleJson from "./data/reward-schedule.v1.json" with { type: "json" };
 import architectureJson from "./data/architecture-policy.v1.json" with { type: "json" };
 import { AgentPolicyDocument } from "./agent-policy.js";
@@ -18,8 +19,14 @@ export const AGENT_POLICY_V1: AgentPolicyDocument = AgentPolicyDocument.parse(po
  * allowlists, the registry exception), the opencode provider and the candidate model glm (D69). v1 is unchanged.
  */
 export const AGENT_POLICY_V2: AgentPolicyDocument = AgentPolicyDocument.parse(policyV2Json);
+/**
+ * contracts 5.19.0: agent-policy.v3 = v2 plus glm's `launchEnv` (opencode's output cap raised to 131072 after GLM trial
+ * run 1 spent opencode's default 32000-token cap on reasoning) and incremental-writing instructions for opencode runs.
+ * v2 is unchanged: the API had issued v2 plans, and a policy version names fixed content.
+ */
+export const AGENT_POLICY_V3: AgentPolicyDocument = AgentPolicyDocument.parse(policyV3Json);
 /** The agent policy in force (the control plane issues plans under it; clients build invocations with it). */
-export const AGENT_POLICY: AgentPolicyDocument = AGENT_POLICY_V2;
+export const AGENT_POLICY: AgentPolicyDocument = AGENT_POLICY_V3;
 
 /** The proposed V1 reward schedule (status "proposal" until the founder activates it). */
 export const REWARD_SCHEDULE_V1: RewardSchedule = RewardSchedule.parse(scheduleJson);

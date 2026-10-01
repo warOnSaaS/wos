@@ -101,6 +101,12 @@ export const ModelSpec = z.object({
   maxConcurrentSubagents: z.number().int().min(0).optional(),
   /** contracts 5.17.0 (D69): extra instructions for this model in a role, passed with the run (hashed with its argv). */
   roleInstructions: z.partialRecord(AgentRole, z.string().min(1)).optional(),
+  /**
+   * contracts 5.19.0 (agent-policy.v3): environment the CLI needs for THIS model, e.g. opencode's output cap raised to the
+   * model's output limit (`OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX`; opencode otherwise caps every step at 32000 tokens,
+   * reasoning included). Never credentials.
+   */
+  launchEnv: z.record(z.string(), z.string()).optional(),
 });
 export type ModelSpec = z.infer<typeof ModelSpec>;
 

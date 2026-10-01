@@ -728,7 +728,8 @@ export function buildInvocation(
     );
   }
 
-  const env = { ...provider.env };
+  // contracts 5.19.0: the model's launch environment (e.g. opencode's output cap for glm), then the provider's run config.
+  const env = { ...provider.env, ...(model.launchEnv ?? {}) };
   if (provider.runConfig) {
     if (!paths.configHome)
       throw new PolicyViolationError("buildInvocation", [`CONFIG_HOME_REQUIRED: ${provider.id} needs a per-run config home`]);

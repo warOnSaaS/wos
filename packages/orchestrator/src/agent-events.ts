@@ -12,6 +12,7 @@
  *    `tokens {input, output, reasoning, cache}`. Only the lead session's parts are printed.
  * Missing fields stay null: nothing is estimated.
  */
+import type { AgentUsageDetail } from "@waronsaas/contracts";
 import { sha256Of } from "@waronsaas/contracts/canonical";
 
 export interface AgentFetch {
@@ -31,6 +32,8 @@ export interface AgentEvents {
   usage: { inputTokens: number | null; outputTokens: number | null };
   fetches: AgentFetch[];
   subagents: { count: number; maxConcurrent: number | null };
+  /** contracts 5.19.0: token accounting as reported (null when the CLI reported nothing). */
+  usageDetail: AgentUsageDetail | null;
 }
 
 const SUBAGENT_TOOLS = new Set(["Agent", "Task", "task"]);
@@ -66,6 +69,20 @@ export function parseAgentEvents(provider: string, stdout: string): AgentEvents 
     usage: { inputTokens: null, outputTokens: null },
     fetches: [],
     subagents: { count: 0, maxConcurrent: null },
+    usageDetail: null,
+  };
+  const acc = {
+    input: null as number | null,
+    output: null as number | null,
+    reasoning: null as number | null,
+    cacheRead: null as number | null,
+    cacheWrite: null as number | null,
+    cost: null as number | null,
+    steps: 0,
+    reason: null as string | null,
+  };
+  const add = (k: "input" | "output" | "reasoning" | "cacheRead" | "cacheWrite" | "cost", v: unknown) => {
+    if (typeof v === "number" && Number.isFinite(v)) acc[k] = (acc[k] ?? 0) + v;
   };
   const claudeFetches = new Map<string, number>(); // tool_use id -> index in fetches
   const spans: Array<{ start: number; end: number }> = [];
@@ -112,8 +129,19 @@ export function parseAgentEvents(provider: string, stdout: string): AgentEvents 
           out.output = null;
         }
       }
-      const u = ev.usage as { input_tokens?: number; output_tokens?: number } | undefined;
+      const u = ev.usage as
+        | { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number }
+        | undefined;
       if (u) out.usage = { inputTokens: u.input_tokens ?? null, outputTokens: u.output_tokens ?? null };
+      if (u) {
+        add("input", u.input_tokens);
+        add("output", u.output_tokens);
+        add("cacheRead", u.cache_read_input_tokens);
+        add("cacheWrite", u.cache_creation_input_tokens);
+      }
+      add("cost", ev.total_cost_usd);
+      if (typeof ev.num_turns === "number") acc.steps = ev.num_turns;
+      if (typeof ev.subtype === "string") acc.reason = ev.subtype;
     }
     // codex: web_search items (query only).
     const item = ev.item as { type?: unknown; query?: unknown } | undefined;
@@ -142,12 +170,33 @@ export function parseAgentEvents(provider: string, stdout: string): AgentEvents 
           out.fetches.push({ kind: "search", target: state.input.query, at: iso(state.time?.start), contentSha256: null, tool });
       }
       if (ev.type === "step_finish" && part) {
-        const tk = part.tokens as { input?: number; output?: number } | undefined;
+        const tk = part.tokens as
+          | { input?: number; output?: number; reasoning?: number; cache?: { read?: number; write?: number } }
+          | undefined;
         if (typeof tk?.input === "number") tokensIn = (tokensIn ?? 0) + tk.input;
         if (typeof tk?.output === "number") tokensOut = (tokensOut ?? 0) + tk.output;
+        acc.steps++;
+        add("input", tk?.input);
+        add("output", tk?.output);
+        add("reasoning", tk?.reasoning);
+        add("cacheRead", tk?.cache?.read);
+        add("cacheWrite", tk?.cache?.write);
+        add("cost", part.cost);
+        acc.reason = typeof part.reason === "string" ? part.reason : acc.reason;
       }
     }
   }
+  if (acc.steps > 0 || acc.input !== null || acc.output !== null)
+    out.usageDetail = {
+      inputTokens: acc.input,
+      outputTokens: acc.output,
+      reasoningTokens: acc.reasoning,
+      cacheReadTokens: acc.cacheRead,
+      cacheWriteTokens: acc.cacheWrite,
+      costUsd: acc.cost,
+      steps: acc.steps,
+      lastFinishReason: acc.reason,
+    };
   if (provider === "opencode_cli") {
     out.usage = { inputTokens: tokensIn, outputTokens: tokensOut };
     out.subagents.maxConcurrent = out.subagents.count === 0 ? 0 : spans.length === out.subagents.count ? maxOverlap(spans) : null;
@@ -174,4 +223,19 @@ export function offAllowlist(fetches: readonly AgentFetch[], web: { domains: rea
     if (!ok) bad.push(f.target);
   }
   return bad;
+}
+
+/** One line for people: the run's token accounting as the CLI reported it (contracts 5.19.0). */
+export function formatUsage(u: AgentUsageDetail): string {
+  const n = (v: number | null) => (v === null ? "?" : v.toLocaleString("en-US"));
+  return [
+    `in ${n(u.inputTokens)}`,
+    `out ${n(u.outputTokens)}`,
+    `reasoning ${n(u.reasoningTokens)}`,
+    `cache read ${n(u.cacheReadTokens)}`,
+    `cache write ${n(u.cacheWriteTokens)}`,
+    `cost ${u.costUsd === null ? "?" : `$${u.costUsd.toFixed(2)}`} (as reported)`,
+    `${u.steps} step(s)`,
+    `last finish ${u.lastFinishReason ?? "?"}`,
+  ].join(", ");
 }

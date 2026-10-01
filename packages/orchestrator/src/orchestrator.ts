@@ -714,7 +714,20 @@ export class OrchestratorImpl {
       },
     });
     announce();
-    emit({ type: "agent_exited", exitCode: res.exitCode, durationMs: res.durationMs });
+    // contracts 5.19.0: the CLI's own accounting (tokens, cost, steps, finish reason) is printed with the exit and recorded.
+    const events = parseAgentEvents(plan.provider, stdout);
+    emit({
+      type: "agent_exited",
+      exitCode: res.exitCode,
+      durationMs: res.durationMs,
+      ...(events.usageDetail ? { usage: events.usageDetail } : {}),
+    });
+    if (events.usageDetail?.lastFinishReason === "length")
+      emit({
+        type: "warning",
+        code: "OUTPUT_CAP_REACHED",
+        message: "the agent's last step stopped at its output cap (finish reason \"length\"); its reasoning and output share that cap",
+      });
     if (res.exitCode !== 0) throw new StepError("AGENT_FAILED", `${inv.binary} exited ${res.exitCode}: ${tail(stderr)}`, true);
     const parsed = await parseAgentOutput(plan.provider, stdout, paths.lastMessagePath);
     // contracts 5.17.0: CLIs without a schema flag write their output to a file in the worktree; read it, then remove it
@@ -729,7 +742,6 @@ export class OrchestratorImpl {
         parsed.output = null;
       }
     }
-    const events = parseAgentEvents(plan.provider, stdout);
     const launch = this.deps.modelLaunch?.[plan.model];
     const cap = this.engines.policy.models.find((m) => m.ref === plan.model)?.maxConcurrentSubagents;
     if (cap !== undefined && events.subagents.maxConcurrent !== null && events.subagents.maxConcurrent > cap)
@@ -764,6 +776,7 @@ export class OrchestratorImpl {
         ? { maxConcurrentSubagents: events.subagents.maxConcurrent }
         : {}),
       ...(events.fetches.length > 0 ? { fetches: events.fetches } : {}),
+      ...(events.usageDetail ? { usageDetail: events.usageDetail } : {}),
     };
     const record = await signAgentRunWithDevice(this.deps.secrets, unsigned);
     const posted = await this.api.call("postAgentRun", {

@@ -1,16 +1,5 @@
 import type { AgentRole, LaunchDeclaration, ModelRef, ProviderId, ReasoningLevel, ReviewerSlot } from "./agent-policy.js";
-import type {
-  AuthorSummary,
-  BuildSummary,
-  ChangesetValidation,
-  ContextManifest,
-  ContextPlan,
-  ProviderAttestation,
-  TaskKind,
-  ToolchainAttestation,
-  ReviewVerdict,
-  Ruling,
-} from "./agent-io.js";
+import type { AuthorSummary, BuildSummary, ChangesetValidation, ContextManifest, ContextPlan, ProviderAttestation, TaskKind, ToolchainAttestation, ReviewVerdict, Ruling, AgentUsageDetail } from "./agent-io.js";
 import type { AbuSummary, AttemptView, LeaseView, Me, TaskView } from "./domain.js";
 import type { DomainEvent } from "./events.js";
 
@@ -35,7 +24,8 @@ export type OrchestratorEvent =
   | { type: "context"; manifest: ContextManifest }
   | { type: "agent_started"; role: AgentRole; provider: ProviderId; model: string; reasoning: ReasoningLevel; pid: number }
   | { type: "agent_output"; stream: "stdout" | "stderr"; chunk: string }
-  | { type: "agent_exited"; exitCode: number; durationMs: number }
+  /** `usage` (contracts 5.19.0): the run's token accounting as the CLI reported it, when it reports it. */
+  | { type: "agent_exited"; exitCode: number; durationMs: number; usage?: AgentUsageDetail }
   | { type: "verify"; checkId: string; status: "running" | "passed" | "failed"; exitCode: number | null; outputTail: string }
   | { type: "scope"; validation: ChangesetValidation }
   | { type: "attempt"; attempt: AttemptView }
