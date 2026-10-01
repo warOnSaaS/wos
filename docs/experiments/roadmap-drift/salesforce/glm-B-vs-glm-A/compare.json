@@ -1,0 +1,642 @@
+{
+  "schema": "wos-drift-compare.v2",
+  "target": "salesforce",
+  "a": {
+    "label": "A",
+    "source": "/Users/adventurini/.wos/shadow/01a0f47a-0b77-7043-9299-0b237bb8d59c/2026-10-01T01-03-48-208Z-01a0f4e0",
+    "target": "salesforce",
+    "schemaViolations": [],
+    "validation": [
+      {
+        "code": "SURFACE_DUPLICATE",
+        "message": "surfaces[6]: browser_extension is listed twice"
+      },
+      {
+        "code": "SURFACE_NOT_IN_INVENTORY",
+        "message": "surfaces[3]: api has no cited evidence in the inventory's surfaces"
+      }
+    ],
+    "methodValidation": [],
+    "inventory": {
+      "items": 52,
+      "sources": 30,
+      "surfaces": 7,
+      "itemsCitingValidSourceBp": 10000,
+      "duplicateSourceUrls": [],
+      "placeholderSourceUrls": [],
+      "distinctSourcesCited": 6
+    },
+    "capabilities": 21,
+    "mappedCapabilities": 14,
+    "features": 33,
+    "excludedItems": 0,
+    "capabilityWeights": {
+      "count": 21,
+      "min": 258,
+      "max": 701,
+      "median": 480,
+      "top3ShareBp": 1992
+    },
+    "rubric": {
+      "declared": "wos-weight-rubric.v1",
+      "scored": 21,
+      "weightsFollow": true
+    },
+    "newCatalogFeatures": [
+      "activity-timeline",
+      "approval-routing",
+      "audit-logging",
+      "campaign-management",
+      "chat-integration",
+      "contact-account-management",
+      "conversation-intelligence",
+      "custom-objects",
+      "data-import-export",
+      "data-quality",
+      "data-sync",
+      "email-marketing",
+      "email-productivity",
+      "email-templates",
+      "file-storage",
+      "import-engine",
+      "lead-capture",
+      "lead-scoring",
+      "mailbox-sync",
+      "meeting-scheduling",
+      "mobile-offline",
+      "multi-currency",
+      "opportunity-pipeline",
+      "platform-security",
+      "product-catalog",
+      "public-api",
+      "push-notifications",
+      "record-collaboration",
+      "reporting-dashboards",
+      "role-permissions",
+      "sales-cadences",
+      "salesforce-connector",
+      "sso-mfa",
+      "task-management",
+      "workflow-automation"
+    ],
+    "migration": {
+      "present": true,
+      "engine": "import-engine",
+      "classes": [
+        {
+          "dataClass": "records",
+          "present": true,
+          "connector": "salesforce-connector",
+          "objects": 22,
+          "extraction": true,
+          "deltaSync": "supported",
+          "notExtractable": 2,
+          "complete": true
+        },
+        {
+          "dataClass": "custom_objects_fields",
+          "present": true,
+          "connector": "salesforce-connector",
+          "objects": 7,
+          "extraction": true,
+          "deltaSync": "not_available",
+          "notExtractable": 1,
+          "complete": true
+        },
+        {
+          "dataClass": "files_attachments",
+          "present": true,
+          "connector": "salesforce-connector",
+          "objects": 7,
+          "extraction": true,
+          "deltaSync": "supported",
+          "notExtractable": 0,
+          "complete": true
+        },
+        {
+          "dataClass": "history_activity",
+          "present": true,
+          "connector": "salesforce-connector",
+          "objects": 4,
+          "extraction": true,
+          "deltaSync": "supported",
+          "notExtractable": 2,
+          "complete": true
+        },
+        {
+          "dataClass": "users_permissions",
+          "present": true,
+          "connector": "salesforce-connector",
+          "objects": 7,
+          "extraction": true,
+          "deltaSync": "supported",
+          "notExtractable": 0,
+          "complete": true
+        }
+      ]
+    },
+    "scanCoverage": {
+      "total": 52,
+      "placed": 52,
+      "excluded": 0,
+      "unaccounted": []
+    },
+    "fetchLog": {
+      "fetches": 10,
+      "searches": 1,
+      "inventorySourcesFetched": 8,
+      "inventorySources": 30,
+      "requiredReadingFetched": [
+        "editions_pricing",
+        "feature_docs",
+        "app_store",
+        "google_play",
+        "export_api"
+      ],
+      "requiredReadingMissed": []
+    }
+  },
+  "b": {
+    "label": "B",
+    "source": "/Users/adventurini/.wos/failed/01a0f47a-0b77-7043-9299-0b237bb8d59c/2026-10-01T01-31-25-130Z-01a0f4fd",
+    "target": "salesforce",
+    "schemaViolations": [],
+    "validation": [],
+    "methodValidation": [],
+    "inventory": {
+      "items": 53,
+      "sources": 28,
+      "surfaces": 8,
+      "itemsCitingValidSourceBp": 10000,
+      "duplicateSourceUrls": [],
+      "placeholderSourceUrls": [],
+      "distinctSourcesCited": 8
+    },
+    "capabilities": 15,
+    "mappedCapabilities": 15,
+    "features": 49,
+    "excludedItems": 0,
+    "capabilityWeights": {
+      "count": 15,
+      "min": 273,
+      "max": 984,
+      "median": 656,
+      "top3ShareBp": 2787
+    },
+    "rubric": {
+      "declared": "wos-weight-rubric.v1",
+      "scored": 15,
+      "weightsFollow": true
+    },
+    "newCatalogFeatures": [
+      "accounts",
+      "activity-timeline",
+      "ai-agents",
+      "ai-assistant",
+      "approvals",
+      "audit-log",
+      "automation-flows",
+      "cadences",
+      "campaigns",
+      "cases",
+      "contacts",
+      "contracts",
+      "conversation-intelligence",
+      "custom-objects",
+      "data-quality",
+      "data-sync",
+      "deals",
+      "developer-tooling",
+      "email-campaigns",
+      "email-productivity",
+      "email-sync",
+      "email-templates",
+      "enablement-programs",
+      "files",
+      "forecasting",
+      "import-engine",
+      "incentive-compensation",
+      "integrations-directory",
+      "knowledge-base",
+      "layout-builder",
+      "lead-scoring",
+      "leads",
+      "multi-currency",
+      "offline-sync",
+      "org-security",
+      "partner-portal",
+      "product-catalog",
+      "public-api",
+      "push-notifications",
+      "quotes",
+      "record-comments",
+      "reporting",
+      "roles-permissions",
+      "route-planning",
+      "salesforce-connector",
+      "sso-mfa",
+      "staging-environments",
+      "tasks",
+      "territories",
+      "web-forms"
+    ],
+    "migration": {
+      "present": true,
+      "engine": "import-engine",
+      "classes": [
+        {
+          "dataClass": "records",
+          "present": true,
+          "connector": "salesforce-connector",
+          "objects": 17,
+          "extraction": true,
+          "deltaSync": "supported",
+          "notExtractable": 0,
+          "complete": true
+        },
+        {
+          "dataClass": "custom_objects_fields",
+          "present": true,
+          "connector": "salesforce-connector",
+          "objects": 7,
+          "extraction": true,
+          "deltaSync": "not_available",
+          "notExtractable": 1,
+          "complete": true
+        },
+        {
+          "dataClass": "files_attachments",
+          "present": true,
+          "connector": "salesforce-connector",
+          "objects": 7,
+          "extraction": true,
+          "deltaSync": "not_available",
+          "notExtractable": 0,
+          "complete": true
+        },
+        {
+          "dataClass": "history_activity",
+          "present": true,
+          "connector": "salesforce-connector",
+          "objects": 4,
+          "extraction": true,
+          "deltaSync": "supported",
+          "notExtractable": 2,
+          "complete": true
+        },
+        {
+          "dataClass": "users_permissions",
+          "present": true,
+          "connector": "salesforce-connector",
+          "objects": 6,
+          "extraction": true,
+          "deltaSync": "supported",
+          "notExtractable": 0,
+          "complete": true
+        }
+      ]
+    },
+    "scanCoverage": {
+      "total": 52,
+      "placed": 52,
+      "excluded": 0,
+      "unaccounted": []
+    },
+    "fetchLog": {
+      "fetches": 6,
+      "searches": 0,
+      "inventorySourcesFetched": 5,
+      "inventorySources": 28,
+      "requiredReadingFetched": [
+        "editions_pricing",
+        "feature_docs",
+        "app_store",
+        "google_play",
+        "export_api"
+      ],
+      "requiredReadingMissed": []
+    }
+  },
+  "overlap": {
+    "inventoryBySourceUrlAndTitle": {
+      "both": 48,
+      "onlyA": [
+        "salesforce.com/editions-pricing/sales-cloud|accounts person accounts",
+        "salesforce.com/editions-pricing/sales-cloud|collaborative forecasts advanced forecast pipeline management",
+        "salesforce.com/editions-pricing/sales-cloud|sales programs",
+        "salesforce.com/editions-pricing/sales-cloud|web services api"
+      ],
+      "onlyB": [
+        "help.salesforce.com/s/articleView?id=platform.integrate_what_is_api.htm&language=en_US&type=5|web services api",
+        "help.salesforce.com/s/articleView?language=en_US&id=sf.admin_exportdata.htm&type=5|data export service export backup data",
+        "salesforce.com/editions-pricing/sales-cloud|accounts and person accounts",
+        "salesforce.com/editions-pricing/sales-cloud|collaborative forecasts advanced forecast and pipeline management",
+        "salesforce.com/editions-pricing/sales-cloud|sales programs sales enablement"
+      ]
+    },
+    "inventoryByTitleOnly": {
+      "both": 49,
+      "onlyA": [
+        "accounts person accounts",
+        "collaborative forecasts advanced forecast pipeline management",
+        "sales programs"
+      ],
+      "onlyB": [
+        "accounts and person accounts",
+        "collaborative forecasts advanced forecast and pipeline management",
+        "data export service export backup data",
+        "sales programs sales enablement"
+      ]
+    },
+    "capabilitiesByKey": {
+      "both": 4,
+      "onlyA": [
+        "account-contact-management",
+        "ai-assistance",
+        "app-platform",
+        "collaboration-files",
+        "data-management",
+        "email-calendar-sync",
+        "integrations",
+        "marketing-automation",
+        "opportunity-pipeline",
+        "partner-channel",
+        "quoting-contracts",
+        "reporting-analytics",
+        "security-admin",
+        "seller-enablement",
+        "service-essentials",
+        "work-management",
+        "workflow-automation"
+      ],
+      "onlyB": [
+        "accounts-contacts",
+        "administration",
+        "ai",
+        "automation",
+        "channel-partners",
+        "collaboration",
+        "deal-management",
+        "extensibility",
+        "marketing",
+        "reporting",
+        "service"
+      ]
+    },
+    "capabilitiesByTitle": {
+      "both": 5,
+      "onlyA": [
+        "account and contact management",
+        "app platform",
+        "data management",
+        "email and calendar sync",
+        "integrations",
+        "marketing automation",
+        "mobile",
+        "opportunity pipeline",
+        "partner channel",
+        "quoting and contracts",
+        "reporting and analytics",
+        "security and administration",
+        "seller enablement",
+        "service essentials",
+        "work management",
+        "workflow automation"
+      ],
+      "onlyB": [
+        "accounts and contacts",
+        "administration and security",
+        "automation and approvals",
+        "channel and field programs",
+        "deal management",
+        "extensibility and data platform",
+        "marketing",
+        "mobile experience",
+        "reporting and dashboards",
+        "service bundled"
+      ]
+    },
+    "capabilitiesMatched": 14,
+    "featuresByKey": {
+      "both": 13,
+      "onlyA": [
+        "approval-routing",
+        "audit-logging",
+        "campaign-management",
+        "chat-integration",
+        "contact-account-management",
+        "data-import-export",
+        "email-marketing",
+        "file-storage",
+        "lead-capture",
+        "mailbox-sync",
+        "meeting-scheduling",
+        "mobile-offline",
+        "opportunity-pipeline",
+        "platform-security",
+        "record-collaboration",
+        "reporting-dashboards",
+        "role-permissions",
+        "sales-cadences",
+        "task-management",
+        "workflow-automation"
+      ],
+      "onlyB": [
+        "accounts",
+        "ai-agents",
+        "ai-assistant",
+        "approvals",
+        "audit-log",
+        "automation-flows",
+        "cadences",
+        "campaigns",
+        "cases",
+        "contacts",
+        "contracts",
+        "deals",
+        "developer-tooling",
+        "email-campaigns",
+        "email-sync",
+        "enablement-programs",
+        "files",
+        "forecasting",
+        "import-engine",
+        "incentive-compensation",
+        "integrations-directory",
+        "knowledge-base",
+        "layout-builder",
+        "leads",
+        "offline-sync",
+        "org-security",
+        "partner-portal",
+        "quotes",
+        "record-comments",
+        "reporting",
+        "roles-permissions",
+        "route-planning",
+        "staging-environments",
+        "tasks",
+        "territories",
+        "web-forms"
+      ]
+    },
+    "newCatalogFeatures": {
+      "both": 15,
+      "onlyA": [
+        "approval-routing",
+        "audit-logging",
+        "campaign-management",
+        "chat-integration",
+        "contact-account-management",
+        "data-import-export",
+        "email-marketing",
+        "file-storage",
+        "lead-capture",
+        "mailbox-sync",
+        "meeting-scheduling",
+        "mobile-offline",
+        "opportunity-pipeline",
+        "platform-security",
+        "record-collaboration",
+        "reporting-dashboards",
+        "role-permissions",
+        "sales-cadences",
+        "task-management",
+        "workflow-automation"
+      ],
+      "onlyB": [
+        "accounts",
+        "ai-agents",
+        "ai-assistant",
+        "approvals",
+        "audit-log",
+        "automation-flows",
+        "cadences",
+        "campaigns",
+        "cases",
+        "contacts",
+        "contracts",
+        "deals",
+        "developer-tooling",
+        "email-campaigns",
+        "email-sync",
+        "enablement-programs",
+        "files",
+        "forecasting",
+        "incentive-compensation",
+        "integrations-directory",
+        "knowledge-base",
+        "layout-builder",
+        "leads",
+        "offline-sync",
+        "org-security",
+        "partner-portal",
+        "quotes",
+        "record-comments",
+        "reporting",
+        "roles-permissions",
+        "route-planning",
+        "staging-environments",
+        "tasks",
+        "territories",
+        "web-forms"
+      ]
+    },
+    "scanIdsInMatchedCapabilities": {
+      "comparable": 52,
+      "same": 38
+    }
+  },
+  "weights": {
+    "matchedCapabilities": 14,
+    "meanAbsDeltaBp": 212.4,
+    "spearmanMatchedCapabilities": 0.7769,
+    "perScanId": {
+      "comparable": 52,
+      "meanAbsDeltaBp": 204.2,
+      "spearman": 0.5822
+    },
+    "largestDisagreements": [
+      {
+        "capability": "sales-engagement",
+        "other": "sales-engagement",
+        "matchedBy": "key",
+        "aBp": 406,
+        "bBp": 874,
+        "deltaBp": 468
+      },
+      {
+        "capability": "opportunity-pipeline",
+        "other": "deal-management",
+        "matchedBy": "scanIds",
+        "aBp": 627,
+        "bBp": 929,
+        "deltaBp": 302
+      },
+      {
+        "capability": "account-contact-management",
+        "other": "accounts-contacts",
+        "matchedBy": "scanIds",
+        "aBp": 701,
+        "bBp": 984,
+        "deltaBp": 283
+      },
+      {
+        "capability": "app-platform",
+        "other": "extensibility",
+        "matchedBy": "scanIds",
+        "aBp": 332,
+        "bBp": 601,
+        "deltaBp": 269
+      },
+      {
+        "capability": "mobile",
+        "other": "mobile",
+        "matchedBy": "key",
+        "aBp": 553,
+        "bBp": 820,
+        "deltaBp": 267
+      },
+      {
+        "capability": "reporting-analytics",
+        "other": "reporting",
+        "matchedBy": "scanIds",
+        "aBp": 554,
+        "bBp": 820,
+        "deltaBp": 266
+      },
+      {
+        "capability": "service-essentials",
+        "other": "service",
+        "matchedBy": "scanIds",
+        "aBp": 406,
+        "bBp": 601,
+        "deltaBp": 195
+      },
+      {
+        "capability": "sales-planning",
+        "other": "sales-planning",
+        "matchedBy": "key",
+        "aBp": 369,
+        "bBp": 547,
+        "deltaBp": 178
+      },
+      {
+        "capability": "ai-assistance",
+        "other": "ai",
+        "matchedBy": "title",
+        "aBp": 295,
+        "bBp": 437,
+        "deltaBp": 142
+      },
+      {
+        "capability": "workflow-automation",
+        "other": "automation",
+        "matchedBy": "scanIds",
+        "aBp": 406,
+        "bBp": 546,
+        "deltaBp": 140
+      }
+    ]
+  }
+}
